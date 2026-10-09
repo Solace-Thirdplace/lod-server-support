@@ -156,7 +156,7 @@ final class ResetCoordinator {
         // bumped-epoch full roster, which repopulates. Inert while unsubscribed.
         deps.farPlayerResubscribe().run();
         deps.feedback().accept(voxyLine(report) + (deps.dhActive()
-                ? "DH receipts cleared — re-requesting terrain from the server."
+                ? "DH receipts cleared — DH terrain is requested again as the server allows."
                 : Brand.shortName() + " cache cleared — re-requesting everything from the server."));
         emitStorageDetail(deps, report, forceVoxyWipe);
         return true;

@@ -586,12 +586,12 @@ public class ColumnCacheStore {
         runIoAndWait(() -> {
             if (!Files.exists(cacheDir(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return;
             IOException failure=null;
-            try {dev.vox.lss.common.dh.DhTerrainCache.clear(cacheDir(), null);}
+            try {dev.vox.lss.common.dh.DhReceiptStore.clear(cacheDir(), null);}
             catch(IOException e) {failure=e;}
             try (DirectoryStream<Path> servers = Files.newDirectoryStream(cacheDir())) {
                 for (Path serverDir : servers) {
-                    // The source-cache owns this namespace and preserves foreign children.
-                    if(java.util.Set.of(dev.vox.lss.common.dh.DhTerrainCache.DIRECTORY,dev.vox.lss.common.dh.DhTerrainCache.LEGACY_DIRECTORY).contains(serverDir.getFileName().toString()))continue;
+                    // DH receipts own this namespace and preserve foreign children.
+                    if(serverDir.getFileName().toString().equals(dev.vox.lss.common.dh.DhReceiptStore.DIRECTORY))continue;
                     if (!Files.isDirectory(serverDir, java.nio.file.LinkOption.NOFOLLOW_LINKS)
                             && !Files.isSymbolicLink(serverDir)) continue;
                     try {deleteBucketDir(serverDir);}catch(IOException e) {failure=e;}
@@ -613,10 +613,10 @@ public class ColumnCacheStore {
         runIoAndWait(() -> {});
     }
 
-    /** Explicit DH reset only; native receipt invalidation must preserve cached source terrain. */
-    static void clearDhTerrain(String address) {
+    /** Explicit DH reset only: drop this server's persisted DH receipts. */
+    static void clearDhReceipts(String address) {
         runIoAndWait(() -> {
-            try { dev.vox.lss.common.dh.DhTerrainCache.clear(cacheDir(), address); }
+            try { dev.vox.lss.common.dh.DhReceiptStore.clear(cacheDir(), address); }
             catch (IOException e) { throw new java.io.UncheckedIOException(e); }
         }, true);
     }

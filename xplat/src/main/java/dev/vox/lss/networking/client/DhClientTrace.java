@@ -21,11 +21,11 @@ final class DhClientTrace {
     }
 
     static void sample(DhStatusSnapshot s, int inbound, long rawLosses, long oldestRequestMillis,
-                       int generationRequests, boolean recovery, boolean cacheReady,
-                       Integer chunkX, Integer chunkZ) {
+                       int generationRequests, boolean recovery, Integer chunkX, Integer chunkZ) {
         if (!ClientTraceLog.enabled()) return;
         ClientTraceLog.event("dh_status", "\"profile\":\"" + s.profile() + "\",\"state\":\"" + s.state()
-                + "\",\"reason\":\"" + s.reason() + "\",\"requested\":" + s.requestedTiles()
+                + "\",\"reason\":\"" + s.reason() + "\",\"activity\":\"" + s.activity()
+                + "\",\"requested\":" + s.requestedTiles()
                 + ",\"enqueued\":" + s.enqueuedTiles() + ",\"columns\":" + s.enqueuedColumns()
                 + ",\"refused\":" + s.refusedTiles() + ",\"wire_bytes\":" + s.wireBytes()
                 + ",\"owned_bytes\":" + s.ownedBytes() + ",\"decode\":" + s.decodeQueue()
@@ -33,12 +33,11 @@ final class DhClientTrace {
                 + ",\"generation_inflight\":" + generationRequests + ",\"oldest_request_ms\":" + oldestRequestMillis
                 + ",\"ingest\":" + s.ingestBacklog() + ",\"range\":" + s.effectiveRange()
                 + ",\"pressure_drops\":" + s.pressureDroppedTerrainFrames() + ",\"raw_losses\":" + rawLosses
-                + ",\"recovery\":" + recovery + ",\"cache_ready\":" + cacheReady
+                + ",\"recovery\":" + recovery
+                + ",\"receipts_stored\":" + s.storedReceipts() + ",\"receipts_restored\":" + s.restoredReceipts()
                 + ",\"live_updates\":" + s.liveUpdates() + ",\"live_available\":" + s.liveAvailable()
-                + ",\"updates_received\":" + s.receivedUpdates() + ",\"updates_enqueued\":" + s.enqueuedUpdates()
-                + ",\"last_reply_ms\":" + s.lastSyncAgeMillis()
-                + ",\"acquisition_wait\":\"" + s.acquisitionWait() + "\",\"acquisition_gates\":" + s.acquisitionGates()
-                + ",\"acquisition_wait_ms\":" + s.acquisitionWaitMillis()
+                + ",\"updates_applied\":" + s.receivedUpdates() + ",\"updates_deferred\":" + s.deferredUpdates()
+                + ",\"last_reply_ms\":" + s.lastReplyAgeMillis()
                 + ",\"chunk\":" + (chunkX == null || chunkZ == null ? "null" : "[" + chunkX + "," + chunkZ + "]"));
     }
 

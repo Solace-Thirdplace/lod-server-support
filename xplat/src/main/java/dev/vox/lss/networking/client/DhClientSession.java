@@ -289,11 +289,17 @@ public final class DhClientSession {
     /** Reset must abort its wipe if the conversion worker cannot retire. */
     public static void drainForReset() {
         var s = session;
+        if (s != null) s.discardReceipts();
+        for (var old : retiring) old.discardReceipts();
         for (var old : List.copyOf(retiring)) if (!old.retire())
             throw new IllegalStateException("Previous DH conversion did not stop; reset aborted");
         if (s != null && !s.retire()) { s.problem = "DH conversion did not stop; reset aborted"; throw new IllegalStateException(s.problem); }
         session = null;
         try {
+            // Saves queued before the drain must land before the clear, never after it.
+            try { RECEIPT_IO.submit(() -> {}).get(2, TimeUnit.SECONDS); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException("DH receipt flush interrupted", e); }
+            catch (ExecutionException | TimeoutException e) { throw new IllegalStateException("DH receipt flush did not finish; reset aborted", e); }
             invalidateCurrentNativeCache();
             var server = Minecraft.getInstance().getCurrentServer();
             if (server != null && server.ip != null) ColumnCacheStore.clearDhReceipts(server.ip);
@@ -704,7 +710,7 @@ public final class DhClientSession {
                 RECEIPT_IO.execute(() -> {
                     LinkedHashMap<DhPosition, DhReceiptStore.Entry> loaded;
                     try { loaded = store.load(); }
-                    catch (IOException | RuntimeException e) { loaded = null; LSSLogger.warn("DH receipts unavailable: " + e.getClass().getSimpleName()); }
+                    catch (java.io.IOException | RuntimeException e) { loaded = null; LSSLogger.warn("DH receipts unavailable: " + e.getClass().getSimpleName()); }
                     var result = loaded;
                     main(() -> {
                         receiptsLoading = false;
@@ -731,15 +737,16 @@ public final class DhClientSession {
             if (stored.remove(p) != null) receiptsDirty = true;
             unprobed.remove(p);
         }
+        /** Reset: this session's receipts must never be written back after the clear. */
+        void discardReceipts() { receiptStore = null; receiptsDirty = false; stored.clear(); unprobed.clear(); }
         void saveReceipts(boolean force) {
             var store = receiptStore;
-            if (store == null || !receiptsDirty && !force) return;
-            if (!receiptsDirty) return;
+            if (store == null || !receiptsDirty) return;
             receiptsDirty = false;
             var snapshot = new LinkedHashMap<>(stored);
             RECEIPT_IO.execute(() -> {
                 try { store.save(snapshot); }
-                catch (IOException | RuntimeException e) { LSSLogger.warn("DH receipts not saved: " + e.getClass().getSimpleName()); }
+                catch (java.io.IOException | RuntimeException e) { LSSLogger.warn("DH receipts not saved: " + e.getClass().getSimpleName()); }
             });
         }
         /** Client thread: probe the nearest persisted receipts in range, one batch at a time. */
@@ -948,6 +955,9 @@ public final class DhClientSession {
                     config.synchronize() && config.syncRate() > 0, config.centerX(), config.centerZ(), config.borderRadius());
             if (!context.equals(rangeContext)) { rangeContext = context; rangeEpoch = RANGE_EPOCHS.incrementAndGet(); }
             if (receiptStore == null && !receiptsLoading && levelKey != null) openReceipts();
+            // Until persisted receipts are known, a tile could be full-requested and
+            // overwrite terrain whose receipt would have made it a cheap revalidation.
+            if (receiptsLoading) { activity = Activity.WORKING; return; }
             probeReceipts(player, range);
             boolean waitingServer = false;
             int cx = Math.floorDiv(player.x, 4), cz = Math.floorDiv(player.z, 4), rings = (range + 3) / 4;
@@ -1186,7 +1196,7 @@ public final class DhClientSession {
             try (var conversion = budget.reserve(Integer.bitCount(convert) * ((long) tile.world().height() / 16 * 65_536 + (long) tile.materials().size() * 128))) {
                 data = converter.convertTile(tile, convert);
             }
-            int eligibleMask = eligible;
+            int eligibleMask = eligible, completeMask = complete;
             return onMain(() -> {
                 int accepted = 0, attempted = 0;
                 if (partial && !updatesAllowed()) return false;
@@ -1209,12 +1219,12 @@ public final class DhClientSession {
                     if (!rejected.get()) { columns.incrementAndGet(); accepted |= 1 << c; }
                     else failedColumns.incrementAndGet();
                 }
-                if (partial) return (accepted & attempted) == attempted && (eligibleMask & complete & ~attempted) == 0;
+                if (partial) return (accepted & attempted) == attempted && (eligibleMask & completeMask & ~attempted) == 0;
                 boolean success = policy.accepted(position, eligibleMask, accepted, stamp, System.nanoTime());
                 if (success) {
                     if (accepted != 0) tiles.incrementAndGet();
                     rejectedTiles = 0;
-                    if (attempted == (eligibleMask & complete) && (eligibleMask & ~complete) == 0) rememberReceipt(position, stamp);
+                    if (attempted == (eligibleMask & completeMask) && (eligibleMask & ~completeMask) == 0) rememberReceipt(position, stamp);
                 } else {
                     incomplete.incrementAndGet();
                     if (attempted != 0 && (accepted & attempted) == 0 && ++rejectedTiles >= 3)

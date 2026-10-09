@@ -14,9 +14,16 @@ import java.lang.ref.WeakReference;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Fill the loaded vanilla border from vanilla itself, independently of the remote source. */
+/**
+ * Fill the loaded vanilla border from vanilla itself, independently of the remote source.
+ * Runs only while an LSS or DH terrain session is active and {@code lod.voxy_border_fill}
+ * is on, so plain Voxy users (singleplayer, vanilla servers) keep Voxy's own behaviour.
+ * Its backlog gate sits above DH's, so real vanilla border terrain never queues behind
+ * far DH approximations.
+ */
 final class VoxyVanillaCoverage {
     static final int LOOKUPS_PER_TICK=128,MAX_TRACKED=32_768;
+    static final int BACKLOG_GATE=2048;
     static final int SUBMISSIONS_PER_TICK=16,SUBMISSIONS_PER_SECOND=256;
     static final long RETRY_INTERVAL=1_000_000_000L;
     interface Access {
@@ -75,10 +82,17 @@ final class VoxyVanillaCoverage {
     private void pumpClient(boolean newTick) {
         var mc=Minecraft.getInstance();
         if(mc==null || mc.level==null || mc.player==null || mc.gameRenderer==null
-                || !dev.vox.lss.config.LSSClientConfig.CONFIG.receiveServerLods()) {clear();return;}
+                || !dev.vox.lss.config.LSSClientConfig.CONFIG.receiveServerLods()
+                || !dev.vox.lss.config.LSSClientConfig.CONFIG.voxyBorderFill()
+                || !terrainSessionActive()) {clear();return;}
         var camera=mc.gameRenderer.getMainCamera().getPosition();
         if(newTick)tick(mc.level,camera.x,camera.z,mc.options.getEffectiveRenderDistance(),System.nanoTime());
         else pump(mc.level,camera.x,camera.z,mc.options.getEffectiveRenderDistance(),System.nanoTime());
+    }
+
+    static boolean terrainSessionActive() {
+        return dev.vox.lss.networking.client.ClientNetGlue.getRequestManager()!=null
+                || dev.vox.lss.networking.client.DhClientSession.running();
     }
 
     /** Load events cover the moving frontier without repeatedly restarting a scan.
@@ -116,7 +130,7 @@ final class VoxyVanillaCoverage {
                 arrivals.keySet().removeIf(p->!inSquare(p));
             }
             credit=Math.min(SUBMISSIONS_PER_TICK,credit+Math.max(0,now-creditAt)*SUBMISSIONS_PER_SECOND/1e9);creditAt=now;
-            if(access.backlog()>128)return;
+            if(access.backlog()>BACKLOG_GATE)return;
             int submitted=tickSubmissions,lookups=tickLookups;
             int events=Math.min(32,arrivals.size());
             for(int i=0;i<events && credit>=1 && submitted<SUBMISSIONS_PER_TICK;i++) {
@@ -126,7 +140,7 @@ final class VoxyVanillaCoverage {
                 int x=(int)position,z=(int)(position>>32);
                 if(!atBorder(x,z,cameraX,cameraZ,Math.max(2,Math.min(64,distance))))continue;
                 if(!ready(position,chunk,now)){if(!accepted.containsKey(position))arrivals.put(position,reference);continue;}
-                if(access.backlog()>128) {arrivals.put(position,reference);break;}
+                if(access.backlog()>BACKLOG_GATE) {arrivals.put(position,reference);break;}
                 submit(position,chunk,now);submitted++;tickSubmissions=submitted;
                 if(!accepted.containsKey(position))arrivals.put(position,reference);
             }
@@ -143,7 +157,7 @@ final class VoxyVanillaCoverage {
                 LevelChunk chunk=chunks.getChunk(x,z,ChunkStatus.FULL,false);
                 if(chunk==null){accepted.remove(position);retries.remove(position);arrivals.remove(position);continue;}
                 if(!ready(position,chunk,now))continue;
-                if(credit<1 || submitted>=SUBMISSIONS_PER_TICK || access.backlog()>128) {
+                if(credit<1 || submitted>=SUBMISSIONS_PER_TICK || access.backlog()>BACKLOG_GATE) {
                     arrivals.put(position,new WeakReference<>(chunk));trim(arrivals);continue;
                 }
                 submit(position,chunk,now);submitted++;tickSubmissions=submitted;
@@ -155,8 +169,9 @@ final class VoxyVanillaCoverage {
         }
     }
     private boolean ready(long position,LevelChunk chunk,long now) {
-        if(!lightReady(level,chunk))return false;
+        // Cheap map checks first: an accepted chunk never pays the per-section light scan.
         var held=accepted.get(position);if(held!=null && held.get()==chunk)return false;
+        if(!lightReady(level,chunk))return false;
         var retry=retries.get(position);return retry==null || retry.chunk.get()!=chunk || now>=retry.due;
     }
     /** Mirror Voxy's per-section readiness, independent of unrelated load/unload light work. */

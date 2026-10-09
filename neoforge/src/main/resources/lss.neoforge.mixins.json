@@ -18,7 +18,6 @@
   "client": [
     "IntegratedServerLanHook",
     "AccessorClientPacketListener",
-    "ClientTransferHook",
     "AccessorScreenWidgets",
     "AccessorLivingEntity",
     "AccessorBiomeManager",

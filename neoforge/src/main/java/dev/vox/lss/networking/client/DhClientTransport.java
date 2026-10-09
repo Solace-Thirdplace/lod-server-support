@@ -23,7 +23,12 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.HandlerThread;
 
-/** Physical-client-only optional DH transport, with bounded ownership before callbacks. */
+/**
+ * Physical-client-only optional DH transport, with bounded ownership before callbacks.
+ * NeoForge registers payload channels once at startup, so the DH channel exists (and is
+ * advertised) only when the user allowed DH terrain when the game started; enabling it
+ * later reports "restart required" instead of silently advertising for every user.
+ */
 public final class DhClientTransport {
     private static final Set<Payload> frames=Collections.newSetFromMap(new IdentityHashMap<>());
     private static final class Payload implements CustomPacketPayload, AutoCloseable {
@@ -57,6 +62,11 @@ public final class DhClientTransport {
     }
     public static void register(RegisterPayloadHandlersEvent event) {
         if(ModList.get().isLoaded("distanthorizons")) return;
+        if(!dev.vox.lss.config.LSSClientConfig.CONFIG.dhSourceAllowed()) {
+            DhClientSession.installTransport(null,"Restart the game to register the DH channel",
+                    dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason.RESTART_REQUIRED);
+            return;
+        }
         try {
             // DH's NeoForge channel negotiation version is "1", independent of DH
             // wire profile 15/16. Optional keeps ordinary servers joinable.

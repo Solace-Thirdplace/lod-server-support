@@ -80,16 +80,6 @@ public final class ClientStatus {
         if (!CACHE.due(System.nanoTime())) return;
         var mc = Minecraft.getInstance();
         var cfg = LSSClientConfig.CONFIG;
-        if(DhClientSession.selected()) {
-            var dh=DhClientSession.diagnostics();
-            CACHE.publish(lifecycle,new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION,lifecycle,System.currentTimeMillis(),
-                    mc.getConnection()!=null,false,cfg.receiveServerLods(),false,
-                    dev.vox.lss.compat.DhVoxyBridge.available(),false,0,0,0,0,0,0,-1,0,
-                    cfg.lodColumnsPerSecondLimit(),0,0,ClientStatusSnapshot.Discovery.DORMANT,
-                    ClientStatusSnapshot.Availability.DISABLED,null,
-                    dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(),cfg.diagnosticSettings(),dh));
-            return;
-        }
         var manager = ClientNetGlue.getRequestManager();
         boolean active = manager != null && mc.level != null && ClientNetGlue.isServerEnabled();
         if (baselineLifecycle != lifecycle) {
@@ -107,6 +97,19 @@ public final class ClientStatus {
                 : "unavailable".equals(xaero.resolution()) ? ClientStatusSnapshot.Availability.UNAVAILABLE
                 : !cfg.enableXaeroMapBridge() ? ClientStatusSnapshot.Availability.DISABLED
                 : ClientStatusSnapshot.Availability.AVAILABLE;
+        if (DhClientSession.selected()) {
+            // DH mode: native fields describe the (idle) native path truthfully; DH
+            // acquisition lives in the dh block. Nothing is faked.
+            CACHE.publish(lifecycle, new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION, lifecycle, System.currentTimeMillis(),
+                    mc.getConnection() != null, ClientNetGlue.hasReceivedSessionConfig(), cfg.receiveServerLods(),
+                    ClientNetGlue.isServerEnabled(), LSSApi.hasVoxelConsumers(), FarPlayerRenderer.RENDER_AVAILABLE,
+                    ClientNetGlue.getSessionVersion(), ClientNetGlue.getServerLodDistance(), 0, 0, 0, 0,
+                    dev.vox.lss.compat.DhVoxyBridge.backlog(), 0, cfg.lodColumnsPerSecondLimit(), 0,
+                    xaero.pendingRebuilds(), ClientNetGlue.discoveryStatus(), availability, null,
+                    dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(), cfg.diagnosticSettings(),
+                    DhClientSession.diagnostics()));
+            return;
+        }
         var snapshot = new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION, lifecycle, System.currentTimeMillis(),
                 mc.getConnection() != null, ClientNetGlue.hasReceivedSessionConfig(),
                 cfg.receiveServerLods(), ClientNetGlue.isServerEnabled(), LSSApi.hasVoxelConsumers(),

@@ -67,8 +67,10 @@ public final class ClientCommandActions {
     public static void runReset(Consumer<Component> feedback, boolean confirmed,
                                 boolean forceVoxyWipe) {
         var manager = ClientNetGlue.getRequestManager();
-        boolean dhContext=DhClientSession.selected();
-        boolean dhActive=DhClientSession.canAcquire();
+        // A DH-selected live connection is a terrain session for reset purposes even when
+        // it is not acquiring yet (waiting for config, push-only, stopped): its receipts
+        // must be cleared and the session resumed, never left retired.
+        boolean dhContext=DhClientSession.selected() && net.minecraft.client.Minecraft.getInstance().getConnection()!=null;
         ResetCoordinator.run(new ResetCoordinator.Deps(
                 manager != null,
                 () -> {
@@ -98,7 +100,7 @@ public final class ClientCommandActions {
                 // (null = the no-session sentinel — a no-session grant matches only a
                 // still-no-session confirm).
                 () -> (Object) net.minecraft.client.Minecraft.getInstance().getConnection(),
-                System::nanoTime, dhActive),
+                System::nanoTime, dhContext),
                 confirmed, forceVoxyWipe);
     }
 
