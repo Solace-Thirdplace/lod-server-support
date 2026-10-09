@@ -78,6 +78,11 @@ public final class DhClientSession {
         try { return channelAvailable.getAsBoolean(); }
         catch (RuntimeException | LinkageError unavailable) { return false; }
     }
+    /** Reset treats this connection as a DH terrain session: DH selected and the server
+     *  advertises the DH channel (a plain vanilla server keeps the confirm prompt). */
+    public static boolean dhServerConnection() {
+        return selected() && hasDhChannel() && Minecraft.getInstance().getConnection() != null;
+    }
     public static boolean fallbackEnabled() { return LSSClientConfig.CONFIG.dhSourceAllowed(); }
     public static boolean selected() {
         if (!fallbackEnabled() || nativeOffered) return false;
@@ -910,6 +915,7 @@ public final class DhClientSession {
             assembly.allowPush(true);
             DhPosition affected = null;
             try (var completed = assembly.push(update, arrival, lossEpoch)) {
+                affected = completed.claimedPosition(); // decode failures then defer this tile only
                 var shape = new DhTerrainTile.WorldShape(level.getMinBuildHeight(), level.getHeight(), level.dimensionType().hasSkyLight());
                 try (var tile = completed.decode(new DhTerrainDecoder(DhLimits.DEFAULT), profile, shape)) {
                     var p = tile.position(); affected = p;

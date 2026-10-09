@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ReceiveMixin {
     private static final AtomicInteger sequence=new AtomicInteger();
     @Inject(method="receive",at=@At("HEAD"),remap=false)
-    private void capture(byte[] bytes,long arrived,CallbackInfo ci) throws Exception {
+    private void capture(byte[] bytes,long arrived,long lossEpoch,CallbackInfo ci) throws Exception {
         Probe.received(bytes);
         if(java.util.Set.of("content","rejoin").contains(System.getProperty("lss.rig.scenario",""))) return;
         int id=sequence.incrementAndGet();

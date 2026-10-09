@@ -203,20 +203,13 @@ public final class DhAssembly implements AutoCloseable {
             DhPosition expected = position == null ? DhPosition.unpack(new DhInput(data).i64()) : position;
             return decoder.decode(data, profile, expected, world, budget);
         }
-        /** An ambiguous legacy control exchange cannot authorize terrain. Require
-         * one strict successful family decode and a strict rejection by the other.
-         * Memory pressure is not evidence of a different family. */
-        public DhProfile legacyEvidence(DhTerrainDecoder decoder,DhTerrainTile.WorldShape world) throws DhCodecException {
-            DhProfile found=null;
-            for(var candidate:new DhProfile[]{DhProfile.OFFICIAL_15,DhProfile.SUPPORT_15}) {
-                try(var tile=decode(decoder,candidate,world)) {
-                    if(found!=null)return null;
-                    found=candidate;
-                } catch(DhCodecException e) {
-                    if(e.kind()==DhCodecException.Kind.RESOURCE_LIMIT)throw e;
-                }
-            }
-            return found;
+        /** The tile the payload claims, read from its header without decoding, so a decode
+         *  failure on a push can be scoped to that tile. Null when unreadable or not detail 6. */
+        public DhPosition claimedPosition() {
+            if (position != null) return position;
+            if (data == null || data.length < 8) return null;
+            try { var p = DhPosition.unpack(new DhInput(data).i64()); return p.detail() == 6 ? p : null; }
+            catch (DhCodecException | RuntimeException e) { return null; }
         }
         @Override public void close() { data = null; lease.close(); }
     }

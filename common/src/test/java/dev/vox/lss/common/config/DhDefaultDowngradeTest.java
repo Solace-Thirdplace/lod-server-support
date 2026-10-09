@@ -42,12 +42,16 @@ class DhDefaultDowngradeTest {
         var settled=codec.editSplit(codec.parse(moved.main(),moved.sidecar()),Map.of("lod.source","lss","lod.dh.sync_on_load",true));
         assertNull(settled.sidecar());
     }
-    @Test void sidecarRejectsOrdinaryKeysAndAcceptsAnEmptyDocument() {
+    @Test void sidecarIgnoresOrdinaryForeignAndBrokenContentAndAcceptsAnEmptyDocument() {
+        // The experimental file can never disable the main settings (a newer build may have written it).
         var codec=new YamlSettingsCodec<>(SettingsSchema.client());
         byte[] main=codec.defaults();
-        assertThrows(SettingsException.class,()->codec.parse(main,"lod:\n  receive: false\n".getBytes(StandardCharsets.UTF_8)));
-        assertThrows(SettingsException.class,()->codec.parse(main,"config_version: 1\n".getBytes(StandardCharsets.UTF_8)));
-        assertThrows(SettingsException.class,()->codec.parse(main,"lod: [1]\n".getBytes(StandardCharsets.UTF_8)));
+        assertTrue(codec.parse(main,"lod:\n  receive: false\n".getBytes(StandardCharsets.UTF_8)).configured().lod().receive(),"ordinary keys stay in main");
+        assertDoesNotThrow(()->codec.parse(main,"config_version: 1\n".getBytes(StandardCharsets.UTF_8)));
+        assertEquals("lss",codec.parse(main,"lod: [1]\n".getBytes(StandardCharsets.UTF_8)).configured().lod().source());
+        assertEquals("distant_horizons",codec.parse(main,("lod:\n  source: distant_horizons\n  dh:\n    refresh_seconds: 30\n    future_key: 1\n"
+                ).getBytes(StandardCharsets.UTF_8)).configured().lod().source(),"retired and unknown keys are dropped, known ones kept");
+        assertEquals("lss",codec.parse(main,"lod:\n  source: 7\n".getBytes(StandardCharsets.UTF_8)).configured().lod().source(),"an invalid value falls back");
         assertEquals("lss",codec.parse(main,"# all defaults\n".getBytes(StandardCharsets.UTF_8)).configured().lod().source());
         assertNotEquals(codec.parse(main).hash(),codec.parse(main,"# all defaults\n".getBytes(StandardCharsets.UTF_8)).hash());
     }

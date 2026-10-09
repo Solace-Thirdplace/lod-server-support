@@ -1411,6 +1411,20 @@ class DhClientSessionTest {
             assertFalse(stored(owner).containsKey(CONTENT_POSITION));
         } finally {me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=0;}
     }
+    /** Panel O4-4: a push that fails to decode is scoped to the tile its header names. */
+    @Test void aMalformedPushDefersOnlyTheTileItsHeaderNames() throws Exception {
+        var s=updateSession();long now=System.nanoTime();
+        var named=new DhPosition(6,0,0);var other=new DhPosition(6,1,0);
+        policy(s).accepted(named,1,1,123,now);policy(s).accepted(other,1,1,456,now);
+        byte[] payload=java.nio.ByteBuffer.allocate(12).putLong(named.packed()).putInt(7).array();
+        capture(codec(s).encode(new DhMessage.Split(4242,payload,true)),System.nanoTime()).receive();
+        capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",4242,List.of())),System.nanoTime()).receive();
+        pumpUntil(()->frameCount(s)==0,"malformed push did not settle");waitWorker(s);pumpUntil(()->true,"");
+        assertTrue(active(s));assertEquals(1,counter(s,"deferredUpdates"));
+        assertFalse(policy(s).hasSnapshot(named),"The named tile is reacquired");
+        assertTrue(policy(s).hasSnapshot(other),"...and no window recovery touches its neighbours");
+        assertFalse(((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).get());
+    }
     /** D-2 / A4-1: fragments captured before a drop can never reassemble a gapped push. */
     @Test void fragmentsCapturedBeforeADropCannotReassembleAGappedPushAndDhStaysActive() throws Exception {
         try(var bridge=new DeliveryBridge()) {
@@ -1427,6 +1441,7 @@ class DhClientSessionTest {
             pumpUntil(()->frameCount(s)==0,"gapped push did not settle");waitWorker(s);pumpUntil(()->true,"");
             assertTrue(active(s),()->"DH stopped: "+read(s,SESSION,"problem"));
             assertEquals(0,counter(s,"columns"));assertEquals(0,assembly(s).incompleteBuffers());assertTrue(notices.isEmpty());
+            assertEquals(0,counter(s,"malformedTiles"),"The loss epoch discards the buffer; it never decodes as a gapped payload");
             invoke(s,"retire");assertEquals(0,budget(s).used());
         }
     }
@@ -1631,13 +1646,24 @@ class DhClientSessionTest {
                 DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true)));
         store.save(Map.of(POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION)));
         var s=session();assertFalse(DhClientSession.canAcquire());
+        policy(s).accepted(POSITION,1,1,123,System.nanoTime());
         var feedback=new ArrayList<net.minecraft.network.chat.Component>();
         ClientCommandActions.runReset(feedback::add,true,false);
+        var state=(DhConnectionState)read(null,DhClientSession.class,"connectionState");
+        assertFalse(state.policy(DIMENSION).hasSnapshot(POSITION),"Resume clears this connection's in-memory receipts");
         assertFalse(active(s));assertNull(read(null,DhClientSession.class,"session"),"The next tick builds a fresh session");
         assertFalse((boolean)read(null,DhClientSession.class,"resetFailed"));
         assertTrue(store.load().isEmpty(),"Persisted receipts for this server are cleared");
         assertTrue(feedback.stream().anyMatch(c->c.getString().contains("DH receipts cleared")),feedback::toString);
         assertTrue(feedback.stream().noneMatch(c->c.getString().contains("No "+dev.vox.lss.common.Brand.shortName()+" server")));
+    }
+    /** Panel O4-3: DH merely being allowed on a server without the DH channel keeps the confirm prompt. */
+    @Test void anUnconfirmedResetWithoutADhChannelPromptsAndPreservesTheSession() throws Exception {
+        DhClientSession.installChannelAvailability(()->false);
+        var s=session();var feedback=new ArrayList<net.minecraft.network.chat.Component>();
+        ClientCommandActions.runReset(feedback::add,false,false);
+        assertTrue(active(s));assertSame(s,read(null,DhClientSession.class,"session"));
+        assertTrue(feedback.getFirst().getString().contains("reset confirm"),feedback::toString);
     }
     @Test void clearCacheInDhModeClearsOnlyTheCurrentRemoteAddressReceipts() throws Exception {
         var shape=new DhTerrainTile.WorldShape(-64,384,true);String other="other-dh-"+UUID.randomUUID();

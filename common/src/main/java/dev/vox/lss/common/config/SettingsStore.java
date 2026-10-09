@@ -61,12 +61,23 @@ public final class SettingsStore<T> {
     private String currentHash()throws IOException {return YamlSettingsCodec.hash(readBounded(selected),readSidecar());}
     public YamlSettingsCodec.Document<T> initialize()throws IOException {
         synchronized(lock) {
-            if(selected!=null&&Files.exists(selected))return reportInitial(read());
+            if(selected!=null&&Files.exists(selected))return reportInitial(splitDevelopmentKeys(read()));
             if(selected==null)select();
-            if(Files.exists(selected))return reportInitial(read());
+            if(Files.exists(selected))return reportInitial(splitDevelopmentKeys(read()));
             Files.createDirectories(directory);
             if(legacySource!=null) migrate();else createFresh();
             return reportInitial(read());
+        }
+    }
+    /** A main file written by a development build may still carry experimental keys that
+     *  older releases reject. Move them out once at startup, so a downgrade before any
+     *  Apply still reads the main file. Best effort: on failure the file stays readable here. */
+    private YamlSettingsCodec.Document<T> splitDevelopmentKeys(YamlSettingsCodec.Document<T> document) {
+        if(!codec.mainCarriesSidecarKeys(document.bytes()))return document;
+        try {return publishSplit(document,codec.editSplit(document,Map.of()));}
+        catch(IOException|RuntimeException e) {
+            report.accept("Experimental keys remain in the main settings file: "+e.getMessage());
+            return document;
         }
     }
     private YamlSettingsCodec.Document<T> reportInitial(YamlSettingsCodec.Document<T> document) {
@@ -90,24 +101,35 @@ public final class SettingsStore<T> {
             var disk=read();
             if(!disk.hash().equals(baseHash))throw new SettingsException("Settings changed on disk; reopen or explicitly rebase the retained draft");
             if(changes.isEmpty())return disk;
-            var output=codec.editSplit(disk,changes);
-            String expected=baseHash;
-            if(!Arrays.equals(output.sidecar(),disk.sidecar())) {
-                publishSidecar(output.sidecar(),expected);
-                expected=YamlSettingsCodec.hash(disk.bytes(),output.sidecar());
-            }
-            if(!Arrays.equals(output.main(),disk.bytes())) {
-                Path temp=writeTemp(output.main());
-                try {
-                    codec.parse(readBounded(temp));boundary.beforePublish(temp,selected);
-                    if(!Files.exists(selected)||!currentHash().equals(expected))throw new SettingsException("Settings changed on disk; draft was retained without replacing the file");
-                    // Portable hash+rename cannot exclude an uncooperative editor in the last race window.
-                    move(temp,selected);
-                    forceDirectory();
-                } finally {Files.deleteIfExists(temp);}
-            }
-            return codec.parse(output.main(),output.sidecar());
+            return publishSplit(disk,codec.editSplit(disk,changes));
         }
+    }
+    /** Caller holds the lock. Sidecar first; if the main rewrite then fails, the sidecar is
+     *  restored so the pair never ends half-applied (which would also look like a conflict). */
+    private YamlSettingsCodec.Document<T> publishSplit(YamlSettingsCodec.Document<T> disk,YamlSettingsCodec.Output output)throws IOException {
+        String expected=disk.hash();
+        boolean sidecarChanged=!Arrays.equals(output.sidecar(),disk.sidecar());
+        if(sidecarChanged) {
+            publishSidecar(output.sidecar(),expected);
+            expected=YamlSettingsCodec.hash(disk.bytes(),output.sidecar());
+        }
+        if(!Arrays.equals(output.main(),disk.bytes())) {
+            Path temp=writeTemp(output.main());
+            try {
+                codec.parse(readBounded(temp));boundary.beforePublish(temp,selected);
+                if(!Files.exists(selected)||!currentHash().equals(expected))throw new SettingsException("Settings changed on disk; draft was retained without replacing the file");
+                // Portable hash+rename cannot exclude an uncooperative editor in the last race window.
+                move(temp,selected);
+                forceDirectory();
+            } catch(IOException|RuntimeException failure) {
+                if(sidecarChanged) {
+                    try {publishSidecar(disk.sidecar(),expected);}
+                    catch(IOException|RuntimeException rollback) {failure.addSuppressed(rollback);}
+                }
+                throw failure;
+            } finally {Files.deleteIfExists(temp);}
+        }
+        return codec.parse(output.main(),output.sidecar());
     }
     /** Replace or delete the sidecar after re-checking the combined hash. */
     private void publishSidecar(byte[] bytes,String expectedHash)throws IOException {

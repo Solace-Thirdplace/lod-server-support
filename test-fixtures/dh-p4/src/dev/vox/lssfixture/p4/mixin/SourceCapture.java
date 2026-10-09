@@ -7,6 +7,6 @@ import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(targets="dev.vox.lss.networking.client.DhColumnConverter",remap=false)
 public class SourceCapture {
- @Inject(method="convert",at=@At("RETURN"),remap=false)
- private void source(DhTerrainTile tile,int column,CallbackInfoReturnable<VoxelColumnData> ci){if(ci.getReturnValue()!=null)ContentOracle.capture(tile,column);}
+ @Inject(method="convert(Ldev/vox/lss/common/dh/DhTerrainTile;ILjava/util/List;)Ldev/vox/lss/api/VoxelColumnData;",at=@At("RETURN"),remap=false)
+ private void source(DhTerrainTile tile,int column,java.util.List<?> materials,CallbackInfoReturnable<VoxelColumnData> ci){if(ci.getReturnValue()!=null)ContentOracle.capture(tile,column);}
 }
