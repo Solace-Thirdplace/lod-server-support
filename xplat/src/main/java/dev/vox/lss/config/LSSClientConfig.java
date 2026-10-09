@@ -169,7 +169,7 @@ public final class LSSClientConfig {
     public boolean dhSyncOnLoad() { return snapshot().lod().dh().syncOnLoad(); }
     public boolean dhRealTimeUpdates() { return snapshot().lod().dh().realTimeUpdates(); }
     /** Vanilla-border fill into Voxy; runs only while a native or DH terrain session is active. */
-    public boolean voxyBorderFill() { return true; }
+    public boolean voxyBorderFill() { return snapshot().lod().voxyBorderFill(); }
     public boolean receiveServerLods() { return snapshot().lod().receive(); }
     public boolean useWorldSubBuckets() { return snapshot().cache().splitByWorld(); }
     public java.util.List<java.util.List<String>> cacheAddressAliases() { return snapshot().cache().addressAliases(); }

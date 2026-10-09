@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(ROOT/'tools/rig'),str(ROOT/'tools/settings')]
 import storage_guard
 from prepare_prism import launcher_inputs
-from settings_file import render
+from settings_file import render_files
 p=argparse.ArgumentParser();p.add_argument('--artifact',required=True,type=Path);p.add_argument('--fixture',required=True,type=Path);p.add_argument('--dh',required=True,type=Path);p.add_argument('--base',required=True,type=Path);p.add_argument('--scenario',choices=['lifecycle','menu','absence','content','service','race','rejoin','updates','boundary'],default='lifecycle')
 p.add_argument('--server-family',choices=['official','support','vanilla'],default='official')
 p.add_argument('--profile',choices=['dh_support_15','official_15','official_16'],default='official_16')
@@ -79,7 +79,9 @@ instance=run/'instances/dh-neoforge';game=instance/'minecraft';(game/'config').m
 (instance/'mmc-pack.json').write_text(json.dumps({'formatVersion':1,'components':profile['components']}))
 (instance/'instance.cfg').write_text('[General]\nInstanceType=OneSix\nname=DH NeoForge private verification\nOverrideJavaLocation=true\nJavaPath=/usr/lib/jvm/java-21-openjdk-amd64/bin/java\nOverrideJavaArgs=true\nJvmArgs=-XX:ActiveProcessorCount=4 -Dlss.rig.runId='+run.name+' -Dlss.rig.scenario='+a.scenario+' -Dlss.rig.expect='+a.expect+' -Dlss.rig.profile='+{'dh_support_15':'SUPPORT_15','official_15':'OFFICIAL_15','official_16':'OFFICIAL_16'}[a.profile]+' -Dlss.rig.boundaryExpect='+a.boundary_expect+' -Dlss.rig.movingBorder='+str(a.moving_border).lower()+' -Dlss.rig.slowConfig='+str(a.slow_config).lower()+' -Dlss.rig.nativePreferred='+str(a.scenario=='boundary' and a.terrain_source=='native').lower()+' -Dlss.rig.initialEndpoint=[::1]:25586 -Dlss.rig.captureDir='+str(run/'captures')+'\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc=3072\nOverrideWindow=true\nMinecraftWinWidth='+str(1280 if a.scenario in ['menu','updates'] else 960)+'\nMinecraftWinHeight='+str(720 if a.scenario in ['menu','updates'] else 540)+'\nLaunchMaximized=false\nOverrideCommands=true\nPreLaunchCommand=\nPostExitCommand=\nWrapperCommand=\n')
 (game/'options.txt').write_text('maxFps:30\nrenderDistance:'+str(12 if a.scenario=='boundary' else 4)+'\nsimulationDistance:5\npauseOnLostFocus:false\nenableVsync:false\nguiScale:'+str(0 if a.scenario in ['menu','updates'] else 2)+'\nonboardAccessibility:false\n')
-(game/'config/lss-client-config.yaml').write_text(render({'lod.source':'lss' if a.scenario=='content' or a.scenario=='boundary' and a.terrain_source=='native' and not a.allow_dh else 'distant_horizons','lod.receive':True,'lod.dh.sync_on_load':True,'lod.dh.real_time_updates':a.scenario in ['menu','updates'],'lod.distance_chunks':40 if a.scenario=='absence' else 12 if a.scenario in ['content','service','race','rejoin','updates','boundary'] else 32,'integrations.xaero_map.enabled':False},side='client'))
+client_settings=render_files({'lod.source':'lss' if a.scenario=='content' or a.scenario=='boundary' and a.terrain_source=='native' and not a.allow_dh else 'distant_horizons','lod.receive':True,'lod.dh.sync_on_load':True,'lod.dh.real_time_updates':a.scenario in ['menu','updates'],'lod.distance_chunks':40 if a.scenario=='absence' else 12 if a.scenario in ['content','service','race','rejoin','updates','boundary'] else 32,'integrations.xaero_map.enabled':False},side='client')
+(game/'config/lss-client-config.yaml').write_text(client_settings['main'])
+if client_settings['sidecar'] is not None:(game/'config/lss-client-experimental.yaml').write_text(client_settings['sidecar'])
 (run/'server/eula.txt').write_text('eula=true\n')
 if a.scenario=='absence':
  (run/'server/config').mkdir(exist_ok=True)

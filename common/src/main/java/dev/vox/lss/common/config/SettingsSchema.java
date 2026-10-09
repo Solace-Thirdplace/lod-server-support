@@ -39,7 +39,7 @@ public final class SettingsSchema<T> {
             Object raw=lookup(fullTree,spec.path());
             if(client && raw==null)raw=switch(spec.path()) {
                 case "lod.source" -> "lss";
-                case "lod.dh.sync_on_load", "lod.dh.real_time_updates" -> true;
+                case "lod.dh.sync_on_load", "lod.dh.real_time_updates", "lod.voxy_border_fill" -> true;
                 default -> null;
             };
             if (raw==null && spec.path().endsWith("by_world")) raw=Map.of();
@@ -49,9 +49,10 @@ public final class SettingsSchema<T> {
             double[] range=range(spec.path(),client);
             String inline=inlineComment(template,spec.path());
             if(client && inline.isEmpty())inline=switch(spec.path()) {
-                case "lod.source" -> "[reconnect] lss = native only; distant_horizons = allow automatic DH fallback when native LSS is absent.";
+                case "lod.source" -> "[reconnect] lss = native only; distant_horizons = allow DH server terrain when the native terrain service is absent.";
                 case "lod.dh.sync_on_load" -> "Check saved DH terrain timestamps when loading it, if the server permits synchronization.";
                 case "lod.dh.real_time_updates" -> "Receive server-pushed DH terrain changes when allowed; no periodic polling.";
+                case "lod.voxy_border_fill" -> "Fill Voxy's missing vanilla border chunks while a native or DH terrain session is active.";
                 default -> "";
             };
             if (inline.isEmpty()) inline=inlineComment(resource("server"),spec.path());
