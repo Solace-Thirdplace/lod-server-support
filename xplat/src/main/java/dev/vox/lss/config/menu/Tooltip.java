@@ -62,6 +62,17 @@ public record Tooltip(Condition condition, String whenTrueKey, String whenFalseK
                 : condition.test(ctx) ? whenTrueKey : whenFalseKey;
     }
 
+    /** Facts that can change after a modern page is registered once at game start (the
+     *  governor setting, the DH/native terrain source) must be read when the tooltip shows. */
+    public boolean resolvesAtDisplay() {
+        return condition == Condition.GOVERNOR_ON || nativeOnlyKey != null;
+    }
+
+    /** Renderers that register once call this from their display-time tooltip callback. */
+    public String resolveAtDisplay(MenuContext registered, java.util.function.Supplier<MenuContext> current) {
+        return resolve(resolvesAtDisplay() ? current.get() : registered);
+    }
+
     /** Every key this tooltip can resolve to (distinct, in declaration order). */
     public List<String> keys() {
         return java.util.stream.Stream.of(whenTrueKey, whenFalseKey, nativeOnlyKey)

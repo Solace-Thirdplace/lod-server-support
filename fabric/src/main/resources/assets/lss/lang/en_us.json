@@ -110,8 +110,8 @@
   "lss.status.export_failed": "Diagnostics export failed; check directory permissions and free space.",
   "lss.settings.error_logged": "Technical details are recorded in the game log.",
   "lss.config.far_players.legacy_tab": "Players",
-  "lss.config.lod_source": "Use Distant Horizons",
-  "lss.config.lod_source.tooltip": "Allow DH when native LSS is unavailable. Auto-detects the protocol; older servers may reconnect once. Requires Voxy without the DH client. Reconnect to apply. May overwrite saved or newer LOD terrain.",
+  "lss.config.lod_source": "Allow DH Server Terrain",
+  "lss.config.lod_source.tooltip": "Lets Voxy show terrain from servers running Distant Horizons that have no LSS. Native LSS always wins. Requires Voxy; do not use with the Distant Horizons client mod. Applies on reconnect (NeoForge: restart the game). DH terrain is a block-resolution approximation and may overwrite saved Voxy terrain.",
   "lss.config.xaero_map_bridge.tooltip.native_only": "Writes native LSS terrain to Xaero's World Map. DH terrain goes to Voxy only; this option has no effect while using DH.",
   "lss.status.dh.source": "Source: Distant Horizons, %s — %s",
   "lss.status.dh.activity": "Activity: %s",
@@ -152,5 +152,6 @@
   "lss.status.dh.activity.waiting_server": "waiting for the server",
   "lss.status.dh.activity.waiting_voxy": "waiting for Voxy",
   "lss.status.dh.activity.idle": "idle; terrain in range is current",
-  "lss.status.dh.activity.stopped": "stopped"
+  "lss.status.dh.activity.stopped": "stopped",
+  "lss.status.dh.notice.stopped": "Distant Horizons terrain stopped: %s. Run /lss diag for details."
 }

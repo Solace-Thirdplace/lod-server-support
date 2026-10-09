@@ -67,7 +67,7 @@ public final class P4Probe {
                 for(var option:(List<?>)page.getClass().getMethod("getOptions").invoke(page)){
                     var type=Class.forName("net.caffeinemc.mods.sodium.client.gui.options.Option");String name=((Component)type.getMethod("getName").invoke(option)).getString();menuOptions.put(name,option);
                 }}
-            for(String name:List.of("Use Distant Horizons")) {
+            for(String name:List.of("Allow DH Server Terrain")) {
                 Object option=menuOptions.get(name);if(option==null)throw new IllegalStateException("Missing actual translated option "+name);
                 Object control=option.getClass().getMethod("getControl").invoke(option);if(!control.getClass().getSimpleName().equals("TickBoxControl"))throw new IllegalStateException("Not a checkbox: "+name);
             }
@@ -75,9 +75,9 @@ public final class P4Probe {
             Object receive=menuOptions.get("Receive Server LODs");if(receive==null)receive=menuOptions.get("Receive server LODs");
             if(receive==null)throw new IllegalStateException("Missing receive master: "+menuOptions.keySet());
             var optionType=Class.forName("net.caffeinemc.mods.sodium.client.gui.options.Option");optionType.getMethod("setValue",Object.class).invoke(receive,false);
-            for(String name:List.of("Use Distant Horizons"))if((boolean)optionType.getMethod("isAvailable").invoke(menuOptions.get(name)))throw new IllegalStateException("Dependency stayed enabled");
+            for(String name:List.of("Allow DH Server Terrain"))if((boolean)optionType.getMethod("isAvailable").invoke(menuOptions.get(name)))throw new IllegalStateException("Dependency stayed enabled");
             optionType.getMethod("setValue",Object.class).invoke(receive,true);
-            for(String name:List.of("Use Distant Horizons")){
+            for(String name:List.of("Allow DH Server Terrain")){
                 if(!(boolean)optionType.getMethod("isAvailable").invoke(menuOptions.get(name)))throw new IllegalStateException("Dependency stayed disabled");
                 optionType.getMethod("setValue",Object.class).invoke(menuOptions.get(name),false);
             }
@@ -120,7 +120,7 @@ public final class P4Probe {
             write("dh-legacy-pages.json",Map.of("pages",labels,"controls",menuOptions.keySet(),"all_page_layouts",layoutRows,"width",mc.getWindow().getGuiScaledWidth(),"height",mc.getWindow().getGuiScaledHeight()));phase=1;changed=now;
         } else if(phase==1 && now-changed>3_000_000_000L) {
             var handle=Class.forName("dev.vox.lss.config.LSSClientConfig").getField("CONFIG").get(null);Object setting=handle.getClass().getMethod("snapshot").invoke(handle),lod=setting.getClass().getMethod("lod").invoke(setting),dh=lod.getClass().getMethod("dh").invoke(lod);
-            if(!lod.getClass().getMethod("source").invoke(lod).equals("lss"))throw new IllegalStateException("Use Distant Horizons save failed");
+            if(!lod.getClass().getMethod("source").invoke(lod).equals("lss"))throw new IllegalStateException("Allow DH Server Terrain save failed");
             if(!(boolean)dh.getClass().getMethod("syncOnLoad").invoke(dh)||!(boolean)dh.getClass().getMethod("realTimeUpdates").invoke(dh))throw new IllegalStateException("Menu changed config-only synchronization preferences");
             if(mc.options.guiScale().get()!=0 || mc.getWindow().getGuiScale()<3)throw new IllegalStateException("Auto scale not exercised");
             if(!screenshotStarted) {

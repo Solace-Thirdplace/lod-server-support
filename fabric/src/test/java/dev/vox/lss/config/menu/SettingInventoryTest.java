@@ -17,7 +17,8 @@ class SettingInventoryTest {
         var config = new LSSClientConfig(directory);
         assertTrue(config.snapshot().lod().dh().syncOnLoad());
         assertTrue(config.snapshot().lod().dh().realTimeUpdates());
-        for (String key : java.util.List.of("lod.dh.sync_on_load", "lod.dh.real_time_updates")) {
+        assertTrue(config.voxyBorderFill());
+        for (String key : java.util.List.of("lod.dh.sync_on_load", "lod.dh.real_time_updates", "lod.voxy_border_fill")) {
             var descriptor = bindings.stream().map(b -> b.descriptor()).filter(d -> d.key().equals(key)).findFirst().orElseThrow();
             assertEquals(dev.vox.lss.common.config.SettingDescriptor.Exposure.ADVANCED, descriptor.exposure());
         }

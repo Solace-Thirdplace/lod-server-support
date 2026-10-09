@@ -215,7 +215,7 @@ menu scenario at Auto scale in a 1280×720 window. `dh-updates.json` and
 `dh-menu.json` must both pass; the final `dh-result.json` represents menu completion.
 
 Automatic source/protocol selection (2026-10-06): native boundary with
-`--terrain-source native --allow-dh` stages both services, enables Use Distant Horizons and
+`--terrain-source native --allow-dh` stages both services, enables Allow DH Server Terrain and
 requires native v20 with zero DH terrain requests. Older official/Support service
 cases begin with the production protocol-16 probe and permit exactly one
 negotiation reconnect before checking the detected profile and Voxy storage.
@@ -255,7 +255,7 @@ Minecraft connection with saved update preferences intact.
 ## Menu simplification (2026-10-09)
 
 The shared catalog has General and Far Players pages. General includes the
-**Use Distant Horizons** checkbox; synchronization and live updates are file-only
+**Allow DH Server Terrain** checkbox; synchronization and live updates are file-only
 preferences, both defaulting to on. Menu checks require 11 controls, no DH page,
 no hidden-preference controls, the exact fallback label and preservation of both
 preferences when applying the checkbox at Auto GUI scale. Functional observers

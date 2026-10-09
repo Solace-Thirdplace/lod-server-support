@@ -288,6 +288,27 @@ class ClientOptionCatalogTest {
         return ClientOptionCatalog.pages().stream().flatMap(p -> p.options().stream()).toList();
     }
 
+    /** D-25: display-time resolution reads the current context for every context-dependent
+     *  tooltip and the registration context for fixed ones; both menu twins call it. */
+    @Test
+    void contextDependentTooltipsResolveAgainstTheCurrentContext() throws Exception {
+        var registered = new MenuContext(true, true, true, true);
+        var later = new MenuContext(false, true, true, false);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        for (var page : ClientOptionCatalog.pages()) for (var group : page.groups()) for (var option : group.options()) {
+            var tooltip = option.tooltip();
+            String shown = tooltip.resolveAtDisplay(registered, () -> { calls.incrementAndGet(); return later; });
+            assertEquals(tooltip.resolve(tooltip.resolvesAtDisplay() ? later : registered), shown, option.id());
+        }
+        assertTrue(calls.get() >= 2, "governor and native-only tooltips read the live context");
+        var xaero = ClientOptionCatalog.find(ClientOptionCatalog.ID_XAERO_MAP_BRIDGE).orElseThrow().tooltip();
+        assertTrue(xaero.resolvesAtDisplay());
+        assertEquals("lss.config.xaero_map_bridge.tooltip.native_only", xaero.resolveAtDisplay(registered, () -> later));
+        for (String twin : List.of("fabric/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
+                "neoforge/src/main/java/dev/vox/lss/config/LSSConfigMenu.java"))
+            assertTrue(Files.readString(locate(twin)).contains("resolveAtDisplay(ctx, MenuContext::current)"), twin);
+    }
+
     static Path locate(String repoRelative) {
         Path dir = Path.of("").toAbsolutePath();
         for (int i = 0; i < 6 && dir != null; i++, dir = dir.getParent()) {

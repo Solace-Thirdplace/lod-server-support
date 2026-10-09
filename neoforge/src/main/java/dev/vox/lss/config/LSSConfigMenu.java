@@ -105,9 +105,8 @@ public class LSSConfigMenu implements ConfigEntryPoint {
             }
         };
         option.setName(Component.translatable(spec.nameKey()));
-        option.setTooltip(unused -> Component.translatable(spec.tooltip().resolve(
-                spec.tooltip().condition() == dev.vox.lss.config.menu.Tooltip.Condition.GOVERNOR_ON
-                        ? MenuContext.current() : ctx)));
+        // Sodium 0.8 registers once at game start: context-dependent facts resolve at display.
+        option.setTooltip(unused -> Component.translatable(spec.tooltip().resolveAtDisplay(ctx, MenuContext::current)));
         if (spec.impact() != null) {
             option.setImpact(OptionImpact.valueOf(spec.impact().name()));
         }
