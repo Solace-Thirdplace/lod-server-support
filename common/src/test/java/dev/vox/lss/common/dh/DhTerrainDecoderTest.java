@@ -329,7 +329,8 @@ class DhTerrainDecoderTest {
         var d=DhLimits.DEFAULT;
         var limited=new DhLimits(d.frameBytes(),d.tileBytes(),d.decodedBytes(),d.ownedBytes(),d.decompressorKiB(),
                 d.buffers(),d.spans(),d.mappings(),encoded.length-1,d.stringBytes(),d.worldHeight(),d.idleNanos(),d.lifetimeNanos());
-        assertEquals(DhCodecException.Kind.RESOURCE_LIMIT,assertFailure(dto(1,0,DhProfile.SUPPORT_15,blobs,false),
+        // Mapping bytes are fixed by the tile: a deterministic rejection (strike), not pressure.
+        assertEquals(DhCodecException.Kind.MALFORMED,assertFailure(dto(1,0,DhProfile.SUPPORT_15,blobs,false),
                 DhProfile.SUPPORT_15,limited,SMALL).kind());
         for(byte[] bad:List.of(hex("000000010001f09f9880"),hex("000000010001c080"))) {
             blobs[7]=bad;
@@ -455,9 +456,10 @@ class DhTerrainDecoderTest {
                 new DhLimits(d.frameBytes(),d.tileBytes(),d.decodedBytes(),d.ownedBytes(),64,8,d.spans(),d.mappings(),d.mappingBytes(),4096,4096,d.idleNanos(),d.lifetimeNanos()),
                 new DhLimits(d.frameBytes(),d.tileBytes(),d.decodedBytes(),d.ownedBytes(),d.decompressorKiB(),8,1,d.mappings(),d.mappingBytes(),4096,4096,d.idleNanos(),d.lifetimeNanos()))) {
             var ex=assertFailure(tile(2,3,DhProfile.OFFICIAL_16),DhProfile.OFFICIAL_16,limits,SMALL);
-            // Decoded-byte and dictionary budgets are memory pressure; the per-tile span
-            // ceiling is tile-intrinsic, so it is a malformed tile (strike), never pressure.
-            assertEquals(limits.spans()==1?DhCodecException.Kind.MALFORMED:DhCodecException.Kind.RESOURCE_LIMIT,ex.kind());
+            // Only the decompressor dictionary budget is memory pressure. Decoded size and
+            // span count are fixed by the tile, so exceeding them is a malformed tile
+            // (strike); retrying it every 2 s would re-download it forever.
+            assertEquals(limits.decompressorKiB()==64?DhCodecException.Kind.RESOURCE_LIMIT:DhCodecException.Kind.MALFORMED,ex.kind());
         }
         var budget=new DhMemoryBudget(100);
         assertThrows(DhCodecException.class,()->new DhTerrainDecoder(d).decode(tile(1,0,DhProfile.OFFICIAL_15),

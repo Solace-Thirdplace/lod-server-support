@@ -14,7 +14,7 @@ public final class DhTerrainDecoder {
     public DhTerrainTile decode(byte[] dto, DhProfile profile, DhPosition expected,
                                 WorldShape world, DhMemoryBudget budget) throws DhCodecException {
         if (dto.length > limits.tileBytes() || world.height() > limits.worldHeight())
-            throw DhInput.limit("DH tile or world height exceeds limit");
+            throw DhInput.malformed("DH tile or world height exceeds limit");
         var leases = new ArrayList<DhMemoryBudget.Lease>();
         try {
             hold(leases, budget, dto.length + 512L * 1024); // input plus column/lease tables and validation scratch
@@ -203,19 +203,26 @@ public final class DhTerrainDecoder {
         try (var stream = reads.open(slice)) {
             int count = stream.data.readInt();
             if (count < 0) throw DhInput.malformed("Negative DH mapping count");
-            if (count > limits.mappings()) throw DhInput.limit("DH mapping count exceeds limit");
+            if (count > limits.mappings()) throw DhInput.malformed("DH mapping count exceeds limit");
             hold(leases, budget, count * 512L);
             var result = new ArrayList<DhMaterial>(count);
             int textBytes = 0;
             for (int i = 0; i < count; i++) {
                 int length = stream.data.readUnsignedShort();
                 if (length > limits.stringBytes() || length > limits.mappingBytes() - textBytes)
-                    throw DhInput.limit("DH mapping strings exceed limit");
+                    throw DhInput.malformed("DH mapping strings exceed limit");
                 hold(leases, budget, length * 32L); // text, property objects and bounded parsing temporaries
                 String value;
                 if (reads.support) {
-                    var text = DhInput.supportText(stream.data, length,
-                            Math.min(limits.stringBytes(), limits.mappingBytes() - textBytes));
+                    DhInput.Text text;
+                    try {
+                        text = DhInput.supportText(stream.data, length,
+                                Math.min(limits.stringBytes(), limits.mappingBytes() - textBytes));
+                    } catch (DhCodecException e) {
+                        // The text size is fixed by the tile: deterministic, never memory pressure.
+                        if (e.kind() == DhCodecException.Kind.RESOURCE_LIMIT) throw DhInput.malformed("DH mapping strings exceed limit");
+                        throw e;
+                    }
                     value = text.value(); textBytes += text.bytes();
                 } else {
                     textBytes += length;
@@ -277,7 +284,7 @@ public final class DhTerrainDecoder {
                 } else if (mode == 4) {
                     long size = Zstd.getFrameContentSize(slice.bytes, slice.offset, slice.size);
                     if (size < 0) throw DhInput.malformed("Invalid or sizeless Zstd block");
-                    if (size > limits.decodedBytes() - consumed) throw DhInput.limit("Zstd output exceeds decoded limit");
+                    if (size > limits.decodedBytes() - consumed) throw DhInput.malformed("Zstd output exceeds decoded limit");
                     // zstd's one-shot decoder is bounded by its supplied destination buffer.
                     work = budget.reserve(limits.decompressorKiB() * 1024L);
                     output = budget.reserve(size);
@@ -309,7 +316,7 @@ public final class DhTerrainDecoder {
             this.raw = raw; this.work = work; this.output = output; this.exact = exact;
             data = new DataInputStream(new FilterInputStream(raw) {
                 private void charge(int bytes) throws DhCodecException {
-                    if (bytes > limits.decodedBytes() - reads.consumed) throw DhInput.limit("DH decoded-byte limit exceeded");
+                    if (bytes > limits.decodedBytes() - reads.consumed) throw DhInput.malformed("DH decoded-byte limit exceeded");
                     reads.consumed += bytes;
                 }
                 @Override public int read() throws IOException {

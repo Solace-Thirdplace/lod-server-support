@@ -9,6 +9,7 @@ import dev.vox.lss.common.diagnostics.DhStatusSnapshot.Activity;
 import dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason;
 import dev.vox.lss.common.diagnostics.DhStatusSnapshot.State;
 import dev.vox.lss.compat.DhVoxyBridge;
+import dev.vox.lss.compat.VoxyTerrainProbe;
 import dev.vox.lss.config.LSSClientConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -30,9 +31,10 @@ import java.util.function.Consumer;
  * order. A whole tile costs two client-thread hops (authority prefilter, then one
  * batched ingest+accept), never one per column.
  *
- * <p>Ordering: frames are processed in arrival order on the single worker, and an
- * applied push cancels every pending request for its tile, so no reply that predates
- * a push can overwrite it. A per-tile push sequence is the belt for that invariant.
+ * <p>Ordering: frames are processed in arrival order on the single worker. A push
+ * cancels every pending request for its tile (synchronously when applied, via
+ * deferUpdate otherwise), and a whole reply is written only while its request is
+ * still pending, so no reply that predates a push can overwrite it.
  * Server timestamps order nothing locally (official pushes always carry 0).
  */
 public final class DhClientSession {
@@ -50,7 +52,7 @@ public final class DhClientSession {
     /** Receipt files are tiny; one shared daemon keeps their IO off the client thread and off session workers. */
     private static final ExecutorService RECEIPT_IO = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(64), r -> { var t = new Thread(r, "LSS-DH-Receipts"); t.setDaemon(true); return t; },
-            new ThreadPoolExecutor.DiscardOldestPolicy());
+            new ThreadPoolExecutor.AbortPolicy()); // callers handle rejection; a silently dropped load would wedge
     private static String status = "DH source idle";
     private static boolean resetFailed;
     private static volatile BooleanSupplier nativeAvailable = () -> false, channelAvailable = () -> false;
@@ -77,6 +79,13 @@ public final class DhClientSession {
         try { return channelAvailable.getAsBoolean(); }
         catch (RuntimeException | LinkageError unavailable) { return false; }
     }
+    /** Reset treats this connection as a DH terrain session: DH selected and the server
+     *  advertises the DH channel (a plain vanilla server keeps the confirm prompt). */
+    public static boolean dhServerConnection() {
+        var s = session;
+        return selected() && hasDhChannel() && Minecraft.getInstance().getConnection() != null
+                && (s == null || s.active); // a stopped source (e.g. DH 3.2.x) cannot refill: keep the prompt
+    }
     public static boolean fallbackEnabled() { return LSSClientConfig.CONFIG.dhSourceAllowed(); }
     public static boolean selected() {
         if (!fallbackEnabled() || nativeOffered) return false;
@@ -96,6 +105,9 @@ public final class DhClientSession {
         receptionPaused = false;
     }
     public static boolean running() { var s = session; return s != null && s.active; }
+    /** A negotiated DH terrain session (config received), not one waiting on a server
+     *  that may never answer. Gates the vanilla-border pump. */
+    public static boolean terrainSessionActive() { var s = session; return s != null && s.active && s.config != null; }
     /** Permission alone is not a recoverable terrain service for a destructive reset. */
     public static boolean canAcquire() {
         var s = session; var mc = Minecraft.getInstance();
@@ -233,7 +245,8 @@ public final class DhClientSession {
         int size = buffer.readableBytes(); var s = session;
         if (size > DhLimits.DEFAULT.frameBytes()) { buffer.skipBytes(size); if (s != null) s.fail("Oversized DH frame", Reason.SOURCE_STOPPED); return null; }
         if (s == null || !s.active) { buffer.skipBytes(size); return null; }
-        boolean terrain = size >= 4 && (buffer.getUnsignedShort(buffer.readerIndex() + 2) == 9 || buffer.getUnsignedShort(buffer.readerIndex() + 2) == 10);
+        int kind = size >= 4 ? buffer.getUnsignedShort(buffer.readerIndex() + 2) : -1;
+        boolean terrain = kind == 9 || kind == 10;
         synchronized (s.frames) {
             // Publication and cleanup share this lock. An actual new capture cannot
             // publish an older timestamp after a maintenance cutoff has passed it.
@@ -275,7 +288,7 @@ public final class DhClientSession {
                 catch (DhCodecException e) {
                     switch (e.kind()) {
                         case RESOURCE_LIMIT -> owner.recoverResourcePressure();
-                        case EXPIRED, UNOWNED -> { /* contained: owners retry, pushes recover by scope */ }
+                        case EXPIRED, UNOWNED -> owner.applyLostClaims(); // owners retry; lost pushes reacquire their tile
                         default -> owner.fail(e.getClass().getSimpleName() + ": " + e.getMessage(), Reason.SOURCE_STOPPED);
                     }
                 }
@@ -356,6 +369,7 @@ public final class DhClientSession {
         volatile Activity activity = Activity.IDLE;
         final long started = System.nanoTime();
         int sentBandwidth;
+        long probeRetryAt; int probeFailures;
         long sentAt, lastRequest, lastGenerationRequest, lastSyncRequest, maintenanceAt, nextScanAt, receiptsSavedAt;
         long generationBackoffUntil, syncBackoffUntil;
         volatile long lastInboundArrival, lastReply;
@@ -368,9 +382,6 @@ public final class DhClientSession {
         final AtomicLong requested = new AtomicLong(), incomplete = new AtomicLong(), refused = new AtomicLong();
         final AtomicLong skipped = new AtomicLong(), failedColumns = new AtomicLong(), malformedTiles = new AtomicLong();
         /** Request/push ordering. Client thread stamps requests; the worker stamps applied pushes. */
-        final AtomicLong sequence = new AtomicLong();
-        /** Worker-owned: the sequence of the latest push applied to each tile (bounded). */
-        final LinkedHashMap<DhPosition, Long> lastPush = new LinkedHashMap<>();
         Set<DhPosition> visible = new HashSet<>();
         ChunkPos visibleCenter;
         int visibleRange = -1;
@@ -388,15 +399,15 @@ public final class DhClientSession {
         boolean receiptsUnverified, receiptsUnavailable;
 
         static final class Pending {
-            final DhPosition position; final boolean generation; final long started, timestamp, rangeEpoch, lifetime, sequence;
+            final DhPosition position; final boolean generation; final long started, timestamp, rangeEpoch, lifetime;
             // Worker completion remains protected until the client applies its queued bookkeeping.
             volatile boolean answered;
-            Pending(DhPosition position, boolean generation, long started, long timestamp, long rangeEpoch, long lifetime, long sequence) {
+            Pending(DhPosition position, boolean generation, long started, long timestamp, long rangeEpoch, long lifetime) {
                 this.position = position; this.generation = generation; this.started = started; this.timestamp = timestamp;
-                this.rangeEpoch = rangeEpoch; this.lifetime = lifetime; this.sequence = sequence;
+                this.rangeEpoch = rangeEpoch; this.lifetime = lifetime;
             }
             Pending(DhPosition position, boolean generation, long started, long timestamp) {
-                this(position, generation, started, timestamp, 0, DhLimits.DEFAULT.lifetimeNanos(), 0);
+                this(position, generation, started, timestamp, 0, DhLimits.DEFAULT.lifetimeNanos());
             }
             boolean generation() { return generation; }
         }
@@ -585,7 +596,7 @@ public final class DhClientSession {
             }
         }
         /** Worker only. */
-        void expireAssembly() { synchronized (frames) { assembly.expire(arrivalCutoff(System.nanoTime())); } }
+        void expireAssembly() { synchronized (frames) { assembly.expire(arrivalCutoff(System.nanoTime())); } applyLostClaims(); }
         /** Caller holds frames. Include captures awaiting the loader callback AND processing frames. */
         long arrivalCutoff(long now) {
             long cutoff = now;
@@ -657,7 +668,12 @@ public final class DhClientSession {
         DhMessage.SessionConfig preferences(boolean synchronize, boolean updates, int bandwidth) {
             return new DhMessage.SessionConfig(profile == DhProfile.OFFICIAL_16
                     ? DhMessage.GeneratorPlan.SURFACE_THEN_CHUNKS : DhMessage.GeneratorPlan.CHUNKS_ONLY,
-                    2048, 0, 0, 0, 20, updates, 128, synchronize, 2048, 50, bandwidth);
+                    2048, 0, 0, 0, 20, updates, requestedUpdateDistance(), synchronize, 2048, 50, bandwidth);
+        }
+        /** Pushes beyond the client's own LOD distance would only be dropped on arrival. */
+        static int requestedUpdateDistance() {
+            int override = LSSClientConfig.CONFIG.lodDistanceChunks();
+            return override > 0 ? Math.min(128, override) : 128;
         }
         /** A load transition triggers synchronization; elapsed time alone never polls terrain. */
         void observeLoaded(long now, ChunkPos player) {
@@ -716,7 +732,7 @@ public final class DhClientSession {
                 RECEIPT_IO.execute(() -> {
                     LinkedHashMap<DhPosition, DhReceiptStore.Entry> loaded;
                     try { loaded = store.load(); }
-                    catch (java.io.IOException | RuntimeException e) { loaded = null; LSSLogger.warn("DH receipts unavailable: " + e.getClass().getSimpleName()); }
+                    catch (Throwable e) { loaded = null; LSSLogger.warn("DH receipts unavailable: " + e.getClass().getSimpleName()); }
                     var result = loaded;
                     main(() -> {
                         receiptsLoading = false;
@@ -724,16 +740,18 @@ public final class DhClientSession {
                         receiptStore = store;
                         for (var e : result.entrySet()) {
                             if (!e.getValue().current()) { receiptsDirty = true; continue; } // older conversion: re-download
-                            if (policy.hasSnapshot(e.getKey())) continue; // this connection already holds it
-                            stored.put(e.getKey(), e.getValue()); unprobed.add(e.getKey());
+                            stored.putIfAbsent(e.getKey(), e.getValue()); // kept even when held, or the next save drops it
+                            if (!policy.hasSnapshot(e.getKey())) unprobed.add(e.getKey()); // this connection already holds it
                         }
                         nextScanAt = 0;
                     });
                 });
             } catch (RejectedExecutionException e) { receiptsLoading = false; receiptsUnavailable = true; }
         }
+        /** Receipts are only worth keeping where a later session can revalidate them: without
+         *  synchronization a restored receipt could never learn about offline edits. */
         void rememberReceipt(DhPosition p, long timestamp) {
-            if (receiptStore == null || timestamp <= 0) return;
+            if (receiptStore == null || timestamp <= 0 || !syncAvailable()) return;
             stored.remove(p); stored.put(p, new DhReceiptStore.Entry(timestamp, DhReceiptStore.CONVERSION_VERSION));
             unprobed.remove(p);
             while (stored.size() > DhReceiptStore.MAX_ENTRIES) stored.remove(stored.keySet().iterator().next());
@@ -750,14 +768,19 @@ public final class DhClientSession {
             if (store == null || !receiptsDirty) return;
             receiptsDirty = false;
             var snapshot = new LinkedHashMap<>(stored);
-            RECEIPT_IO.execute(() -> {
-                try { store.save(snapshot); }
-                catch (java.io.IOException | RuntimeException e) { LSSLogger.warn("DH receipts not saved: " + e.getClass().getSimpleName()); }
-            });
+            try {
+                RECEIPT_IO.execute(() -> {
+                    try { store.save(snapshot); }
+                    catch (java.io.IOException | RuntimeException e) {
+                        LSSLogger.warn("DH receipts not saved: " + e.getClass().getSimpleName());
+                        main(() -> { if (receiptStore == store) receiptsDirty = true; }); // retry on the next save pass
+                    }
+                });
+            } catch (RejectedExecutionException full) { receiptsDirty = true; }
         }
         /** Client thread: probe the nearest persisted receipts in range, one batch at a time. */
         void probeReceipts(ChunkPos player, int range) {
-            if (probeInFlight || unprobed.isEmpty()) return;
+            if (probeInFlight || unprobed.isEmpty() || System.nanoTime() < probeRetryAt) return;
             var batch = new ArrayList<DhPosition>();
             int cx = Math.floorDiv(player.x, 4), cz = Math.floorDiv(player.z, 4), rings = (range + 3) / 4;
             for (int ring = 0; ring <= rings && batch.size() < 64; ring++)
@@ -771,24 +794,34 @@ public final class DhClientSession {
             int minY = level.getMinBuildHeight(), height = level.getHeight();
             try { worker.execute(() -> {
                 Map<DhPosition, Boolean> present = new HashMap<>();
-                boolean available = true;
-                try {
-                    var probe = onMain(() -> DhVoxyBridge.openProbe(level));
-                    if (probe == null) available = false;
-                    else for (var p : batch) {
-                        // Probe one interior chunk; Voxy writes whole delivered columns.
-                        try { present.put(p, probe.hasTerrain(p.x() * 4 + 1, p.z() * 4 + 1, minY, height)); }
-                        catch (ReflectiveOperationException | RuntimeException | LinkageError e) { available = false; break; }
-                    }
-                } catch (InterruptedException | CancellationException retired) { return; }
-                catch (Exception e) { available = false; }
-                boolean verified = available;
-                main(() -> applyProbe(batch, verified ? present : null));
+                VoxyTerrainProbe probe;
+                try { probe = onMain(() -> DhVoxyBridge.openProbe(level)); }
+                catch (InterruptedException | CancellationException retired) { return; }
+                catch (Exception busy) { main(() -> probeFailed()); return; } // client thread busy: retry, never trust
+                if (probe == null) { main(() -> applyProbe(batch, null)); return; } // no readback ABI at all
+                for (var p : batch) {
+                    if (Thread.currentThread().isInterrupted()) return;
+                    try { present.put(p, probe.hasTileTerrain(p.x(), p.z(), minY, height)); }
+                    catch (ReflectiveOperationException | RuntimeException | LinkageError e) { main(() -> probeFailed()); return; }
+                }
+                main(() -> applyProbe(batch, present));
             }); } catch (RejectedExecutionException full) { probeInFlight = false; }
         }
-        /** {@code present==null}: the destination cannot be read; trust receipts (logged once). */
+        /** A transient probe failure (busy client thread, engine swap): retry with backoff. After
+         *  repeated failures, drop the unprobed receipts so their tiles download again. */
+        void probeFailed() {
+            probeInFlight = false;
+            if (++probeFailures >= 5) {
+                LSSLogger.warn("Voxy readback keeps failing; unverified DH receipts are dropped and downloaded again");
+                for (var p : List.copyOf(unprobed)) forgetReceipt(p);
+                probeFailures = 0;
+            } else probeRetryAt = System.nanoTime() + 2_000_000_000L * probeFailures;
+            nextScanAt = 0;
+        }
+        /** {@code present==null}: Voxy has no readback ABI; trust receipts (logged once). */
         void applyProbe(List<DhPosition> batch, Map<DhPosition, Boolean> present) {
             probeInFlight = false;
+            if (present != null) probeFailures = 0;
             long now = System.nanoTime();
             if (present == null && !receiptsUnverified) {
                 receiptsUnverified = true;
@@ -801,7 +834,8 @@ public final class DhClientSession {
                 var entry = stored.get(p);
                 if (entry == null) continue;
                 if (present != null && !Boolean.TRUE.equals(present.get(p))) { forgetReceipt(p); continue; }
-                boolean revalidate = sync && loadDue(loads, p, now);
+                if (!sync) continue; // never hold a receipt that cannot be revalidated; the tile downloads
+                boolean revalidate = loadDue(loads, p, now);
                 policy.restore(p, entry.timestamp(), now, revalidate);
                 if (revalidate) markLoaded(loads, p, now);
                 restored.incrementAndGet();
@@ -812,37 +846,58 @@ public final class DhClientSession {
         // ---- loss recovery -------------------------------------------------------------
         /** Network thread under frames lock. Buffers spanning the loss self-discard by epoch. */
         void terrainLost() {
-            rawTerrainLosses.incrementAndGet(); droppedUpdateFrames.incrementAndGet(); pushRecovery.set(true);
+            // A dropped fragment invalidates the buffers it spans (epoch). A dropped update
+            // message leaves its buffer orphaned until expiry. Either way the lost buffer's
+            // header names its tile (applyLostClaims); only a buffer whose first fragment
+            // was lost is unidentifiable and falls back to window recovery.
+            rawTerrainLosses.incrementAndGet(); droppedUpdateFrames.incrementAndGet();
         }
         /** Worker. Assembly slots or owned memory are exhausted: free incomplete buffers now
          *  (their owners retry) rather than waiting for idle expiry with every slot taken. */
         void recoverResourcePressure() {
             DhClientTrace.pressure(DhClientTrace.Pressure.ASSEMBLY_OR_DECODE);
+            // Later fragments of a discarded buffer resolve as UNOWNED (missing first
+            // fragment), never as a gapped payload; discarded pushes reacquire their tiles.
             assembly.discardIncomplete();
-            terrainLost();
-            try { recoverLoss(); } catch (Exception busy) { problem = "terrain resource pressure; recovery pending"; }
+            applyLostClaims();
+        }
+        /** Worker. Reacquire the tiles named by lost buffers. True when any tile was identified. */
+        boolean applyLostClaims() {
+            var claims = assembly.drainLostClaims();
+            if (claims.isEmpty()) return false;
+            if (updatesAllowed()) for (var p : claims) deferUpdate(p, "live update lost in transit; tile reacquired");
+            return true;
         }
         /**
-         * Worker. A lost push fragment has no trustworthy tile identity, but pushes only
+         * Worker. A lost push fragment without a readable header has no tile identity, but pushes only
          * arrive within the server's update distance of the player. Revalidate (or, without
-         * synchronization, reacquire) held tiles in that window. Persisted receipts are
-         * never purged by transport faults: their timestamps stay conservative.
+         * synchronization, reacquire) held tiles in that window, and cancel requests in
+         * flight there, whose replies may predate the lost push.
          */
         void recoverLoss() throws Exception {
             if (!pushRecovery.compareAndSet(true, false)) return;
             main(() -> {
                 var cfg = config; var player = Minecraft.getInstance().player;
                 nextScanAt = 0;
-                if (cfg == null || player == null || !updatesAllowed()) return;
+                if (cfg == null || !updatesAllowed()) return;
+                if (player == null) { pushRecovery.set(true); return; } // e.g. respawn: retry on the next pass
                 long now = System.nanoTime();
                 int radius = Math.min(effectiveRange(), cfg.updateDistance()) + 8;
                 var center = player.chunkPosition();
                 int cx = Math.floorDiv(center.x, 4), cz = Math.floorDiv(center.z, 4), rings = (radius + 3) / 4 + 1;
                 boolean sync = syncAvailable();
+                var cancelledIds = new ArrayList<Integer>();
                 for (int x = cx - rings; x <= cx + rings; x++) for (int z = cz - rings; z <= cz + rings; z++) {
                     var p = new DhPosition(6, x, z);
+                    // An in-flight reply may predate the lost push: cancel it so it cannot re-hold the tile.
+                    var cancelled = cancelPending(p);
+                    if (!cancelled.isEmpty()) cancelledIds.addAll(cancelled);
                     if (!policy.hasSnapshot(p)) continue;
-                    if (sync && policy.syncTimestamp(p) > 0) policy.revalidate(p, now); else policy.invalidate(p);
+                    if (sync && policy.syncTimestamp(p) > 0) policy.revalidate(p, now); else { policy.invalidate(p); forgetReceipt(p); }
+                }
+                if (!cancelledIds.isEmpty()) {
+                    try { worker.execute(() -> cancelledIds.forEach(assembly::cancel)); }
+                    catch (RejectedExecutionException full) { DhClientTrace.pressure(DhClientTrace.Pressure.RECOVERY_QUEUE); }
                 }
                 problem = "DH terrain burst dropped; nearby tiles revalidate";
             });
@@ -876,6 +931,7 @@ public final class DhClientSession {
             assembly.allowPush(true);
             DhPosition affected = null;
             try (var completed = assembly.push(update, arrival, lossEpoch)) {
+                affected = completed.claimedPosition(); // decode failures then defer this tile only
                 var shape = new DhTerrainTile.WorldShape(level.getMinBuildHeight(), level.getHeight(), level.dimensionType().hasSkyLight());
                 try (var tile = completed.decode(new DhTerrainDecoder(DhLimits.DEFAULT), profile, shape)) {
                     var p = tile.position(); affected = p;
@@ -906,11 +962,7 @@ public final class DhClientSession {
                     }
                     plan.cancelled().forEach(assembly::cancel);
                     receivedUpdates.incrementAndGet(); lastReply = System.nanoTime();
-                    var delivered = deliver(tile, p, false, 0, true);
-                    synchronized (lastPush) {
-                        lastPush.remove(p); lastPush.put(p, sequence.incrementAndGet());
-                        if (lastPush.size() > DhSessionPolicy.MAX_RECEIPTS) lastPush.remove(lastPush.keySet().iterator().next());
-                    }
+                    var delivered = deliver(tile, p, false, 0, true, 0, null);
                     int touched = 0, described = 0;
                     for (int c = 0; c < 16; c++) {
                         if (completeColumn(tile, c)) described |= 1 << c;
@@ -925,7 +977,7 @@ public final class DhClientSession {
                         // The receipt keeps the pre-push stamp: a later conditional request then
                         // learns the server row changed. Incomplete edits are reacquired normally.
                         if (plan.hadSnapshot() && completeEdit) policy.accepted(p, 1, 1, plan.previousStamp(), System.nanoTime());
-                        else policy.invalidate(p);
+                        else { policy.invalidate(p); forgetReceipt(p); }
                     });
                 }
             } catch (TimeoutException busy) {
@@ -936,7 +988,7 @@ public final class DhClientSession {
                 switch (e.kind()) {
                     case UNOWNED, EXPIRED, UNSUPPORTED -> {
                         // A buffer discarded after a capture loss is a lost push: scope it.
-                        if (affected == null && e.kind() == DhCodecException.Kind.UNOWNED) { pushRecovery.set(true); recoverLoss(); }
+                        if (affected == null && e.kind() == DhCodecException.Kind.UNOWNED && !applyLostClaims()) { pushRecovery.set(true); recoverLoss(); }
                     }
                     case RESOURCE_LIMIT -> {
                         DhClientTrace.pressure(DhClientTrace.Pressure.LIVE_RESOURCE);
@@ -947,7 +999,7 @@ public final class DhClientSession {
                         // A malformed push is tile-scoped where identifiable, never session-ending.
                         malformedTiles.incrementAndGet();
                         if (affected != null) deferUpdate(affected, "malformed live update; reacquisition scheduled");
-                        else { pushRecovery.set(true); recoverLoss(); }
+                        else if (!applyLostClaims()) { pushRecovery.set(true); recoverLoss(); }
                     }
                 }
             }
@@ -986,6 +1038,8 @@ public final class DhClientSession {
                     policy.reconcileGeneration(p, generationAvailable(p, player), now);
                     if (policy.acquisitionPriority(p) != priority) continue;
                     // A persisted receipt waits for its destination probe; never full-request it first.
+                    // That includes one the policy evicted on a long flight (bounded window).
+                    if (!unprobed.contains(p) && stored.containsKey(p) && !policy.hasSnapshot(p) && syncAvailable()) unprobed.add(p);
                     if (unprobed.contains(p)) continue;
                     int x = p.x() * 4, z = p.z() * 4;
                     boolean any = false;
@@ -1027,7 +1081,7 @@ public final class DhClientSession {
             if (id <= 0) { fail("DH request ID space exhausted; restart client", Reason.SOURCE_STOPPED); return; }
             long stamp = priority == 2 ? policy.syncTimestamp(p) : 0;
             long lifetime = requestLifetime();
-            pending.put(id, new Pending(p, gen, now, stamp, rangeEpoch, lifetime, sequence.incrementAndGet())); lastRequest = now;
+            pending.put(id, new Pending(p, gen, now, stamp, rangeEpoch, lifetime)); lastRequest = now;
             nextScanAt = Math.min(nextScanAt, now + 50_000_000L);
             if (gen) lastGenerationRequest = now; else lastSyncRequest = now;
             if (priority == 1) retryBurst = Math.min(3, retryBurst + 1); else retryBurst = 0;
@@ -1144,16 +1198,9 @@ public final class DhClientSession {
                     });
                     return;
                 }
-                Long pushedAt;
-                synchronized (lastPush) { pushedAt = lastPush.get(request.position); }
-                if (pushedAt != null && request.sequence < pushedAt) {
-                    // Belt for the cancel-on-push invariant: never let a pre-push reply overwrite it.
-                    main(() -> pending.remove(response.requestId(), request));
-                    return;
-                }
                 var shape = new DhTerrainTile.WorldShape(level.getMinBuildHeight(), level.getHeight(), level.dimensionType().hasSkyLight());
                 try (var tile = completed.decode(new DhTerrainDecoder(DhLimits.DEFAULT), profile, shape)) {
-                    deliver(tile, request.position, request.generation, tile.modifiedTimestamp(), false);
+                    deliver(tile, request.position, request.generation, tile.modifiedTimestamp(), false, response.requestId(), request);
                     main(() -> pending.remove(response.requestId(), request));
                 }
             } catch (TimeoutException e) {
@@ -1188,17 +1235,22 @@ public final class DhClientSession {
          * thread in ONE task (authority recheck, ingest, acceptance). A cheap prefilter
          * hop first skips vanilla-held columns before conversion.
          * {@code partial}: a push; only its complete columns are written.
+         * {@code owner}: a whole reply is written only while its request is still pending;
+         * a push, recovery or reset that cancelled it meanwhile voids the reply.
          */
-        boolean deliver(DhTerrainTile tile, DhPosition position, boolean generation, long stamp, boolean partial) throws Exception {
+        boolean deliver(DhTerrainTile tile, DhPosition position, boolean generation, long stamp, boolean partial,
+                int requestId, Pending owner) throws Exception {
             int tx = tile.position().x() * 4, tz = tile.position().z() * 4;
             int complete = 0;
             for (int c = 0; c < 16; c++) if (completeColumn(tile, c)) complete |= 1 << c;
             int eligible = onMain(() -> {
                 int mask = 0;
+                if (owner != null && pending.get(requestId) != owner) return -1;
                 if (partial && !updatesAllowed()) return 0;
                 for (int c = 0; c < 16; c++) if (policy.eligible(tx + c / 4, tz + c % 4) && !loaded(level, tx + c / 4, tz + c % 4)) mask |= 1 << c;
                 return mask;
             });
+            if (eligible < 0) return false;
             int convert = eligible & complete;
             skipped.addAndGet(16 - Integer.bitCount(eligible));
             VoxelColumnData[] data;
@@ -1208,6 +1260,7 @@ public final class DhClientSession {
             int eligibleMask = eligible, completeMask = complete;
             return onMain(() -> {
                 int accepted = 0, attempted = 0;
+                if (owner != null && pending.get(requestId) != owner) return false;
                 if (partial && !updatesAllowed()) return false;
                 for (int c = 0; c < 16; c++) {
                     if ((eligibleMask & (1 << c)) == 0) continue;
@@ -1230,6 +1283,9 @@ public final class DhClientSession {
                 }
                 if (partial) return (accepted & attempted) == attempted && (eligibleMask & completeMask & ~attempted) == 0;
                 boolean success = policy.accepted(position, eligibleMask, accepted, stamp, System.nanoTime());
+                // A tile just delivered is as fresh as a load check: the first portal return
+                // within the debounce must not revalidate the whole disc again.
+                if (success) markLoaded(connectionState.loadedAt(dimension), position, System.nanoTime());
                 if (success) {
                     if (accepted != 0) tiles.incrementAndGet();
                     rejectedTiles = 0;

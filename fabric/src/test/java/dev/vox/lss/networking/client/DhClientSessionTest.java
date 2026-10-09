@@ -1108,14 +1108,16 @@ class DhClientSessionTest {
         pumpUntil(()->frameCount(s)==0,"disabled update did not settle");
         assertEquals(0,counter(s,"receivedUpdates"));assertEquals(0,counter(s,"columns"));assertEquals(0,budget(s).used());
     }
-    @Test void aNinthIncompleteBufferTriggersRecoveryInsteadOfStoppingDh() throws Exception {
+    @Test void aNinthIncompleteBufferFreesIncompleteBuffersWithoutStoppingDhOrRecoveringHeldTiles() throws Exception {
         var s=updateSession();
         for(int i=0;i<9;i++) {
             var frame=capture(codec(s).encode(new DhMessage.Split(100+i,new byte[8],true)),System.nanoTime());assertNotNull(frame);frame.receive();
             pumpUntil(()->frameCount(s)==0,"buffer pressure frame did not settle");
         }
         pumpUntil(()->!(boolean)((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).get(),"resource recovery did not settle");
-        assertTrue(active(s));assertEquals(1,counter(s,"rawTerrainLosses"));assertEquals(0,assembly(s).incompleteBuffers());assertEquals(0,budget(s).used());
+        // Slot pressure is not a lost push: no loss epoch, no scoped revalidation. A discarded
+        // push buffer surfaces later as an UNOWNED update, which recovers by scope then.
+        assertTrue(active(s));assertEquals(0,counter(s,"rawTerrainLosses"));assertEquals(0,assembly(s).incompleteBuffers());assertEquals(0,budget(s).used());
     }
     @Test void rateLimitedRefusalsNeverConsumePermanentRejectionStrikes() throws Exception {
         var s=updateSession();
@@ -1181,11 +1183,9 @@ class DhClientSessionTest {
     private static void pending(Object s,int id,boolean generate,long started) throws Exception {
         pendingMap(s).put(id,newPending(s,POSITION,generate,started,0L));assembly(s).expect(id,POSITION);
     }
-    /** A request owner stamped with the session's real request/push sequence, like request() does. */
     private static Object newPending(Object s,DhPosition position,boolean generate,long started,long stamp) throws Exception {
-        var ctor=PENDING.getDeclaredConstructor(DhPosition.class,boolean.class,long.class,long.class,long.class,long.class,long.class);ctor.setAccessible(true);
-        long sequence=((AtomicLong)read(s,SESSION,"sequence")).incrementAndGet();
-        return ctor.newInstance(position,generate,started,stamp,0L,DhLimits.DEFAULT.lifetimeNanos(),sequence);
+        var ctor=PENDING.getDeclaredConstructor(DhPosition.class,boolean.class,long.class,long.class,long.class,long.class);ctor.setAccessible(true);
+        return ctor.newInstance(position,generate,started,stamp,0L,DhLimits.DEFAULT.lifetimeNanos());
     }
     private static DhMemoryBudget budget(Object s) {return (DhMemoryBudget)read(s,SESSION,"budget");}
     private static DhAssembly assembly(Object s) {return (DhAssembly)read(s,SESSION,"assembly");}
@@ -1349,20 +1349,6 @@ class DhClientSessionTest {
             invoke(s,"retire");assertEquals(0,budget(s).used());
         }
     }
-    /** Belt for the cancel-on-push invariant: a pre-push request that escaped cancellation is still refused. */
-    @Test void thePushSequenceRefusesAPrePushOwnerEvenIfItWasNotCancelled() throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var s=updateSession(-128,512);
-            var stale=newPending(s,CONTENT_POSITION,false,System.nanoTime(),0L); // sequence before the push
-            @SuppressWarnings("unchecked") var pushes=(Map<DhPosition,Long>)read(s,SESSION,"lastPush");
-            pushes.put(CONTENT_POSITION,((AtomicLong)read(s,SESSION,"sequence")).incrementAndGet());
-            pendingMap(s).put(702,stale);assembly(s).expect(702,CONTENT_POSITION);
-            capture(resource("dh-official-3.3.3-neoforge-content","target-0002-split.bin"),System.nanoTime()).receive();
-            capture(codec(s).encode(contentResponse(s,702,false)),System.nanoTime()).receive();
-            settleDelivery(s);
-            assertEquals(0,counter(s,"columns"));assertEquals(0,budget(s).used());
-        }
-    }
     @Test void anOutOfInterestPushForAStoredButUnheldTileForgetsItsReceipt() throws Exception {
         var s=updateSession(-128,512);var store=receiptStore(-128,512);write(s,SESSION,"receiptStore",store);
         stored(s).put(CONTENT_POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION));
@@ -1390,6 +1376,39 @@ class DhClientSessionTest {
         } finally {me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=0;}
     }
 
+    /** Panel O1-1: a push deferred under pressure voids a reply already in flight for its tile. */
+    @Test void aDeferredPushVoidsAnInFlightReplyForTheSameTile() throws Exception {
+        try(var ready=new ReadyBridge()) {
+            me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=DhClientSession.INGEST_GATE+1;
+            var owner=updateSession(-128,512);
+            pendingAt(owner,1,CONTENT_POSITION,0);
+            capture(resource("dh-official-3.3.3-neoforge-content","target-0002-split.bin"),System.nanoTime()).receive();
+            capture(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"),System.nanoTime()).receive();
+            var push=contentResponse(owner,2,true);
+            capture(codec(owner).encode(new DhMessage.PartialUpdate("test-world",push.bufferId(),List.of())),System.nanoTime()).receive();
+            capture(codec(owner).encode(contentResponse(owner,1,false)),System.nanoTime()).receive();
+            pumpUntil(()->frameCount(owner)==0 && pendingMap(owner).isEmpty(),"deferred push and stale reply did not settle");
+            waitWorker(owner);pumpUntil(()->true,"");
+            assertTrue(active(owner));assertEquals(1,counter(owner,"deferredUpdates"));
+            assertEquals(0,counter(owner,"columns"),"The pre-push reply must not be written");
+            assertFalse(policy(owner).hasSnapshot(CONTENT_POSITION),"...nor re-hold the tile");
+            assertFalse(stored(owner).containsKey(CONTENT_POSITION));
+        } finally {me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=0;}
+    }
+    /** Panel O4-4: a push that fails to decode is scoped to the tile its header names. */
+    @Test void aMalformedPushDefersOnlyTheTileItsHeaderNames() throws Exception {
+        var s=updateSession();long now=System.nanoTime();
+        var named=new DhPosition(6,0,0);var other=new DhPosition(6,1,0);
+        policy(s).accepted(named,1,1,123,now);policy(s).accepted(other,1,1,456,now);
+        byte[] payload=java.nio.ByteBuffer.allocate(12).putLong(named.packed()).putInt(7).array();
+        capture(codec(s).encode(new DhMessage.Split(4242,payload,true)),System.nanoTime()).receive();
+        capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",4242,List.of())),System.nanoTime()).receive();
+        pumpUntil(()->frameCount(s)==0,"malformed push did not settle");waitWorker(s);pumpUntil(()->true,"");
+        assertTrue(active(s));assertEquals(1,counter(s,"deferredUpdates"));
+        assertFalse(policy(s).hasSnapshot(named),"The named tile is reacquired");
+        assertTrue(policy(s).hasSnapshot(other),"...and no window recovery touches its neighbours");
+        assertFalse(((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).get());
+    }
     /** D-2 / A4-1: fragments captured before a drop can never reassemble a gapped push. */
     @Test void fragmentsCapturedBeforeADropCannotReassembleAGappedPushAndDhStaysActive() throws Exception {
         try(var bridge=new DeliveryBridge()) {
@@ -1406,6 +1425,7 @@ class DhClientSessionTest {
             pumpUntil(()->frameCount(s)==0,"gapped push did not settle");waitWorker(s);pumpUntil(()->true,"");
             assertTrue(active(s),()->"DH stopped: "+read(s,SESSION,"problem"));
             assertEquals(0,counter(s,"columns"));assertEquals(0,assembly(s).incompleteBuffers());assertTrue(notices.isEmpty());
+            assertEquals(0,counter(s,"malformedTiles"),"The loss epoch discards the buffer; it never decodes as a gapped payload");
             invoke(s,"retire");assertEquals(0,budget(s).used());
         }
     }
@@ -1569,19 +1589,95 @@ class DhClientSessionTest {
         assertTrue(stored(s).isEmpty());assertTrue((boolean)read(s,SESSION,"receiptsDirty"));
     }
 
+    /** Panel O2-3: receipts the connection already holds survive a dimension round trip's next save. */
+    @Test void heldReceiptsSurviveTheNextSaveAfterADimensionRoundTrip() throws Exception {
+        var store=receiptStore(-128,512);var held=new DhPosition(6,1,1);var fresh=new DhPosition(6,2,2);
+        store.save(Map.of(held,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION)));
+        var s=deliverySession(-128,512);policy(s).accepted(held,1,1,123,System.nanoTime());
+        loadReceipts(s,store);
+        assertTrue(stored(s).containsKey(held));assertFalse(((Set<?>)read(s,SESSION,"unprobed")).contains(held),"Already held: no probe");
+        invoke(s,"rememberReceipt",new Class<?>[]{DhPosition.class,long.class},fresh,456L);
+        invoke(s,"saveReceipts",new Class<?>[]{boolean.class},true);awaitReceiptIo();
+        assertEquals(Set.of(held,fresh),store.load().keySet());
+    }
+    /** Panel O2-1: without synchronization a receipt can never be revalidated, so none is kept or restored. */
+    @Test void withoutSynchronizationReceiptsAreNeitherWrittenNorRestored() throws Exception {
+        var store=receiptStore(-128,512);var tile=new DhPosition(6,1,1);
+        store.save(Map.of(tile,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION)));
+        var s=deliverySession(-128,512);
+        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,false,0,0,500));
+        loadReceipts(s,store);
+        invoke(s,"applyProbe",new Class<?>[]{List.class,Map.class},List.of(tile),Map.of(tile,true));
+        assertFalse(policy(s).hasSnapshot(tile),"A DH Support or no-sync tile must download, not stay frozen");
+        assertEquals(0,counter(s,"restored"));
+        invoke(s,"rememberReceipt",new Class<?>[]{DhPosition.class,long.class},new DhPosition(6,2,2),456L);
+        assertFalse(stored(s).containsKey(new DhPosition(6,2,2)));
+    }
+    /** Panel O1-3 / O2-5: a transient probe failure retries; it never trusts the batch. */
+    @Test void aTransientProbeFailureRetriesAndRepeatedFailuresDropTheReceipts() throws Exception {
+        var s=deliverySession(-128,512);var tile=new DhPosition(6,1,1);
+        stored(s).put(tile,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION));
+        @SuppressWarnings("unchecked") var unprobed=(Set<DhPosition>)read(s,SESSION,"unprobed");unprobed.add(tile);
+        invoke(s,"probeFailed");
+        assertTrue(unprobed.contains(tile));assertFalse(policy(s).hasSnapshot(tile));assertFalse((boolean)read(s,SESSION,"receiptsUnverified"));
+        assertTrue((long)read(s,SESSION,"probeRetryAt")>System.nanoTime());
+        for(int i=0;i<4;i++)invoke(s,"probeFailed");
+        assertFalse(unprobed.contains(tile));assertFalse(stored(s).containsKey(tile),"Unverifiable receipts download again");
+    }
+    /** Panel F2-3: a persisted receipt the policy evicted on a long flight is probed again, not re-downloaded. */
+    @Test void aReceiptEvictedFromThePolicyIsProbedAgainInsteadOfDownloaded() throws Exception {
+        var s=deliverySession(-128,512);write(s,SESSION,"receiptStore",receiptStore(-128,512));
+        stored(s).put(CONTENT_POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION));
+        setting(Map.of("lod.distance_chunks",2));
+        var player=new ChunkPos(-10,2);
+        assertNull(scanAt(s,System.nanoTime(),player),"The stored tile is queued for a probe, never full-requested");
+        assertTrue(((Set<?>)read(s,SESSION,"unprobed")).contains(CONTENT_POSITION));
+        var next=scanAt(s,System.nanoTime(),player);
+        assertTrue(next==null||next.timestamp()==123,"Only a conditional request may follow");
+        pumpUntil(()->!(boolean)read(s,SESSION,"probeInFlight"),"probe did not finish");
+        assertTrue(policy(s).hasSnapshot(CONTENT_POSITION),"The receipt is restored from the persisted layer");
+    }
+    /** Panel F2-6/F2-7/F2-8. */
+    @Test void aSessionWaitingForAServerIsNotATerrainSessionForTheBorderPump() throws Exception {
+        var s=session();assertTrue(DhClientSession.running());assertFalse(DhClientSession.terrainSessionActive());
+        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,true,32,true,32,50,500));
+        assertTrue(DhClientSession.terrainSessionActive());
+    }
+    @Test void theRequestedUpdateDistanceFollowsTheClientLodDistance() throws Exception {
+        setting(Map.of("lod.distance_chunks",32));assertEquals(32,(int)invoke(null,SESSION,"requestedUpdateDistance",new Class<?>[0]));
+        setting(Map.of("lod.distance_chunks",0));assertEquals(128,(int)invoke(null,SESSION,"requestedUpdateDistance",new Class<?>[0]));
+    }
+    @Test void aDeliveredTileCountsAsLoadedSoTheFirstPortalReturnDoesNotRevalidateIt() throws Exception {
+        try(var voxy=new DeliveryBridge()) {
+            var s=deliverySession(-128,512);replayContent(s,1,false);
+            var state=(DhConnectionState)read(null,DhClientSession.class,"connectionState");
+            assertTrue(state.loadedAt(DIMENSION).containsKey(CONTENT_POSITION));
+        }
+    }
     /** D-7: a confirmed reset on a DH connection that is not acquiring still clears receipts and resumes. */
     @Test void aConfirmedResetWhileWaitingForConfigClearsReceiptsAndResumes() throws Exception {
         var store=new DhReceiptStore(ColumnCacheStore.cacheRoot(),new DhReceiptStore.Key(minecraft.server.ip,"server","world",DIMENSION,8,
                 DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true)));
         store.save(Map.of(POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION)));
         var s=session();assertFalse(DhClientSession.canAcquire());
+        policy(s).accepted(POSITION,1,1,123,System.nanoTime());
         var feedback=new ArrayList<net.minecraft.network.chat.Component>();
         ClientCommandActions.runReset(feedback::add,true,false);
+        var state=(DhConnectionState)read(null,DhClientSession.class,"connectionState");
+        assertFalse(state.policy(DIMENSION).hasSnapshot(POSITION),"Resume clears this connection's in-memory receipts");
         assertFalse(active(s));assertNull(read(null,DhClientSession.class,"session"),"The next tick builds a fresh session");
         assertFalse((boolean)read(null,DhClientSession.class,"resetFailed"));
         assertTrue(store.load().isEmpty(),"Persisted receipts for this server are cleared");
         assertTrue(feedback.stream().anyMatch(c->c.getString().contains("DH receipts cleared")),feedback::toString);
         assertTrue(feedback.stream().noneMatch(c->c.getString().contains("No "+dev.vox.lss.common.Brand.shortName()+" server")));
+    }
+    /** Panel O4-3: DH merely being allowed on a server without the DH channel keeps the confirm prompt. */
+    @Test void anUnconfirmedResetWithoutADhChannelPromptsAndPreservesTheSession() throws Exception {
+        DhClientSession.installChannelAvailability(()->false);
+        var s=session();var feedback=new ArrayList<net.minecraft.network.chat.Component>();
+        ClientCommandActions.runReset(feedback::add,false,false);
+        assertTrue(active(s));assertSame(s,read(null,DhClientSession.class,"session"));
+        assertTrue(feedback.getFirst().getString().contains("reset confirm"),feedback::toString);
     }
     @Test void clearCacheInDhModeClearsOnlyTheCurrentRemoteAddressReceipts() throws Exception {
         var shape=new DhTerrainTile.WorldShape(-64,384,true);String other="other-dh-"+UUID.randomUUID();

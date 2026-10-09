@@ -48,14 +48,23 @@ class SettingsSidecarStoreTest {
         assertEquals("distant_horizons",store.read().configured().lod().source());
         Files.delete(sidecar());assertTrue(store.matches(initial.hash()));
     }
-    @Test void malformedSidecarIsASettingsErrorAndIsNeverRewritten() throws Exception {
+    @Test void aMalformedSidecarNeverDisablesTheMainSettingsAndIsNeverRewrittenByReading() throws Exception {
         var store=client("lss");store.initialize();
         Files.writeString(sidecar(),"lod:\n  receive: false\n");
-        assertThrows(SettingsException.class,store::read);
+        assertTrue(store.read().configured().lod().receive());
         Files.writeString(sidecar(),"lod: [broken");
-        assertThrows(SettingsException.class,store::read);
-        assertThrows(SettingsException.class,()->new SettingsHandle<>(client("lss")));
+        assertEquals("lss",store.read().configured().lod().source());
+        assertTrue(new SettingsHandle<>(client("lss")).state().effective().lod().receive());
         assertEquals("lod: [broken",Files.readString(sidecar()));
+    }
+    @Test void startupMovesDevelopmentBuildKeysOutOfMainSoADowngradeReadsIt() throws Exception {
+        var store=client("lss");store.initialize();
+        Files.writeString(main(),Files.readString(main()).replace("lod:\n","lod:\n  source: distant_horizons\n  dh:\n    refresh_seconds: 30\n"));
+        var document=client("lss").initialize();
+        var tree=YamlSettingsCodec.readTree(Files.readAllBytes(main()));
+        assertNull(SettingsSchema.lookup(tree,"lod.source"));assertNull(SettingsSchema.lookup(tree,"lod.dh"));
+        assertEquals("distant_horizons",document.configured().lod().source());
+        assertTrue(Files.readString(sidecar()).contains("distant_horizons"));
     }
     @Test void sidecarFollowsTheSelectedMainBrand() throws Exception {
         var store=client("vss");store.initialize();

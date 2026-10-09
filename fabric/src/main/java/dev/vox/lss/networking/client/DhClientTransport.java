@@ -28,7 +28,10 @@ public final class DhClientTransport {
     public static void init() {
         DhClientSession.installNativeAvailability(()->ClientPlayNetworking.canSend(
                 dev.vox.lss.networking.payloads.HandshakeC2SPayload.TYPE));
-        DhClientSession.installChannelAvailability(()->ClientPlayNetworking.canSend(Payload.TYPE));
+        // Usable only where this connection also registered the receiver (opted in at join);
+        // a server advertisement alone would start a session whose replies are never handled.
+        DhClientSession.installChannelAvailability(()->ClientPlayNetworking.canSend(Payload.TYPE)
+                && ClientPlayNetworking.getReceived().contains(Payload.TYPE.id()));
         if(FabricLoader.getInstance().isModLoaded("distanthorizons")) {
             DhClientSession.installTransport(null,"Remove Distant Horizons from the client to use "+dev.vox.lss.common.Brand.shortName()+"'s DH source",
                     dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason.CLIENT_MOD_CONFLICT);

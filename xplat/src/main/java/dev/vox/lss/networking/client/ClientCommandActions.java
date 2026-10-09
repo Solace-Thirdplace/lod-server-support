@@ -67,10 +67,11 @@ public final class ClientCommandActions {
     public static void runReset(Consumer<Component> feedback, boolean confirmed,
                                 boolean forceVoxyWipe) {
         var manager = ClientNetGlue.getRequestManager();
-        // A DH-selected live connection is a terrain session for reset purposes even when
-        // it is not acquiring yet (waiting for config, push-only, stopped): its receipts
-        // must be cleared and the session resumed, never left retired.
-        boolean dhContext=DhClientSession.selected() && net.minecraft.client.Minecraft.getInstance().getConnection()!=null;
+        // A DH server connection is a terrain session for reset purposes even when it is
+        // not acquiring yet (waiting for config, push-only, stopped): its receipts must be
+        // cleared and the session resumed, never left retired. DH merely being allowed on a
+        // server without the DH channel is not: that keeps the no-session confirm prompt.
+        boolean dhContext=DhClientSession.dhServerConnection();
         ResetCoordinator.run(new ResetCoordinator.Deps(
                 manager != null,
                 () -> {
@@ -93,7 +94,11 @@ public final class ClientCommandActions {
                     if (manager != null) manager.flushCache();
                     if (dhContext) DhClientSession.resumeAfterReset();
                 },
-                ColumnCacheStore::clearAll,
+                () -> {
+                    ColumnCacheStore.clearAll();
+                    // A drained DH session must never stay retired or keep in-memory receipts.
+                    if (DhClientSession.selected()) DhClientSession.resumeAfterReset();
+                },
                 FarPlayerClientSupport::resetAndResubscribe,
                 line -> feedback.accept(Component.literal(line).withStyle(ChatFormatting.GOLD)),
                 // The force grant's connection identity: the live ClientPacketListener

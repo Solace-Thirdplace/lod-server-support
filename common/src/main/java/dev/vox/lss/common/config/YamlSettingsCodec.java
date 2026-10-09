@@ -58,11 +58,17 @@ public final class YamlSettingsCodec<T> {
     public Document<T> parse(byte[] bytes) { return parse(bytes, null); }
     public Document<T> parse(byte[] bytes, byte[] sidecar) {
         Map<String,Object> tree = readTree(bytes);
+        SettingsSchema.Decoded<T> result = null;
         if (sidecar != null) {
             if (!schema.isClient()) throw new SettingsException("Only client settings have an experimental sidecar");
-            tree = merge(tree, sidecarTree(sidecar));
+            // The experimental file must never take the main settings down: an unreadable
+            // or invalid sidecar (e.g. written by a newer build) falls back to defaults.
+            try { result = schema.decode(merge(tree, sidecarTree(sidecar))); }
+            catch (RuntimeException e) { // SettingsException, YAML syntax errors, wrong value types
+                dev.vox.lss.common.LSSLogger.warn("Experimental client settings file ignored: " + e.getMessage());
+            }
         }
-        SettingsSchema.Decoded<T> result = schema.decode(tree);
+        if (result == null) result = schema.decode(tree);
         return new Document<>(result.configured(), result.normalized(), result.normalizations(), result.inactivePaths(), hash(bytes, sidecar), bytes, sidecar);
     }
     public byte[] defaults() {
@@ -133,7 +139,8 @@ public final class YamlSettingsCodec<T> {
     public static String hash(byte[] main, byte[] sidecar) {
         return sidecar == null ? hash(main) : hash((hash(main) + "\n" + hash(sidecar)).getBytes(StandardCharsets.UTF_8));
     }
-    /** A sidecar may be empty (comments only) and may contain only {@link #SIDECAR_PATHS}. */
+    /** A sidecar may be empty (comments only). Paths other than {@link #SIDECAR_PATHS}
+     *  (retired keys, or keys of a newer build) are dropped with a warning, never fatal. */
     static Map<String,Object> sidecarTree(byte[] bytes) {
         var node = composeOptional(bytes);
         // A comments-only document composes to nothing, an implicit null scalar, or (with
@@ -143,20 +150,31 @@ public final class YamlSettingsCodec<T> {
         Object value = value(node.get(), "");
         if (!(value instanceof Map<?,?> map)) throw new SettingsException("Experimental settings sidecar must be a mapping");
         @SuppressWarnings("unchecked") var tree = (Map<String,Object>) map;
-        checkSidecar(tree, "");
-        return tree;
+        return knownSidecar(tree, "");
     }
-    private static void checkSidecar(Map<String,Object> tree, String prefix) {
+    private static Map<String,Object> knownSidecar(Map<String,Object> tree, String prefix) {
+        var out = new LinkedHashMap<String,Object>();
         for (var e : tree.entrySet()) {
-            if (e.getKey().contains(".")) throw new SettingsException("Use nested YAML mappings instead of dotted keys at " + prefix + e.getKey());
             String path = prefix + e.getKey();
-            if (SIDECAR_PATHS.contains(path)) continue;
-            boolean group = SIDECAR_PATHS.stream().anyMatch(p -> p.startsWith(path + "."));
-            if (!group || !(e.getValue() instanceof Map<?,?> nested))
-                throw new SettingsException("Unknown experimental settings path: " + path);
-            @SuppressWarnings("unchecked") var child = (Map<String,Object>) nested;
-            checkSidecar(child, path + ".");
+            if (SIDECAR_PATHS.contains(path)) { out.put(e.getKey(), e.getValue()); continue; }
+            boolean group = !e.getKey().contains(".") && SIDECAR_PATHS.stream().anyMatch(p -> p.startsWith(path + "."));
+            if (group && e.getValue() instanceof Map<?,?> nested) {
+                @SuppressWarnings("unchecked") var child = (Map<String,Object>) nested;
+                out.put(e.getKey(), knownSidecar(child, path + "."));
+                continue;
+            }
+            if (!RETIRED_PATHS.contains(path))
+                dev.vox.lss.common.LSSLogger.warn("Unknown experimental client setting ignored: " + path);
         }
+        return out;
+    }
+    /** True when the main file still carries experimental or retired keys (development builds). */
+    public boolean mainCarriesSidecarKeys(byte[] main) {
+        if (!schema.isClient()) return false;
+        var tree = readTree(main);
+        for (String path : SIDECAR_PATHS) if (SettingsSchema.lookup(tree, path) != null) return true;
+        for (String path : RETIRED_PATHS) if (SettingsSchema.lookup(tree, path) != null) return true;
+        return false;
     }
     /** Sidecar values override the same paths in the main tree. */
     private static Map<String,Object> merge(Map<String,Object> main, Map<String,Object> sidecar) {

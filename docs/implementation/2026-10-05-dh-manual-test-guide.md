@@ -55,8 +55,9 @@ and manual protocol selector remain removed; retired `lod.dh.refresh_seconds`
 and `lod.dh.profile` values are ignored.
 
 Sync on load checks terrain when it enters the LOD interest region or on rejoin,
-with DH's 20-minute load debounce, kept per dimension for the whole connection
-(portal returns do not revalidate again). Standing still never causes periodic checks.
+with DH's 20-minute load debounce, kept per dimension for the whole connection; a
+tile delivered or checked counts as loaded, so a portal return within 20 minutes does
+not revalidate it again. Standing still never causes periodic checks.
 Live updates subscribe to server-pushed edits for the negotiated radius, without
 requesting a full tile for each complete edit. `/lss diag` reports whether the
 requested services are actually available and how many updates were enqueued.
@@ -113,13 +114,13 @@ DH tile it delivered. Let distant terrain settle, disconnect, and rejoin at the
 same position. On rejoin the client checks once that Voxy still holds terrain
 for those tiles, then, when Sync on load is available, asks the server only
 whether each tile changed. Unchanged tiles download nothing and are not
-re-ingested; changed tiles download again. Without sync (server or local setting),
-restored receipts are trusted as they are, so edits made while you were away appear
-only after a push, `/lss reset` or a later session with sync. Turning reception off
-and on again clears receipts in that case and requests the terrain again.
+re-ingested; changed tiles download again. Receipts exist only where sync is
+available: without it (DH Support, or sync off on the server or client) nothing is
+restored, and terrain downloads again on each connection or reception resume.
 
-`/lss diag` reports stored and restored receipts. If Voxy's storage was wiped,
-the presence check finds no terrain and the tiles download again. `/lss reset`
+`/lss diag` reports stored and restored receipts. If Voxy's storage was wiped, or
+any quarter of a tile is missing, the presence check fails and the tile downloads
+again. If the check itself keeps failing, the unverified receipts are dropped. `/lss reset`
 discards receipts and reacquires. A partial upstream tile is never receipted.
 
 ## Start with untouched distant terrain

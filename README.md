@@ -35,8 +35,8 @@ For a Voxy player on an existing DH server, ask the admin to add LSS alongside D
 - Changing the option applies on reconnect on Fabric; on NeoForge restart the game (the network channel is registered at startup only when the option is on).
 - Supported servers: official DH 3.3.x (protocol 16) and DH Support 15. Older official DH (3.2.x) is detected and reported in `/lss diag` with a request to update; it is not used.
 - DH sends a block-resolution approximation. It can overwrite more detailed Voxy terrain you built up nearby with vanilla, except chunks your client loaded with vanilla during the current connection.
-- Sync on load and live updates follow the server's settings and `lod.dh.sync_on_load` / `lod.dh.real_time_updates`. Distant edits can be missed while you are out of range or the client is under load; they are picked up on the next load check.
-- The client keeps small per-server timestamp receipts so an unchanged rejoin downloads nothing. `/lss reset` clears them.
+- Sync on load and live updates follow the server's settings and `lod.dh.sync_on_load` / `lod.dh.real_time_updates`. An edit missed while you are far away or the client is busy appears when that terrain comes back into view after the 20-minute load interval, after `/lss reset`, or on rejoin.
+- With sync on load available, the client keeps small per-server timestamp receipts, so an unchanged rejoin downloads nothing. Without it (DH Support servers, or sync turned off), terrain is downloaded again on each connection. `/lss reset` clears receipts.
 - The experimental keys live in `lss-client-experimental.yaml` next to `lss-client-config.yaml`, so downgrading to a build without this feature keeps the main settings file readable.
 - `/lss trace` files include block coordinates; review before sharing. This feature is not endorsed by the Distant Horizons team.
 

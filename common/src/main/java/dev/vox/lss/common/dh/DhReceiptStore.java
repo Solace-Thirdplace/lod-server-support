@@ -29,7 +29,7 @@ public final class DhReceiptStore {
     /** Bump whenever DhColumnConverter output changes; older receipts then re-download. */
     public static final int CONVERSION_VERSION = 5;
     public static final int MAX_ENTRIES = 65_536;
-    public static final int MAX_BUCKETS = 512;
+    public static final int MAX_BUCKETS = 64;
     private static final int MAGIC = 0x44485243, VERSION = 1, ENTRY_BYTES = 20, HEADER_BYTES = 44;
     private static final String SUFFIX = ".rcpt";
     private static final LinkOption NOFOLLOW = LinkOption.NOFOLLOW_LINKS;

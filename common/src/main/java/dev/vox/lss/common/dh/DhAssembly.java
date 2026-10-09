@@ -25,6 +25,9 @@ public final class DhAssembly implements AutoCloseable {
     private final LongSupplier clock, lifetime;
     private final Map<Integer, RequestOwner> requests = new HashMap<>();
     private final Map<Integer, Buffer> buffers = new HashMap<>();
+    /** Tiles named by the header of buffers lost before completion (loss epoch, expiry,
+     *  pressure). Lets the owner scope a lost push to its tile instead of a whole window. */
+    private final List<DhPosition> lostClaims = new ArrayList<>();
     private boolean closed, pushAllowed;
 
     public DhAssembly(DhLimits limits, DhMemoryBudget budget) { this(limits, budget, System::nanoTime); }
@@ -71,11 +74,11 @@ public final class DhAssembly implements AutoCloseable {
             buffer = new Buffer(now,checkedLifetime(lifetime.getAsLong()),lossEpoch);
         } else if (buffer == null) throw unowned("Missing first DH fragment");
         else if (buffer.lossEpoch != lossEpoch) {
-            discard(split.bufferId());
+            lose(split.bufferId());
             throw unowned("DH fragment lost under pressure; buffer discarded");
         }
         if (now - buffer.started >= buffer.lifetime || now - buffer.progress >= limits.idleNanos()) {
-            buffers.remove(split.bufferId()); buffer.close();
+            lose(split.bufferId());
             throw new DhCodecException(DhCodecException.Kind.EXPIRED, "DH assembly deadline exceeded");
         }
         if (split.length() < 1 || split.length() > limits.frameBytes() - 13
@@ -123,6 +126,23 @@ public final class DhAssembly implements AutoCloseable {
         Buffer buffer = buffers.remove(bufferId);
         if (buffer != null) buffer.close();
     }
+    /** Discard a buffer that will never complete, remembering the tile its header names. */
+    private void lose(int bufferId) {
+        Buffer buffer = buffers.remove(bufferId);
+        if (buffer != null) { claim(buffer); buffer.close(); }
+    }
+    private void claim(Buffer buffer) {
+        if (buffer.parts.isEmpty() || buffer.parts.get(0).bytes.length < 8 || lostClaims.size() >= limits.buffers() * 4) return;
+        try {
+            var p = DhPosition.unpack(new DhInput(buffer.parts.get(0).bytes).i64());
+            if (p.detail() == 6 && !lostClaims.contains(p)) lostClaims.add(p);
+        } catch (DhCodecException | RuntimeException unreadable) { /* the owner falls back to window recovery */ }
+    }
+    /** Worker: tiles of buffers lost since the last call. */
+    public List<DhPosition> drainLostClaims() {
+        if (lostClaims.isEmpty()) return List.of();
+        var out = List.copyOf(lostClaims); lostClaims.clear(); return out;
+    }
     public Completed push(PartialUpdate message, long arrivalNanos) throws DhCodecException { return push(message, arrivalNanos, 0); }
     public Completed push(PartialUpdate message, long arrivalNanos, long lossEpoch) throws DhCodecException {
         open();
@@ -133,11 +153,11 @@ public final class DhAssembly implements AutoCloseable {
         Buffer buffer = buffers.get(id);
         if (buffer == null) throw unowned("DH payload references a missing buffer");
         if (buffer.lossEpoch != lossEpoch) {
-            discard(id);
+            lose(id);
             throw unowned("DH fragment lost under pressure; buffer discarded");
         }
         if (now - buffer.started >= buffer.lifetime || now - buffer.progress >= limits.idleNanos()) {
-            discard(id);
+            lose(id);
             throw new DhCodecException(DhCodecException.Kind.EXPIRED, "DH assembly deadline exceeded");
         }
         DhMemoryBudget.Lease lease;
@@ -168,7 +188,7 @@ public final class DhAssembly implements AutoCloseable {
         buffers.entrySet().removeIf(e -> {
             Buffer value = e.getValue();
             boolean expired = now - value.started >= value.lifetime || now - value.progress >= limits.idleNanos();
-            if (expired) { expiredBuffers.add(e.getKey()); value.close(); }
+            if (expired) { expiredBuffers.add(e.getKey()); claim(value); value.close(); }
             return expired;
         });
         requests.entrySet().removeIf(e -> {
@@ -184,7 +204,7 @@ public final class DhAssembly implements AutoCloseable {
     private static DhCodecException unowned(String message) { return new DhCodecException(DhCodecException.Kind.UNOWNED, message); }
     /** Memory/slot pressure: free every incomplete buffer but keep request owners, whose
      *  replies then resolve as a contained missing-buffer retry instead of a stall. */
-    public void discardIncomplete() {open();buffers.values().forEach(Buffer::close);buffers.clear();}
+    public void discardIncomplete() {open();buffers.values().forEach(b -> { claim(b); b.close(); });buffers.clear();}
     /** Drop incomplete transfers under pressure while retaining the session. */
     public void discardAll() {open();buffers.values().forEach(Buffer::close);buffers.clear();requests.clear();}
     @Override public void close() {if(!closed){discardAll();closed=true;}}
@@ -203,20 +223,13 @@ public final class DhAssembly implements AutoCloseable {
             DhPosition expected = position == null ? DhPosition.unpack(new DhInput(data).i64()) : position;
             return decoder.decode(data, profile, expected, world, budget);
         }
-        /** An ambiguous legacy control exchange cannot authorize terrain. Require
-         * one strict successful family decode and a strict rejection by the other.
-         * Memory pressure is not evidence of a different family. */
-        public DhProfile legacyEvidence(DhTerrainDecoder decoder,DhTerrainTile.WorldShape world) throws DhCodecException {
-            DhProfile found=null;
-            for(var candidate:new DhProfile[]{DhProfile.OFFICIAL_15,DhProfile.SUPPORT_15}) {
-                try(var tile=decode(decoder,candidate,world)) {
-                    if(found!=null)return null;
-                    found=candidate;
-                } catch(DhCodecException e) {
-                    if(e.kind()==DhCodecException.Kind.RESOURCE_LIMIT)throw e;
-                }
-            }
-            return found;
+        /** The tile the payload claims, read from its header without decoding, so a decode
+         *  failure on a push can be scoped to that tile. Null when unreadable or not detail 6. */
+        public DhPosition claimedPosition() {
+            if (position != null) return position;
+            if (data == null || data.length < 8) return null;
+            try { var p = DhPosition.unpack(new DhInput(data).i64()); return p.detail() == 6 ? p : null; }
+            catch (DhCodecException | RuntimeException e) { return null; }
         }
         @Override public void close() { data = null; lease.close(); }
     }
