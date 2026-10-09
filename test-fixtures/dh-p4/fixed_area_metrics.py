@@ -33,7 +33,7 @@ def validate(result,server,frames,owner,arm):
  if owner.get('timeout') is not False or owner.get('exit_code')!=0 or not owner.get('owned_top_level_windows',0)>0 or owner.get('input_desktop_before')!=owner.get('input_desktop_after'):raise ValueError('Native process/window ownership failed')
  renderer=frames.get('gpu_renderer','').lower()
  if not renderer or any(word in renderer for word in ['llvmpipe','software']) or len(frames.get('gpu_elapsed_ns',[]))<200 or len(frames.get('frame_entry_interval_ns',[]))<200:raise ValueError('Native rendered GPU/frame proof absent')
- if arm=='lss' and (not result.get('all_source_complete_and_voxy_readback') or result.get('actual_loaded_geometry_sections',0)<=0):raise ValueError('Actual Voxy terrain absent')
+ if arm=='lss' and (not result.get('all_source_complete_and_voxy_present') or result.get('actual_loaded_geometry_sections',0)<=0):raise ValueError('Actual Voxy terrain absent')
  if arm=='official' and (not result.get('genuine_installed_dh_queue_decoder_provider') or not result.get('all_provider_updates_complete') or result.get('actual_loaded_render_buffers',0)<=0):raise ValueError('Genuine installed official terrain absent')
  return {'server_cpu_seconds':(server['cpu_last_terrain_send_nanos']-server['cpu_start_nanos'])/1e9,'server_terrain_wall_seconds':(server['wall_last_terrain_send_nanos']-server['wall_start_nanos'])/1e9,'terrain_payload_bytes':server['terrain_payload_bytes'],'generation_events':server['generation_events_completed'],'acquisition_wall_seconds':result['acquisition_wall_seconds'],'frame_interval_ms':quantiles([x/1e6 for x in frames['frame_entry_interval_ns']]),'gpu_elapsed_ms':quantiles([x/1e6 for x in frames['gpu_elapsed_ns']]),'gpu_renderer':frames['gpu_renderer'],'scope':frames['condition']}
 def collect(run):
@@ -57,7 +57,7 @@ def collect(run):
  samples=resources['samples'];metrics['client_peak_working_set_bytes']=max(r['working_set_bytes'] for r in samples);metrics['client_peak_private_bytes']=max(r['private_bytes'] for r in samples);metrics['client_sampled_process_cpu_seconds_including_boot']=(samples[-1]['kernel_cpu_100ns']+samples[-1]['user_cpu_100ns'])/1e7
  for key in ['conversionCpu','conversionWall','conversionSamples','conversionAllocation','peak_owned_bytes']:
   if key in result:metrics[key]=result[key]
- files=list((game/'.lss/cache/!dh-terrain-v1').rglob('*.dht'));metrics['source_cache_record_bytes_after']=sum(f.stat().st_size for f in files);metrics['source_cache_records_after']=len(files)
+ files=list((game/'.lss/cache/!dh-receipts-v1').glob('*.rcpt'));metrics['dh_receipt_bytes_after']=sum(f.stat().st_size for f in files);metrics['dh_receipt_files_after']=len(files)
  for folder,key in [('Distant_Horizons_server_data','official_client_cache_bytes_after'),('.voxy','voxy_cache_bytes_after')]:
   metrics[key]=sum(f.stat().st_size for f in (game/folder).rglob('*') if f.is_file())
  metrics.update(arm=runtime['benchmark_arm'],run=str(run),windows_root=str(win),runtime_sha256=hashlib.sha256((run/'runtime.json').read_bytes()).hexdigest(),windows_inputs_sha256=hashlib.sha256((win/'inputs.json').read_bytes()).hexdigest(),proof_sha256=hashlib.sha256((game/'dh-result.json').read_bytes()).hexdigest(),idle_machine_confirmed=runtime.get('idle_machine_confirmed') is True)

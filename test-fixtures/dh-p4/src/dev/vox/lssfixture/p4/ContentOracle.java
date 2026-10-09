@@ -11,7 +11,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.lang.reflect.*;
 
-/** Raw-source expansion oracle. Never reads converted SectionData or calls matchesCache. */
+/** Raw-source expansion oracle. Never reads converted SectionData or production conversion helpers. */
 public final class ContentOracle {
     record Source(DhPosition pos,int min,int height,boolean sky,List<DhMaterial> materials,List<DhTerrainTile.Span>[] spans) {}
     static volatile Source source;static long checkedAt;static CompletableFuture<Map<String,Object>> checking;
@@ -29,7 +29,7 @@ public final class ContentOracle {
     public static void tick(long now) throws Exception {
         var mc=Minecraft.getInstance();mc.player.getAbilities().flying=true;mc.player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);mc.player.setYRot(90);mc.player.setXRot(15);
         if(!mc.level.dimension().location().toString().equals(System.getProperty("lss.p4.dimension","lssfixture:tall")))return;
-        Object session=P4Probe.field(DhClientSession.class,"session");if(session==null)return; if(!DhClientSession.running()){if(DhClientSession.status().contains("reconnecting once"))return;throw new IllegalStateException(DhClientSession.status());}
+        Object session=P4Probe.field(DhClientSession.class,"session");if(session==null)return; if(!DhClientSession.running())throw new IllegalStateException(DhClientSession.status());
         if(checking!=null){if(!checking.isDone())return;var result=checking.get();checking=null;
             if(Boolean.TRUE.equals(result.get("matched"))){P4Probe.pass(result);return;}problem=result.toString();}
         P4Probe.write("dh-p4-status.json",Map.of("phase","source-comparison","status",DhClientSession.status(),"oracle",problem));

@@ -193,6 +193,29 @@ they do not validate all biomes or lighting. Zero target payloads/conversions ar
 target-scoped; partial/missing neighboring tiles can still download. Preserve the
 historical original evidence and use its audit correction receipts for labelling.
 
+### Receipts instead of the DTO cache (2026-10-09 remediation)
+
+The persisted DH terrain cache was replaced by timestamp receipts
+(`!dh-receipts-v1/*.rcpt`) and a read-only Voxy presence probe; `DhCacheProbe`
+and the content-comparison premise are gone. The rejoin course now asserts:
+
+- **cold** – the target receipt is persisted at the server stamp (force-save,
+  drain the receipt IO thread, read back from disk) and the production presence
+  probe sees terrain in all 16 target columns (`dh-rejoin-cold.json`);
+- **unchanged / vanilla-held / new JVM** – a restored receipt (`restored>0`) sends
+  the stored stamp, gets an unchanged reply, and converts nothing;
+- **Voxy loss** – after a Voxy-only wipe the persisted receipt survives, but the
+  presence probe must drop it: the target is fully re-requested (stamp 0) and all
+  16 columns reconvert (`dh-rejoin-voxy-loss.json`);
+- **explicit reset** – no receipt survives in memory or on disk, and nothing is
+  restored on the next session;
+- **receipt loss** – receipts discarded and their files deleted with correct Voxy
+  terrain left must still produce a full request (`dh-rejoin-receipt-loss.json`).
+
+`dh-result.json` now reports `voxy_loss`/`receipt_loss` instead of
+`voxy_cache_loss`/`source_cache_loss`. This course has been compile-checked only;
+it has not yet passed on a live rig.
+
 ## Sync and live updates (2026-10-06)
 
 The timer no longer exists. `--scenario updates` connects to stock official DH
@@ -216,9 +239,11 @@ menu scenario at Auto scale in a 1280×720 window. `dh-updates.json` and
 
 Automatic source/protocol selection (2026-10-06): native boundary with
 `--terrain-source native --allow-dh` stages both services, enables Allow DH Server Terrain and
-requires native v20 with zero DH terrain requests. Older official/Support service
-cases begin with the production protocol-16 probe and permit exactly one
-negotiation reconnect before checking the detected profile and Voxy storage.
+requires native v20 with zero DH terrain requests. Discovery no longer trials a
+legacy protocol or reconnects: every service case now fails on any Minecraft
+reconnect (`negotiation_reconnects` is always 0). The packaged trace check
+validates the `dh_status` state/reason/activity enums and rejects the retired
+acquisition-gate and cache fields.
 The prior forced native→DH→native `content` source-cycle scenario is retired;
 its old receipts remain historical. No production profile override is written.
 
@@ -230,8 +255,7 @@ requires a separately compiled private overlay containing the DH-linked delay mi
 preparation refuses the public observer instead of silently running without a delay.
 The historical cell delayed the real official config by 6.5 seconds and required
 both slow-config markers and zero negotiation reconnects. That DH-linked source stays
-outside the public fixture. Support-15 now requires zero negotiation
-reconnects; official-15 uses one quiet-probe reconnect.
+outside the public fixture. Every profile now requires zero negotiation reconnects.
 
 `--scenario boundary --terrain-source native --allow-dh --moving-border` exercises
 actual movement after a cold fill. Require more than 100 blocks of movement and

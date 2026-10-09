@@ -89,7 +89,7 @@ try:
     f'execute in {dimension} run fill -184 {low+32} 8 -177 {low+32} 15 minecraft:smooth_stone_slab[type=top,waterlogged=false]',
     'save-all flush']
    server.stdin.write('\n'.join(commands)+'\n');server.stdin.flush();time.sleep(10)
-  elif runtime.get('p4_case') in ['benchmark','cache-pressure','cache-rejoin-range','legacy-menu','configuration']:
+  elif runtime.get('p4_case') in ['benchmark','legacy-menu','configuration']:
    server.stdin.write('gamerule doMobSpawning false\ngamerule randomTickSpeed 0\nsave-all flush\n');server.stdin.flush();time.sleep(3)
   else:
    server.stdin.write('execute in lssfixture:tall run forceload add -192 0 -129 63\nexecute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:red_concrete\nexecute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:blue_concrete\nexecute in lssfixture:tall run fill -192 340 0 -129 340 63 minecraft:gold_block\nsave-all flush\n');server.stdin.flush()
@@ -113,7 +113,7 @@ try:
  content=runtime['scenario'] in ['content','p4']
  race=json.loads((run/'runtime.json').read_text())['scenario'] in ['race','rejoin','updates','boundary']
  rejoin=runtime['scenario']=='rejoin';restarts=0
- deadline=time.monotonic()+(3660 if runtime.get('p4_case')=='cache-rejoin-range' else 1860 if content else 1000 if rejoin else 660);positioned=False;handled=set();result=game/'dh-result.json'
+ deadline=time.monotonic()+(1860 if content else 1000 if rejoin else 660);positioned=False;handled=set();result=game/'dh-result.json'
  while not result.exists():
   latest=game/'logs/latest.log'
   if list((game/'crash-reports').glob('*.txt')):raise RuntimeError('Private Minecraft crash report; inspect owned run')
