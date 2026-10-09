@@ -137,3 +137,11 @@ A 4-Opus + 2-Fable panel reviewed `fa17926b`. All verified findings were folded 
 Not changed: the session-wide stop after two unanswered sync requests (upstream leaks
 a rate-limit permit per silent failure; kept, F1-7), the cosmetic `-1 ms`, and the
 `nativeSource` constant parameter.
+
+## Verification after the panel round (commit `602ee1a5`)
+
+Same isolated-clone procedure: `:common:test` 1047/0, `:fabric:test` 1810/0 (4 skipped),
+`:paper:test` 536/0, Fabric gametests 78/78, NeoForge gametest smoke 8/8;
+`release_check.py` OK (LSS + VSS × three loaders), `--selftest` 162, `check_artifacts.py`,
+catalog checks, `tools/tests` 30/30, dh-p4 tests 14/14. The adapted live-rig fixtures
+compile against the merged sources; no live rig was run.
