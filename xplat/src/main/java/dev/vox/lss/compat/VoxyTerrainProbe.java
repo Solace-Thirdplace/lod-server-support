@@ -7,14 +7,15 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 
 /**
- * Optional, read-only destination presence probe: does Voxy hold any non-default
- * voxel in a chunk column? Used once per persisted receipt on rejoin to detect a
- * wiped or lost destination before trusting the receipt. Never writes to Voxy and
- * never compares content.
+ * Optional destination presence probe: does Voxy hold non-default voxels in each
+ * quarter of a DH tile? Used once per persisted receipt on rejoin to detect a wiped
+ * or partly lost destination before trusting the receipt. Never compares content.
+ * Uses {@code acquireIfExists} where the Voxy build has it, so absent storage is not
+ * materialized; older builds fall back to {@code acquire}, which creates air sections.
  */
 public final class VoxyTerrainProbe {
     private final Object engine;
-    private final Method acquire, copy, release, acquireRef, releaseRef;
+    private final Method acquire, acquireIfExists, copy, release, acquireRef, releaseRef;
     private final MethodHandle blockId, lightId;
 
     /** Resolve the engine on the client thread; worker reads hold engine references only per read. */
@@ -39,6 +40,10 @@ public final class VoxyTerrainProbe {
         Class<?> mapper = resolver.resolve("me.cortex.voxy.common.world.other.Mapper");
         // acquire initializes a missing section to skylit air (the pinned port's default).
         acquire = ec.getMethod("acquire", int.class, int.class, int.class, int.class);
+        Method ifExists;
+        try { ifExists = ec.getMethod("acquireIfExists", int.class, int.class, int.class, int.class); }
+        catch (NoSuchMethodException absent) { ifExists = null; }
+        acquireIfExists = ifExists;
         copy = section.getMethod("copyData"); release = section.getMethod("release");
         acquireRef = ec.getMethod("acquireRef"); releaseRef = ec.getMethod("releaseRef");
         var lookup = MethodHandles.publicLookup();
@@ -46,13 +51,15 @@ public final class VoxyTerrainProbe {
         lightId = lookup.unreflect(mapper.getMethod("getLightId", long.class));
     }
 
-    /** Client thread: an external Voxy reset may replace the engine between open and use. */
-    public boolean isCurrent(ClientLevel level) {
-        try {
-            Class<?> identifier = VoxyCompat.classResolver.resolve("me.cortex.voxy.commonImpl.WorldIdentifier");
-            Object id = identifier.getMethod("of", Level.class).invoke(null, level);
-            return id != null && identifier.getMethod("getOrCreateEngine").invoke(id) == engine;
-        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) { return false; }
+    /**
+     * Worker thread. A DH tile is 4x4 chunks, i.e. 2x2 Voxy level-0 sections; each
+     * quarter must hold terrain. A wipe or a crash before Voxy saved can leave some
+     * quarters empty, and one sampled quarter would then vouch for the holes.
+     */
+    public boolean hasTileTerrain(int tileX, int tileZ, int minY, int height) throws ReflectiveOperationException {
+        for (int ox = 0; ox < 4; ox += 2) for (int oz = 0; oz < 4; oz += 2)
+            if (!hasTerrain(tileX * 4 + ox, tileZ * 4 + oz, minY, height)) return false;
+        return true;
     }
 
     /**
@@ -66,8 +73,13 @@ public final class VoxyTerrainProbe {
         try {
             for (int y = bottom; y <= top; y++) {
                 if (Thread.currentThread().isInterrupted()) throw new IllegalStateException("Voxy probe cancelled");
-                Object section = acquire.invoke(engine, 0, chunkX >> 1, y, chunkZ >> 1);
-                if (section == null) throw new IllegalStateException("Voxy did not initialize a section");
+                Object section = acquireIfExists != null
+                        ? acquireIfExists.invoke(engine, 0, chunkX >> 1, y, chunkZ >> 1)
+                        : acquire.invoke(engine, 0, chunkX >> 1, y, chunkZ >> 1);
+                if (section == null) {
+                    if (acquireIfExists != null) continue; // absent section: default terrain
+                    throw new IllegalStateException("Voxy did not initialize a section");
+                }
                 long[] values;
                 try { values = (long[]) copy.invoke(section); }
                 finally { release.invoke(section); }

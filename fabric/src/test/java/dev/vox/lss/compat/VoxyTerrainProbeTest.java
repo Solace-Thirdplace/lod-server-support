@@ -8,7 +8,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** The rejoin presence probe: read-only, early-exit, reference-balanced, fail-closed on ABI drift. */
+/** The rejoin presence probe: early-exit, reference-balanced, all four tile quarters, fail-closed on ABI drift. */
 class VoxyTerrainProbeTest {
     VoxyCompat.ClassResolver before;
     @BeforeAll static void bootstrap() {SharedConstants.tryDetectVersion();Bootstrap.bootStrap();}
@@ -51,25 +51,51 @@ class VoxyTerrainProbeTest {
         VoxyCompat.classResolver=name->name.endsWith(".Mapper")?String.class:resolver.resolve(name);
         assertNull(DhVoxyBridge.openProbe(null));assertEquals(0,Identifier.engine.refs);
     }
-    @Test void destinationReplacementIsDetected() throws Exception {
-        var probe=DhVoxyBridge.openProbe(null);
-        assertTrue(probe.isCurrent(null));
-        Identifier.engine=new Engine();assertFalse(probe.isCurrent(null));
+    @Test void absentSectionsAreNotMaterializedWhenVoxyOffersAcquireIfExists() throws Exception {
+        Identifier.engine.section=null;
+        assertFalse(DhVoxyBridge.openProbe(null).hasTerrain(0,0,0,64));
+        assertNull(Identifier.engine.section,"acquireIfExists must not create storage");
+        assertEquals(0,Identifier.engine.created);
+    }
+    @Test void everyQuarterOfTheTileMustHoldTerrain() throws Exception {
+        var engine=Identifier.engine;engine.byXZ=new java.util.HashMap<>();
+        for(int sx=0;sx<2;sx++)for(int sz=0;sz<2;sz++){
+            var section=new Section();java.util.Arrays.fill(section.data,15L<<56|1L<<27);engine.byXZ.put(sx*31L+sz,section);
+        }
+        assertTrue(DhVoxyBridge.openProbe(null).hasTileTerrain(0,0,0,32));
+        engine.byXZ.remove(1*31L+1); // the (+x,+z) quarter was lost: one sample would have vouched for it
+        assertFalse(DhVoxyBridge.openProbe(null).hasTileTerrain(0,0,0,32));
+        assertEquals(0,engine.refs);
+    }
+    @Test void olderVoxyWithoutAcquireIfExistsFallsBackToAcquire() throws Exception {
+        var resolver=VoxyCompat.classResolver;Identifier.legacy=new LegacyEngine();
+        VoxyCompat.classResolver=name->name.endsWith(".WorldEngine")?LegacyEngine.class:resolver.resolve(name);
+        try {assertFalse(DhVoxyBridge.openProbe(null).hasTerrain(0,0,0,32));assertEquals(1,Identifier.legacy.created);}
+        finally {Identifier.legacy=null;}
     }
     public static final class Identifier {
-        static Engine engine;
+        static Engine engine;static LegacyEngine legacy;
         public static Identifier of(Level level) {return new Identifier();}
-        public Engine getOrCreateEngine() {return engine;}
+        public Object getOrCreateEngine() {return legacy!=null?legacy:engine;}
     }
     public static final class Engine {
-        int refs,x,y,z;Section section=new Section();
+        int refs,x,y,z,created;Section section=new Section();java.util.Map<Long,Section> byXZ;
         public void acquireRef(){refs++;}public void releaseRef(){refs--;}
         public Mapper getMapper(){return new Mapper();}
+        public Section acquireIfExists(int level,int x,int y,int z){
+            this.x=x;this.y=y;this.z=z;
+            return byXZ!=null?byXZ.get(x*31L+z):section;
+        }
         public Section acquire(int level,int x,int y,int z){
             this.x=x;this.y=y;this.z=z;
-            if(section==null){section=new Section();java.util.Arrays.fill(section.data,15L<<56);}
+            if(section==null){created++;section=new Section();java.util.Arrays.fill(section.data,15L<<56);}
             return section;
         }
+    }
+    public static final class LegacyEngine {
+        int refs,created;
+        public void acquireRef(){refs++;}public void releaseRef(){refs--;}
+        public Section acquire(int level,int x,int y,int z){created++;var s=new Section();java.util.Arrays.fill(s.data,15L<<56);return s;}
     }
     public static final class Section {
         long[] data=new long[32768];int released;
