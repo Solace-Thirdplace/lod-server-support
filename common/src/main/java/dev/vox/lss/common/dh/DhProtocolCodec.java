@@ -23,7 +23,7 @@ public final class DhProtocolCodec {
     public OwnedMessage decodeOwned(byte[] frame, DhMemoryBudget budget) throws DhCodecException {
         if (frame.length > limits.frameBytes()) throw DhInput.limit("DH frame exceeds limit");
         var lease = budget.reserve(frame.length * 4L + 512);
-        try { return new OwnedMessage(decode(frame), lease); }
+        try { return new OwnedMessage(decode(frame, false), lease); }
         catch (DhCodecException | RuntimeException | Error e) { lease.close(); throw e; }
     }
     public static final class OwnedMessage implements AutoCloseable {
@@ -36,15 +36,24 @@ public final class DhProtocolCodec {
         }
         @Override public void close() { message = null; lease.close(); }
     }
-    /** Per-frame parsing for tests/short synchronous use. Retained production messages use decodeOwned. */
-    public DhMessage decode(byte[] frame) throws DhCodecException {
+    /** Strict per-frame parsing for discovery, tests and short synchronous use. */
+    public DhMessage decode(byte[] frame) throws DhCodecException { return decode(frame, true); }
+    /**
+     * Terrain-carrying messages (8 response, 9 update, 10 fragment) are always
+     * strict. With {@code strict=false} control messages tolerate trailing bytes
+     * and unknown message ids decode as {@link Unknown}, so a same-protocol DH
+     * release that appends a control field or message does not end the session.
+     * Family discovery must stay strict: it discriminates by exact decode.
+     */
+    public DhMessage decode(byte[] frame, boolean strict) throws DhCodecException {
         if (frame.length > limits.frameBytes()) throw DhInput.limit("DH frame exceeds limit");
         var in = new DhInput(frame);
         int version = in.u16();
         if (version != profile.version())
             throw new DhCodecException(DhCodecException.Kind.PROTOCOL_MISMATCH, "DH protocol " + version
                     + " differs from selected " + profile.version());
-        DhMessage result = switch (in.u16()) {
+        int kind = in.u16();
+        DhMessage result = switch (kind) {
             case 1 -> new CloseReason(profile.support() ? in.wideString(profile, limits.stringBytes()) : text(in));
             case 2 -> new LevelInit(text(in), text(in), text(in), in.i64());
             case 3 -> new RequestLevelInit(text(in));
@@ -67,9 +76,13 @@ public final class DhProtocolCodec {
                 byte[] bytes = in.take(length);
                 yield new Split(buffer, bytes, in.bool());
             }
-            default -> throw new DhCodecException(DhCodecException.Kind.UNSUPPORTED, "Unknown DH message");
+            default -> {
+                if (strict) throw new DhCodecException(DhCodecException.Kind.UNSUPPORTED, "Unknown DH message");
+                in.offset = frame.length;
+                yield new Unknown(kind);
+            }
         };
-        in.exhausted();
+        if (strict || kind >= 8 && kind <= 10) in.exhausted();
         return result;
     }
     private String text(DhInput in) throws DhCodecException { return in.string(profile, limits.stringBytes()); }
@@ -132,6 +145,7 @@ public final class DhProtocolCodec {
                     else if (!m.beacons().isEmpty()) throw DhInput.malformed("Beacons without a response payload");
                 }
                 case PartialUpdate m -> { out.writeShort(9); text(out, m.level()); out.writeInt(m.bufferId()); beacons(out, m.beacons()); }
+                case Unknown m -> throw new DhCodecException(DhCodecException.Kind.UNSUPPORTED, "Cannot encode an unknown DH message");
                 case Split m -> { out.writeShort(10); out.writeInt(m.bufferId()); out.writeInt(m.length());
                     out.write(m.contents()); out.writeBoolean(m.first()); }
             }

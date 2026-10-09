@@ -30,6 +30,8 @@ public sealed interface DhMessage {
     record PartialUpdate(String level, int bufferId, List<Beacon> beacons) implements DhMessage {
         public PartialUpdate { beacons = List.copyOf(beacons); }
     }
+    /** A control message id this client does not implement; ignored and counted. */
+    record Unknown(int kind) implements DhMessage {}
     final class Split implements DhMessage {
         private final int bufferId;
         private final byte[] bytes;

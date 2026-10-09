@@ -6,16 +6,29 @@ import java.util.*;
 public final class DhSessionPolicy {
     public static final int MAX_RECEIPTS = 8192;
     public static final int MAX_REJECTED_ATTEMPTS = 4;
-    private final Set<Long> vanilla = new HashSet<>();
+    /** Vanilla-held chunks as one 1024-bit mask per 32x32-chunk region (128 bytes/region). */
+    private final Map<Long, long[]> vanilla = new HashMap<>();
     private final LinkedHashMap<DhPosition, Receipt> receipts = new LinkedHashMap<>();
     private final Map<DhPosition,Long> rangeRefusals = new HashMap<>();
     private record Receipt(long timestamp, long acceptedAt, long due, boolean generate, boolean snapshot, boolean held, int failures, boolean unreachable, boolean revalidate) {}
-    public void vanilla(int x, int z) {
-        if (vanilla.size() >= 262_144 && !vanilla.contains(column(x,z)))
-            throw new IllegalStateException("DH vanilla authority limit reached; reconnect to resume");
-        vanilla.add(column(x,z));
+    /** Returns true when this call allocated a new region mask. */
+    public boolean vanilla(int x, int z) {
+        long key = region(x, z);
+        long[] mask = vanilla.get(key);
+        boolean created = mask == null;
+        if (created) { mask = new long[16]; vanilla.put(key, mask); }
+        int bit = (x & 31) << 5 | (z & 31);
+        mask[bit >>> 6] |= 1L << (bit & 63);
+        return created;
     }
-    public boolean eligible(int x, int z) { return !vanilla.contains(column(x,z)); }
+    public boolean eligible(int x, int z) {
+        long[] mask = vanilla.get(region(x, z));
+        if (mask == null) return true;
+        int bit = (x & 31) << 5 | (z & 31);
+        return (mask[bit >>> 6] & 1L << (bit & 63)) == 0;
+    }
+    public int vanillaRegions() { return vanilla.size(); }
+    public boolean hasVanillaRegion(int x, int z) { return vanilla.containsKey(region(x, z)); }
     /** Untouched frontier first, then incomplete retries, then accepted refreshes. */
     public int acquisitionPriority(DhPosition p) {
         var receipt=receipts.get(p);
@@ -32,10 +45,14 @@ public final class DhSessionPolicy {
         var r=receipts.get(p);
         return r!=null && r.snapshot && !r.generate && r.failures==0 && r.timestamp>0 ? r.timestamp : 0;
     }
-    /** An empty reply is unchanged only for an owned conditional request with valid local acceptance. */
-    public boolean unchanged(DhPosition p, long requestedTimestamp, long now) {
-        if(requestedTimestamp<=0 || syncTimestamp(p)!=requestedTimestamp) return false;
-        return accepted(p,1,1,requestedTimestamp,now);
+    /**
+     * A persisted receipt whose destination still holds terrain. With synchronization
+     * it is due now for one conditional request (the server answers changed or
+     * unchanged); without it the receipt is held, since no server check is possible.
+     */
+    public void restore(DhPosition p, long timestamp, long now, boolean revalidate) {
+        if (timestamp <= 0 || receipts.containsKey(p)) return;
+        put(p, new Receipt(timestamp, now, revalidate ? now : Long.MAX_VALUE, false, true, !revalidate, 0, false, revalidate));
     }
     public boolean generationNeeded(DhPosition p) { var r=receipts.get(p); return r!=null && r.generate && !r.held; }
     public boolean retryExhausted(DhPosition p) { var r=receipts.get(p); return r!=null && r.failures>=MAX_REJECTED_ATTEMPTS; }
@@ -128,5 +145,5 @@ public final class DhSessionPolicy {
         receipts.remove(p); receipts.put(p,r);
         if (receipts.size()>MAX_RECEIPTS) invalidate(receipts.keySet().iterator().next());
     }
-    private static long column(int x,int z) { return (x & 0xffffffffL) | ((long)z<<32); }
+    private static long region(int x,int z) { return ((long)(x >> 5) & 0xffffffffL) | ((long)(z >> 5) << 32); }
 }

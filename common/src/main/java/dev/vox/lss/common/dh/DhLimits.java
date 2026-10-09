@@ -6,7 +6,7 @@ public record DhLimits(int frameBytes, int tileBytes, int decodedBytes, long own
                        int mappingBytes, int stringBytes, int worldHeight,
                        long idleNanos, long lifetimeNanos) {
     public static final DhLimits DEFAULT = new DhLimits(1_048_576, 16 << 20, 64 << 20, 256L << 20,
-            32 << 10, 8, 1_000_000, 65_536, 4 << 20, 4096, 4096,
+            32 << 10, 8, 2_200_000, 65_536, 4 << 20, 4096, 4096,
             10_000_000_000L, 60_000_000_000L);
 
     /** Startup pacing receives bounded completion headroom without relaxing byte/idle limits. */

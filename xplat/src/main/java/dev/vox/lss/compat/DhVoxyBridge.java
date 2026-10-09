@@ -9,7 +9,7 @@ public final class DhVoxyBridge {
     public static boolean ready(ClientLevel level) { return available() && VoxyCompat.dhReady(level); }
     public static boolean failed() { return VoxyCompat.dhFailed(); }
     public static int backlog() { return VoxyCompat.dhIngestBacklog(); }
-    public static VoxyTerrainCache openCache(ClientLevel level) { return VoxyTerrainCache.open(level); }
+    public static VoxyTerrainProbe openProbe(ClientLevel level) { return VoxyTerrainProbe.open(level); }
     public static void ingest(ClientLevel level,int x,int z,VoxelColumnData data) {
         VoxyCompat.ingestDistantColumn(level,x,z,data);
     }

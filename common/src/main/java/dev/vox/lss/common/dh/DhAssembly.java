@@ -13,11 +13,11 @@ public final class DhAssembly implements AutoCloseable {
     private record RequestOwner(DhPosition position, long started, long lifetime) {}
     private record Part(byte[] bytes, DhMemoryBudget.Lease lease) {}
     private static final class Buffer {
-        final long started, lifetime;
+        final long started, lifetime, lossEpoch;
         long progress;
         int size;
         final List<Part> parts = new ArrayList<>();
-        Buffer(long now,long lifetime) { started = now; progress = now; this.lifetime=lifetime; }
+        Buffer(long now,long lifetime,long lossEpoch) { started = now; progress = now; this.lifetime=lifetime; this.lossEpoch=lossEpoch; }
         void close() { parts.forEach(p -> p.lease.close()); parts.clear(); }
     }
     private final DhLimits limits;
@@ -53,7 +53,14 @@ public final class DhAssembly implements AutoCloseable {
         accept(split, clock.getAsLong());
     }
     /** Capture time on the connection's ordered inbound path; queue stalls are not peer idleness. */
-    public void accept(Split split, long arrivalNanos) throws DhCodecException {
+    public void accept(Split split, long arrivalNanos) throws DhCodecException { accept(split, arrivalNanos, 0); }
+    /**
+     * {@code lossEpoch} is the transport's dropped-frame counter sampled when this
+     * frame was captured. A buffer whose fragments span a loss may be missing a
+     * fragment, so it is discarded (contained UNOWNED) rather than assembled with
+     * a gap that would decode as MALFORMED.
+     */
+    public void accept(Split split, long arrivalNanos, long lossEpoch) throws DhCodecException {
         open();
         long now = arrivalNanos;
         Buffer buffer = buffers.get(split.bufferId());
@@ -61,8 +68,12 @@ public final class DhAssembly implements AutoCloseable {
             if (buffer != null) throw unowned("Duplicate first DH fragment");
             if (requests.isEmpty() && !pushAllowed) throw unowned("DH fragments without a request owner or update subscription");
             if (buffers.size() >= limits.buffers()) throw DhInput.limit("Too many incomplete DH buffers");
-            buffer = new Buffer(now,checkedLifetime(lifetime.getAsLong()));
+            buffer = new Buffer(now,checkedLifetime(lifetime.getAsLong()),lossEpoch);
         } else if (buffer == null) throw unowned("Missing first DH fragment");
+        else if (buffer.lossEpoch != lossEpoch) {
+            discard(split.bufferId());
+            throw unowned("DH fragment lost under pressure; buffer discarded");
+        }
         if (now - buffer.started >= buffer.lifetime || now - buffer.progress >= limits.idleNanos()) {
             buffers.remove(split.bufferId()); buffer.close();
             throw new DhCodecException(DhCodecException.Kind.EXPIRED, "DH assembly deadline exceeded");
@@ -84,12 +95,18 @@ public final class DhAssembly implements AutoCloseable {
         return response(response, clock.getAsLong());
     }
     /** The deadline is checked against network arrival, not delayed worker execution. */
-    public Completed response(Response response, long arrivalNanos) throws DhCodecException {
+    public Completed response(Response response, long arrivalNanos) throws DhCodecException { return response(response, arrivalNanos, 0); }
+    public Completed response(Response response, long arrivalNanos, long lossEpoch) throws DhCodecException {
         open();
         RequestOwner owner = requests.get(response.requestId());
-        if (owner == null) throw unowned("Unmatched DH response");
+        if (owner == null) {
+            // Release the referenced buffer now; it can never complete.
+            if (response.bufferId() != null) discard(response.bufferId());
+            throw unowned("Unmatched DH response");
+        }
         if (arrivalNanos - owner.started >= owner.lifetime) {
             requests.remove(response.requestId());
+            if (response.bufferId() != null) discard(response.bufferId());
             throw new DhCodecException(DhCodecException.Kind.EXPIRED, "DH request deadline exceeded");
         }
         if (response.bufferId() == null) {
@@ -97,7 +114,7 @@ public final class DhAssembly implements AutoCloseable {
             requests.remove(response.requestId());
             return null;
         }
-        try { return take(response.bufferId(), owner.position, arrivalNanos); }
+        try { return take(response.bufferId(), owner.position, arrivalNanos, lossEpoch); }
         finally { requests.remove(response.requestId()); }
     }
     /** The active world's negotiated subscription also owns unsolicited fragments. */
@@ -106,14 +123,19 @@ public final class DhAssembly implements AutoCloseable {
         Buffer buffer = buffers.remove(bufferId);
         if (buffer != null) buffer.close();
     }
-    public Completed push(PartialUpdate message, long arrivalNanos) throws DhCodecException {
+    public Completed push(PartialUpdate message, long arrivalNanos) throws DhCodecException { return push(message, arrivalNanos, 0); }
+    public Completed push(PartialUpdate message, long arrivalNanos, long lossEpoch) throws DhCodecException {
         open();
         if (!pushAllowed) { discard(message.bufferId()); throw unowned("DH updates are not enabled"); }
-        return take(message.bufferId(), null, arrivalNanos);
+        return take(message.bufferId(), null, arrivalNanos, lossEpoch);
     }
-    private Completed take(int id, DhPosition position, long now) throws DhCodecException {
+    private Completed take(int id, DhPosition position, long now, long lossEpoch) throws DhCodecException {
         Buffer buffer = buffers.get(id);
         if (buffer == null) throw unowned("DH payload references a missing buffer");
+        if (buffer.lossEpoch != lossEpoch) {
+            discard(id);
+            throw unowned("DH fragment lost under pressure; buffer discarded");
+        }
         if (now - buffer.started >= buffer.lifetime || now - buffer.progress >= limits.idleNanos()) {
             discard(id);
             throw new DhCodecException(DhCodecException.Kind.EXPIRED, "DH assembly deadline exceeded");
@@ -192,12 +214,6 @@ public final class DhAssembly implements AutoCloseable {
                 }
             }
             return found;
-        }
-        /** Persist the already validated source bytes without escaping their bounded ownership. */
-        public boolean cache(DhTerrainCache cache, long timestamp) throws java.io.IOException {
-            if (data == null) throw new IllegalStateException("DH result released");
-            if (position == null) throw new IllegalStateException("Partial updates cannot become complete source snapshots");
-            return cache.write(position, timestamp, data);
         }
         @Override public void close() { data = null; lease.close(); }
     }

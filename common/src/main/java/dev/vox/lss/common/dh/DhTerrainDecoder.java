@@ -28,7 +28,7 @@ public final class DhTerrainDecoder {
             for (int i = 0; i < blobs.length; i++) {
                 int size = in.i32();
                 if (size < 0) throw DhInput.malformed("Negative DH blob length");
-                if (size > limits.tileBytes() - compressed) throw DhInput.limit("DH blob exceeds tile budget");
+                if (size > limits.tileBytes() - compressed) throw DhInput.malformed("DH blob exceeds tile budget");
                 in.require(size);
                 blobs[i] = new Slice(dto, in.offset, size);
                 in.offset += size;
@@ -190,8 +190,11 @@ public final class DhTerrainDecoder {
     }
     private void allocate(int count, WorldShape world, Counter spans, DhMemoryBudget budget,
                           List<DhMemoryBudget.Lease> leases) throws DhCodecException {
-        if (count > world.height() || count > limits.spans() - spans.value)
-            throw DhInput.limit("DH span count exceeds limit");
+        // Every span is at least one voxel tall: more spans than the world height is
+        // structurally impossible, and the per-tile span ceiling is tile-intrinsic.
+        // Both are malformed tiles (tile-scoped strikes), never memory pressure.
+        if (count > world.height()) throw DhInput.malformed("DH column has more spans than world height");
+        if (count > limits.spans() - spans.value) throw DhInput.malformed("DH span count exceeds tile limit");
         spans.value += count;
         hold(leases, budget, count * 8L + 64);
     }
@@ -279,7 +282,10 @@ public final class DhTerrainDecoder {
                     work = budget.reserve(limits.decompressorKiB() * 1024L);
                     output = budget.reserve(size);
                     byte[] data = new byte[(int) size];
-                    long written = Zstd.decompressByteArray(data, 0, data.length, slice.bytes, slice.offset, slice.size);
+                    long written;
+                    // zstd-jni reports corrupt input by throwing, not by an error code.
+                    try { written = Zstd.decompressByteArray(data, 0, data.length, slice.bytes, slice.offset, slice.size); }
+                    catch (com.github.luben.zstd.ZstdException corrupt) { throw new DhCodecException(DhCodecException.Kind.MALFORMED, "Invalid Zstd block", corrupt); }
                     if (Zstd.isError(written) || written != size) throw DhInput.malformed("Invalid Zstd block");
                     raw = new ByteArrayInputStream(data);
                 }

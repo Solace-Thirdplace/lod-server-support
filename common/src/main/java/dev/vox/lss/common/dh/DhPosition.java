@@ -10,6 +10,12 @@ public record DhPosition(int detail, int x, int z) {
     public static DhPosition tileForChunk(int x, int z) {
         return new DhPosition(6, Math.floorDiv(x, 4), Math.floorDiv(z, 4));
     }
+    /** The record hash (31*x+z family) collides on square tile windows; probing
+     *  sets at range 128 cost ~26 ms per chunk crossing. Mix the packed form. */
+    @Override public int hashCode() {
+        long h = packed() * 0x9E3779B97F4A7C15L;
+        return (int) (h ^ (h >>> 32));
+    }
     public long packed() { return detail | ((x & 0xfffffffL) << 8) | ((z & 0xfffffffL) << 36); }
     public static DhPosition unpack(long value) {
         return new DhPosition((int) (value & 255), (int) (value << 28 >> 36), (int) (value >> 36));
