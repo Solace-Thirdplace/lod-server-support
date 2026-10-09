@@ -37,7 +37,7 @@ import java.util.function.Consumer;
  */
 public final class DhClientSession {
     /** Voxy section backlog above which DH stops admitting work. One overworld tile is up to 384 sections. */
-    static final int INGEST_GATE = 1024;
+    public static final int INGEST_GATE = 1024;
     private static Consumer<byte[]> sender;
     private static String unavailable = "DH transport is unavailable on this loader";
     private static Reason transportReason = Reason.TRANSPORT_UNAVAILABLE;
@@ -61,6 +61,8 @@ public final class DhClientSession {
     private static final Map<Object, DhProfile> discoveredProfiles = Collections.synchronizedMap(new WeakHashMap<>());
     /** One in-game stop notice per play listener. */
     private static final Map<Object, Boolean> notified = Collections.synchronizedMap(new WeakHashMap<>());
+    /** In-game notice sink; a seam so tests can observe notices without a GUI. */
+    static Consumer<Component> notice = ClientStatusScreen::sendChatFeedback;
     private DhClientSession() {}
 
     public static void installTransport(Consumer<byte[]> transport, String reason) {
@@ -468,7 +470,7 @@ public final class DhClientSession {
         void notifyStopped(Reason why) {
             var mc = Minecraft.getInstance();
             if (mc.getConnection() != connection || notified.putIfAbsent(connection, Boolean.TRUE) != null) return;
-            ClientStatusScreen.sendChatFeedback(Component.translatable("lss.status.dh.notice.stopped",
+            notice.accept(Component.translatable("lss.status.dh.notice.stopped",
                     Component.translatable("lss.status.dh.reason." + why.name().toLowerCase(Locale.ROOT))));
         }
         void beginRetire() { beginRetire(true); }
@@ -705,6 +707,10 @@ public final class DhClientSession {
                 store = new DhReceiptStore(ColumnCacheStore.cacheRoot(), new DhReceiptStore.Key(server.ip, serverKey, levelKey,
                         dimension, seed.seed(), profile, shape));
             } catch (IllegalArgumentException e) { receiptsUnavailable = true; return; }
+            loadReceipts(store);
+        }
+        /** Client thread; IO on the shared receipt daemon. Test seam for a store without a world seed. */
+        void loadReceipts(DhReceiptStore store) {
             receiptsLoading = true;
             try {
                 RECEIPT_IO.execute(() -> {
@@ -808,8 +814,11 @@ public final class DhClientSession {
         void terrainLost() {
             rawTerrainLosses.incrementAndGet(); droppedUpdateFrames.incrementAndGet(); pushRecovery.set(true);
         }
+        /** Worker. Assembly slots or owned memory are exhausted: free incomplete buffers now
+         *  (their owners retry) rather than waiting for idle expiry with every slot taken. */
         void recoverResourcePressure() {
             DhClientTrace.pressure(DhClientTrace.Pressure.ASSEMBLY_OR_DECODE);
+            assembly.discardIncomplete();
             terrainLost();
             try { recoverLoss(); } catch (Exception busy) { problem = "terrain resource pressure; recovery pending"; }
         }

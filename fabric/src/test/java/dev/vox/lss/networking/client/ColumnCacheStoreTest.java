@@ -533,7 +533,7 @@ class ColumnCacheStoreTest {
 
     @Test
     void clearAllPreservesForeignSourceFilesAndContinuesAfterBucketFailure() throws IOException {
-        Path source=ColumnCacheStore.cacheRoot().resolve(dev.vox.lss.common.dh.DhTerrainCache.DIRECTORY);
+        Path source=ColumnCacheStore.cacheRoot().resolve(dev.vox.lss.common.dh.DhReceiptStore.DIRECTORY);
         Files.createDirectories(source);Path foreign=source.resolve("keep.txt");Files.writeString(foreign,"foreign");
         Path obstacle=ColumnCacheStore.cacheRoot().resolve("test-clear-all-obstacle").resolve("foreign-subdir");
         Files.createDirectories(obstacle);Path retained=obstacle.resolve("keep.txt");Files.writeString(retained,"foreign");
@@ -546,7 +546,7 @@ class ColumnCacheStoreTest {
     }
     @Test
     void symlinkedSourceRootDoesNotPreventClearingNativeBuckets() throws IOException {
-        Path source=ColumnCacheStore.cacheRoot().resolve(dev.vox.lss.common.dh.DhTerrainCache.DIRECTORY);
+        Path source=ColumnCacheStore.cacheRoot().resolve(dev.vox.lss.common.dh.DhReceiptStore.DIRECTORY);
         ColumnCacheStore.clearAll();Path staging=Files.createTempDirectory(source.getParent().getParent(),"test-source-root-backup-");Path saved=staging.resolve("saved");
         boolean existed=Files.exists(source);if(existed)Files.move(source,saved);
         Path outside=Files.createTempDirectory("test-external-source-");

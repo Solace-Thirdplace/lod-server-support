@@ -22,10 +22,7 @@ class DhColumnConverterTest {
             var converter=new DhColumnConverter(biomes);var data=converter.convert(tile,0);
             assertEquals(10,data.sections()[2].blockLight().get(0,0,0));
             assertEquals(sky?1:0,data.sections()[2].skyLight().get(0,0,0));
-            assertTrue(converter.matchesCache(tile,0,(x,y,z,state,biome,light)-> {
-                var section=data.sections()[(y-tile.world().minY())/16];
-                return light==(section.skyLight().get(x,y&15,z)|(section.blockLight().get(x,y&15,z)<<4));
-            }));
+            assertEquals(sky?1:0,data.sections()[2].skyLight().get(0,5,0),"Over a fluid floor the air run keeps its own sky light");
         }
         assertEquals(0,budget.used());
     }
@@ -39,20 +36,16 @@ class DhColumnConverterTest {
         }
         assertEquals(0,budget.used());
     }
-    @Test void firstAirVoxelUsesTheFloorsFaceLightAndLeavesTheRestOfTheAirRunAlone() throws Exception {
+    /** D-29: DH draws side faces exposed through an air run with the floor's sky light; so does the conversion. */
+    @Test void anAirRunOnASolidFloorTakesTheFloorsSkyLightThroughoutAndTheFaceLightAtTheBottom() throws Exception {
         var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
         for(boolean sky:new boolean[]{true,false})try(var tile=floorPattern(sky,budget)) {
             var converter=new DhColumnConverter(biomes);var data=converter.convert(tile,0);
             assertTrue(data.sections()[2].section().getBlockState(0,0,0).isAir());
             assertEquals(sky?12:0,data.sections()[2].skyLight().get(0,0,0));
             assertEquals(10,data.sections()[2].blockLight().get(0,0,0));
-            assertEquals(sky?1:0,data.sections()[2].skyLight().get(0,1,0));
-            assertEquals(0,data.sections()[2].blockLight().get(0,1,0));
-            assertTrue(converter.matchesCache(tile,0,(x,y,z,state,biome,light)-> {
-                var section=data.sections()[(y-tile.world().minY())/16];
-                return state==section.section().getBlockState(x,y&15,z)
-                        && light==(section.skyLight().get(x,y&15,z)|(section.blockLight().get(x,y&15,z)<<4));
-            }));
+            assertEquals(sky?12:0,data.sections()[2].skyLight().get(0,1,0),"Upper air voxels take the floor's sky light");
+            assertEquals(0,data.sections()[2].blockLight().get(0,1,0),"...but keep the run's own block light");
         }
         assertEquals(0,budget.used());
     }
@@ -73,28 +66,27 @@ class DhColumnConverterTest {
         out.writeByte(1);out.writeByte(0);out.writeBoolean(false);out.writeBoolean(false);out.writeLong(100);out.writeLong(200);
         return new DhTerrainDecoder(DhLimits.DEFAULT).decode(dto.toByteArray(),DhProfile.SUPPORT_15,position,new DhTerrainTile.WorldShape(-32,64,sky),budget);
     }
-    @Test void cacheComparisonMatchesWaterDepthLightsGapsAndQuartCenterBiomesWithoutSections() throws Exception {
+    /** X-1: whole-tile conversion resolves materials once and equals per-column conversion. */
+    @Test void wholeTileConversionMatchesPerColumnConversionAndSkipsUnselectedColumns() throws Exception {
         var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
-        try(var water=waterPattern(true,budget);var noSky=waterPattern(false,budget);var varied=pattern(false,budget)) {
-            for(var tile:List.of(water,noSky,varied))for(int c:new int[]{0,3,12,15}) {
-                var converter=new DhColumnConverter(biomes);var data=converter.convert(tile,c);
-                assertTrue(converter.matchesCache(tile,c,(x,y,z,state,biome,light)-> {
-                    var section=data.sections()[(y-tile.world().minY())/16];
-                    var actual=section.section().getBlockState(x,y&15,z);
-                    return state==actual && light==(section.skyLight().get(x,y&15,z)|(section.blockLight().get(x,y&15,z)<<4))
-                            && (state.isAir() || biome.equals(section.section().getNoiseBiome(x/4,(y&15)/4,z/4).unwrapKey().orElseThrow().location().toString()));
-                }));
+        try(var water=waterPattern(true,budget);var varied=pattern(false,budget)) {
+            for(var tile:List.of(water,varied)) {
+                var converter=new DhColumnConverter(biomes);int mask=1|1<<3|1<<12|1<<15;
+                var whole=converter.convertTile(tile,mask);
+                for(int c=0;c<16;c++) {
+                    if((mask&(1<<c))==0) {assertNull(whole[c]);continue;}
+                    var single=converter.convert(tile,c);
+                    assertEquals(single.sections().length,whole[c].sections().length);
+                    for(int sy=0;sy<single.sections().length;sy++) {
+                        var a=single.sections()[sy];var b=whole[c].sections()[sy];
+                        for(int x=0;x<16;x++)for(int y=0;y<16;y++)for(int z=0;z<16;z++) {
+                            assertSame(a.section().getBlockState(x,y,z),b.section().getBlockState(x,y,z));
+                            assertEquals(a.skyLight().get(x,y,z),b.skyLight().get(x,y,z));
+                            assertEquals(a.blockLight().get(x,y,z),b.blockLight().get(x,y,z));
+                        }
+                    }
+                }
             }
-        }
-        assertEquals(0,budget.used());
-    }
-    @Test void cacheComparisonChecksEveryVoxelAndRejectsOneMissingOrWrongSample() throws Exception {
-        var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
-        try(var tile=pattern(false,budget)) {
-            var converter=new DhColumnConverter(biomes);var samples=new java.util.concurrent.atomic.AtomicInteger();
-            assertTrue(converter.matchesCache(tile,15,(x,y,z,s,b,l)->{samples.incrementAndGet();return true;}));
-            assertEquals(16*16*tile.world().height(),samples.get());
-            assertFalse(converter.matchesCache(tile,15,(x,y,z,s,b,l)->!(x==15&&z==15&&y==tile.world().minY()+31)));
         }
         assertEquals(0,budget.used());
     }
@@ -316,11 +308,13 @@ class DhColumnConverterTest {
                             var section=data.sections()[y/16]; var state=section.section().getBlockState(x,y&15,z);
                             assertEquals(expected,state.getBlock());
                             int expectedSky=span.skyLight(),expectedBlock=span.blockLight();
-                            if(material.air() && y==span.bottom())for(int lowerIndex=0;lowerIndex<tile.spanCount(index);lowerIndex++) {
+                            // D-29: an air run on a solid floor takes the floor's sky light throughout;
+                            // its bottom voxel also takes the floor's block light (the face light).
+                            if(material.air())for(int lowerIndex=0;lowerIndex<tile.spanCount(index);lowerIndex++) {
                                 var lower=tile.span(index,lowerIndex);var lowerMaterial=tile.materials().get(lower.material());
                                 var lowerBlock=BuiltInRegistries.BLOCK.get(net.minecraft.resources.ResourceLocation.parse(lowerMaterial.block()));
-                                if(lower.bottom()+lower.height()==y && !lowerMaterial.air() && lowerBlock.defaultBlockState().getFluidState().isEmpty()) {
-                                    expectedSky=lower.skyLight();expectedBlock=lower.blockLight();break;
+                                if(lower.bottom()+lower.height()==span.bottom() && !lowerMaterial.air() && lowerBlock.defaultBlockState().getFluidState().isEmpty()) {
+                                    expectedSky=lower.skyLight();if(y==span.bottom())expectedBlock=lower.blockLight();break;
                                 }
                             }
                             assertEquals(expectedSky,section.skyLight().get(x,y&15,z));

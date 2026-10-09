@@ -53,7 +53,7 @@ class DhSessionPolicyTest {
         var p=new DhSessionPolicy();var tile=new DhPosition(6,1,1);
         assertTrue(p.accepted(tile,1,1,123,2));assertFalse(p.due(tile,3));
         p.revalidate(tile,3);assertTrue(p.due(tile,3));assertEquals(123,p.syncTimestamp(tile));
-        assertTrue(p.unchanged(tile,123,4));assertFalse(p.due(tile,Long.MAX_VALUE));
+        assertTrue(p.accepted(tile,1,1,123,4));assertFalse(p.due(tile,Long.MAX_VALUE));
     }
     @Test void failedRejoinValidationInvalidatesTheConditionalTimestampAndKeepsRetryBackoff() {
         var p=new DhSessionPolicy();var tile=new DhPosition(6,1,1);
@@ -86,25 +86,25 @@ class DhSessionPolicyTest {
         assertFalse(p.syncAllowed(tile,false,10));assertFalse(p.syncAllowed(tile,true,0));
         assertTrue(p.syncAllowed(tile,true,1));
     }
-    @Test void unchangedNeedsACompleteSessionReceiptAndTheExactOwnedRequestTimestamp() {
-        var p=new DhSessionPolicy();var tile=new DhPosition(6,0,0);
+    @Test void restoredReceiptsRevalidateWithSyncAndHoldWithout() {
+        var p=new DhSessionPolicy();var a=new DhPosition(6,0,0);var b=new DhPosition(6,1,0);
         long stamp=1_790_000_000_123L;
-        assertFalse(p.unchanged(tile,stamp,0));assertEquals(0,p.syncTimestamp(tile));
-        p.accepted(tile,0xffff,0xffff,stamp,0);
-        assertEquals(stamp,p.syncTimestamp(tile),"Do not apply local clock offsets to a server-origin timestamp");
-        assertFalse(p.unchanged(tile,stamp+1,100));assertFalse(p.unchanged(tile,0,100));
-        assertTrue(p.unchanged(tile,stamp,100));
-        assertFalse(p.due(tile,Long.MAX_VALUE));
-        p.cooldown(tile,200);assertEquals(0,p.syncTimestamp(tile));
-        assertFalse(p.unchanged(tile,stamp,200));
-        p.clearReceipts();assertFalse(p.unchanged(tile,stamp,200));
+        p.restore(a,stamp,10,true);
+        assertTrue(p.due(a,10));assertEquals(stamp,p.syncTimestamp(a),"Do not apply local clock offsets to a server-origin timestamp");
+        assertEquals(2,p.acquisitionPriority(a),"A restored receipt is a conditional refresh, never frontier work");
+        p.restore(b,stamp,10,false);
+        assertFalse(p.due(b,Long.MAX_VALUE),"Without synchronization a restored receipt is trusted and held");
+        assertTrue(p.hasSnapshot(b));
+        p.restore(a,1,20,false);assertEquals(stamp,p.syncTimestamp(a),"Restore never overwrites a session receipt");
+        p.restore(new DhPosition(6,2,0),0,20,true);assertEquals(0,p.timestamp(new DhPosition(6,2,0)));
+        p.cooldown(a,200);assertEquals(0,p.syncTimestamp(a));
+        p.clearReceipts();assertTrue(p.due(b,0));
     }
     @Test void partialRefreshRequiresFullDataUntilEveryEligibleColumnIsAcceptedAgain() {
         var p=new DhSessionPolicy();var tile=new DhPosition(6,0,0);
         p.accepted(tile,3,3,42,0);
         assertFalse(p.accepted(tile,3,1,43,100));
         assertEquals(42,p.timestamp(tile));assertEquals(0,p.syncTimestamp(tile));
-        assertFalse(p.unchanged(tile,42,100));
         assertTrue(p.accepted(tile,3,3,44,200));assertEquals(44,p.syncTimestamp(tile));
     }
 
@@ -177,6 +177,16 @@ class DhSessionPolicyTest {
         assertTrue(DhSessionPolicy.inBorder(DhProfile.OFFICIAL_16,tile,64,0,16));
         assertFalse(DhSessionPolicy.inBorder(DhProfile.OFFICIAL_16,tile,1024,0,256));
         assertTrue(DhSessionPolicy.inBorder(DhProfile.SUPPORT_15,tile,0,0,0));
+    }
+    @Test void vanillaAuthorityUsesRegionMasksWithoutAColumnCap() {
+        var p=new DhSessionPolicy();
+        assertTrue(p.vanilla(0,0));assertFalse(p.vanilla(31,31),"Same 32x32 region reuses its mask");
+        assertTrue(p.vanilla(-1,-1));assertTrue(p.vanilla(32,0));assertEquals(3,p.vanillaRegions());
+        for(int x=-40;x<40;x++)for(int z=-40;z<40;z++)assertEquals(!(x==0&&z==0||x==31&&z==31||x==-1&&z==-1||x==32&&z==0),p.eligible(x,z),x+","+z);
+        assertTrue(p.hasVanillaRegion(5,5));assertFalse(p.hasVanillaRegion(64,64));
+        // 400k columns exceed the retired 262,144 hard stop.
+        for(int x=0;x<640;x++)for(int z=0;z<640;z++)p.vanilla(x,z);
+        assertFalse(p.eligible(639,639));assertEquals(401,p.vanillaRegions());
     }
     @Test void vanillaAuthoritySurvivesRefreshAndReceiptReset() {
         var p=new DhSessionPolicy();

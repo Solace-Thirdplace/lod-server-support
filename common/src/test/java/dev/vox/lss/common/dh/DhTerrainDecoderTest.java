@@ -455,7 +455,9 @@ class DhTerrainDecoderTest {
                 new DhLimits(d.frameBytes(),d.tileBytes(),d.decodedBytes(),d.ownedBytes(),64,8,d.spans(),d.mappings(),d.mappingBytes(),4096,4096,d.idleNanos(),d.lifetimeNanos()),
                 new DhLimits(d.frameBytes(),d.tileBytes(),d.decodedBytes(),d.ownedBytes(),d.decompressorKiB(),8,1,d.mappings(),d.mappingBytes(),4096,4096,d.idleNanos(),d.lifetimeNanos()))) {
             var ex=assertFailure(tile(2,3,DhProfile.OFFICIAL_16),DhProfile.OFFICIAL_16,limits,SMALL);
-            assertEquals(DhCodecException.Kind.RESOURCE_LIMIT,ex.kind());
+            // Decoded-byte and dictionary budgets are memory pressure; the per-tile span
+            // ceiling is tile-intrinsic, so it is a malformed tile (strike), never pressure.
+            assertEquals(limits.spans()==1?DhCodecException.Kind.MALFORMED:DhCodecException.Kind.RESOURCE_LIMIT,ex.kind());
         }
         var budget=new DhMemoryBudget(100);
         assertThrows(DhCodecException.class,()->new DhTerrainDecoder(d).decode(tile(1,0,DhProfile.OFFICIAL_15),
@@ -524,5 +526,27 @@ class DhTerrainDecoderTest {
         var budget=budget();
         var result=assertThrows(DhCodecException.class,()->new DhTerrainDecoder(limits).decode(data,profile,NEGATIVE,world,budget));
         assertEquals(0,budget.used(),"codec failure leaked memory ownership");return result;
+    }
+    /** D-12: zstd-jni throws on corrupt input; it must surface as a contained MALFORMED, never a RuntimeException. */
+    @Test void corruptZstdBlocksAreContainedAsMalformed() throws Exception {
+        byte[] good;
+        try(var in=getClass().getResourceAsStream("/dh-corpus/dh-official-3.3.3-neoforge-ocean/database-tile.dto")) {good=in.readAllBytes();}
+        var position=new DhPosition(6,4,-3);var shape=new DhTerrainTile.WorldShape(-64,384,true);
+        int malformed=0;
+        for(int offset=24;offset<Math.min(good.length-32,4000);offset+=7) {
+            byte[] bad=good.clone();bad[offset]^=(byte)0x5a;
+            var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
+            try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(bad,DhProfile.OFFICIAL_16,position,shape,budget)) { /* some flips are benign */ }
+            catch(DhCodecException e) {malformed++;}
+            assertEquals(0,budget.used(),"offset "+offset);
+        }
+        assertTrue(malformed>0);
+    }
+    /** D-13: more spans than voxels in a column is structurally impossible: malformed, not pressure. */
+    @Test void moreSpansThanWorldHeightIsMalformedNotAResourceLimit() throws Exception {
+        var tiny=new DhTerrainTile.WorldShape(0,2,true);
+        var ex=assertThrows(DhCodecException.class,()->new DhTerrainDecoder(DhLimits.DEFAULT).decode(tile(2,3,DhProfile.OFFICIAL_16),
+                DhProfile.OFFICIAL_16,new DhPosition(6,0,0),tiny,budget()));
+        assertNotEquals(DhCodecException.Kind.RESOURCE_LIMIT,ex.kind());
     }
 }

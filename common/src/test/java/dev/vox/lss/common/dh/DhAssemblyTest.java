@@ -199,7 +199,6 @@ class DhAssemblyTest {
             assembly.allowPush(true);assembly.accept(fragment);
             try(var completed=assembly.push(new DhMessage.PartialUpdate("world",91,List.of()),System.nanoTime())) {
                 assertEquals(3,completed.bytes());
-                assertThrows(IllegalStateException.class,()->completed.cache(null,123));
             }
             assertEquals(0,budget.used());
         }
@@ -216,4 +215,41 @@ class DhAssemblyTest {
         }
     }
 
+    @Test void aBufferSpanningACaptureLossIsDiscardedNeverAssembledWithAGap() throws Exception {
+        var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
+        try(var assembly=new DhAssembly(DhLimits.DEFAULT,budget)) {
+            assembly.allowPush(true);
+            assembly.accept(new DhMessage.Split(7,new byte[]{1,2},true),1,0);
+            // A middle fragment was dropped (loss epoch 0 -> 1); the next fragment of buffer 7 arrives later.
+            var gap=assertThrows(DhCodecException.class,()->assembly.accept(new DhMessage.Split(7,new byte[]{3},false),2,1));
+            assertEquals(DhCodecException.Kind.UNOWNED,gap.kind());
+            assertEquals(0,assembly.incompleteBuffers());
+            // Completion after a loss is also refused, for a buffer whose fragments all predate it.
+            assembly.accept(new DhMessage.Split(8,new byte[]{4},true),3,1);
+            assertEquals(DhCodecException.Kind.UNOWNED,assertThrows(DhCodecException.class,
+                    ()->assembly.push(new DhMessage.PartialUpdate("w",8,List.of()),4,2)).kind());
+            // Same-epoch buffers assemble normally.
+            assembly.accept(new DhMessage.Split(9,new byte[]{5},true),5,2);
+            assembly.accept(new DhMessage.Split(9,new byte[]{6},false),6,2);
+            try(var done=assembly.push(new DhMessage.PartialUpdate("w",9,List.of()),7,2)) {assertEquals(2,done.bytes());}
+            assertEquals(0,budget.used());
+        }
+    }
+    @Test void expiredOrUnmatchedResponsesReleaseTheirBuffersImmediately() throws Exception {
+        var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
+        long[] clock={0};
+        var limits=DhLimits.DEFAULT.withLifetime(DhLimits.DEFAULT.idleNanos());
+        try(var assembly=new DhAssembly(limits,budget,()->clock[0])) {
+            assembly.expect(1,new DhPosition(6,0,0));
+            assembly.accept(new DhMessage.Split(3,new byte[100],true),0);
+            assertEquals(DhCodecException.Kind.UNOWNED,assertThrows(DhCodecException.class,
+                    ()->assembly.response(new DhMessage.Response(99,3,List.of()),1)).kind());
+            assertEquals(0,assembly.incompleteBuffers(),"An unmatched response releases its buffer");
+            assembly.accept(new DhMessage.Split(4,new byte[100],true),1);
+            assertEquals(DhCodecException.Kind.EXPIRED,assertThrows(DhCodecException.class,
+                    ()->assembly.response(new DhMessage.Response(1,4,List.of()),limits.lifetimeNanos()+1)).kind());
+            assertEquals(0,assembly.incompleteBuffers(),"An expired response releases its buffer");
+            assertEquals(0,budget.used());
+        }
+    }
 }

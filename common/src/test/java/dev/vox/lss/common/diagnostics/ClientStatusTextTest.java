@@ -30,10 +30,11 @@ class ClientStatusTextTest {
         for (var reason : ClientStatusSnapshot.Reason.values()) check(List.of(new ClientStatusText.Message(
                 "lss.status.reason."+reason.name().toLowerCase(Locale.ROOT),List.of())),languages);
         for(var reason:DhStatusSnapshot.Reason.values())check(List.of(new ClientStatusText.Message("lss.status.dh.reason."+reason.name().toLowerCase(Locale.ROOT),List.of())),languages);
-        for(var gate:dev.vox.lss.common.dh.DhAcquisition.Gate.values())check(List.of(new ClientStatusText.Message("lss.status.dh.wait."+gate.name().toLowerCase(Locale.ROOT),List.of())),languages);
+        for(var activity:DhStatusSnapshot.Activity.values())check(List.of(new ClientStatusText.Message("lss.status.dh.activity."+activity.name().toLowerCase(Locale.ROOT),List.of())),languages);
+        check(List.of(new ClientStatusText.Message("lss.status.dh.notice.stopped",List.of("x"))),languages);
         for(var state:DhStatusSnapshot.State.values()) for(var profile:dev.vox.lss.common.dh.DhProfile.values())
             for(boolean sync:new boolean[]{false,true}) for(boolean live:new boolean[]{false,true}) {
-                var dh=new DhStatusSnapshot(profile,state,10,5,2,1,50,45,3,2,1000,100,200,1,2,3,32,1,2,500,true,sync,live,sync,0,0,100,4096,0,0,0,0,DhStatusSnapshot.Reason.NONE,0,0,dev.vox.lss.common.dh.DhAcquisition.Gate.NO_ELIGIBLE_WORK,1L<<25,-1);
+                var dh=new DhStatusSnapshot(profile,state,DhStatusSnapshot.Reason.NONE,DhStatusSnapshot.Activity.IDLE,10,5,2,1,45,3,2,1000,100,1,2,3,32,1,2,500,true,sync,live,sync,0,0,100,4096,7,0);
                 var snapshot=new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION,1,100,true,false,true,false,true,false,
                         0,0,0,0,0,0,-1,0,0,0,0,ClientStatusSnapshot.Discovery.DORMANT,
                         ClientStatusSnapshot.Availability.DISABLED,null,DiagnosticVersions.unknown(),settings,dh);
@@ -43,7 +44,8 @@ class ClientStatusTextTest {
                 String json=DiagnosticExport.clientJson(snapshot);
                 assertTrue(json.contains("\"dh\""));assertTrue(json.contains("\"protocol\": 0"));
                 assertTrue(snapshot.lines().getFirst().contains("Distant Horizons"));
-                assertTrue(snapshot.lines().stream().anyMatch(line->line.contains("unacknowledged")));
+                assertTrue(snapshot.lines().stream().anyMatch(line->line.startsWith("Activity:")));
+                assertTrue(snapshot.lines().stream().anyMatch(line->line.startsWith("Receipts:")));
                 assertTrue(snapshot.lines().stream().anyMatch(line->line.startsWith("Versions:")));
                 assertTrue(snapshot.lines().stream().anyMatch(line->line.startsWith("Settings:")));
             }

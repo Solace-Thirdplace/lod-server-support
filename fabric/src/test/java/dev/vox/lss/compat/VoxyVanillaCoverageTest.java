@@ -106,7 +106,8 @@ public class VoxyVanillaCoverageTest {
     }
     @Test void backpressureAndMissingDestinationDeferAllSubmissions() {
         var backend=new Backend();var coverage=new VoxyVanillaCoverage(backend);var world=new World();world.add(9,0);
-        backend.backlog=129;sweep(coverage,world,0,100);assertTrue(backend.calls.isEmpty());
+        backend.backlog=VoxyVanillaCoverage.BACKLOG_GATE+1;sweep(coverage,world,0,100);assertTrue(backend.calls.isEmpty());
+        assertTrue(VoxyVanillaCoverage.BACKLOG_GATE>dev.vox.lss.networking.client.DhClientSession.INGEST_GATE,"Vanilla border terrain outranks far DH approximations");
         backend.backlog=0;backend.destination=null;sweep(coverage,world,5_000_000_000L,100);assertTrue(backend.calls.isEmpty());
         backend.destination=new Object();sweep(coverage,world,10_000_000_000L,100);assertEquals(1,backend.calls.size());
     }

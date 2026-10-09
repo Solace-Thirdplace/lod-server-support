@@ -144,4 +144,16 @@ class DhProtocolCodecTest {
             }
         }
     }
+    /** X-3: a same-protocol DH release may add control messages or fields; terrain stays strict. */
+    @Test void productionDecodingToleratesUnknownControlMessagesAndTrailingControlBytes() throws Exception {
+        var codec=new DhProtocolCodec(DhProfile.OFFICIAL_16,DhLimits.DEFAULT);var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
+        byte[] unknown={0,16,0,77,9,9,9};
+        try(var owned=codec.decodeOwned(unknown,budget)) {assertEquals(new DhMessage.Unknown(77),owned.message());}
+        assertEquals(DhCodecException.Kind.UNSUPPORTED,assertThrows(DhCodecException.class,()->codec.decode(unknown)).kind(),"Strict decoding (discovery) still rejects");
+        byte[] refusal=codec.encode(new DhMessage.Refusal(1,2,"x"));byte[] longer=java.util.Arrays.copyOf(refusal,refusal.length+4);
+        try(var owned=codec.decodeOwned(longer,budget)) {assertEquals(new DhMessage.Refusal(1,2,"x"),owned.message());}
+        byte[] split=codec.encode(new DhMessage.Split(3,new byte[]{1},true));byte[] trailing=java.util.Arrays.copyOf(split,split.length+1);
+        assertEquals(DhCodecException.Kind.MALFORMED,assertThrows(DhCodecException.class,()->codec.decodeOwned(trailing,budget)).kind());
+        assertEquals(0,budget.used());
+    }
 }

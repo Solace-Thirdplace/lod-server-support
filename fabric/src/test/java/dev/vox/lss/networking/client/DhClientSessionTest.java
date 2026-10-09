@@ -6,7 +6,7 @@ import dev.vox.lss.common.config.SettingsHandle;
 import dev.vox.lss.common.config.SettingsSchema;
 import dev.vox.lss.common.config.SettingsStore;
 import dev.vox.lss.common.dh.*;
-import dev.vox.lss.common.dh.DhAcquisition.Gate;
+import dev.vox.lss.common.diagnostics.DhStatusSnapshot;
 import dev.vox.lss.compat.DhVoxyBridge;
 import dev.vox.lss.compat.ModCompat;
 import dev.vox.lss.config.LSSClientConfig;
@@ -49,7 +49,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-/** Exercises the actual private session and its worker, transport leases and main-thread callbacks. */
+/**
+ * Exercises the actual private session and its worker, transport leases and main-thread
+ * callbacks against real captured DH corpora. Pins the 2026-10-10 remediation: whole-tile
+ * delivery in two client-thread hops, arrival-order push ordering (no timestamp fences),
+ * loss epochs, scoped recovery, persisted receipts with a destination probe, no reconnect
+ * trial, and the slim diagnostics.
+ */
 class DhClientSessionTest {
     private static final DhPosition POSITION=new DhPosition(6,10,-10);
     private static final String DIMENSION="minecraft:overworld";
@@ -66,7 +72,8 @@ class DhClientSessionTest {
     private final LinkedBlockingQueue<Runnable> mainTasks=new LinkedBlockingQueue<>();
     private final List<byte[]> sent=new ArrayList<>();
     private final List<Object> sessions=new ArrayList<>();
-    private String cacheComponent;private Object previousCacheRoot;
+    private String cacheComponent;private Object previousCacheRoot,previousNotice;
+    private final List<net.minecraft.network.chat.Component> notices=new ArrayList<>();
 
     @BeforeAll static void bootstrap() {
         SharedConstants.tryDetectVersion(); Bootstrap.bootStrap();
@@ -91,15 +98,12 @@ class DhClientSessionTest {
         previousNativeAvailability=read(null,DhClientSession.class,"nativeAvailable");
         previousChannelAvailability=read(null,DhClientSession.class,"channelAvailable");
         DhClientSession.installChannelAvailability(()->true);
-        ((Map<?,?>)read(null,DhClientSession.class,"confirmedProfiles")).clear();
         ((Map<?,?>)read(null,DhClientSession.class,"discoveredProfiles")).clear();
-        write(null,DhClientSession.class,"initialPlay",true);
-        write(null,DhClientSession.class,"transferredServer",null);write(null,DhClientSession.class,"trialProfile",DhProfile.OFFICIAL_16);
-        ((Map<?,?>)read(null,DhClientSession.class,"retryCooldowns")).clear();
-        write(null,DhClientSession.class,"joinConnection",null);
+        ((Map<?,?>)read(null,DhClientSession.class,"notified")).clear();
+        write(null,DhClientSession.class,"receptionPaused",false);
+        previousNotice=read(null,DhClientSession.class,"notice");
+        write(null,DhClientSession.class,"notice",(java.util.function.Consumer<net.minecraft.network.chat.Component>)notices::add);
         DhClientSession.installNativeAvailability(()->false);
-        write(null,DhClientSession.class,"retryJoinPending",false);
-        write(null,DhClientSession.class,"retryUsed",false);
         // Allocate without Minecraft's graphics constructor. The original
         // getConnection reads LocalPlayer.connection; only execute and the
         // remote-server accessor are replaced with test-owned state.
@@ -142,10 +146,8 @@ class DhClientSessionTest {
             write(null,DhClientSession.class,"transportReason",previousTransportReason);
             write(null,DhClientSession.class,"nativeAvailable",previousNativeAvailability);
             write(null,DhClientSession.class,"channelAvailable",previousChannelAvailability);
-            ((Map<?,?>)read(null,DhClientSession.class,"confirmedProfiles")).clear();
             ((Map<?,?>)read(null,DhClientSession.class,"discoveredProfiles")).clear();
-            write(null,DhClientSession.class,"retryJoinPending",false);
-            write(null,DhClientSession.class,"retryUsed",false);
+            write(null,DhClientSession.class,"notice",previousNotice);
             write(null,Minecraft.class,"instance",previousMinecraft);
             write(null,ColumnCacheStore.class,"cacheDir",previousCacheRoot);
             Thread.currentThread().setContextClassLoader(previousContextLoader);
@@ -154,21 +156,6 @@ class DhClientSessionTest {
 
     private void setting(Map<String,Object> changes) throws Exception {
         settings.store().saveDraft(settings.store().read().hash(),changes);settings.commit(settings.prepareReload());
-    }
-    @Test void successfulLegacyConfirmationDoesNotSuppressAFreshTrialWithinTwoMinutes() throws Exception {
-        var s=updateSession();invoke(null,DhClientSession.class,"rememberRetry",new Class<?>[]{String.class},minecraft.server.ip);
-        write(s,SESSION,"profile",DhProfile.OFFICIAL_15);invoke(s,"confirmProfile");
-        assertFalse(((Map<?,?>)read(null,DhClientSession.class,"retryCooldowns")).containsKey(minecraft.server.ip));
-        connection=mcMock(ClientPacketListener.class);doReturn(mcMock(net.minecraft.network.Connection.class)).when(connection).getConnection();
-        write(minecraft.player,LocalPlayer.class,"connection",connection);DhClientSession.onJoin();var next=session();
-        assertEquals(DhProfile.OFFICIAL_16,read(next,SESSION,"profile"));
-        assertEquals(true,invoke(null,DhClientSession.class,"probeLegacy",new Class<?>[]{SESSION},next));
-    }
-    @Test void configurationTransferUsesTheListenersServerWhenMinecraftHasNone() throws Exception {
-        var server=minecraft.server;minecraft.server=null;
-        DhClientSession.transferred(server);assertSame(server,read(null,DhClientSession.class,"transferredServer"));
-        minecraft.server=server;DhClientSession.onJoin();assertEquals(false,read(null,DhClientSession.class,"initialPlay"));
-        var s=session();assertEquals(false,invoke(null,DhClientSession.class,"probeLegacy",new Class<?>[]{SESSION},s));
     }
     @Test void cancelledOfficialGenerationTimeoutsDoNotExhaustUnsafeSyncPermits() throws Exception {
         var s=updateSession();long now=System.nanoTime();
@@ -188,47 +175,6 @@ class DhClientSessionTest {
         assertTrue(sent.isEmpty());assertEquals(0,read(s,SESSION,"unanswered"));assertTrue(pendingMap(s).containsKey(7));
         pumpUntil(()->pendingMap(s).isEmpty(),"client reply bookkeeping did not settle");
     }
-    @Test void pressureRecoveryCancelsRegistrationQueuedAfterItsInitialDiscard() throws Exception {
-        var s=updateSession();pending(s,7,false,System.nanoTime());
-        var pressure=(java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery");pressure.set(true);
-        worker(s).submit(()->invokeUnchecked(s,"recoverPushPressure")).get(5,TimeUnit.SECONDS);
-        // The queued registration observes the old pending owner before its main-thread clear.
-        worker(s).submit(()->{try{assembly(s).expect(8,POSITION);}catch(Exception e){throw new AssertionError(e);}}).get(5,TimeUnit.SECONDS);
-        var ctor=PENDING.getDeclaredConstructor(DhPosition.class,boolean.class,long.class,long.class);ctor.setAccessible(true);
-        pendingMap(s).put(8,ctor.newInstance(POSITION,false,System.nanoTime(),0L));
-        pumpUntil(()->!pressure.get(),"registration cleanup did not finish");waitWorker(s);
-        assertTrue(pendingMap(s).isEmpty());assertTrue(((Map<?,?>)read(assembly(s),DhAssembly.class,"requests")).isEmpty());assertEquals(0,budget(s).used());
-    }
-    @Test void parkedTilesDoNotMaskTheAdmissionGateAndTerminalReasonsSurviveCadence() throws Exception {
-        try(var bridge=new ReadyBridge()) {
-            var s=updateSession();long now=System.nanoTime();setting(Map.of("lod.download.max_columns_per_second",20));
-            write(s,SESSION,"lastRequest",now);((AtomicLong)read(s,SESSION,"requested")).set(1);
-            policy(s).absent(new DhPosition(6,0,0),now,false);
-            invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,new ChunkPos(2,2));
-            var d=DhClientSession.diagnostics();assertEquals(Gate.MANUAL_RATE,d.acquisitionWait());
-            assertTrue(d.acquisitionWaitMillis()>0);assertTrue((d.acquisitionGates()&(1L<<Gate.PARKED.ordinal()))!=0);
-            setting(Map.of("lod.download.max_columns_per_second",0,"lod.distance_chunks",4));
-            var tile=new DhPosition(6,0,0);policy(s).invalidate(tile);policy(s).defer(tile,now);
-            for(int x=-8;x<=8;x++)for(int z=-8;z<=8;z++)if(x<0||x>3||z<0||z>3)policy(s).vanilla(x,z);
-            invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,new ChunkPos(2,2));
-            assertEquals(Gate.DEFERRED,DhClientSession.diagnostics().acquisitionWait());
-            write(s,SESSION,"nextScanAt",now+500_000_000L);write(s,SESSION,"announced",true);write(s,SESSION,"maintenanceAt",now);
-            minecraft.player=mcMock(LocalPlayer.class);write(minecraft.player,LocalPlayer.class,"connection",connection);
-            doReturn(new ChunkPos(2,2)).when(minecraft.player).chunkPosition();
-            invoke(s,"tick");var status=DhClientSession.diagnostics();assertEquals(Gate.DEFERRED,status.acquisitionWait());
-            assertTrue((status.acquisitionGates()&(1L<<Gate.SCAN_CADENCE.ordinal()))!=0);
-            assertTrue(status.acquisitionWaitMillis()>0 && status.acquisitionWaitMillis()<=2000);
-        }
-    }
-    @Test void unconfirmedResetWithDhPermissionAndNoServicePreservesTheCacheAndSession() throws Exception {
-        var cache=new DhTerrainCache(dir,new DhTerrainCache.Key("test","server","world",DIMENSION,8,DhProfile.OFFICIAL_16,
-                new DhTerrainTile.WorldShape(-64,384,true)));
-        cache.write(POSITION,123,new byte[]{1});var s=session();write(s,SESSION,"terrainCache",cache);
-        assertFalse(DhClientSession.canAcquire());var feedback=new ArrayList<net.minecraft.network.chat.Component>();
-        ClientCommandActions.runReset(feedback::add,false,false);
-        assertTrue(active(s));assertEquals(Set.of(POSITION),cache.positions());
-        assertTrue(feedback.getFirst().getString().contains("reset confirm"));
-    }
     @Test void resetCapabilityRequiresLiveOwnedServiceAndDistinguishesPushOnly() throws Exception {
         var s=updateSession();assertTrue(DhClientSession.canAcquire());
         setting(Map.of("lod.dh.sync_on_load",false));assertFalse(DhClientSession.canAcquire());
@@ -238,8 +184,7 @@ class DhClientSessionTest {
         write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.SURFACE_ONLY,32,0,0,0,1,false,0,false,0,0,500));
         assertTrue(DhClientSession.canAcquire());
         setting(Map.of("lod.receive",false));assertFalse(DhClientSession.canAcquire());
-        setting(Map.of("lod.receive",true));write(s,SESSION,"familyConfirmed",false);assertFalse(DhClientSession.canAcquire());
-        write(s,SESSION,"familyConfirmed",true);DhClientSession.installChannelAvailability(()->false);assertFalse(DhClientSession.canAcquire());
+        setting(Map.of("lod.receive",true));DhClientSession.installChannelAvailability(()->false);assertFalse(DhClientSession.canAcquire());
     }
     @Test void receiveOffWithdrawsLiveUpdatesOnceWithoutChangingSavedPreferences() throws Exception {
         var s=updateSession();write(s,SESSION,"announced",true);setting(Map.of("lod.receive",false));
@@ -257,10 +202,6 @@ class DhClientSessionTest {
         write(minecraft.player,LocalPlayer.class,"connection",mcMock(ClientPacketListener.class));invoke(replaced,"beginRetire");
         assertTrue(sent.isEmpty());write(minecraft.player,LocalPlayer.class,"connection",connection);
         var reconfigured=updateSession();write(reconfigured,SESSION,"announced",true);DhClientSession.onJoin();invoke(reconfigured,"retire");assertTrue(sent.isEmpty());
-    }
-    @Test void unconfirmedLegacyRetirementCannotSendAmbiguousPreferences() throws Exception {
-        var s=updateSession();write(s,SESSION,"announced",true);write(s,SESSION,"familyConfirmed",false);
-        invoke(s,"beginRetire");assertTrue(sent.isEmpty());
     }
     @Test void unrelatedPostDeadlineFramesDoNotRetainSilentRequestsAndBuffers() throws Exception {
         var s=updateSession();long now=System.nanoTime();
@@ -309,86 +250,6 @@ class DhClientSessionTest {
         }finally {capturer.join(5000);}
         assertEquals(0,budget(s).used());
     }
-    @Test void admissionReportsManualRateRefusalServiceSlotsAndDisabledServices() throws Exception {
-        var s=updateSession();long now=System.nanoTime();setting(Map.of("lod.download.max_columns_per_second",20));
-        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.SURFACE_ONLY,32,0,0,0,20,false,0,true,32,50,500));
-        write(s,SESSION,"lastRequest",now);((AtomicLong)read(s,SESSION,"requested")).set(1);
-        write(s,SESSION,"syncBackoffUntil",now+1_000_000_000L);
-        var wait=admission(s,false,now);
-        assertEquals(Gate.REFUSAL_BACKOFF,wait.primary());assertEquals(1000,wait.waitMillis(0));
-        assertTrue((wait.gates()&(1L<<Gate.MANUAL_RATE.ordinal()))!=0);
-        assertEquals(Gate.MANUAL_RATE,admission(s,true,now).primary());
-        pending(s,700,true,now);assertEquals(Gate.GENERATION_SLOT,admission(s,true,now).primary());
-        pendingMap(s).clear();assembly(s).cancel(700);
-        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,true,32,1,500));
-        pending(s,701,false,now);assertEquals(Gate.SYNC_SLOTS,admission(s,false,now).primary());
-        assertEquals(-1,admission(s,false,now).waitMillis(0));assertEquals(Gate.SERVER_DISABLED,admission(s,true,now).primary());
-    }
-    @Test void scanObservationDistinguishesIdleDisabledParkedCacheAndAdmittedWork() throws Exception {
-        try(var bridge=new ReadyBridge()) {
-        var s=updateSession();long now=System.nanoTime();var player=new ChunkPos(2,2);
-        // Make exactly one tile eligible, so no unrelated frontier affects the result.
-        setting(Map.of("lod.distance_chunks",4));
-        for(int x=-8;x<=8;x++)for(int z=-8;z<=8;z++)if(x<0||x>3||z<0||z>3)policy(s).vanilla(x,z);
-        var p=new DhPosition(6,0,0);policy(s).accepted(p,1,1,10,now);
-        invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,player);
-        assertEquals(Gate.NO_ELIGIBLE_WORK,DhClientSession.diagnostics().acquisitionWait());
-        policy(s).invalidate(p);write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,false,0,0,500));
-        invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,player);
-        assertEquals(Gate.SERVER_DISABLED,DhClientSession.diagnostics().acquisitionWait());
-        policy(s).rangeRefused(p,0,false);
-        invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,player);
-        assertEquals(Gate.PARKED,DhClientSession.diagnostics().acquisitionWait());
-        policy(s).invalidate(p);write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,true,4,20,500));
-        write(s,SESSION,"cacheLoading",p);invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,player);
-        assertEquals(Gate.CACHE,DhClientSession.diagnostics().acquisitionWait());
-        write(s,SESSION,"cacheLoading",null);invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,player);
-        assertEquals(Gate.REQUESTED,DhClientSession.diagnostics().acquisitionWait());assertEquals(0,DhClientSession.diagnostics().acquisitionGates());
-        waitWorker(s);
-        }
-    }
-    private static DhAcquisition admission(Object s,boolean generation,long now) throws Exception {
-        return (DhAcquisition)invoke(s,"requestAdmission",new Class<?>[]{boolean.class,long.class},generation,now);
-    }
-    @Test void tickObservationReportsCacheRecoveryPressureSlotsAndMissingPlayer() throws Exception {
-        try(var bridge=new ReadyBridge()) {
-            var s=updateSession();write(s,SESSION,"announced",true);
-            write(s,SESSION,"maintenanceAt",System.nanoTime());write(s,SESSION,"cacheWorkStarted",System.nanoTime());
-            write(s,SESSION,"cacheReady",false);invoke(s,"tick");assertEquals(Gate.CACHE,DhClientSession.diagnostics().acquisitionWait());
-            write(s,SESSION,"cacheReady",true);((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).set(true);
-            invoke(s,"tick");assertEquals(Gate.RECOVERY,DhClientSession.diagnostics().acquisitionWait());
-            ((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).set(false);
-            me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=257;
-            invoke(s,"tick");assertEquals(Gate.INGEST_PRESSURE,DhClientSession.diagnostics().acquisitionWait());
-            me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=0;
-            var release=new CountDownLatch(1);var started=new CountDownLatch(1);
-            worker(s).execute(()-> {started.countDown();try {release.await(10,TimeUnit.SECONDS);}catch(InterruptedException e) {Thread.currentThread().interrupt();}});
-            assertTrue(started.await(5,TimeUnit.SECONDS));
-            try {
-                for(int i=0;i<5;i++)worker(s).execute(()->{});
-                invoke(s,"tick");assertEquals(Gate.DECODE_PRESSURE,DhClientSession.diagnostics().acquisitionWait());
-            }finally {release.countDown();}
-            waitWorker(s);
-            pending(s,700,false,System.nanoTime());pending(s,701,true,System.nanoTime());
-            invoke(s,"tick");assertEquals(Gate.REQUEST_SLOTS,DhClientSession.diagnostics().acquisitionWait());
-            assertEquals(-1,DhClientSession.diagnostics().acquisitionWaitMillis());
-            pendingMap(s).clear();assembly(s).cancel(700);assembly(s).cancel(701);
-            minecraft.player=null;invoke(s,"tick");assertEquals(Gate.NO_PLAYER,DhClientSession.diagnostics().acquisitionWait());
-        }
-    }
-    @Test void scanCadenceDoesNotHideAStillBlockingManualRate() throws Exception {
-        try(var bridge=new ReadyBridge()) {
-            var s=updateSession();long now=System.nanoTime();setting(Map.of("lod.download.max_columns_per_second",20));
-            write(s,SESSION,"lastRequest",now);((AtomicLong)read(s,SESSION,"requested")).set(1);
-            invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,new ChunkPos(2,2));
-            assertEquals(Gate.MANUAL_RATE,DhClientSession.diagnostics().acquisitionWait());
-            write(s,SESSION,"announced",true);write(s,SESSION,"maintenanceAt",System.nanoTime());
-            write(s,SESSION,"nextScanAt",now+500_000_000L);invoke(s,"tick");
-            var status=DhClientSession.diagnostics();assertEquals(Gate.MANUAL_RATE,status.acquisitionWait());
-            assertTrue((status.acquisitionGates()&(1L<<Gate.SCAN_CADENCE.ordinal()))!=0);
-            assertTrue(status.acquisitionWaitMillis()>0);assertTrue(status.acquisitionWaitMillis()<=800);
-        }
-    }
     private static void invokeUnchecked(Object s,String method) {
         try {invoke(s,method);}catch(Exception e) {throw new AssertionError(e);}
     }
@@ -397,28 +258,28 @@ class DhClientSessionTest {
         write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.SURFACE_ONLY,32,0,0,0,20,false,0,true,32,50,500));
         write(s,SESSION,"lastRequest",now);((java.util.concurrent.atomic.AtomicLong)read(s,SESSION,"requested")).set(1);
         for(boolean generation:new boolean[]{false,true}) {
-            assertEquals(1_000_000L,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},generation,now+799_000_000L));
-            assertEquals(0L,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},generation,now+800_000_000L));
+            assertEquals(1_000_000L,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},generation,now+799_000_000L));
+            assertEquals(0L,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},generation,now+800_000_000L));
         }
         write(s,SESSION,"lastRequest",now+800_000_000L);
-        assertEquals(800_000_000L,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},false,now+800_000_000L));
+        assertEquals(800_000_000L,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},false,now+800_000_000L));
     }
     @Test void syncConcurrencyAtRateOneKeepsTheIndependentGenerationSlotAvailable() throws Exception {
         var s=updateSession();long now=System.nanoTime();
         write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.SURFACE_ONLY,32,0,0,0,1,false,0,true,32,1,500));
         pending(s,700,false,now-2_000_000_000L);
-        assertEquals(Long.MAX_VALUE,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},false,now));
-        assertEquals(0L,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},true,now));
-        pendingMap(s).clear();assertEquals(0L,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},false,now));
+        assertEquals(Long.MAX_VALUE,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},false,now));
+        assertEquals(0L,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},true,now));
+        pendingMap(s).clear();assertEquals(0L,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},false,now));
     }
     @Test void rateRefusalPausesItsWholeServiceButNotGenerationOrPermanentRetryBudget() throws Exception {
         var s=updateSession();write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.SURFACE_ONLY,32,0,0,0,20,false,0,true,32,50,500));
         long now=System.nanoTime();pending(s,700,false,now);
         capture(codec(s).encode(new DhMessage.Refusal(700,0,"limited")),now).receive();
         pumpUntil(()->frameCount(s)==0&&pendingMap(s).isEmpty(),"refusal did not finish");now=System.nanoTime();
-        assertTrue((long)invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},false,now)>0);
-        assertEquals(0L,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},true,now));
-        assertEquals(0L,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},false,now+2_000_000_000L));
+        assertTrue((long)invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},false,now)>0);
+        assertEquals(0L,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},true,now));
+        assertEquals(0L,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},false,now+2_000_000_000L));
         assertFalse(policy(s).retryExhausted(POSITION));
     }
     @Test void delayedRangeRefusalUsesTheRequestContextAndRetriesAtTheChangedReachableFrontier() throws Exception {
@@ -487,30 +348,29 @@ class DhClientSessionTest {
         var s=updateSession();write(s,SESSION,"profile",DhProfile.SUPPORT_15);long now=System.nanoTime();
         write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.CHUNKS_ONLY,32,0,0,0,20,false,0,false,0,0,0));
         write(s,SESSION,"lastGenerationRequest",now);
-        assertEquals(4_000_000_000L,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},true,now));
-        assertEquals(Gate.SUPPORT_STARTUP,admission(s,true,now).primary());
+        assertEquals(4_000_000_000L,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},true,now));
         assertEquals(60_000_000_000L,invoke(s,"requestLifetime"));
-        assertEquals(0L,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},true,now+5_000_000_000L));
+        assertEquals(0L,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},true,now+5_000_000_000L));
         setting(Map.of("lod.download.slow_start_on_join",false));
-        assertEquals(1_000_000_000L,invoke(s,"requestWaitNanos",new Class<?>[]{boolean.class,long.class},true,now));
+        assertEquals(1_000_000_000L,invoke(s,"requestWait",new Class<?>[]{boolean.class,long.class},true,now));
         write(s,SESSION,"profile",DhProfile.OFFICIAL_16);
         }
     }
     @Test void dhBandwidthOnlyPreferenceChangesDoNotRestartLoadSynchronization() throws Exception {
         var s=updateSession();write(s,SESSION,"announced",true);invoke(s,"sendPreferences");sent.clear();
         var marker=Set.of(POSITION);write(s,SESSION,"visible",marker);write(s,SESSION,"visibleCenter",new ChunkPos(2,2));
-        ((Map<DhPosition,Long>)read(s,SESSION,"loadedAt")).put(POSITION,System.nanoTime());
+        ((DhConnectionState)read(null,DhClientSession.class,"connectionState")).loadedAt(DIMENSION).put(POSITION,System.nanoTime());
         var ramp=(DhBandwidthRamp)read(s,SESSION,"bandwidthRamp");ramp.received(50_000,0);ramp.received(1,1_000_000_000L);
         invoke(s,"tick");assertFalse(sent.isEmpty());assertSame(marker,read(s,SESSION,"visible"));
-        assertEquals(1,((Map<?,?>)read(s,SESSION,"loadedAt")).size());
+        assertEquals(1,((DhConnectionState)read(null,DhClientSession.class,"connectionState")).loadedAt(DIMENSION).size());
     }
     @Test void changingLiveUpdatesAlonePreservesLoadDebounceAndHeldReceipts() throws Exception {
         var s=updateSession();write(s,SESSION,"announced",true);invoke(s,"sendPreferences");
         var marker=Set.of(POSITION);write(s,SESSION,"visible",marker);write(s,SESSION,"visibleCenter",new ChunkPos(2,2));
-        ((Map<DhPosition,Long>)read(s,SESSION,"loadedAt")).put(POSITION,System.nanoTime());policy(s).accepted(POSITION,1,1,123,0);
+        ((DhConnectionState)read(null,DhClientSession.class,"connectionState")).loadedAt(DIMENSION).put(POSITION,System.nanoTime());policy(s).accepted(POSITION,1,1,123,0);
         setting(Map.of("lod.dh.real_time_updates",false));invoke(s,"tick");
         assertSame(marker,read(s,SESSION,"visible"));assertFalse(policy(s).due(POSITION,Long.MAX_VALUE));
-        assertEquals(1,((Map<?,?>)read(s,SESSION,"loadedAt")).size());
+        assertEquals(1,((DhConnectionState)read(null,DhClientSession.class,"connectionState")).loadedAt(DIMENSION).size());
     }
     @Test void dhNetTraceQueueBytesExcludeOtherOwnedDecodeAndCacheMemory() throws Exception {
         var s=updateSession();byte[] bytes=codec(s).encode(new DhMessage.Response(700,null,List.of()));
@@ -552,9 +412,8 @@ class DhClientSessionTest {
         DhClientSession.tick();ClientTraceLog.stop();
         var rows=Files.readAllLines(trace.path()).stream().map(line->com.google.gson.JsonParser.parseString(line).getAsJsonObject()).toList();
         var snapshot=rows.stream().filter(r->r.get("t").getAsString().equals("dh_status")).findFirst().orElseThrow();
-        assertEquals("WAIT_CONFIG",snapshot.get("state").getAsString());assertEquals(0,snapshot.get("inflight").getAsInt());
-        assertEquals("CONFIG",snapshot.get("acquisition_wait").getAsString());assertEquals(-1,snapshot.get("acquisition_wait_ms").getAsLong());
-        assertEquals(1L<<Gate.CONFIG.ordinal(),snapshot.get("acquisition_gates").getAsLong());
+        assertEquals("CONNECTING",snapshot.get("state").getAsString());assertEquals(0,snapshot.get("inflight").getAsInt());
+        assertEquals("WAITING_SERVER",snapshot.get("activity").getAsString());assertFalse(snapshot.has("acquisition_gates"));
         assertTrue(snapshot.get("chunk").isJsonNull());assertFalse(snapshot.has("server"));assertFalse(snapshot.has("world_key"));
     }
     @Test void dhTraceCadenceResetsOnRestartAndStopsWhenDisabled() throws Exception {
@@ -602,43 +461,6 @@ class DhClientSessionTest {
         assertEquals(77,row.get("id").getAsInt());assertEquals(0,row.get("reason").getAsInt());
     }
 
-    @Test void transferredHubIdentityNeverArmsALegacyReconnectAcrossRepeatedTransfers() throws Exception {
-        for(int cycle=0;cycle<4;cycle++) {
-            DhClientSession.transferred();
-            doReturn(mcMock(net.minecraft.network.Connection.class)).when(connection).getConnection();
-            DhClientSession.onJoin();var owner=session();
-            write(owner,SESSION,"announced",true);write(owner,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
-            invoke(owner,"tick");invoke(owner,"tick");invoke(owner,"tick");
-            assertNull(read(null,DhClientSession.class,"pendingRetry"));assertFalse(active(owner));
-        }
-    }
-    @Test void reconfiguredListenerCanDiscoverSupportWithoutKeepingThePreviousOfficialConfirmation() throws Exception {
-        var first=session();capture(codec(first).encode(new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,false,0,0,500)),System.nanoTime()).receive();
-        pumpUntil(()->frameCount(first)==0,"official config not processed");
-        var physical=connection.getConnection();connection=mcMock(ClientPacketListener.class);doReturn(physical).when(connection).getConnection();
-        write(minecraft.player,LocalPlayer.class,"connection",connection);DhClientSession.onJoin();
-        var probe=session();capture(rejection(DhProfile.SUPPORT_15),System.nanoTime()).receive();
-        pumpUntil(()->!active(probe),"Support advertisement did not retire probe");
-        assertNull(read(null,DhClientSession.class,"pendingRetry"));
-        var support=session();assertEquals(DhProfile.SUPPORT_15,read(support,SESSION,"profile"));
-        capture(codec(support).encode(new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,false,0,0,500)),System.nanoTime()).receive();
-        pumpUntil(()->frameCount(support)==0,"Support config not processed");assertTrue(active(support));
-    }
-    @Test void ambiguousLegacyControlsCannotConfirmAHintedFamilyOrOpenItsCache() throws Exception {
-        write(null,DhClientSession.class,"retryUsed",true);write(null,DhClientSession.class,"trialProfile",DhProfile.OFFICIAL_15);
-        var owner=session();var support=new DhProtocolCodec(DhProfile.SUPPORT_15,DhLimits.DEFAULT);
-        var control=support.encode(new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,true,32,20,500));
-        assertNull(DhProtocolDiscovery.advertised(control));capture(control,System.nanoTime()).receive();
-        pumpUntil(()->frameCount(owner)==0,"legacy control did not settle");
-        assertFalse((boolean)read(owner,SESSION,"familyConfirmed"));assertTrue(((Map<?,?>)read(null,DhClientSession.class,"confirmedProfiles")).isEmpty());
-        assertNull(read(owner,SESSION,"terrainCache"));assertEquals(0,counter(owner,"columns"));
-    }
-    @Test void rejectionReconnectWaitsAtLeastFiveSecondsAfterTheOriginalSessionStarted() throws Exception {
-        var owner=session();capture(rejection(DhProfile.OFFICIAL_15),System.nanoTime()).receive();
-        pumpUntil(()->!active(owner),"rejection did not settle");
-        assertNotNull(read(null,DhClientSession.class,"pendingRetry"));DhClientSession.tick();
-        assertNotNull(read(null,DhClientSession.class,"pendingRetry"),"minimum reconnect delay was skipped");
-    }
     @Test void nativeAdvertisementDoesNotLoseEarlierVanillaAuthorityWhileFallbackIsPermitted() throws Exception {
         DhClientSession.installNativeAvailability(()->true);DhClientSession.vanillaLoaded(level,40,-40);
         DhClientSession.installNativeAvailability(()->false);var owner=session();
@@ -653,15 +475,6 @@ class DhClientSessionTest {
         waitWorker(owner);while(!mainTasks.isEmpty())mainTasks.poll().run();
         assertTrue(((Map<?,?>)read(assembly(owner),DhAssembly.class,"requests")).isEmpty());assertTrue(sent.isEmpty());assertTrue(active(owner));
     }
-    @Test void unsafeSourceCacheIsDisabledWithoutFollowingItsRootOrStoppingTerrain() throws Exception {
-        var owner=session();var outside=dir.resolve("foreign");Files.createDirectories(outside);Files.writeString(outside.resolve("keep"),"foreign");
-        var root=dir.resolve("unsafe");Files.createDirectories(root);Files.createSymbolicLink(root.resolve(DhTerrainCache.DIRECTORY),outside);
-        write(owner,SESSION,"terrainCache",new DhTerrainCache(root,new DhTerrainCache.Key("a","s","w",DIMENSION,1,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true))));
-        invoke(owner,"removeCached",new Class<?>[]{DhPosition.class},POSITION);while(!mainTasks.isEmpty())mainTasks.poll().run();
-        assertNull(read(owner,SESSION,"terrainCache"));assertTrue((boolean)read(owner,SESSION,"cacheDisabled"));assertTrue(active(owner));
-        assertEquals("foreign",Files.readString(outside.resolve("keep")));
-    }
-
     @Test void nativeAdvertisementWinsAndLateOfferRetiresDhWithoutTerrain() throws Exception {
         assertTrue(DhClientSession.selected());
         DhClientSession.installNativeAvailability(()->true);
@@ -671,11 +484,10 @@ class DhClientSessionTest {
         DhClientSession.nativeOffer();
         assertFalse(DhClientSession.selected());assertFalse(active(owner));
         assertNull(read(null,DhClientSession.class,"session"));
-        assertNull(read(null,DhClientSession.class,"pendingRetry"));
         assertEquals(0,budget(owner).used());assertTrue(sent.isEmpty());
         // A disabled or unsupported native offer must not be bypassed via DH.
         assertFalse(DhClientSession.selected());DhClientSession.tick();
-        assertTrue(DhClientSession.status().contains("including disabled or incompatible"));
+        assertTrue(DhClientSession.status().contains("DH fallback suppressed"));
         DhClientSession.onJoin();assertTrue(DhClientSession.selected());
     }
     @Test void disablingDhPermissionLeavesOnlyNativeDiscovery() throws Exception {
@@ -688,153 +500,16 @@ class DhClientSessionTest {
         DhClientSession.installNativeAvailability(()->{throw new IllegalStateException("not ready");});
         assertFalse(DhClientSession.selected());
     }
-    private byte[] rejection(DhProfile profile) throws Exception {
-        if(profile!=DhProfile.SUPPORT_15)return new DhProtocolCodec(profile,DhLimits.DEFAULT).encode(new DhMessage.CloseReason("Incompatible protocol version"));
-        var bytes=new java.io.ByteArrayOutputStream();var out=new java.io.DataOutputStream(bytes);
-        out.writeShort(15);out.writeShort(1);byte[] text="Incompatible protocol version".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        out.writeInt(text.length);out.write(text);return bytes.toByteArray();
-    }
-    @Test void defensiveOfficialRejectionAndActualSupportPrefixNeverAcceptTerrainOnTheProbeEpoch() throws Exception {
-        for(var profile:List.of(DhProfile.OFFICIAL_15,DhProfile.SUPPORT_15)) {
-            DhClientSession.disconnect();
-            @SuppressWarnings("unchecked") var hints=(Map<String,DhProfile>)read(null,DhClientSession.class,"protocolHints");
-            hints.remove(minecraft.server.ip);
-            var probe=session();assertEquals(DhProfile.OFFICIAL_16,read(probe,SESSION,"profile"));
-            capture(rejection(profile),System.nanoTime()).receive();
-            pumpUntil(()->!active(probe),"supported advertisement did not retire probe");
-            assertNull(read(probe,SESSION,"config"));assertNull(read(probe,SESSION,"terrainCache"));
-            assertEquals(0,counter(probe,"columns"));
-            if(profile==DhProfile.SUPPORT_15) {
-                assertNull(read(null,DhClientSession.class,"pendingRetry"));
-                var same=session();assertEquals(profile,read(same,SESSION,"profile"));invoke(same,"retire");
-                ((Map<?,?>)read(null,DhClientSession.class,"discoveredProfiles")).clear();
-            } else {assertNotNull(read(null,DhClientSession.class,"pendingRetry"));assertEquals(profile,hints.get(minecraft.server.ip));}
-            DhClientSession.nativeOffer();assertNull(read(null,DhClientSession.class,"pendingRetry"));
-            DhClientSession.disconnect();
-            hints.put(minecraft.server.ip,profile);
-            write(null,DhClientSession.class,"retryJoinPending",true);
-            write(null,DhClientSession.class,"retryServer",minecraft.server);
-            write(null,DhClientSession.class,"retryJoinDeadline",System.nanoTime()+60_000_000_000L);
-            write(null,DhClientSession.class,"trialProfile",profile);
-            DhClientSession.onJoin();var next=session();assertEquals(profile,read(next,SESSION,"profile"));
-            invoke(next,"retire");
-            doReturn(mcMock(net.minecraft.network.Connection.class)).when(connection).getConnection();
-            DhClientSession.onJoin();var fresh=session();assertEquals(DhProfile.OFFICIAL_16,read(fresh,SESSION,"profile"));
-            invoke(fresh,"retire");
-        }
-    }
-    @Test void aSilentVersion16ProbeAllowsOneFreshLegacyTrialWithoutTerrain() throws Exception {
-        var first=session();write(first,SESSION,"announced",true);write(first,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
-        invoke(first,"tick");invoke(first,"tick");invoke(first,"tick");assertFalse(active(first));
-        assertNotNull(read(null,DhClientSession.class,"pendingRetry"));assertTrue(sent.isEmpty());
-        assertEquals(0,budget(first).used());
-        write(null,DhClientSession.class,"retryJoinPending",true);
-        write(null,DhClientSession.class,"retryServer",minecraft.server);
-        write(null,DhClientSession.class,"retryJoinDeadline",System.nanoTime()+60_000_000_000L);
-        DhClientSession.onJoin();var legacy=session();assertEquals(DhProfile.OFFICIAL_15,read(legacy,SESSION,"profile"));
-        write(legacy,SESSION,"announced",true);write(legacy,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
-        invoke(legacy,"tick");invoke(legacy,"tick");invoke(legacy,"tick");assertFalse(active(legacy));assertNull(read(null,DhClientSession.class,"pendingRetry"));
-        assertEquals(0,counter(legacy,"columns"));assertEquals(0,budget(legacy).used());
-    }
-    @Test void missingOrWithdrawnDhChannelCannotScheduleAnAutomaticReconnect() throws Exception {
-        var s=session();write(s,SESSION,"announced",true);write(s,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
-        DhClientSession.installChannelAvailability(()->false);
-        invoke(s,"tick");invoke(s,"tick");invoke(s,"tick");
-        assertFalse(active(s));assertNull(read(null,DhClientSession.class,"pendingRetry"));
-        assertTrue(DhClientSession.status().contains("channel is unavailable"));assertTrue(sent.isEmpty());
-    }
     @Test void capturedAndQueuedConfigurationSurvivesALateClientTick() throws Exception {
         var s=session();write(s,SESSION,"announced",true);write(s,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
         var cfg=new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,true,32,false,0,0,500);
         var inbound=capture(codec(s).encode(cfg),System.nanoTime());
         invoke(s,"tick");invoke(s,"tick");invoke(s,"tick");
-        assertTrue(active(s));assertNull(read(null,DhClientSession.class,"pendingRetry"));
+        assertTrue(active(s),"A quiet server never schedules a reconnect or stops the session");
         inbound.receive();pumpUntil(()->read(s,SESSION,"config")!=null && frameCount(s)==0,"queued config not applied");
-        assertTrue(active(s));assertNull(read(null,DhClientSession.class,"pendingRetry"));
+        assertTrue(active(s));assertSame(connection,minecraft.getConnection());
     }
-    @Test void aConfirmedProtocolSurvivesNullWorldAndSamePhysicalReconfiguration() throws Exception {
-        var first=session();
-        var cfg=new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,true,32,false,0,0,500);
-        capture(codec(first).encode(cfg),System.nanoTime()).receive();pumpUntil(()->frameCount(first)==0,"config did not settle");
-        minecraft.level=null;DhClientSession.tick();assertFalse(active(first));
-        minecraft.level=level;DhClientSession.onJoin();
-        var next=session();write(next,SESSION,"announced",true);write(next,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
-        invoke(next,"tick");invoke(next,"tick");invoke(next,"tick");
-        assertNull(read(null,DhClientSession.class,"pendingRetry"));
-        assertEquals(DhProfile.OFFICIAL_16,read(next,SESSION,"profile"));
-    }
-    @Test void anAutomaticJoinPastSixtySecondsStillConsumesItsOneAllowance() throws Exception {
-        write(null,DhClientSession.class,"retryJoinPending",true);write(null,DhClientSession.class,"retryServer",minecraft.server);
-        write(null,DhClientSession.class,"retryJoinDeadline",System.nanoTime()-1_000_000_000L);
-        DhClientSession.onJoin();assertTrue((boolean)read(null,DhClientSession.class,"retryUsed"));
-    }
-    @Test void malformedOrUnsupportedAdvertisementsCannotScheduleReconnects() throws Exception {
-        for(byte[] frame:List.of(new byte[]{0,17,0,1},new byte[]{0,15,0,1,0,5,'x'})) {
-            DhClientSession.disconnect();var s=session();capture(frame,System.nanoTime()).receive();
-            pumpUntil(()->!active(s) && budget(s).used()==0,"invalid advertisement did not stop/release ownership");
-            assertNull(read(null,DhClientSession.class,"pendingRetry"));assertEquals(0,budget(s).used());
-        }
-    }
-    @Test void theAutomaticReconnectContinuationCannotRetryAgainButAManualJoinCan() throws Exception {
-        write(null,DhClientSession.class,"retryJoinPending",true);
-        write(null,DhClientSession.class,"retryServer",minecraft.server);
-        write(null,DhClientSession.class,"retryJoinDeadline",System.nanoTime()+60_000_000_000L);
-        DhClientSession.onJoin();assertTrue((boolean)read(null,DhClientSession.class,"retryUsed"));
-        var s=session();capture(rejection(DhProfile.OFFICIAL_15),System.nanoTime()).receive();
-        pumpUntil(()->!active(s),"second mismatch did not stop");
-        assertNull(read(null,DhClientSession.class,"pendingRetry"));
-        doReturn(mcMock(net.minecraft.network.Connection.class)).when(connection).getConnection();
-        DhClientSession.onJoin();assertFalse((boolean)read(null,DhClientSession.class,"retryUsed"));
-    }
-
-    @Test void anUnchangedReplyWithoutASourceCannotReconfirmAnUnverifiedQueuedWrite() throws Exception {
-        var s=session();long now=System.nanoTime();
-        settings.store().saveDraft(settings.store().read().hash(),Map.of("lod.dh.sync_on_load",true));
-        settings.commit(settings.prepareReload());invoke(s,"tick");
-        policy(s).accepted(POSITION,0xffff,0xffff,123,now-31_000_000_000L);
-        policy(s).revalidate(POSITION,now);assertTrue(policy(s).due(POSITION,now));
-        pending(s,1,false,now);
-        var ctor=PENDING.getDeclaredConstructor(DhPosition.class,boolean.class,long.class,long.class);ctor.setAccessible(true);
-        pendingMap(s).put(1,ctor.newInstance(POSITION,false,now,123L));
-        capture(codec(s).encode(new DhMessage.Response(1,null,List.of())),System.nanoTime()).receive();
-        pumpUntil(()->pendingMap(s).isEmpty()&&frameCount(s)==0,"owned unchanged response did not settle");
-        assertTrue(active(s));assertEquals(0,policy(s).syncTimestamp(POSITION));
-        assertTrue(policy(s).due(POSITION,System.nanoTime()+3_000_000_000L));assertFalse(policy(s).generationNeeded(POSITION));
-        assertEquals(0,((java.util.concurrent.atomic.AtomicLong)read(s,SESSION,"tiles")).get());
-        assertEquals(0,((java.util.concurrent.atomic.AtomicLong)read(s,SESSION,"columns")).get());
-        assertEquals(0,budget(s).used());assertTrue(sent.isEmpty());
-    }
-
-
     @Test void stationaryOfficialAbsenceStopsPollingWithRefreshOff() throws Exception { stationaryAbsence(0); }
-
-    private void stationaryAbsence(int refreshSeconds) throws Exception {
-        var s=session();long origin=System.nanoTime();var player=new ChunkPos(2,2);
-        minecraft.player=mcMock(LocalPlayer.class);write(minecraft.player,LocalPlayer.class,"connection",connection);
-        doReturn(player).when(minecraft.player).chunkPosition();
-        settings.store().saveDraft(settings.store().read().hash(),Map.of("lod.distance_chunks",48));
-        settings.commit(settings.prepareReload());
-        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.SURFACE_THEN_CHUNKS,
-                32,0,0,0,1,false,0,true,2048,50,500));
-        write(s,SESSION,"levelKey","test-world");
-        for(int x=-8;x<=8;x++)for(int z=-8;z<=8;z++)
-            policy(s).accepted(new DhPosition(6,x,z),0xffff,0xffff,123,origin);
-        int absentRequests=0,refreshRequests=0;var absentTiles=new HashSet<DhPosition>();
-        // Three stationary hours at the actual ten-second refresh ceiling. Drive
-        // the production scanner, sender, empty-response handling and worker.
-        for(int second=0;second<=10_800;second+=10) {
-            int before=sent.size();invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},origin+second*1_000_000_000L,player);
-            if(pendingMap(s).isEmpty())continue;
-            pumpUntil(()->sent.size()>before,"scanner did not send its owned request");
-            var request=(DhMessage.Request)codec(s).decode(sent.getLast());
-            if(request.timestamp()!=null && request.timestamp()>0)refreshRequests++;
-            else {absentRequests++;assertTrue(absentTiles.add(request.position()),"Unreachable absence was re-polled");}
-            capture(codec(s).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
-            pumpUntil(()->pendingMap(s).isEmpty()&&frameCount(s)==0,"empty response did not settle");
-        }
-        assertEquals(625-289,absentRequests);assertEquals(0,refreshRequests);
-        assertTrue(active(s));assertEquals(0,budget(s).used());
-    }
 
     @Test void resetSweepFailureRetiresTheSessionAndReportsStoppedWithoutClearingReceipts() throws Exception {
         var s=session();policy(s).accepted(POSITION,1,1,123,System.nanoTime());
@@ -884,11 +559,6 @@ class DhClientSessionTest {
         waitWorker(s);Runnable task;while((task=mainTasks.poll())!=null)task.run();
         return sent.size()==before?null:(DhMessage.Request)codec(s).decode(sent.getLast());
     }
-    private void completeScan(Object s,DhMessage.Request request,long now) throws Exception {
-        assembly(s).cancel(request.requestId());pendingMap(s).remove(request.requestId());
-        assertTrue(policy(s).unchanged(request.position(),request.timestamp(),now));
-    }
-
     @Test void aConnectionAuthorityBlockReportsReconnectRequiredWithoutBlamingVoxy() {
         var state=(DhConnectionState)read(null,DhClientSession.class,"connectionState");
         for(int i=0;i<16;i++)state.policy("test:dimension_"+i);
@@ -1025,7 +695,7 @@ class DhClientSessionTest {
 
     @Test void terminalFailureCancelsOfficialGenerationOnceOnTheCapturedConnection() throws Exception {
         var s=session();long now=System.nanoTime();pending(s,7,true,now);pending(s,8,false,now);
-        invoke(s,"fail",new Class<?>[]{String.class},"test terminal failure");
+        invoke(s,"fail",new Class<?>[]{String.class,DhStatusSnapshot.Reason.class},"test terminal failure",DhStatusSnapshot.Reason.SOURCE_STOPPED);
         assertFalse(active(s));assertTrue(sent.isEmpty(),"cancel is sent by the scheduled retirement");
         pumpUntil(()->worker(s).isTerminated(),"terminal failure did not drain");
         assertEquals(1,sent.size());assertEquals(new DhMessage.Cancel(7),codec(s).decode(sent.getFirst()));
@@ -1038,7 +708,7 @@ class DhClientSessionTest {
     @Test void retirementDoesNotSendAnOldRequestCancelOnAReplacementConnection() throws Exception {
         var s=session();pending(s,7,true,System.nanoTime());
         var replacement=mcMock(ClientPacketListener.class);write(minecraft.player,LocalPlayer.class,"connection",replacement);
-        invoke(s,"fail",new Class<?>[]{String.class},"connection replacement");
+        invoke(s,"fail",new Class<?>[]{String.class,DhStatusSnapshot.Reason.class},"connection replacement",DhStatusSnapshot.Reason.SOURCE_STOPPED);
         pumpUntil(()->worker(s).isTerminated(),"replacement-connection retirement did not drain");
         assertTrue(sent.isEmpty());assertTrue(pendingMap(s).isEmpty());assertEquals(0,budget(s).used());
         assertSame(replacement,minecraft.getConnection());
@@ -1119,7 +789,7 @@ class DhClientSessionTest {
             replayContent(s,31,false);
             assertEquals(15,counter(s,"columns"));assertEquals(1,counter(s,"failedColumns"));
             assertEquals(0,counter(s,"tiles"));assertEquals(0,policy(s).syncTimestamp(CONTENT_POSITION));
-            assertFalse(policy(s).unchanged(CONTENT_POSITION,1,System.nanoTime()));
+            assertFalse(policy(s).hasSnapshot(CONTENT_POSITION));
             assertEquals(0,budget(s).used());assertTrue(active(s));
             me.cortex.voxy.common.world.service.VoxelIngestService.behavior=call->true;
             replayContent(s,32,false);
@@ -1136,7 +806,7 @@ class DhClientSessionTest {
             replayContent(s,32,true);
             assertEquals(stamp,policy(s).timestamp(CONTENT_POSITION));
             assertEquals(0,policy(s).syncTimestamp(CONTENT_POSITION));
-            assertFalse(policy(s).unchanged(CONTENT_POSITION,stamp,System.nanoTime()));
+            assertFalse(policy(s).hasSnapshot(CONTENT_POSITION),"A failed refresh cannot keep its old conditional receipt");
             assertEquals(1,counter(s,"tiles"));assertEquals(16,counter(s,"failedColumns"));
             assertEquals(0,budget(s).used());
         }
@@ -1162,32 +832,6 @@ class DhClientSessionTest {
             assertTrue(me.cortex.voxy.common.world.service.VoxelIngestService.calls.stream()
                     .noneMatch(call->call.chunkX()==-12&&call.chunkZ()==0));
             assertEquals(0,budget(s).used());
-        }
-    }
-
-    @Test void vanillaAuthorityBetweenExpansionAndHandoffCannotEnqueueTheConvertedColumn() throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var s=deliverySession(-128,512);startContent(s,31,false);
-            takeMain().run(); // response bookkeeping
-            takeMain().run(); // first column's pre-expansion permission
-            var handoff=takeMain();assertEquals(1,counter(s,"converted"));
-            assertTrue(me.cortex.voxy.common.world.service.VoxelIngestService.calls.isEmpty());
-            DhClientSession.vanillaLoaded(level,-12,0);handoff.run();settleDelivery(s);
-            assertEquals(15,counter(s,"columns"));assertEquals(1,counter(s,"skipped"));
-            assertTrue(me.cortex.voxy.common.world.service.VoxelIngestService.calls.stream()
-                    .noneMatch(call->call.chunkX()==-12&&call.chunkZ()==0));
-            assertEquals(0,budget(s).used());
-        }
-    }
-
-    @Test void retirementDuringConversionRejectsTheAlreadyQueuedHandoff() throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var s=deliverySession(-128,512);startContent(s,31,false);
-            takeMain().run();takeMain().run();var handoff=takeMain();
-            assertEquals(1,counter(s,"converted"));assertTrue((boolean)invoke(s,"retire"));
-            handoff.run();while(!mainTasks.isEmpty())takeMain().run();
-            assertTrue(me.cortex.voxy.common.world.service.VoxelIngestService.calls.isEmpty());
-            assertEquals(0,policy(s).syncTimestamp(CONTENT_POSITION));assertEquals(0,budget(s).used());
         }
     }
 
@@ -1232,160 +876,6 @@ class DhClientSessionTest {
         assertEquals(123,policy(s).timestamp(POSITION));
     }
 
-    @Test void timedOutCacheOpenClosesTheWorldReferenceWhenTheClientActionEventuallyFinishes() throws Exception {
-        abandonedCacheOpen(false);
-    }
-    @Test void interruptedCacheOpenClosesTheWorldReferenceWhenTheClientActionEventuallyFinishes() throws Exception {
-        abandonedCacheOpen(true);
-    }
-    private void abandonedCacheOpen(boolean interrupt) throws Exception {
-        var s=session();var entered=new CountDownLatch(1);var finish=new CountDownLatch(1);
-        var closes=new java.util.concurrent.atomic.AtomicInteger();
-        var caller=new java.util.concurrent.atomic.AtomicReference<Thread>();
-        Callable<AutoCloseable> action=()->{
-            entered.countDown();assertTrue(finish.await(15,TimeUnit.SECONDS));return closes::incrementAndGet;
-        };
-        var job=worker(s).submit(()->{caller.set(Thread.currentThread());return invoke(s,"onMain",new Class<?>[]{Callable.class},action);});
-        var client=new Thread(takeMain(),"test-slow-cache-open");client.start();
-        try {
-            assertTrue(entered.await(5,TimeUnit.SECONDS));
-            if(interrupt)caller.get().interrupt();
-            var failure=assertThrows(ExecutionException.class,()->job.get(10,TimeUnit.SECONDS));
-            if(interrupt)assertInstanceOf(InterruptedException.class,failure.getCause());
-            else assertInstanceOf(TimeoutException.class,failure.getCause());
-        } finally {finish.countDown();client.join(10_000);}
-        assertFalse(client.isAlive());assertEquals(1,closes.get());
-    }
-    @Test void warmSourceReplaySurvivesDisconnectAndUsesAConditionalRequestWithoutVoxyStorage() throws Exception {
-        try(var voxy=new DeliveryBridge();var destination=new DestinationBridge(true)) {
-            var shape=new DhTerrainTile.WorldShape(-64,384,true);var position=new DhPosition(6,4,-3);
-            byte[] dto=resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto");long stamp;
-            var tempBudget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
-            try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(dto,DhProfile.OFFICIAL_16,position,shape,tempBudget)) {stamp=tile.modifiedTimestamp();}
-            var key=new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape);
-            new DhTerrainCache(dir.resolve("dh-cache"),key).write(position,stamp,dto);
-            var old=deliverySession(-64,384);DhClientSession.disconnect();
-            var s=deliverySession(-64,384);assertNotSame(old,s);
-
-            write(s,SESSION,"terrainCache",new DhTerrainCache(dir.resolve("dh-cache"),key));
-            invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},position,System.nanoTime());
-            pumpUntil(()->!sent.isEmpty(),"cache validation request not sent");
-            assertEquals(0,counter(s,"columns"),"Source must not be enqueued before validation");
-            assertEquals(0,policy(s).syncTimestamp(position),"Source proof is not a Voxy acceptance receipt");
-            var request=(DhMessage.Request)codec(s).decode(sent.getLast());assertEquals(stamp,request.timestamp());
-            capture(codec(s).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
-            pumpUntil(()->pendingMap(s).isEmpty()&&frameCount(s)==0&&counter(s,"cacheHits")==1,"unchanged cached response did not settle");
-            assertEquals(16,counter(s,"columns"));assertFalse(policy(s).due(position,Long.MAX_VALUE));assertEquals(0,budget(s).used());
-        }
-    }
-
-    @Test void networkResponseCachesValidatedSourceAndASecondConnectionRestoresIt() throws Exception {
-        try(var voxy=new DeliveryBridge();var destination=new DestinationBridge(true)) {
-            DestinationEngine.observedIngest=true;
-            var shape=new DhTerrainTile.WorldShape(-128,512,true);
-            var key=new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape);
-            var cache=new DhTerrainCache(dir.resolve("dh-cache"),key);var s=deliverySession(-128,512);
-            write(s,SESSION,"terrainCache",cache);replayContent(s,1,false);
-            assertEquals(1,counter(s,"cacheWrites"));assertEquals(Set.of(CONTENT_POSITION),cache.positions());
-            long stamp=policy(s).syncTimestamp(CONTENT_POSITION);DhClientSession.disconnect();sent.clear();
-            me.cortex.voxy.common.world.service.VoxelIngestService.committed.clear();
-            var replacement=deliverySession(-128,512);write(replacement,SESSION,"terrainCache",new DhTerrainCache(dir.resolve("dh-cache"),key));
-            invoke(replacement,"restoreCache",new Class<?>[]{DhPosition.class,long.class},CONTENT_POSITION,System.nanoTime());
-            pumpUntil(()->!sent.isEmpty(),"network cache validation not sent");
-            var request=(DhMessage.Request)codec(replacement).decode(sent.getLast());
-            assertEquals(stamp,request.timestamp());assertEquals(0,counter(replacement,"columns"));
-            capture(codec(replacement).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
-            pumpUntil(()->counter(replacement,"cacheHits")==1&&frameCount(replacement)==0,"network cache not replayed");
-            assertEquals(stamp,policy(replacement).syncTimestamp(CONTENT_POSITION));assertEquals(16,counter(replacement,"columns"));
-        }
-    }
-
-    @Test void corruptedSourceCannotCreateATimestampReceiptOrAnUnchangedShortcut() throws Exception {
-        try(var voxy=new DeliveryBridge()) {
-            var shape=new DhTerrainTile.WorldShape(-64,384,true);var position=new DhPosition(6,4,-3);
-            var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
-            cache.write(position,123,new byte[]{1,2,3});var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);
-            invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},position,System.nanoTime());
-            pumpUntil(()->worker(s).getCompletedTaskCount()>0&&read(s,SESSION,"cacheLoading")==null,"invalid cache did not settle");
-            assertEquals(0,counter(s,"cacheHits"));assertEquals(0,counter(s,"columns"));assertEquals(0,policy(s).syncTimestamp(position));
-            assertTrue(policy(s).due(position,System.nanoTime()));assertTrue(cache.positions().isEmpty());assertEquals(0,budget(s).used());
-        }
-    }
-
-    @Test void rawSourceTimestampMismatchCannotBecomeAConditionalReceipt() throws Exception {
-        try(var voxy=new DeliveryBridge()) {
-            var shape=new DhTerrainTile.WorldShape(-64,384,true);var position=new DhPosition(6,4,-3);
-            var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
-            cache.write(position,123,resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto"));
-            var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);
-            invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},position,System.nanoTime());
-            pumpUntil(()->worker(s).getCompletedTaskCount()>0&&read(s,SESSION,"cacheLoading")==null,"timestamp mismatch did not settle");
-            assertEquals(0,counter(s,"columns"));assertEquals(0,policy(s).syncTimestamp(position));assertTrue(cache.positions().isEmpty());
-        }
-    }
-
-    @Test void resetClearsPersistedSourceAndNativeInvalidationPreservesIt() throws Exception {
-        var cache=new DhTerrainCache(ColumnCacheStore.cacheRoot(),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,
-                DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true)));
-        cache.write(POSITION,123,new byte[]{1});
-        try {
-            ColumnCacheStore.clearForServersStrict(List.of(cacheComponent));assertEquals(Set.of(POSITION),cache.positions());
-            var s=session();DhClientSession.drainForReset();
-            assertFalse(active(s));assertTrue(cache.positions().isEmpty());assertEquals(0,budget(s).used());
-        } finally {ColumnCacheStore.clearDhTerrain(minecraft.server.ip);}
-    }
-
-    @Test void queuedButUncommittedDeliveryNeverPublishesASourceSnapshotAndReconnectFetchesItAgain() throws Exception {
-        try(var bridge=new DeliveryBridge();var destination=new DestinationBridge(true)) {
-            DestinationEngine.observedIngest=true;
-            var key=new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-128,512,true));
-            var cache=new DhTerrainCache(dir.resolve("queued-cache"),key);
-            var first=deliverySession(-128,512);write(first,SESSION,"terrainCache",cache);
-            me.cortex.voxy.common.world.service.VoxelIngestService.commitImmediately=false;
-            replayContent(first,1,false);
-            assertTrue(active(first));assertEquals(16,counter(first,"columns"));
-            assertEquals(0,counter(first,"cacheWrites"));assertTrue(cache.positions().isEmpty());
-            assertEquals(1,counter(first,"cacheDeclined"));DhClientSession.disconnect();
-            var next=deliverySession(-128,512);write(next,SESSION,"terrainCache",cache);
-            me.cortex.voxy.common.world.service.VoxelIngestService.commitImmediately=true;
-            replayContent(next,2,false);assertEquals(16,counter(next,"columns"));assertEquals(1,counter(next,"cacheWrites"));
-        }
-    }
-    @Test void aRejectedChangedColumnInvalidatesTheOldSourceAndCannotFreezeItOnRejoin() throws Exception {
-        try(var bridge=new DeliveryBridge();var destination=new DestinationBridge(true)) {
-            DestinationEngine.observedIngest=true;
-            var cache=new DhTerrainCache(dir.resolve("rejected-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-128,512,true)));
-            var first=deliverySession(-128,512);write(first,SESSION,"terrainCache",cache);replayContent(first,1,false);
-            assertEquals(1,counter(first,"cacheWrites"));
-            me.cortex.voxy.common.world.service.VoxelIngestService.behavior=call->call.chunkX()!=-12 || call.chunkZ()!=0;
-            replayContent(first,2,true);assertTrue(cache.positions().isEmpty());DhClientSession.disconnect();
-            var next=deliverySession(-128,512);write(next,SESSION,"terrainCache",cache);
-            me.cortex.voxy.common.world.service.VoxelIngestService.behavior=call->true;
-            replayContent(next,3,true);assertEquals(16,counter(next,"columns"));assertEquals(1,counter(next,"cacheWrites"));
-        }
-    }
-    @Test void partialTerrainCannotBePersistedAsACompleteSourceSnapshot() throws Exception {
-        try(var voxy=new DeliveryBridge()) {
-            var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,
-                    DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true)));
-            var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);var p=new DhPosition(6,-1,1);
-            cache.write(p,1,new byte[]{1});
-            pendingAt(s,2,p,0);
-            for(int frame=4;frame<=6;frame++)capture(resource("dh-official-3.3.3-neoforge-partial",String.format("received-%04d.bin",frame)),System.nanoTime()).receive();
-            settleDelivery(s);assertEquals(0,counter(s,"cacheWrites"));assertTrue(cache.positions().isEmpty());assertEquals(0,budget(s).used());
-        }
-    }
-
-    @Test void failedSourceReplacementInvalidatesOldDataBeforeDeliveringTheNewTile() throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var real=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-128,512,true)));
-            DestinationEngine.observedIngest=true;
-            real.write(CONTENT_POSITION,5,new byte[]{1});var cache=spy(real);
-            doThrow(new java.nio.file.AccessDeniedException("test replacement denied")).when(cache).write(any(DhPosition.class),anyLong(),any(byte[].class));
-            var s=deliverySession(-128,512);write(s,SESSION,"terrainCache",cache);replayContent(s,1,false);
-            assertTrue(real.positions().isEmpty());assertEquals(0,counter(s,"cacheWrites"));assertEquals(16,counter(s,"columns"));assertTrue(active(s));
-        }
-    }
     @Test void slowRetiredWorkerPreventsResetFromClearingUnderItsLateWork() throws Exception {
         var old=session();var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
         worker(old).submit(()-> {entered.countDown();while(release.getCount()>0)try {release.await();}catch(InterruptedException ignored) {}});
@@ -1395,192 +885,6 @@ class DhClientSessionTest {
             assertThrows(IllegalStateException.class,DhClientSession::drainForReset);
             assertTrue(active(replacement),"Reset must abort before touching the new owner");
         } finally {release.countDown();assertTrue(worker(old).awaitTermination(5,TimeUnit.SECONDS));invoke(old,"retire");}
-    }
-    @Test void cacheDeadlineCoolsOnlyItsTileAndRetainsTheLocalRetry() throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var s=deliverySession(-64,384);write(s,SESSION,"cacheInvalidated",true);
-            write(s,SESSION,"cacheLoading",POSITION);write(s,SESSION,"cacheWorkStarted",System.nanoTime()-61_000_000_000L);
-            assertFalse(DhVoxyBridge.ready(level),"Housekeeping must run even when Voxy is not ready");
-            invoke(s,"tick");
-            assertTrue(active(s));assertNull(read(s,SESSION,"cacheLoading"));
-            assertTrue(((Set<?>)read(s,SESSION,"cachedPositions")).contains(POSITION));assertEquals(0,policy(s).syncTimestamp(POSITION));
-        }
-    }
-    @Test void actualScannerOverlapsTwoCachedChecksAtTheFiftyMillisecondFloor() throws Exception {
-        try(var bridge=new ReadyBridge()) {
-            var shape=new DhTerrainTile.WorldShape(-128,512,true);
-            var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
-            var s=deliverySession(-128,512);write(s,SESSION,"terrainCache",cache);
-            write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,true,12,20,500));
-            var temp=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());long stamp;
-            byte[] dto=resource("dh-official-3.3.3-neoforge-content","target-0002-split.bin");
-            // Use a real complete captured tile at (-3,0).
-            var producer=new DhAssembly(DhLimits.DEFAULT,temp);producer.expect(100,CONTENT_POSITION);
-            producer.accept((DhMessage.Split)codec(s).decode(dto));
-            var original=(DhMessage.Response)codec(s).decode(resource("dh-official-3.3.3-neoforge-content","target-0003-response.bin"));
-            try(var complete=producer.response(new DhMessage.Response(100,original.bufferId(),original.beacons()));var tile=complete.decode(new DhTerrainDecoder(DhLimits.DEFAULT),DhProfile.OFFICIAL_16,shape)) {
-                stamp=tile.modifiedTimestamp();complete.cache(cache,stamp);
-                byte[] second=((byte[])read(complete,complete.getClass(),"data")).clone();
-                var next=new DhPosition(6,-3,1);java.nio.ByteBuffer.wrap(second).putLong(next.packed());
-                assertTrue(cache.write(next,stamp,second));
-            } finally {producer.close();}
-            ((Set<DhPosition>)read(s,SESSION,"cachedPositions")).add(CONTENT_POSITION);
-            ((Set<DhPosition>)read(s,SESSION,"cachedPositions")).add(new DhPosition(6,-3,1));
-            setting(Map.of("lod.distance_chunks",8));
-            for(int x=-32;x<=8;x++)for(int z=-16;z<=16;z++)if(!(x>=-12 && x<=-9 && z>=0 && z<=7))policy(s).vanilla(x,z);
-            write(s,SESSION,"nextScanAt",System.nanoTime()+500_000_000L);
-            for(int x=1;x<100;x++)((Set<DhPosition>)read(s,SESSION,"cachedPositions")).add(new DhPosition(6,x,0));
-            invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},System.nanoTime(),new ChunkPos(-12,0));
-            pumpUntil(()->!sent.isEmpty(),"scanner did not send first validation");
-            assertEquals(0,counter(s,"columns"));assertEquals(0,counter(s,"cacheHits"));
-            var request=(DhMessage.Request)codec(s).decode(sent.getFirst());assertEquals(CONTENT_POSITION,request.position());assertEquals(stamp,request.timestamp());
-            assertTrue(((Set<?>)read(s,SESSION,"cachedPositions")).size()>=99);
-            long at=(long)read(s,SESSION,"lastRequest");assertTrue((long)read(s,SESSION,"nextScanAt")<=at+50_000_000L);
-            pumpUntil(()->read(s,SESSION,"cacheLoading")==null,"first cache task did not clear");
-            long remaining=at+51_000_000L-System.nanoTime();if(remaining>0)TimeUnit.NANOSECONDS.sleep(remaining);
-            invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},System.nanoTime(),new ChunkPos(-12,0));
-            pumpUntil(()->sent.size()>=2,"second cache check did not overlap the first request");
-            assertEquals(2,pendingMap(s).size());assertEquals(new DhPosition(6,-3,1),((DhMessage.Request)codec(s).decode(sent.getLast())).position());
-        }
-    }
-    @Test void checksumValidButUndecodableSourceIsRemovedWithoutStoppingTheSession() throws Exception {
-        var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true)));
-        cache.write(POSITION,123,new byte[]{1,2,3});var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);
-        invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},POSITION,System.nanoTime());
-        pumpUntil(()->worker(s).getCompletedTaskCount()>0&&read(s,SESSION,"cacheLoading")==null,"bad DTO not resolved");
-        assertTrue(active(s));assertTrue(cache.positions().isEmpty());assertEquals(0,budget(s).used());
-    }
-    @Test void restoringUnderBudgetPressureKeepsTheFileAndSchedulesALocalRetry() throws Exception {
-        var shape=new DhTerrainTile.WorldShape(-64,384,true);var position=new DhPosition(6,4,-3);
-        var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
-        byte[] dto=resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto");var temp=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());long stamp;
-        try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(dto,DhProfile.OFFICIAL_16,position,shape,temp)) {stamp=tile.modifiedTimestamp();}
-        cache.write(position,stamp,dto);var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);
-        try(var pressure=budget(s).reserve(DhLimits.DEFAULT.ownedBytes()-1)) {
-            invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},position,System.nanoTime());
-            pumpUntil(()->read(s,SESSION,"cacheLoading")==null&&worker(s).getCompletedTaskCount()>0,"pressure retry did not settle");
-            assertTrue(active(s));assertEquals(Set.of(position),cache.positions());
-            assertTrue(((Set<?>)read(s,SESSION,"cachedPositions")).contains(position));assertEquals(0,policy(s).syncTimestamp(position));
-        }
-        assertEquals(0,budget(s).used());
-    }
-    @Test void unchangedRestorePreservesPreviouslyVanillaRefinedDestinationAcrossDisconnect() throws Exception {
-        verifyDestinationRestore(false);
-    }
-    @Test void unchangedRestoreRebuildsActualDefaultDestinationAfterVoxyLoss() throws Exception {
-        verifyDestinationRestore(true);
-    }
-    private void verifyDestinationRestore(boolean defaults) throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var old=deliverySession(-64,384);DhClientSession.vanillaLoaded(level,16,-12);
-            assertFalse(policy(old).eligible(16,-12));DhClientSession.disconnect();
-            var s=deliverySession(-64,384);assertTrue(policy(s).eligible(16,-12));
-            var compat=Class.forName("dev.vox.lss.compat.VoxyCompat");
-            var resolver=read(null,compat,"classResolver");
-            var resolverType=compat.getDeclaredField("classResolver").getType();
-            DestinationEngine.defaults=defaults;
-            write(null,compat,"classResolver",java.lang.reflect.Proxy.newProxyInstance(resolverType.getClassLoader(),new Class<?>[]{resolverType},(proxy,method,args)->switch(((String)args[0]).substring(((String)args[0]).lastIndexOf('.')+1)) {
-                case "WorldIdentifier"->DestinationIdentifier.class;case "WorldEngine"->DestinationEngine.class;
-                case "WorldSection"->DestinationSection.class;case "Mapper"->DestinationMapper.class;default->throw new ClassNotFoundException((String)args[0]);
-            }));
-            try(var reader=DhVoxyBridge.openCache(level)) {
-                assertNotNull(reader);
-                var temp=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());var p=new DhPosition(6,4,-3);
-                try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto"),DhProfile.OFFICIAL_16,p,new DhTerrainTile.WorldShape(-64,384,true),temp)) {
-                    var job=worker(s).submit(()->invoke(s,"deliver",new Class<?>[]{DhTerrainTile.class,DhPosition.class,boolean.class,dev.vox.lss.compat.VoxyTerrainCache.class,boolean.class},tile,p,false,reader,false));
-                    pumpUntil(job::isDone,"destination reuse did not finish");assertEquals(true,job.get());
-                    assertEquals(defaults?16:0,counter(s,"converted"));assertEquals(defaults?16:0,counter(s,"columns"));
-                    assertEquals(defaults?0:16,counter(s,"cachePreservedColumns"));assertEquals(0,counter(s,"cacheReusedColumns"));
-                }
-                assertEquals(0,DestinationIdentifier.engine.refs);
-            } finally {write(null,compat,"classResolver",resolver);}
-        }
-    }
-    private final class DestinationBridge implements AutoCloseable {
-        final Class<?> compat=Class.forName("dev.vox.lss.compat.VoxyCompat");
-        final Object previous=read(null,compat,"classResolver");
-        DestinationBridge(boolean defaults) throws Exception {
-            var resolverType=compat.getDeclaredField("classResolver").getType();DestinationEngine.defaults=defaults;
-            write(null,compat,"classResolver",java.lang.reflect.Proxy.newProxyInstance(resolverType.getClassLoader(),new Class<?>[]{resolverType},(proxy,method,args)->switch(((String)args[0]).substring(((String)args[0]).lastIndexOf('.')+1)) {
-                case "WorldIdentifier"->DestinationIdentifier.class;case "WorldEngine"->DestinationEngine.class;
-                case "WorldSection"->DestinationSection.class;case "Mapper"->DestinationMapper.class;default->throw new ClassNotFoundException((String)args[0]);
-            }));
-        }
-        public void close(){write(null,compat,"classResolver",previous);}
-    }
-    @Test void unavailableDestinationComparisonDefersCachedSourceWithoutOverwritingTerrain() throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var shape=new DhTerrainTile.WorldShape(-64,384,true);var p=new DhPosition(6,4,-3);
-            var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
-            var dto=resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto");long stamp;
-            try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(dto,DhProfile.OFFICIAL_16,p,shape,new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes()))) {stamp=tile.modifiedTimestamp();}
-            cache.write(p,stamp,dto);var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);
-            assertNull(DhVoxyBridge.openCache(level),"This ABI has ingest but no destination reader");
-            invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},p,System.nanoTime());
-            pumpUntil(()->!sent.isEmpty(),"validation not sent");var request=(DhMessage.Request)codec(s).decode(sent.getLast());
-            capture(codec(s).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
-            settleDelivery(s);
-            assertTrue(active(s));assertEquals(0,counter(s,"columns"));assertEquals(0,counter(s,"converted"));
-            assertEquals(0,counter(s,"cacheHits"));assertEquals(0,policy(s).syncTimestamp(p));
-            assertTrue(((Set<?>)read(s,SESSION,"cachedPositions")).contains(p));assertEquals(Set.of(p),cache.positions());
-            assertTrue(((String)read(s,SESSION,"cacheStatus")).contains("destination verification unavailable"));
-        }
-    }
-    @Test void vanillaArrivalAtSecondCacheCheckDoesNotCountThatColumnAsReuse() throws Exception {
-        try(var bridge=new DeliveryBridge();var destination=new DestinationBridge(false)) {
-            var s=deliverySession(-64,384);var p=new DhPosition(6,4,-3);
-            try(var reader=DhVoxyBridge.openCache(level);var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(
-                    resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto"),DhProfile.OFFICIAL_16,p,
-                    new DhTerrainTile.WorldShape(-64,384,true),new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes()))) {
-                assertNotNull(reader);
-                var job=worker(s).submit(()->invoke(s,"deliver",new Class<?>[]{DhTerrainTile.class,DhPosition.class,boolean.class,dev.vox.lss.compat.VoxyTerrainCache.class,boolean.class},tile,p,false,reader,false));
-                takeMain().run(); // first eligibility check permits a comparison
-                var authority=takeMain();DhClientSession.vanillaLoaded(level,16,-12);authority.run();
-                pumpUntil(job::isDone,"second authority check did not finish");assertEquals(true,job.get());
-                assertEquals(15,counter(s,"cachePreservedColumns"));assertEquals(0,counter(s,"cacheReusedColumns"));
-                assertEquals(1,counter(s,"skipped"));assertEquals(0,counter(s,"columns"));assertEquals(0,counter(s,"converted"));
-            }
-        }
-    }
-    @Test void failedLruTouchPreservesAValidSourceButCannotSkipDestinationVerification() throws Exception {
-        var p=new DhPosition(6,4,-3);var dto=resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto");
-        long stamp=java.nio.ByteBuffer.wrap(dto).getLong(dto.length-16);
-        doReturn(-64).when(level).getMinBuildHeight();doReturn(384).when(level).getHeight();
-        var dimension=mock(net.minecraft.world.level.dimension.DimensionType.class);doReturn(true).when(dimension).hasSkyLight();doReturn(dimension).when(level).dimensionType();
-        var cache=spy(new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true))));
-        cache.write(p,stamp,dto);doThrow(new java.nio.file.AccessDeniedException("busy metadata")).when(cache).touch(p);
-        var owner=session();write(owner,SESSION,"terrainCache",cache);policy(owner).accepted(p,0xffff,0xffff,stamp,System.nanoTime());pendingAt(owner,1,p,stamp);
-        capture(codec(owner).encode(new DhMessage.Response(1,null,List.of())),System.nanoTime()).receive();settleDelivery(owner);
-        assertTrue(active(owner));assertTrue(cache.positions().contains(p));
-        assertFalse(policy(owner).hasSnapshot(p),"An unavailable destination reader cannot confirm an old enqueue");
-        assertTrue(policy(owner).due(p,System.nanoTime()+3_000_000_000L));
-    }
-
-    @Test void timestampZeroCachedSourceRequestsFullDataAndAnAbsentReplyInvalidatesIt() throws Exception {
-        var p=new DhPosition(6,4,-3);var shape=new DhTerrainTile.WorldShape(-64,384,true);
-        var dto=resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto");
-        // Official envelope's first final timestamp is modified time, independent
-        // of compressed terrain. Model a valid producer reporting timestamp zero.
-        java.nio.ByteBuffer.wrap(dto).putLong(dto.length-16,0L);
-        var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
-        cache.write(p,0,dto);var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);
-        invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},p,System.nanoTime());
-        pumpUntil(()->!sent.isEmpty(),"timestamp-zero source was not checked");
-        var request=(DhMessage.Request)codec(s).decode(sent.getLast());assertEquals(0,request.timestamp());assertEquals(0,counter(s,"columns"));
-        capture(codec(s).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();settleDelivery(s);
-        assertTrue(cache.positions().isEmpty());assertEquals(0,counter(s,"cacheHits"));assertTrue(active(s));
-    }
-    @Test void clearCacheInDhModeClearsOnlyTheCurrentRemoteAddress() throws Exception {
-        var shape=new DhTerrainTile.WorldShape(-64,384,true);String other="other-dh-"+UUID.randomUUID();
-        var current=new DhTerrainCache(ColumnCacheStore.cacheRoot(),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
-        var retained=new DhTerrainCache(ColumnCacheStore.cacheRoot(),new DhTerrainCache.Key(other,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
-        current.write(POSITION,123,new byte[]{1});retained.write(POSITION,123,new byte[]{1});var s=session();
-        var feedback=new ArrayList<net.minecraft.network.chat.Component>();
-        try {
-            ClientCommandActions.clearCache(feedback::add);
-            assertFalse(active(s));assertTrue(current.positions().isEmpty());assertEquals(Set.of(POSITION),retained.positions());
-            assertEquals(1,feedback.size());assertTrue(feedback.getFirst().getString().contains("current server"));
-        } finally {ColumnCacheStore.clearDhTerrain(other);}
     }
     public static final class DestinationIdentifier {
         static final DestinationEngine engine=new DestinationEngine();
@@ -1657,8 +961,7 @@ class DhClientSessionTest {
         return s;
     }
     private void pendingAt(Object s,int id,DhPosition position,long stamp) throws Exception {
-        var ctor=PENDING.getDeclaredConstructor(DhPosition.class,boolean.class,long.class,long.class);ctor.setAccessible(true);
-        pendingMap(s).put(id,ctor.newInstance(position,false,System.nanoTime(),stamp));assembly(s).expect(id,position);
+        pendingMap(s).put(id,newPending(s,position,false,System.nanoTime(),stamp));assembly(s).expect(id,position);
     }
     private static byte[] resource(String corpus,String name) throws Exception {
         try(var stream=DhClientSessionTest.class.getResourceAsStream("/dh-corpus/"+corpus+"/"+name)) {
@@ -1725,7 +1028,7 @@ class DhClientSessionTest {
         policy(s).accepted(new DhPosition(6,0,0),1,1,123,now);
         invoke(s,"observeLoaded",new Class<?>[]{long.class,ChunkPos.class},now,new ChunkPos(2,2));
         assertTrue(policy(s).due(new DhPosition(6,0,0),now));
-        assertTrue(policy(s).unchanged(new DhPosition(6,0,0),123,now));
+        assertEquals(123,policy(s).syncTimestamp(new DhPosition(6,0,0)));assertTrue(policy(s).accepted(new DhPosition(6,0,0),1,1,123,now));
         invoke(s,"observeLoaded",new Class<?>[]{long.class,ChunkPos.class},now+30*60_000_000_000L,new ChunkPos(2,2));
         assertFalse(policy(s).due(new DhPosition(6,0,0),Long.MAX_VALUE),"Elapsed time must not poll terrain");
         invoke(s,"observeLoaded",new Class<?>[]{long.class,ChunkPos.class},now+30*60_000_000_000L,new ChunkPos(1000,1000));
@@ -1753,52 +1056,8 @@ class DhClientSessionTest {
             pumpUntil(()->frameCount(s)==0,"push timeout did not settle");
             assertTrue(active(s));assertTrue(policy(s).due(CONTENT_POSITION,System.nanoTime()));
             assertEquals(0,policy(s).timestamp(CONTENT_POSITION));
-            assertEquals(512,budget(s).used(),"Only the small timestamp fence remains; captured/decoded terrain is released");
+            assertEquals(0,budget(s).used(),"Captured and decoded terrain is released; no fence is retained");
         }
-    }
-    @Test void voxyBackpressureDefersAPushAndCancelsItsCompetingFullRequest() throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var trace=ClientTraceLog.toggle();
-            var before=new LinkedHashMap<String,Object>();
-            for(String field:List.of("voxyGetInstance","getIngestService","getTaskCount"))before.put(field,read(null,bridge.bridge,field));
-            var oldInstance=VoxyCommon.instance;
-            try {
-                var lookup=MethodHandles.lookup();
-                write(null,bridge.bridge,"voxyGetInstance",lookup.findStatic(VoxyCommon.class,"getInstance",MethodType.methodType(VoxyInstance.class)).asType(MethodType.methodType(Object.class)));
-                write(null,bridge.bridge,"getIngestService",lookup.findVirtual(VoxyInstance.class,"getIngestService",MethodType.methodType(me.cortex.voxy.common.world.service.VoxelIngestService.class)).asType(MethodType.methodType(Object.class,Object.class)));
-                write(null,bridge.bridge,"getTaskCount",lookup.findVirtual(me.cortex.voxy.common.world.service.VoxelIngestService.class,"getTaskCount",MethodType.methodType(int.class)).asType(MethodType.methodType(int.class,Object.class)));
-                VoxyCommon.instance=new VoxyInstance();me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=257;
-                assertEquals(257,DhVoxyBridge.backlog());
-                var owner=updateSession(-128,512);policy(owner).accepted(CONTENT_POSITION,1,1,123,System.nanoTime());
-                pendingAt(owner,31,CONTENT_POSITION,123);
-                capture(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"),System.nanoTime()).receive();
-                var response=contentResponse(owner,1,true);
-                capture(codec(owner).encode(new DhMessage.PartialUpdate("test-world",response.bufferId(),List.of())),System.nanoTime()).receive();
-                pumpUntil(()->frameCount(owner)==0 && pendingMap(owner).isEmpty(),"deferred push did not release its competing request");
-                assertTrue(active(owner));assertEquals(0,counter(owner,"columns"));assertEquals(1,counter(owner,"droppedUpdateFrames"));
-                assertEquals(0,policy(owner).timestamp(CONTENT_POSITION));assertTrue(policy(owner).due(CONTENT_POSITION,System.nanoTime()));
-                ClientTraceLog.stop();
-                var pressure=Files.readAllLines(trace.path()).stream().map(line->com.google.gson.JsonParser.parseString(line).getAsJsonObject())
-                        .filter(r->r.get("t").getAsString().equals("dh_pressure")).map(r->r.get("reason").getAsString()).toList();
-                assertEquals(List.of("LIVE_BACKLOG"),pressure);
-            } finally {
-                before.forEach((key,value)->write(null,bridge.bridge,key,value));VoxyCommon.instance=oldInstance;
-            }
-        }
-    }
-    @Test void aTerrainBurstIsDroppedWithinTheBudgetAndCanRecoverWithoutStoppingTheSession() throws Exception {
-        var s=updateSession();var owned=new ArrayList<DhClientSession.Inbound>();
-        policy(s).accepted(POSITION,1,1,123,System.nanoTime());
-        for(int i=0;i<40;i++) {
-            var frame=capture(codec(s).encode(new DhMessage.Split(1000+i,new byte[8],true)),System.nanoTime());
-            if(frame!=null)owned.add(frame);
-        }
-        assertTrue(active(s));assertEquals(24,owned.size());assertEquals(16,counter(s,"droppedUpdateFrames"));
-        owned.forEach(DhClientSession.Inbound::close);
-        var recovery=worker(s).submit(()->{try{invoke(s,"recoverPushPressure");}catch(Exception e){throw new RuntimeException(e);}});
-        pumpUntil(()->recovery.isDone() && !(boolean)((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).get(),"pressure recovery did not finish");
-        recovery.get();assertTrue(active(s));assertEquals(0,budget(s).used());assertEquals(0,policy(s).timestamp(POSITION));
-        assembly(s).expect(99,POSITION);assertEquals(0,assembly(s).incompleteBuffers());
     }
     @Test void unsolicitedPartialTerrainAppliesOnlyCompletelyDescribedColumnsWithoutAnOutstandingRequest() throws Exception {
         try(var bridge=new DeliveryBridge()) {
@@ -1811,8 +1070,8 @@ class DhClientSessionTest {
             assertEquals(1,counter(s,"receivedUpdates"),()->"Update rejected: "+read(s,SESSION,"problem"));
             waitWorker(s);Runnable task;while((task=mainTasks.poll())!=null)task.run();
             assertTrue(counter(s,"columns")>0 && counter(s,"columns")<16,"Partial push must preserve unobserved MC columns");
-            assertEquals(1,counter(s,"enqueuedUpdates"));assertTrue(pendingMap(s).isEmpty());
-            assertEquals(512,budget(s).used(),"Only the bounded update fence remains owned");
+            assertTrue(pendingMap(s).isEmpty());
+            assertEquals(0,budget(s).used(),"No timestamp fence is retained after a push");
             invoke(s,"retire");assertEquals(0,budget(s).used());
         }
     }
@@ -1836,7 +1095,7 @@ class DhClientSessionTest {
             var old=contentResponse(s,700,false);
             capture(codec(s).encode(old),System.nanoTime()).receive();
             pumpUntil(()->frameCount(s)==0,"stale response did not settle");
-            assertEquals(delivered,counter(s,"columns"));assertEquals(512,budget(s).used());
+            assertEquals(delivered,counter(s,"columns"));assertEquals(0,budget(s).used());
             invoke(s,"retire");assertEquals(0,budget(s).used());
         }
     }
@@ -1848,47 +1107,6 @@ class DhClientSessionTest {
         capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",update.bufferId(),List.of())),System.nanoTime()).receive();
         pumpUntil(()->frameCount(s)==0,"disabled update did not settle");
         assertEquals(0,counter(s,"receivedUpdates"));assertEquals(0,counter(s,"columns"));assertEquals(0,budget(s).used());
-    }
-    @Test void anAcceptedTileStaysHeldAfterItsLiveEditAndAnOlderNewRequestCannotReplacePushedColumns() throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var s=updateSession(-128,512);replayContent(s,700,false);
-            assertTrue(policy(s).hasSnapshot(CONTENT_POSITION));
-            capture(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"),System.nanoTime()).receive();
-            var update=contentResponse(s,1,true);
-            capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",update.bufferId(),List.of())),System.nanoTime()).receive();
-            pumpUntil(()->frameCount(s)==0,"accepted live edit did not settle");
-            assertTrue(policy(s).hasSnapshot(CONTENT_POSITION));assertFalse(policy(s).due(CONTENT_POSITION,Long.MAX_VALUE));
-            long delivered=counter(s,"columns");
-            replayContent(s,701,false); // An older whole-source DTO, even on a newly owned request.
-            assertEquals(delivered,counter(s,"columns"),"Newer pushed columns must survive an older database snapshot");
-            assertTrue(policy(s).hasSnapshot(CONTENT_POSITION));
-            invoke(s,"retire");assertEquals(0,budget(s).used());
-        }
-    }
-    @Test void pressureRecoveryRetainsTheFenceAgainstAnOlderWholeSource() throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var s=updateSession(-128,512);replayContent(s,700,false);
-            capture(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"),System.nanoTime()).receive();
-            var update=contentResponse(s,1,true);
-            capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",update.bufferId(),List.of())),System.nanoTime()).receive();
-            pumpUntil(()->frameCount(s)==0,"push did not settle");waitWorker(s);
-            long delivered=counter(s,"columns");assertTrue(delivered>16);
-            recoverPressure(s);
-            assertFalse(policy(s).hasSnapshot(CONTENT_POSITION));assertEquals(512,budget(s).used());
-            replayContent(s,701,false);
-            assertEquals(delivered,counter(s,"columns"),"Recovery must not authorize an older database reply over the applied push");
-            assertTrue(active(s));
-        }
-    }
-    @Test void pressureWithLiveUpdatesDisabledPreservesSourceAndAcceptedReceipt() throws Exception {
-        var s=updateSession();
-        settings.store().saveDraft(settings.store().read().hash(),Map.of("lod.dh.real_time_updates",false));settings.commit(settings.prepareReload());
-        var cache=new DhTerrainCache(dir,new DhTerrainCache.Key("test","test","test","test",0,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true)));
-        cache.write(POSITION,123,new byte[]{1});write(s,SESSION,"terrainCache",cache);
-        policy(s).accepted(POSITION,1,1,123,System.nanoTime());
-        recoverPressure(s);
-        assertTrue(active(s));assertTrue(policy(s).hasSnapshot(POSITION));assertEquals(123,policy(s).timestamp(POSITION));
-        assertEquals(Set.of(POSITION),cache.positions());
     }
     @Test void aNinthIncompleteBufferTriggersRecoveryInsteadOfStoppingDh() throws Exception {
         var s=updateSession();
@@ -1921,26 +1139,6 @@ class DhClientSessionTest {
         write(s,SESSION,"lastRequest",now);write(s,SESSION,"lastSyncRequest",now);write(s,SESSION,"lastGenerationRequest",0L);
         var request=scan(s,now);assertNotNull(request);assertEquals(new DhPosition(6,0,0),request.position());assertNull(request.timestamp());
     }
-    private void recoverPressure(Object s) throws Exception {
-        ((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).set(true);
-        var recovery=worker(s).submit(()->{try{invoke(s,"recoverPushPressure");}catch(Exception failure){throw new RuntimeException(failure);}});
-        pumpUntil(()->recovery.isDone() && !(boolean)((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).get(),"pressure recovery did not settle");
-        recovery.get();
-    }
-    @Test void aPushWithoutAnOrderingTimestampCannotBeOverwrittenOrCachedByAnUnprovenWholeSourceReply() throws Exception {
-        try(var bridge=new DeliveryBridge()) {
-            var s=updateSession(-128,512);replayContent(s,700,false);
-            var split=(DhMessage.Split)codec(s).decode(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"));
-            byte[] bytes=split.bytes();java.nio.ByteBuffer.wrap(bytes).putLong(bytes.length-16,0L);
-            capture(codec(s).encode(new DhMessage.Split(split.bufferId(),bytes,true)),System.nanoTime()).receive();
-            capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",split.bufferId(),List.of())),System.nanoTime()).receive();
-            pumpUntil(()->frameCount(s)==0,"unstamped live edit did not settle");
-            long delivered=counter(s,"columns");assertTrue(delivered>16);
-            replayContent(s,701,false);
-            assertEquals(delivered,counter(s,"columns"));
-            invoke(s,"retire");assertEquals(0,budget(s).used());
-        }
-    }
     @Test void liveUpdatesRemainUsableWhenBothSynchronizationAndGenerationAreDisabled() throws Exception {
         try(var bridge=new DeliveryBridge()) {
             var s=updateSession(-128,512);
@@ -1950,7 +1148,7 @@ class DhClientSessionTest {
             var update=contentResponse(s,1,true);
             capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",update.bufferId(),List.of())),System.nanoTime()).receive();
             pumpUntil(()->frameCount(s)==0,"push-only terrain did not settle");
-            assertEquals(16,counter(s,"columns"));assertEquals(1,counter(s,"enqueuedUpdates"));
+            assertEquals(16,counter(s,"columns"));assertEquals(1,counter(s,"receivedUpdates"));
             assertTrue(sent.isEmpty(),"Push-only support must not issue a synchronization/generation request");
             invoke(s,"retire");assertEquals(0,budget(s).used());
         }
@@ -1966,8 +1164,8 @@ class DhClientSessionTest {
     }
 
     private Object session() throws Exception {
-        var ctor=SESSION.getDeclaredConstructor(ClientLevel.class);ctor.setAccessible(true);
-        Object s=ctor.newInstance(level);sessions.add(s);write(null,DhClientSession.class,"session",s);return s;
+        var ctor=SESSION.getDeclaredConstructor(ClientLevel.class,boolean.class);ctor.setAccessible(true);
+        Object s=ctor.newInstance(level,false);sessions.add(s);write(null,DhClientSession.class,"session",s);return s;
     }
     private static <T> T mcMock(Class<T> type) {return mock(type,withSettings().mockMaker(MockMakers.SUBCLASS));}
     private static final class TestMinecraft extends Minecraft {
@@ -1981,8 +1179,13 @@ class DhClientSessionTest {
         return (ConcurrentMap<Integer,Object>)read(s,SESSION,"pending");
     }
     private static void pending(Object s,int id,boolean generate,long started) throws Exception {
-        var ctor=PENDING.getDeclaredConstructor(DhPosition.class,boolean.class,long.class,long.class);ctor.setAccessible(true);
-        pendingMap(s).put(id,ctor.newInstance(POSITION,generate,started,0L));assembly(s).expect(id,POSITION);
+        pendingMap(s).put(id,newPending(s,POSITION,generate,started,0L));assembly(s).expect(id,POSITION);
+    }
+    /** A request owner stamped with the session's real request/push sequence, like request() does. */
+    private static Object newPending(Object s,DhPosition position,boolean generate,long started,long stamp) throws Exception {
+        var ctor=PENDING.getDeclaredConstructor(DhPosition.class,boolean.class,long.class,long.class,long.class,long.class,long.class);ctor.setAccessible(true);
+        long sequence=((AtomicLong)read(s,SESSION,"sequence")).incrementAndGet();
+        return ctor.newInstance(position,generate,started,stamp,0L,DhLimits.DEFAULT.lifetimeNanos(),sequence);
     }
     private static DhMemoryBudget budget(Object s) {return (DhMemoryBudget)read(s,SESSION,"budget");}
     private static DhAssembly assembly(Object s) {return (DhAssembly)read(s,SESSION,"assembly");}
@@ -2033,4 +1236,451 @@ class DhClientSessionTest {
             throw e;
         }
     }
+    private final class DestinationBridge implements AutoCloseable {
+        final Class<?> compat=Class.forName("dev.vox.lss.compat.VoxyCompat");
+        final Object previous=read(null,compat,"classResolver");
+        DestinationBridge(boolean defaults) throws Exception {
+            var resolverType=compat.getDeclaredField("classResolver").getType();DestinationEngine.defaults=defaults;
+            write(null,compat,"classResolver",java.lang.reflect.Proxy.newProxyInstance(resolverType.getClassLoader(),new Class<?>[]{resolverType},(proxy,method,args)->switch(((String)args[0]).substring(((String)args[0]).lastIndexOf('.')+1)) {
+                case "WorldIdentifier"->DestinationIdentifier.class;case "WorldEngine"->DestinationEngine.class;
+                case "WorldSection"->DestinationSection.class;case "Mapper"->DestinationMapper.class;default->throw new ClassNotFoundException((String)args[0]);
+            }));
+        }
+        public void close(){write(null,compat,"classResolver",previous);}
+    }
+    // ---- 2026-10-10 remediation regressions ------------------------------------------
+
+    /** Drive one scan; keep serving client-thread hops while the worker runs (a probe needs one). */
+    private DhMessage.Request scanAt(Object s,long now,ChunkPos player) throws Exception {
+        int before=sent.size();invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,player);
+        drain(s);
+        return sent.size()==before?null:(DhMessage.Request)codec(s).decode(sent.getLast());
+    }
+    /** The worker is FIFO: a marker behind current work completes only after that work posted its client hops. */
+    private void drain(Object s) throws Exception {
+        Future<?> marker;
+        try {marker=worker(s).submit(()->{});}
+        catch(RejectedExecutionException retired) {pumpUntil(()->true,"");return;}
+        pumpUntil(()->marker.isDone()&&mainTasks.isEmpty(),"session work did not drain");
+    }
+    private DhReceiptStore receiptStore(int minY,int height) {
+        return new DhReceiptStore(ColumnCacheStore.cacheRoot(),new DhReceiptStore.Key(minecraft.server.ip,"server","fixture-world",
+                DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(minY,height,true)));
+    }
+    private static void awaitReceiptIo() throws Exception {
+        ((ExecutorService)read(null,DhClientSession.class,"RECEIPT_IO")).submit(()->{}).get(10,TimeUnit.SECONDS);
+    }
+    private void loadReceipts(Object s,DhReceiptStore store) throws Exception {
+        invoke(s,"loadReceipts",new Class<?>[]{DhReceiptStore.class},store);awaitReceiptIo();
+        pumpUntil(()->!(boolean)read(s,SESSION,"receiptsLoading"),"receipts did not load");
+    }
+    @SuppressWarnings("unchecked") private static Map<DhPosition,DhReceiptStore.Entry> stored(Object s) {
+        return (Map<DhPosition,DhReceiptStore.Entry>)read(s,SESSION,"stored");
+    }
+    private byte[] official15Rejection() throws Exception {
+        return new DhProtocolCodec(DhProfile.OFFICIAL_15,DhLimits.DEFAULT).encode(new DhMessage.CloseReason("Incompatible protocol version"));
+    }
+    private byte[] support15Rejection() throws Exception {
+        var bytes=new java.io.ByteArrayOutputStream();var out=new java.io.DataOutputStream(bytes);
+        out.writeShort(15);out.writeShort(1);byte[] text="Incompatible protocol version".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        out.writeInt(text.length);out.write(text);return bytes.toByteArray();
+    }
+
+    /** X-1: a whole tile is two client-thread hops (prefilter + batched handoff), not 35-53. */
+    @Test void aWholeTileIsDeliveredInTwoClientThreadHops() throws Exception {
+        try(var bridge=new DeliveryBridge()) {
+            var s=deliverySession(-128,512);startContent(s,31,false);
+            int tasks=0;long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
+            while(!(pendingMap(s).isEmpty()&&frameCount(s)==0)) {
+                assertTrue(System.nanoTime()<deadline,"delivery did not settle");
+                var task=mainTasks.poll(50,TimeUnit.MILLISECONDS);if(task!=null){task.run();tasks++;}
+            }
+            // Reply bookkeeping + prefilter + batched handoff + owner release.
+            assertTrue(tasks<=4,"client-thread hops per tile: "+tasks);
+            assertEquals(16,counter(s,"columns"));assertEquals(1,counter(s,"tiles"));assertEquals(0,budget(s).used());
+        }
+    }
+    @Test void vanillaAuthorityBetweenConversionAndHandoffCannotEnqueueTheConvertedColumn() throws Exception {
+        try(var bridge=new DeliveryBridge()) {
+            var s=deliverySession(-128,512);startContent(s,31,false);
+            takeMain().run(); // reply bookkeeping
+            takeMain().run(); // prefilter: every column still eligible, conversion follows on the worker
+            var handoff=takeMain();
+            assertTrue(me.cortex.voxy.common.world.service.VoxelIngestService.calls.isEmpty());
+            DhClientSession.vanillaLoaded(level,-12,0);handoff.run();settleDelivery(s);
+            assertEquals(15,counter(s,"columns"));assertEquals(1,counter(s,"skipped"));
+            assertTrue(me.cortex.voxy.common.world.service.VoxelIngestService.calls.stream()
+                    .noneMatch(call->call.chunkX()==-12&&call.chunkZ()==0));
+            assertTrue(policy(s).hasSnapshot(CONTENT_POSITION),"A vanilla-resolved column is accepted, not a failure");
+            assertEquals(0,budget(s).used());
+        }
+    }
+    @Test void retirementDuringConversionRejectsTheAlreadyQueuedHandoff() throws Exception {
+        try(var bridge=new DeliveryBridge()) {
+            var s=deliverySession(-128,512);startContent(s,31,false);
+            takeMain().run();takeMain().run();var handoff=takeMain();
+            assertTrue((boolean)invoke(s,"retire"));
+            handoff.run();while(!mainTasks.isEmpty())takeMain().run();
+            assertTrue(me.cortex.voxy.common.world.service.VoxelIngestService.calls.isEmpty());
+            assertEquals(0,policy(s).syncTimestamp(CONTENT_POSITION));assertEquals(0,budget(s).used());
+        }
+    }
+
+    /** D-1 / F2-1: an official push (timestamp 0) never freezes its tile; a newer reply still applies. */
+    @Test void aTimestampZeroPushIsAppliedAndALaterNewerWholeReplyStillReplacesIt() throws Exception {
+        try(var bridge=new DeliveryBridge()) {
+            var s=updateSession(-128,512);replayContent(s,700,false);
+            assertEquals(16,counter(s,"columns"));
+            var split=(DhMessage.Split)codec(s).decode(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"));
+            byte[] bytes=split.bytes();java.nio.ByteBuffer.wrap(bytes).putLong(bytes.length-16,0L); // official pushes carry 0
+            capture(codec(s).encode(new DhMessage.Split(split.bufferId(),bytes,true)),System.nanoTime()).receive();
+            capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",split.bufferId(),List.of())),System.nanoTime()).receive();
+            pumpUntil(()->frameCount(s)==0,"timestamp-zero push did not settle");waitWorker(s);
+            pumpUntil(()->true,"");
+            long afterPush=counter(s,"columns");assertTrue(afterPush>16,()->"push not applied: "+read(s,SESSION,"problem"));
+            assertEquals(1,counter(s,"receivedUpdates"));
+            // The friend builds again; the player returns; a request sent AFTER the push gets a newer whole source.
+            pendingAt(s,701,CONTENT_POSITION,0);
+            capture(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"),System.nanoTime()).receive();
+            capture(codec(s).encode(contentResponse(s,701,true)),System.nanoTime()).receive();
+            settleDelivery(s);
+            assertEquals(afterPush+16,counter(s,"columns"),"The newer reply must ingest every column, never 'reuse' a frozen push");
+            assertTrue(policy(s).syncTimestamp(CONTENT_POSITION)>0);
+            invoke(s,"retire");assertEquals(0,budget(s).used());
+        }
+    }
+    /** Belt for the cancel-on-push invariant: a pre-push request that escaped cancellation is still refused. */
+    @Test void thePushSequenceRefusesAPrePushOwnerEvenIfItWasNotCancelled() throws Exception {
+        try(var bridge=new DeliveryBridge()) {
+            var s=updateSession(-128,512);
+            var stale=newPending(s,CONTENT_POSITION,false,System.nanoTime(),0L); // sequence before the push
+            @SuppressWarnings("unchecked") var pushes=(Map<DhPosition,Long>)read(s,SESSION,"lastPush");
+            pushes.put(CONTENT_POSITION,((AtomicLong)read(s,SESSION,"sequence")).incrementAndGet());
+            pendingMap(s).put(702,stale);assembly(s).expect(702,CONTENT_POSITION);
+            capture(resource("dh-official-3.3.3-neoforge-content","target-0002-split.bin"),System.nanoTime()).receive();
+            capture(codec(s).encode(contentResponse(s,702,false)),System.nanoTime()).receive();
+            settleDelivery(s);
+            assertEquals(0,counter(s,"columns"));assertEquals(0,budget(s).used());
+        }
+    }
+    @Test void anOutOfInterestPushForAStoredButUnheldTileForgetsItsReceipt() throws Exception {
+        var s=updateSession(-128,512);var store=receiptStore(-128,512);write(s,SESSION,"receiptStore",store);
+        stored(s).put(CONTENT_POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION));
+        doReturn(new ChunkPos(2000,2000)).when(minecraft.player).chunkPosition();
+        capture(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"),System.nanoTime()).receive();
+        var update=contentResponse(s,1,true);
+        capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",update.bufferId(),List.of())),System.nanoTime()).receive();
+        pumpUntil(()->frameCount(s)==0,"out-of-interest push did not settle");waitWorker(s);pumpUntil(()->true,"");
+        assertFalse(stored(s).containsKey(CONTENT_POSITION),"A stale receipt would restore pre-edit terrain with sync off");
+        assertEquals(1,counter(s,"deferredUpdates"));assertEquals(0,counter(s,"columns"));assertTrue(active(s));
+    }
+    @Test void voxyBackpressureAboveOneTileDefersAPushAndCancelsItsCompetingRequest() throws Exception {
+        try(var ready=new ReadyBridge()) {
+            me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=DhClientSession.INGEST_GATE+1;
+            var owner=updateSession(-128,512);policy(owner).accepted(CONTENT_POSITION,1,1,123,System.nanoTime());
+            pendingAt(owner,31,CONTENT_POSITION,123);
+            capture(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"),System.nanoTime()).receive();
+            var response=contentResponse(owner,1,true);
+            capture(codec(owner).encode(new DhMessage.PartialUpdate("test-world",response.bufferId(),List.of())),System.nanoTime()).receive();
+            pumpUntil(()->frameCount(owner)==0 && pendingMap(owner).isEmpty(),"deferred push did not release its competing request");
+            assertTrue(active(owner));assertEquals(0,counter(owner,"columns"));assertEquals(1,counter(owner,"deferredUpdates"));
+            assertEquals(0,policy(owner).timestamp(CONTENT_POSITION));assertTrue(policy(owner).due(CONTENT_POSITION,System.nanoTime()));
+            me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=384;
+            assertTrue(DhVoxyBridge.backlog()<=DhClientSession.INGEST_GATE,"One delivered tile alone never trips the gate");
+        } finally {me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=0;}
+    }
+
+    /** D-2 / A4-1: fragments captured before a drop can never reassemble a gapped push. */
+    @Test void fragmentsCapturedBeforeADropCannotReassembleAGappedPushAndDhStaysActive() throws Exception {
+        try(var bridge=new DeliveryBridge()) {
+            var s=updateSession();
+            capture(resource("dh-official-3.3.3-neoforge-partial","received-0004.bin"),System.nanoTime()).receive();
+            waitWorker(s);assertEquals(1,assembly(s).incompleteBuffers());
+            var held=new ArrayList<DhClientSession.Inbound>();
+            for(int i=0;i<24;i++)held.add(capture(codec(s).encode(new DhMessage.Split(5000+i,new byte[8],true)),System.nanoTime()));
+            assertNull(capture(resource("dh-official-3.3.3-neoforge-partial","received-0005.bin"),System.nanoTime()),"the middle fragment is dropped");
+            assertEquals(1,counter(s,"rawTerrainLosses"));
+            held.forEach(DhClientSession.Inbound::close);
+            var response=(DhMessage.Response)codec(s).decode(resource("dh-official-3.3.3-neoforge-partial","received-0006.bin"));
+            capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",response.bufferId(),List.of())),System.nanoTime()).receive();
+            pumpUntil(()->frameCount(s)==0,"gapped push did not settle");waitWorker(s);pumpUntil(()->true,"");
+            assertTrue(active(s),()->"DH stopped: "+read(s,SESSION,"problem"));
+            assertEquals(0,counter(s,"columns"));assertEquals(0,assembly(s).incompleteBuffers());assertTrue(notices.isEmpty());
+            invoke(s,"retire");assertEquals(0,budget(s).used());
+        }
+    }
+    /** D-3: a dropped push frame revalidates only nearby held tiles and never deletes persisted receipts. */
+    @Test void aDroppedPushFrameRevalidatesOnlyNearbyHeldTilesAndKeepsReceipts() throws Exception {
+        var s=updateSession();long now=System.nanoTime();var store=receiptStore(-64,384);write(s,SESSION,"receiptStore",store);
+        var near=new DhPosition(6,0,0);var far=new DhPosition(6,60,60);
+        policy(s).accepted(near,1,1,123,now);policy(s).accepted(far,1,1,456,now);
+        stored(s).put(near,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION));
+        stored(s).put(far,new DhReceiptStore.Entry(456,DhReceiptStore.CONVERSION_VERSION));
+        ((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).set(true);
+        worker(s).submit(()->{try{invoke(s,"recoverLoss");}catch(Exception e){throw new RuntimeException(e);}}).get(5,TimeUnit.SECONDS);
+        pumpUntil(()->true,"");
+        assertTrue(policy(s).due(near,System.nanoTime()),"A nearby held tile is revalidated");
+        assertEquals(123,policy(s).syncTimestamp(near),"...with a conditional request, not a full download");
+        assertFalse(policy(s).due(far,Long.MAX_VALUE),"Tiles beyond the update distance keep their receipts");
+        assertEquals(2,stored(s).size(),"Transport faults never purge persisted receipts");
+        assertTrue(active(s));
+    }
+    @Test void aTerrainBurstIsDroppedWithinTheBudgetAndRecoversWithoutStoppingTheSession() throws Exception {
+        var s=updateSession();var owned=new ArrayList<DhClientSession.Inbound>();
+        policy(s).accepted(POSITION,1,1,123,System.nanoTime());
+        for(int i=0;i<40;i++) {
+            var frame=capture(codec(s).encode(new DhMessage.Split(1000+i,new byte[8],true)),System.nanoTime());
+            if(frame!=null)owned.add(frame);
+        }
+        assertTrue(active(s));assertEquals(24,owned.size());assertEquals(16,counter(s,"droppedUpdateFrames"));
+        owned.forEach(DhClientSession.Inbound::close);
+        worker(s).submit(()->{try{invoke(s,"recoverLoss");}catch(Exception e){throw new RuntimeException(e);}}).get(5,TimeUnit.SECONDS);
+        pumpUntil(()->true,"");
+        assertTrue(active(s));assertEquals(0,budget(s).used());assertFalse((boolean)((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).get());
+    }
+    @Test void aMalformedTileTakesAStrikeWithoutStoppingTheSession() throws Exception {
+        var s=updateSession();long now=System.nanoTime();pending(s,1,false,now);
+        capture(codec(s).encode(new DhMessage.Split(77,new byte[64],true)),now).receive();
+        capture(codec(s).encode(new DhMessage.Response(1,77,List.of())),now).receive();
+        pumpUntil(()->frameCount(s)==0&&pendingMap(s).isEmpty(),"malformed tile did not settle");
+        assertTrue(active(s));assertEquals(1,counter(s,"malformedTiles"));
+        assertFalse(policy(s).due(POSITION,System.nanoTime()+2_000_000_000L),"A malformed tile backs off with a strike");
+        assertFalse(policy(s).retryExhausted(POSITION));assertEquals(0,budget(s).used());assertTrue(notices.isEmpty());
+    }
+    @Test void unknownControlMessagesAndTrailingControlBytesAreIgnoredButTerrainStaysStrict() throws Exception {
+        var s=updateSession();
+        capture(new byte[]{0,16,0,77,1,2,3},System.nanoTime()).receive();
+        var refusal=codec(s).encode(new DhMessage.Refusal(999,1,"x"));var trailing=Arrays.copyOf(refusal,refusal.length+3);
+        capture(trailing,System.nanoTime()).receive();
+        pumpUntil(()->frameCount(s)==0,"control frames did not settle");waitWorker(s);
+        assertTrue(active(s),()->"stopped: "+read(s,SESSION,"problem"));assertEquals(1,counter(s,"unknownControls"));
+        var split=codec(s).encode(new DhMessage.Split(9,new byte[4],true));
+        capture(Arrays.copyOf(split,split.length+1),System.nanoTime()).receive();
+        pumpUntil(()->!active(s),"Trailing bytes on a terrain message remain malformed");
+    }
+
+    /** X-4: a protocol-15 official server gets an update notice; nothing reconnects. */
+    @Test void anOfficialProtocol15ServerStopsWithAnUpdateNoticeAndNeverReconnects() throws Exception {
+        var s=session();
+        capture(official15Rejection(),System.nanoTime()).receive();
+        pumpUntil(()->!active(s),"protocol-15 advertisement was not handled");pumpUntil(()->!notices.isEmpty(),"no stop notice");
+        assertEquals(DhStatusSnapshot.Reason.OLD_DH_PROTOCOL,read(s,SESSION,"reason"));
+        assertSame(connection,minecraft.getConnection(),"Minecraft stays connected; there is no reconnect machinery");
+        assertEquals(1,notices.size());assertTrue(notices.getFirst().getString().contains("lss.status.dh.notice.stopped")
+                || notices.getFirst().getContents().toString().contains("notice.stopped"));
+    }
+    @Test void aDhSupportAdvertisementSwitchesFamiliesOnTheSameConnection() throws Exception {
+        var s=session();
+        capture(support15Rejection(),System.nanoTime()).receive();
+        pumpUntil(()->!active(s),"support advertisement did not retire the probe session");
+        assertEquals(DhProfile.SUPPORT_15,((Map<?,?>)read(null,DhClientSession.class,"discoveredProfiles")).get(connection));
+        assertNull(read(null,DhClientSession.class,"session"));assertSame(connection,minecraft.getConnection());
+        var next=session();assertEquals(DhProfile.SUPPORT_15,read(next,SESSION,"profile"));assertTrue(notices.isEmpty());
+    }
+    @Test void aSilentProtocol16ServerWaitsAsNoServiceAndALateConfigStillWorks() throws Exception {
+        var s=session();long now=System.nanoTime();
+        write(s,SESSION,"announced",true);write(s,SESSION,"sentAt",now-16_000_000_000L);
+        invoke(s,"tick");
+        var d=DhClientSession.diagnostics();
+        assertEquals(DhStatusSnapshot.State.NO_SERVICE,d.state());assertEquals(DhStatusSnapshot.Reason.NO_DH_REPLY,d.reason());
+        assertTrue(active(s));assertTrue(notices.isEmpty());
+        capture(codec(s).encode(new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,true,32,10,500)),System.nanoTime()).receive();
+        pumpUntil(()->read(s,SESSION,"config")!=null,"late config was refused");assertTrue(active(s));
+    }
+    @Test void aServerWithoutTheDhChannelIsNoServiceRatherThanAFailure() throws Exception {
+        DhClientSession.installChannelAvailability(()->false);
+        var s=session();write(s,SESSION,"started",System.nanoTime()-16_000_000_000L);
+        invoke(s,"tick");
+        var d=DhClientSession.diagnostics();
+        assertEquals(DhStatusSnapshot.State.NO_SERVICE,d.state());assertEquals(DhStatusSnapshot.Reason.NO_DH_CHANNEL,d.reason());
+        assertTrue(active(s));assertTrue(sent.isEmpty());assertTrue(notices.isEmpty());
+    }
+    @Test void anIntegratedHostAndAnOptedOutUserNeverRecordVanillaAuthority() throws Exception {
+        var state=(DhConnectionState)read(null,DhClientSession.class,"connectionState");
+        setting(Map.of("lod.source","lss"));
+        DhClientSession.vanillaLoaded(level,1,1);
+        assertTrue(state.policy(DIMENSION).eligible(1,1),"An opted-out user records nothing");
+        setting(Map.of("lod.source","distant_horizons"));DhClientSession.vanillaLoaded(level,1,1);
+        assertFalse(state.policy(DIMENSION).eligible(1,1));
+    }
+
+    /** X-5 / D-5 / D-6: persisted receipts, probed before trust, revalidated once. */
+    @Test void aWholeTileWritesAPersistentReceiptThatANewConnectionRevalidatesWithoutDownloading() throws Exception {
+        try(var voxy=new DeliveryBridge();var destination=new DestinationBridge(false)) {
+            var store=receiptStore(-128,512);var s=deliverySession(-128,512);write(s,SESSION,"receiptStore",store);
+            replayContent(s,1,false);long stamp=policy(s).syncTimestamp(CONTENT_POSITION);assertTrue(stamp>0);
+            assertEquals(stamp,stored(s).get(CONTENT_POSITION).timestamp());
+            invoke(s,"saveReceipts",new Class<?>[]{boolean.class},true);awaitReceiptIo();
+            assertEquals(stamp,store.load().get(CONTENT_POSITION).timestamp());
+            DhClientSession.disconnect();sent.clear();me.cortex.voxy.common.world.service.VoxelIngestService.reset();
+            setting(Map.of("lod.distance_chunks",2));
+            var next=deliverySession(-128,512);loadReceipts(next,store);
+            assertTrue(((Set<?>)read(next,SESSION,"unprobed")).contains(CONTENT_POSITION));
+            var player=new ChunkPos(-10,2);long now=System.nanoTime();
+            assertNull(scanAt(next,now,player),"The stored tile waits for its destination probe");
+            pumpUntil(()->!(boolean)read(next,SESSION,"probeInFlight"),"probe did not finish");
+            var request=scanAt(next,System.nanoTime(),player);assertNotNull(request,"restored receipt was not revalidated");
+            assertEquals(stamp,request.timestamp(),"A conditional request carries the persisted server timestamp");
+            capture(codec(next).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
+            settleDelivery(next);
+            assertTrue(policy(next).hasSnapshot(CONTENT_POSITION));assertEquals(0,counter(next,"columns"),"Unchanged means no download");
+            assertEquals(1,counter(next,"restored"));
+        }
+    }
+    @Test void aWipedDestinationDropsItsReceiptAndRequestsFullData() throws Exception {
+        try(var voxy=new DeliveryBridge();var destination=new DestinationBridge(true)) {
+            var store=receiptStore(-128,512);
+            store.save(Map.of(CONTENT_POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION)));
+            setting(Map.of("lod.distance_chunks",2));
+            var s=deliverySession(-128,512);loadReceipts(s,store);var player=new ChunkPos(-10,2);
+            assertNull(scanAt(s,System.nanoTime(),player));
+            pumpUntil(()->!(boolean)read(s,SESSION,"probeInFlight"),"probe did not finish");
+            assertFalse(stored(s).containsKey(CONTENT_POSITION),"Voxy holds nothing: the receipt is not trusted");
+            var request=scanAt(s,System.nanoTime(),player);
+            assertNotNull(request,()->"problem="+read(s,SESSION,"problem")+" due="+policy(s).due(CONTENT_POSITION,System.nanoTime())
+                    +" prio="+policy(s).acquisitionPriority(CONTENT_POSITION)+" pending="+pendingMap(s)+" unprobed="+read(s,SESSION,"unprobed")
+                    +" range="+invokeQuietly(s,"effectiveRange")+" activity="+read(s,SESSION,"activity")+" active="+active(s));
+            assertEquals(0,request.timestamp());
+        }
+    }
+    @Test void anUnreadableDestinationTrustsReceiptsOnceAndNeverPolls() throws Exception {
+        try(var voxy=new DeliveryBridge()) {
+            var store=receiptStore(-128,512);
+            store.save(Map.of(CONTENT_POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION)));
+            setting(Map.of("lod.distance_chunks",2));
+            var s=deliverySession(-128,512);loadReceipts(s,store);var player=new ChunkPos(-10,2);
+            assertNull(DhVoxyBridge.openProbe(level),"This fixture ABI has ingest but no destination reader");
+            scanAt(s,System.nanoTime(),player);
+            pumpUntil(()->!(boolean)read(s,SESSION,"probeInFlight"),"probe did not finish");
+            assertTrue((boolean)read(s,SESSION,"receiptsUnverified"));
+            var request=scanAt(s,System.nanoTime(),player);assertNotNull(request);assertEquals(123,request.timestamp());
+            capture(codec(s).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
+            settleDelivery(s);
+            int before=sent.size();
+            for(int i=1;i<=6;i++)scanAt(s,System.nanoTime()+i*2_100_000_000L,player);
+            assertEquals(before,sent.size(),"A stationary client sends nothing more for a held tile");
+            assertEquals(DhStatusSnapshot.Reason.RECEIPTS_UNVERIFIED,DhClientSession.diagnostics().reason());
+        }
+    }
+    @Test void receiptsOfAnOlderConversionAreDroppedSoTheTileIsDownloadedAgain() throws Exception {
+        var store=receiptStore(-128,512);
+        store.save(Map.of(CONTENT_POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION-1)));
+        var s=deliverySession(-128,512);loadReceipts(s,store);
+        assertTrue(stored(s).isEmpty());assertTrue((boolean)read(s,SESSION,"receiptsDirty"));
+    }
+
+    /** D-7: a confirmed reset on a DH connection that is not acquiring still clears receipts and resumes. */
+    @Test void aConfirmedResetWhileWaitingForConfigClearsReceiptsAndResumes() throws Exception {
+        var store=new DhReceiptStore(ColumnCacheStore.cacheRoot(),new DhReceiptStore.Key(minecraft.server.ip,"server","world",DIMENSION,8,
+                DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true)));
+        store.save(Map.of(POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION)));
+        var s=session();assertFalse(DhClientSession.canAcquire());
+        var feedback=new ArrayList<net.minecraft.network.chat.Component>();
+        ClientCommandActions.runReset(feedback::add,true,false);
+        assertFalse(active(s));assertNull(read(null,DhClientSession.class,"session"),"The next tick builds a fresh session");
+        assertFalse((boolean)read(null,DhClientSession.class,"resetFailed"));
+        assertTrue(store.load().isEmpty(),"Persisted receipts for this server are cleared");
+        assertTrue(feedback.stream().anyMatch(c->c.getString().contains("DH receipts cleared")),feedback::toString);
+        assertTrue(feedback.stream().noneMatch(c->c.getString().contains("No "+dev.vox.lss.common.Brand.shortName()+" server")));
+    }
+    @Test void clearCacheInDhModeClearsOnlyTheCurrentRemoteAddressReceipts() throws Exception {
+        var shape=new DhTerrainTile.WorldShape(-64,384,true);String other="other-dh-"+UUID.randomUUID();
+        var current=new DhReceiptStore(ColumnCacheStore.cacheRoot(),new DhReceiptStore.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
+        var retained=new DhReceiptStore(ColumnCacheStore.cacheRoot(),new DhReceiptStore.Key(other,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
+        var entry=Map.of(POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION));
+        current.save(entry);retained.save(entry);var s=session();
+        var feedback=new ArrayList<net.minecraft.network.chat.Component>();
+        try {
+            ClientCommandActions.clearCache(feedback::add);
+            assertFalse(active(s));assertTrue(current.load().isEmpty());assertEquals(1,retained.load().size());
+            assertEquals(1,feedback.size());assertTrue(feedback.getFirst().getString().contains("current server"));
+        } finally {ColumnCacheStore.clearDhReceipts(other);}
+    }
+
+    /** X-12 / X-13: sync-on-load is debounced per connection; resuming reception is a load. */
+    @Test void syncOnLoadDebounceSurvivesASessionRestartOnTheSameConnection() throws Exception {
+        var s=session();configureFrontier(s);long now=System.nanoTime();var tile=new DhPosition(6,0,0);
+        policy(s).accepted(tile,1,1,123,now);
+        invoke(s,"observeLoaded",new Class<?>[]{long.class,ChunkPos.class},now,new ChunkPos(2,2));
+        assertTrue(policy(s).due(tile,now));policy(s).accepted(tile,1,1,123,now);
+        invoke(s,"retire");
+        var next=session();configureFrontier(next);
+        invoke(next,"observeLoaded",new Class<?>[]{long.class,ChunkPos.class},now+60_000_000_000L,new ChunkPos(2,2));
+        assertFalse(policy(next).due(tile,Long.MAX_VALUE),"A dimension return within 20 minutes does not revalidate again");
+    }
+    @Test void resumingReceptionRevalidatesAndClearsReceiptsWithoutSynchronization() throws Exception {
+        var s=session();configureFrontier(s);var tile=new DhPosition(6,0,0);long now=System.nanoTime();
+        policy(s).accepted(tile,1,1,123,now);
+        invoke(s,"observeLoaded",new Class<?>[]{long.class,ChunkPos.class},now,new ChunkPos(2,2));policy(s).accepted(tile,1,1,123,now);
+        invoke(s,"retire");
+        var ctor=SESSION.getDeclaredConstructor(ClientLevel.class,boolean.class);ctor.setAccessible(true);
+        var resumed=ctor.newInstance(level,true);sessions.add(resumed);write(null,DhClientSession.class,"session",resumed);
+        write(resumed,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,false,0,0,500));
+        write(resumed,SESSION,"levelKey","test-world");write(resumed,SESSION,"announced",true);
+        invoke(resumed,"tick");
+        assertFalse(policy(resumed).hasSnapshot(tile),"Without sync, a held receipt could never see edits made while reception was off");
+    }
+
+    /** D-11 / X-15: no column cap; diagnostics name the real block reason. */
+    @Test void theVanillaRegionLimitIsReportedAsSuchNotAsAWorldChange() throws Exception {
+        var state=(DhConnectionState)read(null,DhClientSession.class,"connectionState");
+        for(int i=0;i<65_536;i++)state.vanilla(DIMENSION,i*32,0);
+        assertThrows(IllegalStateException.class,()->state.vanilla(DIMENSION,0,32));
+        var d=DhClientSession.diagnostics();
+        assertEquals(DhStatusSnapshot.State.BLOCKED,d.state());assertEquals(DhStatusSnapshot.Reason.VANILLA_LIMIT,d.reason());
+    }
+    @Test void diagnosticsReportOneActivityWithoutMasksOrEtas() throws Exception {
+        try(var ready=new ReadyBridge()) {
+        var s=updateSession();long now=System.nanoTime();
+        for(var c:DhStatusSnapshot.class.getRecordComponents())
+            assertFalse(c.getName().toLowerCase(Locale.ROOT).contains("gate")||c.getName().toLowerCase(Locale.ROOT).contains("wait"),c.getName());
+        policy(s).absent(new DhPosition(6,0,0),now,false);
+        setting(Map.of("lod.distance_chunks",4));
+        for(int x=-8;x<=8;x++)for(int z=-8;z<=8;z++)if(x<0||x>3||z<0||z>3)policy(s).vanilla(x,z);
+        scanAt(s,now,new ChunkPos(2,2));
+        assertEquals(DhStatusSnapshot.Activity.IDLE,DhClientSession.diagnostics().activity(),"Parked work reads as idle, never as an unknown wait");
+        }
+    }
+    @Test void dhSupportPreferencesAreNotResentForABandwidthChangeAlone() throws Exception {
+        ((Map<?,?>)read(null,DhClientSession.class,"discoveredProfiles")).clear();
+        @SuppressWarnings("unchecked") var profiles=(Map<Object,DhProfile>)read(null,DhClientSession.class,"discoveredProfiles");
+        profiles.put(connection,DhProfile.SUPPORT_15);
+        var s=session();write(s,SESSION,"announced",true);write(s,SESSION,"sentBandwidth",50);
+        int before=sent.size();invoke(s,"tick");
+        assertEquals(before,sent.size(),"Each Support config resets its buffer ids; bandwidth alone never re-announces");
+    }
+    @Test void receiveOffWithdrawsWheneverPreferencesWereAnnouncedEvenBeforeConfig() throws Exception {
+        var s=session();write(s,SESSION,"announced",true);
+        invoke(s,"beginRetire");
+        assertEquals(1,sent.size());var withdrawal=(DhMessage.SessionConfig)codec(s).decode(sent.getFirst());
+        assertFalse(withdrawal.updates());assertFalse(withdrawal.synchronize());
+    }
+    private void stationaryAbsence(int refreshSeconds) throws Exception {
+        var s=session();long origin=System.nanoTime();var player=new ChunkPos(2,2);
+        minecraft.player=mcMock(LocalPlayer.class);write(minecraft.player,LocalPlayer.class,"connection",connection);
+        doReturn(player).when(minecraft.player).chunkPosition();
+        settings.store().saveDraft(settings.store().read().hash(),Map.of("lod.distance_chunks",48));
+        settings.commit(settings.prepareReload());
+        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.SURFACE_THEN_CHUNKS,
+                32,0,0,0,1,false,0,true,2048,50,500));
+        write(s,SESSION,"levelKey","test-world");
+        for(int x=-8;x<=8;x++)for(int z=-8;z<=8;z++)
+            policy(s).accepted(new DhPosition(6,x,z),0xffff,0xffff,123,origin);
+        int absentRequests=0,refreshRequests=0;var absentTiles=new HashSet<DhPosition>();
+        // Three stationary hours at the actual ten-second refresh ceiling. Drive
+        // the production scanner, sender, empty-response handling and worker.
+        for(int second=0;second<=10_800;second+=10) {
+            int before=sent.size();invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},origin+second*1_000_000_000L,player);
+            if(pendingMap(s).isEmpty())continue;
+            pumpUntil(()->sent.size()>before,"scanner did not send its owned request");
+            var request=(DhMessage.Request)codec(s).decode(sent.getLast());
+            if(request.timestamp()!=null && request.timestamp()>0)refreshRequests++;
+            else {absentRequests++;assertTrue(absentTiles.add(request.position()),"Unreachable absence was re-polled");}
+            capture(codec(s).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
+            pumpUntil(()->pendingMap(s).isEmpty()&&frameCount(s)==0,"empty response did not settle");
+        }
+        assertEquals(625-289,absentRequests);assertEquals(0,refreshRequests);
+        assertTrue(active(s));assertEquals(0,budget(s).used());
+    }
+    private static Object invokeQuietly(Object s,String m){try{return invoke(s,m);}catch(Exception e){return e;}}
 }

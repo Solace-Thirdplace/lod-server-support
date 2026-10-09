@@ -182,6 +182,9 @@ public final class DhAssembly implements AutoCloseable {
     public long assembledBytes() { return buffers.values().stream().mapToLong(b -> b.size).sum(); }
     private void open() { if (closed) throw new IllegalStateException("DH assembly retired"); }
     private static DhCodecException unowned(String message) { return new DhCodecException(DhCodecException.Kind.UNOWNED, message); }
+    /** Memory/slot pressure: free every incomplete buffer but keep request owners, whose
+     *  replies then resolve as a contained missing-buffer retry instead of a stall. */
+    public void discardIncomplete() {open();buffers.values().forEach(Buffer::close);buffers.clear();}
     /** Drop incomplete transfers under pressure while retaining the session. */
     public void discardAll() {open();buffers.values().forEach(Buffer::close);buffers.clear();requests.clear();}
     @Override public void close() {if(!closed){discardAll();closed=true;}}

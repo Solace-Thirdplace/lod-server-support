@@ -9,15 +9,14 @@ class DiagnosticPrivacyTest {
         for(var field:DhStatusSnapshot.class.getRecordComponents())
             assertTrue(field.getType().isPrimitive() || field.getType().isEnum(),
                     "DH export must not acquire an opaque string/identity field: "+field.getName());
-        var dh=new DhStatusSnapshot(dev.vox.lss.common.dh.DhProfile.OFFICIAL_16,DhStatusSnapshot.State.BLOCKED,
-                10,5,2,1,50,45,3,2,1000,100,200,1,2,3,32,1,2,500,true,true,true,true,0,0,100,4096,0,0,0,0,DhStatusSnapshot.Reason.NONE,0,0,dev.vox.lss.common.dh.DhAcquisition.Gate.NO_ELIGIBLE_WORK,1L<<25,-1);
+        var dh=new DhStatusSnapshot(dev.vox.lss.common.dh.DhProfile.OFFICIAL_16,DhStatusSnapshot.State.BLOCKED,DhStatusSnapshot.Reason.VANILLA_LIMIT,DhStatusSnapshot.Activity.STOPPED,10,5,2,1,45,3,2,1000,100,1,2,3,32,1,2,500,true,true,true,true,0,0,100,4096,7,0);
         var snapshot=new ClientStatusSnapshot(3,1,100,true,false,true,false,true,false,0,0,0,0,0,0,-1,0,0,0,0,
                 ClientStatusSnapshot.Discovery.DORMANT,ClientStatusSnapshot.Availability.DISABLED,null,
                 new DiagnosticVersions(Map.of(DiagnosticVersions.Component.LSS,"/home/alice/token")),null,dh);
         var json=com.google.gson.JsonParser.parseString(DiagnosticExport.clientJson(snapshot)).getAsJsonObject();
         assertEquals("BLOCKED",json.getAsJsonObject("dh").get("state").getAsString());
-        assertEquals("NO_ELIGIBLE_WORK",json.getAsJsonObject("dh").get("acquisitionWait").getAsString());
-        assertEquals(-1,json.getAsJsonObject("dh").get("acquisitionWaitMillis").getAsLong());
+        assertEquals("VANILLA_LIMIT",json.getAsJsonObject("dh").get("reason").getAsString());
+        assertEquals("STOPPED",json.getAsJsonObject("dh").get("activity").getAsString());
         assertEquals(0,json.get("protocol").getAsInt());assertFalse(json.get("negotiated").getAsBoolean());
         assertFalse(json.get("serverEnabled").getAsBoolean());assertFalse(json.toString().contains("alice"));
         assertTrue(snapshot.lines().stream().anyMatch(line->line.contains("sync on load=true")));
