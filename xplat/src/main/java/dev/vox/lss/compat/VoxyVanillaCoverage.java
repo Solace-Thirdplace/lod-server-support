@@ -92,7 +92,7 @@ final class VoxyVanillaCoverage {
 
     static boolean terrainSessionActive() {
         return dev.vox.lss.networking.client.ClientNetGlue.getRequestManager()!=null
-                || dev.vox.lss.networking.client.DhClientSession.running();
+                || dev.vox.lss.networking.client.DhClientSession.terrainSessionActive();
     }
 
     /** Load events cover the moving frontier without repeatedly restarting a scan.

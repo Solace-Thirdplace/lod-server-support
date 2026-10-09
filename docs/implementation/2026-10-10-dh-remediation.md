@@ -43,19 +43,19 @@ Fixture and documentation adaptation follow in later commits on the branch.
 
 | ID | Resolution |
 | --- | --- |
-| D-1 | Fixed by removing timestamp fences (`UpdateFence` deleted). A whole reply to a request sent after a push wins by arrival order; pushes cancel pending requests for their tile, and a per-tile push sequence rejects a reply issued before the latest push. |
-| D-2 | Each assembly buffer carries the loss epoch it started under; a buffer from an older epoch is discarded and its tile revalidated. Drops while a recovery is queued bump the epoch too. |
-| D-3 | Recovery is scoped to held tiles within `min(effectiveRange, updateDistance) + 8` chunks. Decode `RESOURCE_LIMIT` on a push defers that tile only. Resource pressure also discards incomplete buffers (`discardIncomplete`) so they cannot occupy every slot. |
+| D-1 | Fixed by removing timestamp fences (`UpdateFence` deleted). Ordering is arrival order: every identified push (applied or deferred) cancels pending requests for its tile, and a whole reply is written only while its request is still pending. (The per-tile push-sequence belt of the first round was redundant and is deleted.) |
+| D-2 | Each assembly buffer carries the loss epoch it started under; a buffer spanning a loss is discarded, never decoded with a gap. |
+| D-3 | A lost push is reacquired by tile: a discarded or orphaned buffer's first fragment names its tile (`DhAssembly.drainLostClaims`), and a push that fails to decode defers the tile its header names. Only a push whose first fragment was lost falls back to revalidating held tiles within `min(effectiveRange, updateDistance) + 8` chunks (cancelling requests in flight there). Slot or memory pressure discards incomplete buffers (`discardIncomplete`) and never triggers window recovery. |
 | D-4 | `DhPosition.hashCode` mixes the packed key. `DhPositionHashTest` bounds collisions. |
 | D-5 | No readback loop exists any more. The presence probe runs once per rejoin; if it is unusable, receipts are trusted and the status says `RECEIPTS_UNVERIFIED`. |
 | D-6 | Obsolete: the conversion identity is gone. Receipts carry `CONVERSION_VERSION` only. |
-| D-7 | Reset passes "DH selected and connected" as the DH context, discards receipts in both branches and resumes the session; DH-specific feedback. |
+| D-7 | Reset treats the connection as a DH terrain session when DH is selected, the server advertises the DH channel and the source has not stopped; it then discards receipts and resumes the session, with DH-specific feedback. Otherwise the confirm prompt stays (a vanilla or DH 3.2.x server cannot refill), and a confirmed wipe still resumes the session. |
 | D-8 | Obsolete with the gate/wait diagnostics (X-14). |
 | D-9 | An out-of-interest push forgets the tile's receipt, so the next load re-requests it. |
 | D-10, D-17–D-20 | Obsolete: the legacy trial, cooldown and transfer hook are deleted (X-4). |
 | D-11 | Separate `VANILLA_LIMIT` block reason; the cap is now 65,536 regions (bitset), not 262,144 columns. |
 | D-12 | `ZstdException` is classified MALFORMED. |
-| D-13 | Tile-intrinsic impossibilities (blob over budget, spans over height or limit) are MALFORMED, with a cooldown strike, not a 2 s retry. Span limit raised to 2,200,000. |
+| D-13 | Tile-intrinsic impossibilities (blob over budget, spans over height or limit, mapping count or bytes, decoded size) are MALFORMED: a reply takes a cooldown strike, a push defers its tile. Only the decompressor dictionary budget stays RESOURCE_LIMIT. Span limit raised to 2,200,000. |
 | D-14 | Unmatched or expired responses discard their buffer. |
 | D-15 | Obsolete with the DTO cache. |
 | D-16 | Scans run on a fixed 500 ms cadence (50 ms after a request); movement no longer forces a scan. |
@@ -67,20 +67,20 @@ Fixture and documentation adaptation follow in later commits on the branch.
 | D-28 | Fringe budget prose corrected to the code's values. |
 | D-29 | Support side-face sky follows DH's floor rule; `CONVERSION_VERSION` 5 invalidates old receipts. |
 | D-30 | `vanillaLoaded` returns early when not opted in, after a native offer, or in singleplayer. |
-| D-31 | Dead code deleted (`DhAcquisition`, `DhTerrainCache`, trial/transfer, `unchanged()`, informational waits). `DhClientSession.status()` stays as the fixtures' text seam. `ClientSessionGate.nativeSource` is live (DH selection disables native reception) and stays. |
+| D-31 | Dead code deleted (`DhAcquisition`, `DhTerrainCache`, trial/transfer, `legacyEvidence`, `VoxyTerrainProbe.isCurrent`, `unchanged()`, informational waits). `DhClientSession.status()` stays as the fixtures' text seam. `ClientSessionGate.nativeSource` is still a constant-`true` parameter in production (left; harmless). |
 | X-1 | A tile takes two main-thread hops (prefilter, then batched ingest and accept) instead of one per column. |
 | X-2 | See D-1. |
 | X-3 | Scoped recovery (D-2/D-3); a malformed tile costs that tile a cooldown, not the session. Control decoding tolerates unknown messages and trailing bytes; terrain decoding stays strict. |
 | X-4 | Official-15 support cut (decision above). Same-connection support switching for Support 15 stays. |
-| X-5 | Receipts: tile → timestamp + conversion version, per server/world/dimension/seed/profile/shape key, atomic file, LRU of 512 buckets × 65,536 entries. Legacy DTO files are swept (own files only). |
-| X-6 | Fabric registers the DH receiver per connection when opted in; NeoForge registers at startup when opted in, otherwise reports `RESTART_REQUIRED`. The fringe pump runs only during an active terrain session and with `lod.voxy_border_fill`. |
+| X-5 | Receipts: tile → timestamp + conversion version, per server/world/dimension/seed/profile/shape key, atomic file, LRU of 64 buckets × 65,536 entries. Kept and restored only where sync is available (otherwise they could never learn of offline edits). On rejoin a probe checks all four Voxy sections of each tile (`acquireIfExists` where Voxy has it); transient probe failures retry, repeated ones drop the receipts. Legacy DTO files are swept (own files only). |
+| X-6 | Fabric registers the DH receiver per connection when opted in, and treats the channel as usable only where that receiver exists; NeoForge registers at startup when opted in, otherwise reports `RESTART_REQUIRED`. The fringe pump runs only during a native session or a negotiated DH session (config received), and with `lod.voxy_border_fill` (default on, which keeps the pre-existing native behaviour; it is not a new native change). |
 | X-7 | Paper excludes DH and XZ; `release_check` pins their absence. |
 | X-8 | Middle path (decision above). |
 | X-9 | Label "Allow DH Server Terrain"; honest tooltip; translations updated. |
-| X-10 | Sidecar YAML. Downgraded builds ignore it and read the main file normally. |
+| X-10 | Sidecar YAML. Downgraded builds ignore it and read the main file normally; startup moves development-build keys out of the main file once. The sidecar can never disable the main settings: unknown, retired or invalid content is dropped with a warning, and a failed main publish rolls the sidecar back. |
 | X-11 | Not changed (user decision). |
 | X-12 | The load debounce lives in the connection state, per dimension. |
-| X-13 | Resume counts as a load: revalidate when the server allows sync, otherwise clear receipts. |
+| X-13 | Resume counts as a load: revalidate when the server allows sync; without sync no receipt is restored at all (see X-5). |
 | X-14 | Status is state + reason + activity + counters. Gate detail stays in the trace. |
 | X-15 | Voxy ingest gate 1024 sections (above one tile); fringe gate 2048; vanilla cap per region (D-11). Request caps unchanged. |
 | X-16 | Open; see "Not done". |
@@ -91,8 +91,11 @@ Fixture and documentation adaptation follow in later commits on the branch.
   the current connection's vanilla regions.
 - Upstream request coalescing can hand a request an older in-flight read; the push
   sequence covers the push case, a later load check covers the rest.
-- Edits missed while out of range appear at the next load check (debounced 20 min
-  per dimension and connection), on reset, or on rejoin.
+- An edit missed while out of range or under load appears when that tile re-enters
+  view after the 20-minute load interval (per dimension and connection), on reset,
+  or on rejoin. A tile that stays in view is not rechecked.
+- Without sync (DH Support, or sync off), every connection downloads the whole range.
+- `/lss diag` shows "last reply age -1 ms" before the first reply (cosmetic).
 
 ## Verification (2026-10-09, commit `236bbba4`)
 
@@ -110,3 +113,27 @@ resumed afterwards:
 Not run: any live rig. The adapted dh-live (`rejoin`, `updates`, `service`) and
 dh-p4 (`benchmark`, `configuration`) cases compile but have not been executed
 against the remediated client.
+
+## Review panel round (2026-10-10)
+
+A 4-Opus + 2-Fable panel reviewed `fa17926b`. All verified findings were folded on
+`fix/dh-review-panel` (rows above are updated to the folded state). Highlights:
+
+- A push deferred under pressure could let an in-flight pre-push reply re-hold its
+  tile (O1, F1): replies are now written only while their request is pending
+  (mutation-tested).
+- Without sync, restored receipts froze terrain forever, and a reception resume or
+  a dimension round trip mishandled the persisted file (O2, F1, F2): receipts are
+  sync-only and survive round trips.
+- An unknown key in the experimental file disabled all LSS client settings (O3).
+- The adapted live-rig mixins could not load (receive's new loss-epoch argument) and
+  the converter hooks targeted an unused overload (O4); both fixed and compiled.
+- Unconfirmed `/lss reset` wiped Voxy on servers that cannot refill (O4, F2).
+- Push-loss recovery was effectively whole-disc; it is now per tile (F1, F2).
+- Long flights ignored persisted receipts after policy eviction; the first portal
+  return revalidated everything; the requested update distance ignored the LOD
+  distance (F2).
+
+Not changed: the session-wide stop after two unanswered sync requests (upstream leaks
+a rate-limit permit per silent failure; kept, F1-7), the cosmetic `-1 ms`, and the
+`nativeSource` constant parameter.

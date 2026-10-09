@@ -36,6 +36,24 @@ class DhAssemblyTest {
         }
         assertEquals(0,budget.used());
     }
+    /** Panel F2-4: a lost buffer whose first fragment survived names its tile, so a lost push is reacquired precisely. */
+    @Test void lostBuffersReportTheTileTheirHeaderNames() throws Exception {
+        var time=new AtomicLong();var budget=new DhMemoryBudget(100000);var tile=new DhPosition(6,-3,7);
+        byte[] header=java.nio.ByteBuffer.allocate(12).putLong(tile.packed()).putInt(1).array();
+        try(var a=new DhAssembly(deadlines(),budget,time::get)) {
+            a.allowPush(true);
+            a.accept(new Split(20,header,true),1,0);
+            var lost=assertThrows(DhCodecException.class,()->a.accept(new Split(20,new byte[]{1},false),2,1));
+            assertEquals(DhCodecException.Kind.UNOWNED,lost.kind());
+            assertEquals(List.of(tile),a.drainLostClaims(),"loss-epoch discard names the tile");
+            assertTrue(a.drainLostClaims().isEmpty());
+            a.accept(new Split(21,header,true),3,1);
+            a.expire(1_000_000);assertEquals(List.of(tile),a.drainLostClaims(),"an orphaned push (lost update message) names its tile at expiry");
+            a.accept(new Split(22,new byte[]{1},true),1_000_001,1);a.discardIncomplete();
+            assertTrue(a.drainLostClaims().isEmpty(),"no readable header: no claim, the owner falls back to window recovery");
+        }
+        assertEquals(0,budget.used());
+    }
     private static DhLimits deadlines() {
         var d = DhLimits.DEFAULT;
         return new DhLimits(d.frameBytes(),d.tileBytes(),d.decodedBytes(),d.ownedBytes(),d.decompressorKiB(),
