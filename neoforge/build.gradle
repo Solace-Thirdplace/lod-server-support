@@ -175,6 +175,7 @@ dependencies {
     // Supply their parser only to dev runs; shipping jars carry the private,
     // relocated copy from common's shadowJar and never this engine namespace.
     additionalRuntimeClasspath 'org.snakeyaml:snakeyaml-engine:3.1.1'
+    additionalRuntimeClasspath 'org.tukaani:xz:1.10'
 
     testImplementation platform('org.junit:junit-bom:5.11.3')
     testImplementation 'org.junit.jupiter:junit-jupiter'

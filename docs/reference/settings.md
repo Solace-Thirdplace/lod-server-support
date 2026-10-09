@@ -23,6 +23,10 @@ Migration is one-way: v0.15.x reads the retained JSON and ignores YAML edits;
 copy any desired changes back into JSON before downgrading.
 Invalid authoritative YAML never falls back to JSON. Reload does not write files.
 
+DH defaults are omitted when saving so native-only settings remain readable by v0.16.0.
+Before downgrading a client with DH enabled or nondefault DH preferences, remove
+`lod.source` and the `lod.dh` mapping from its YAML: v0.16.0 rejects those unknown keys.
+
 ## Fabric / NeoForge server
 
 | YAML path | Type | Default | Range / units | Timing | Applicability |
@@ -474,6 +478,9 @@ paper:
 
 | YAML path | Type | Default | Range / units | Timing | Applicability |
 | --- | --- | --- | --- | --- | --- |
+| lod.source | string | "lss" |  | S | all |
+| lod.dh.sync_on_load | boolean | true |  | H | all |
+| lod.dh.real_time_updates | boolean | true |  | H | all |
 | lod.receive | boolean | true |  | H | all |
 | lod.distance_chunks | integer | 0 | 0–2048 chunks | H | all |
 | lod.download.max_columns_per_second | integer | 0 | 0 sentinel; 10–100000 columns_per_second | H | all |
@@ -517,6 +524,11 @@ config_version: 1 # Local settings schema version, independent of the network pr
 # not raise vanilla render/simulation distance. More terrain can cost client disk,
 # memory and processing time. Turning reception off does not erase cached terrain.
 lod:
+  # DH defaults are omitted for compatibility with 0.16.0 when DH has not been enabled.
+  # General > Use Distant Horizons permits DH fallback (requires reconnect).
+  # File-only lod.dh.sync_on_load and lod.dh.real_time_updates both default to true.
+  # Add them under a dh mapping to override; /lss reload applies changes.
+  # Nondefault DH keys require a DH-capable client when downgrading.
   receive: true # Download server LOD terrain; off stops acquisition, not saved terrain display.
   distance_chunks: 0 # 0 = server default; otherwise 1–2048, capped by the server's radius.
   # Balance terrain fill speed against connection quality and client processing load.
@@ -525,7 +537,7 @@ lod:
   # Adaptive controls react to latency or consumer backlog; they are not an FPS cap.
   download:
     max_columns_per_second: 0 # 0 = unlimited; positive range 10–100000 columns/second.
-    adaptive_rate: true # Adjust download rate when latency indicates congestion.
+    adaptive_rate: true # Adapt native LSS to latency; enable the optional DH join pacing.
     slow_start_on_join: true # Begin new sessions gently; requires adaptive_rate.
     ingest_backpressure: true # Slow downloads when terrain consumers fall behind.
 
@@ -568,7 +580,7 @@ integrations:
   # future writes after reconnect; it does not remove terrain already saved on the map.
   # Backpressure lets map writing keep up instead of allowing an unchecked backlog.
   xaero_map:
-    enabled: false # [reconnect] Write terrain into Xaero's World Map; requires that mod.
+    enabled: false # [reconnect] Write native LSS terrain into Xaero's World Map; requires that mod.
     backpressure: true # Pace downloads to map writes; requires ingest_backpressure.
 
 # Draws distant player models from server snapshots, not fully simulated entities.

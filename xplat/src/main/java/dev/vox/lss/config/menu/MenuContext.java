@@ -30,7 +30,11 @@ import dev.vox.lss.platform.LoaderServices;
  *                                 always shows)
  */
 public record MenuContext(boolean governorOn, boolean xaeroPresent,
-                          boolean farPlayerRenderAvailable) {
+                          boolean farPlayerRenderAvailable, boolean nativeTerrain) {
+
+    public MenuContext(boolean governorOn, boolean xaeroPresent, boolean farPlayerRenderAvailable) {
+        this(governorOn, xaeroPresent, farPlayerRenderAvailable, true);
+    }
 
     /** Every fact ON: the default for tests and the tooltip-key enumeration. */
     public static MenuContext all() {
@@ -53,6 +57,9 @@ public record MenuContext(boolean governorOn, boolean xaeroPresent,
         } catch (Throwable t) {
             xaero = false;
         }
-        return new MenuContext(governor, xaero, FarPlayerRenderer.RENDER_AVAILABLE);
+        boolean nativeTerrain;
+        try { nativeTerrain = !dev.vox.lss.networking.client.DhClientSession.selected(); }
+        catch (Throwable unavailable) { nativeTerrain = true; }
+        return new MenuContext(governor, xaero, FarPlayerRenderer.RENDER_AVAILABLE, nativeTerrain);
     }
 }

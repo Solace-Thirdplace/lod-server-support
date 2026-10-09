@@ -1,0 +1,53 @@
+package dev.vox.lss.networking.client;
+
+import dev.vox.lss.common.dh.DhProtocolCodec;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+
+/** Client-only optional channel. Inbound storage is reserved before its callback is queued. */
+public final class DhClientTransport {
+    private record Payload(byte[] outbound, DhClientSession.Inbound inbound) implements CustomPacketPayload {
+        static final Type<Payload> TYPE=new Type<>(ResourceLocation.parse(DhProtocolCodec.CHANNEL));
+        static final StreamCodec<FriendlyByteBuf,Payload> CODEC=StreamCodec.of(
+                (buf,payload)->buf.writeBytes(payload.outbound),
+                buf->new Payload(null,DhClientSession.capture(buf)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+    public static void init() {
+        DhClientSession.installNativeAvailability(()->ClientPlayNetworking.canSend(
+                dev.vox.lss.networking.payloads.HandshakeC2SPayload.TYPE));
+        DhClientSession.installChannelAvailability(()->ClientPlayNetworking.canSend(Payload.TYPE));
+        if(FabricLoader.getInstance().isModLoaded("distanthorizons")) {
+            DhClientSession.installTransport(null,"Remove Distant Horizons from the client to use "+dev.vox.lss.common.Brand.shortName()+"'s DH source",
+                    dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason.CLIENT_MOD_CONFLICT);
+            return;
+        }
+        try {
+        // An integrated host must discard guest C2S data without charging the
+        // host client's DH session. Only S2C decode owns inbound terrain bytes.
+        PayloadTypeRegistry.playC2S().register(Payload.TYPE,StreamCodec.of(
+                (buf,payload)->buf.writeBytes(payload.outbound),
+                buf->{ buf.skipBytes(buf.readableBytes()); return new Payload(null,null); }));
+        PayloadTypeRegistry.playS2C().register(Payload.TYPE,Payload.CODEC);
+        ClientPlayNetworking.registerGlobalReceiver(Payload.TYPE,(payload,context)-> {
+            if(payload.inbound!=null) payload.inbound.receive();
+        });
+        ClientChunkEvents.CHUNK_LOAD.register((level,chunk)->
+                DhClientSession.vanillaLoaded(level,chunk.getPos().x,chunk.getPos().z));
+        DhClientSession.installTransport(bytes->{
+            if(!ClientPlayNetworking.canSend(Payload.TYPE))throw new IllegalStateException("DH server channel is unavailable");
+            ClientPlayNetworking.send(new Payload(bytes,null));
+        },null);
+        } catch(RuntimeException failure) {
+            DhClientSession.installTransport(null,"DH channel registration failed: "+failure.getMessage());
+            dev.vox.lss.common.LSSLogger.warn("DH channel registration failed; native LSS remains available: "+failure.getMessage());
+        }
+    }
+    private DhClientTransport() {}
+}

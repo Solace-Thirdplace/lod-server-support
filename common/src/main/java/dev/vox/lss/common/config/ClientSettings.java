@@ -5,7 +5,8 @@ import java.util.*;
 /** Immutable settings; mutable document nodes never enter runtime snapshots. */
 public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility compatibility, Integrations integrations, FarPlayers farPlayers) {
     public record LodDownload(int maxColumnsPerSecond, boolean adaptiveRate, boolean slowStartOnJoin, boolean ingestBackpressure) {}
-    public record Lod(boolean receive, int distanceChunks, LodDownload download) {}
+    public record LodDh(boolean syncOnLoad, boolean realTimeUpdates) {}
+    public record Lod(boolean receive, int distanceChunks, LodDownload download, String source, LodDh dh) {}
     public record Scan(boolean regionOrder, boolean adaptiveCadence, boolean retainCompletedPrefix, boolean quadtree, boolean regionSummaries) {}
     public record Cache(boolean splitByWorld, List<List<String>> addressAliases) {
         public Cache { addressAliases = addressAliases.stream().map(List::copyOf).toList(); }
@@ -24,6 +25,9 @@ public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility comp
     public Map<String,Object> values() {
         var v = new LinkedHashMap<String,Object>();
         var s = this;
+        v.put("lod.source", s.lod().source());
+        v.put("lod.dh.sync_on_load", s.lod().dh().syncOnLoad());
+        v.put("lod.dh.real_time_updates", s.lod().dh().realTimeUpdates());
         v.put("lod.receive", s.lod().receive());
         v.put("lod.distance_chunks", s.lod().distanceChunks());
         v.put("lod.download.max_columns_per_second", s.lod().download().maxColumnsPerSecond());
@@ -61,7 +65,7 @@ public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility comp
     }
     @SuppressWarnings("unchecked")
     private static Lod Lod(Map<String,Object> v) {
-        return new Lod((boolean)v.get("lod.receive"), (int)v.get("lod.distance_chunks"), LodDownload(v));
+        return new Lod((boolean)v.get("lod.receive"), (int)v.get("lod.distance_chunks"), LodDownload(v), (String)v.get("lod.source"), new LodDh((boolean)v.get("lod.dh.sync_on_load"), (boolean)v.get("lod.dh.real_time_updates")));
     }
     @SuppressWarnings("unchecked")
     private static Scan Scan(Map<String,Object> v) {

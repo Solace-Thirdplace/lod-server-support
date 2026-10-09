@@ -1,0 +1,55 @@
+{
+  "date": "2026-09-30",
+  "milestone": "P1",
+  "baseline": "6677fe93dfc35b8ca1e158972d4cf58eb9703bd2",
+  "implementation": "implemented",
+  "validation_gate": "pending",
+  "junit": {
+    "tests": 38,
+    "failures": 0,
+    "skips": 0,
+    "runner": "direct Java 21/JUnit; sandbox prevents Gradle startup"
+  },
+  "compiled_common_sources": 119,
+  "upstream_encoder_parity_combinations": 6,
+  "packaging_smoke": "ASM-relocated common/XZ subset, separate JVM, no stock XZ; not Gradle Shadow/platform builds",
+  "release_checker_selftest_cases": 124,
+  "pending": [
+    "official format-2 wire corpus and captured-session parity",
+    "legitimate custom-height budget signoff",
+    "normal Gradle common tests and final platform LSS/VSS artifact gates"
+  ],
+  "oracle": {
+    "upstream_revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+    "source_sha256": "af43e55287da295dbe45bbace77d74645ca955d47712fd895645910e383cde61",
+    "extracted_encoder_sha256": "ce7cd76a69b4a16a9a777c4029859655bdeac26dd54a094d0716db43e1dbe1dd",
+    "scope": "Unmodified upstream format-2 encoder and varint/edge helpers, raw-stream and packed-point adapters. Not a live wire capture."
+  },
+  "source_files": {
+    "common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java": "5203f640066c4baedfa46a28ec4ecbbb9da1bb3410ea6653a7130587a0a3afcd",
+    "common/src/main/java/dev/vox/lss/common/dh/DhCodecException.java": "1d97f11aa40420205063f4e6667464eef39b270fecfe0a5c469217ab0db5eaac",
+    "common/src/main/java/dev/vox/lss/common/dh/DhInput.java": "c902b5331ffd25d6b4c6666548c993dba56a757f1c75e2b174ba2fa780811119",
+    "common/src/main/java/dev/vox/lss/common/dh/DhLimits.java": "42094d6d1d64b64eb3d818d04d341be1f12995f7ae471ccda6b09e073b14ae3d",
+    "common/src/main/java/dev/vox/lss/common/dh/DhMaterial.java": "0622e04a71fe2a8ab45f61aef830fc8e6e78a419e293d63afcaeadd3516830a6",
+    "common/src/main/java/dev/vox/lss/common/dh/DhMemoryBudget.java": "a0cfcdab7f1691cacfb10f3117d68920dc29e8fc5add0edbaca73c21a9e04085",
+    "common/src/main/java/dev/vox/lss/common/dh/DhMessage.java": "375ce8a2a4952e6e00ef80406aec18e35706bf16372ebd9a1342e61fa3c51dfc",
+    "common/src/main/java/dev/vox/lss/common/dh/DhPosition.java": "522768589047fc17dc6c1936fe3cdf3c5a87faa831d264a18958d9628cb0e4db",
+    "common/src/main/java/dev/vox/lss/common/dh/DhProfile.java": "d96f61f503487f3eba5b3a5496da3fccb103f1e8a1792ad0bd4457d0f3f70cf2",
+    "common/src/main/java/dev/vox/lss/common/dh/DhProtocolCodec.java": "754443458cf46854ab64bc29e9a20d9f21bca4d582256ddd5451baf25d5423f3",
+    "common/src/main/java/dev/vox/lss/common/dh/DhTerrainDecoder.java": "878eb0816203d965c1ab3df027739ae5f1de4faa70a31c2ff88566916d77ba1a",
+    "common/src/main/java/dev/vox/lss/common/dh/DhTerrainTile.java": "f94ae3bb4372b6b8598b631f7c225c835a772d81226413914e6ab3e51f3fd7d2"
+  },
+  "logs": {
+    "common-compile.log": "2db964e622d48f245dc37b9937da2785a360739f886789ea66afec40ec4afdba",
+    "final-build-smoke.log": "6191937094ab2741b71af1d49f92b292d295722035daf610c5b4ea37222ab750",
+    "gradle-startup-failure.log": "b923b22f9b2dce0956645550f8933bd85cc1f4a37b8021396d4c7aad9e19b430",
+    "oracle.log": "173b9e9c8931816f6f7faff948f17c9b9639108d7415b00b0aa4ae081ed1cc0a",
+    "packaging.log": "20a03f6e4d43590d3ddb3cc6f5fcc5cb409681cc215bfe35a2fede34a610265d",
+    "tests-3.log": "00a4950ed36b76bbf039451b26ceaa5570da3f6889c044450fdb3569803577d3",
+    "tests-final.log": "321ce70e6941adc1081363f64bb72f0c7d8d7754c87b45a920bbcba3c4afff41"
+  },
+  "accepted_test_log": "tests-final.log",
+  "accepted_compile_and_packaging_log": "final-build-smoke.log",
+  "patch_sha256": "e0d2da2eb8fb6e10ab336dd158e30f9dc85378b77aa75d3cba06a612f12cb7de",
+  "patch_apply_check": "passes against published v0.16.0+mc1.21.1 index"
+}

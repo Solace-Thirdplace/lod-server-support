@@ -1,0 +1,51 @@
+{
+  "status": "ready-for-manual-test",
+  "timestamp_utc": "2026-10-06T17:58:12.817527+00:00",
+  "artifact_sha256": "c0713646df836d14a76eaddf59ea7a2139312eb7c9802f9653f2cf8e507a5893",
+  "prism_installation": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/prism-installation.json",
+  "instance": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing",
+  "endpoint": "[::1]:25585",
+  "server_owner": {
+    "pid": 215509,
+    "start": "12826827",
+    "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+  },
+  "current_liveness": {
+    "checked_utc": "2026-10-06T17:58:11.390334+00:00",
+    "owner_alive": true,
+    "endpoint": "[::1]:25585",
+    "tcp_reachable": true,
+    "ready": true,
+    "problem": null,
+    "recorded_owner": {
+      "pid": 215509,
+      "start": "12826827",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    }
+  },
+  "minecraft_status": {
+    "name": "1.21.1",
+    "protocol": 767
+  },
+  "windows_ipv6_tcp": true,
+  "existing_world_resumed": true,
+  "world": "dh-neoforge-playable",
+  "server_lss": false,
+  "server_dh_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+  "private_tests_passed": true,
+  "private_cells": 4,
+  "private_ui_status": "Actual Sodium 0.8.12, Auto scale 3, three DH checkboxes, no manual protocol selector; screenshot inspected",
+  "client_foreground_launched": false,
+  "client_preferences_preserved": true,
+  "generation": {
+    "max_distance_chunks": 32,
+    "plan": "SURFACE_THEN_CHUNKS",
+    "sync_on_load": true,
+    "unsolicited_updates": true
+  },
+  "test_player_op_preserved": true,
+  "console_fifo_tested": true,
+  "server_survived_launcher_exit": true,
+  "storage_preflight": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/manual-storage-preflight.json",
+  "storage_health": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/evidence/storage-health.json"
+}

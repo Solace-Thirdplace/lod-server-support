@@ -60,6 +60,8 @@ public final class YamlSettingsCodec<T> {
         var configured = schema.values(schema.fromValues(values).configured());
         MappingNode root = (MappingNode) compose(document.bytes());
         for (var entry : changes.entrySet()) replace(root, entry.getKey().split("\\."), 0, node(configured.get(entry.getKey())));
+        if(schema.isClient())for(String path:List.of("lod.source","lod.dh.sync_on_load","lod.dh.real_time_updates"))
+            if(Objects.equals(configured.get(path),schema.values(schema.defaults()).get(path)))remove(root,path.split("\\."),0);
         byte[] output = new Present(DUMP).emitToString(new Serialize(DUMP).serializeOne(root).iterator()).getBytes(StandardCharsets.UTF_8);
         parse(output);
         return output;
@@ -160,6 +162,18 @@ public final class YamlSettingsCodec<T> {
         Node child=replacement;
         if (index+1<path.length) { var next=new MappingNode(Tag.MAP,new ArrayList<>(),FlowStyle.BLOCK); replace(next,path,index+1,replacement); child=next; }
         pairs.add(new NodeTuple(new ScalarNode(Tag.STR,path[index],ScalarStyle.PLAIN),child));
+    }
+    private static void remove(MappingNode mapping,String[] path,int index) {
+        var pairs=mapping.getValue();
+        for(int i=0;i<pairs.size();i++) {
+            var pair=pairs.get(i);
+            if(!((ScalarNode)pair.getKeyNode()).getValue().equals(path[index]))continue;
+            if(index+1==path.length)pairs.remove(i);
+            else if(pair.getValueNode() instanceof MappingNode child) {
+                remove(child,path,index+1);if(child.getValue().isEmpty())pairs.remove(i);
+            }
+            return;
+        }
     }
     static String utf8(byte[] bytes) {
         if (bytes.length>MAX_BYTES) throw new SettingsException("Settings file exceeds 1 MiB");

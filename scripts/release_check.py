@@ -52,7 +52,10 @@ NEOFORGE_FORBIDDEN = ("dev/vox/lss/benchmark/", "dev/vox/lss/neoforge/gametest/"
                       "net/caffeinemc/")
 # Dev-only namespaces that would live in common/ (e.g. a deduped soak-driver twin): common
 # ships on BOTH platforms — nested in the Fabric jar, shaded into the Paper jar.
-COMMON_FORBIDDEN = ("dev/vox/lss/common/soak/", "dev/vox/lss/common/benchmark/")
+COMMON_FORBIDDEN = ("privatep4/", "com/seibel/", "net/caffeinemc/", "dev/vox/lss/common/soak/", "dev/vox/lss/common/benchmark/",
+                    "dev/vox/lssfixture/",
+                    # Voxy carries stock XZ; LSS must carry only its private relocated copy.
+                    "org/tukaani/")
 # All four shipped artifacts: the LSS pair (Modrinth lKiXKLvv) and the Voxy Server Side pair
 # (Modrinth voxy-server-side). The VSS jars are branded byte-copies of the LSS jars — same
 # classes, mod id `lss` / plugin name LodServerSupport, so they get the IDENTICAL safety
@@ -115,7 +118,7 @@ def _scan_forbidden(jar, base, prefixes, problems):
         problems.append(f"{base}: unreadable nested jar ({e})")
         nested = []
     for label, names in [(None, _names(jar))] + nested:
-        leaked = [n for n in names if n.startswith(prefixes)]
+        leaked = [n for n in names if re.sub(r"^META-INF/versions/[0-9]+/", "", n).startswith(prefixes)]
         if leaked:
             where = base if label is None else f"{base}!{label}"
             problems.append(f"{where}: ships forbidden entries "
@@ -161,9 +164,85 @@ def _yaml_archives(source, label=None):
     with zipfile.ZipFile(source) as archive:
         yield label, archive
         for entry in archive.namelist():
-            if entry.startswith(("META-INF/jars/", "META-INF/jarjar/")) and entry.endswith(".jar"):
+            if (entry.startswith(("META-INF/jars/", "META-INF/jarjar/")) and entry.endswith(".jar")) or entry==sqlite_capsule.CAPSULE:
                 nested_label = entry if label is None else label + "!" + entry
                 yield from _yaml_archives(io.BytesIO(archive.read(entry)), nested_label)
+
+
+DH_CODEC = "dev/vox/lss/common/dh/DhTerrainDecoder.class"
+XZ_PREFIX = "dev/vox/lss/internal/xz/"
+XZ_LICENSE = "META-INF/licenses/xz-java-0BSD.txt"
+XZ_REQUIRED = tuple(XZ_PREFIX + name + ".class" for name in (
+    "XZInputStream", "SingleXZInputStream", "LZMA2InputStream"))
+
+
+def _links_stock_xz(code):
+    """Inspect symbolic names/descriptors and exact reflective class literals.
+
+    XZ retains upstream property names in English diagnostic text. That text is
+    not a class link; searching arbitrary class bytes falsely rejects clean jars.
+    Malformed/synthetic inputs keep the conservative raw-byte fallback.
+    """
+    values=[]
+    try:
+        if len(code)<10 or code[:4]!=b'\xca\xfe\xba\xbe':raise ValueError('not a class')
+        count=int.from_bytes(code[8:10],'big');offset=10;index=1
+        if count<1:raise ValueError('invalid pool count')
+        widths={3:4,4:4,5:8,6:8,7:2,8:2,9:4,10:4,11:4,12:4,15:3,16:2,17:4,18:4,19:2,20:2}
+        while index<count:
+            tag=code[offset];offset+=1
+            if tag==1:
+                size=int.from_bytes(code[offset:offset+2],'big');offset+=2
+                if offset+size>len(code):raise ValueError('truncated UTF8')
+                values.append(code[offset:offset+size]);offset+=size
+            else:
+                offset+=widths[tag]
+                if tag in (5,6):index+=1
+            if offset>len(code):raise ValueError('truncated constant')
+            index+=1
+    except (IndexError,KeyError,ValueError):
+        return b'org/tukaani/' in code or b'org.tukaani.' in code
+    return any(value.startswith((b'org/tukaani/',b'org.tukaani.'))
+               or b'Lorg/tukaani/' in value for value in values)
+
+
+def check_dh_codec(jar, loader, problems):
+    """DH's common codec owns one private XZ copy; stock packages must never leak."""
+    owners = []
+    base = os.path.basename(jar)
+    try:
+        for label, archive in _yaml_archives(jar):
+            names = archive.namelist()
+            where = base if label is None else f"{base}!{label}"
+            if any(re.sub(r"^META-INF/versions/[0-9]+/", "", name).startswith("org/tukaani/") for name in names):
+                problems.append(f"{where}: unrelocated XZ classes")
+            for name in names:
+                if name.endswith(".class"):
+                    code=archive.read(name)
+                    if _links_stock_xz(code):
+                        problems.append(f"{where}: {name} links unrelocated XZ")
+            private = any(name.startswith(XZ_PREFIX) and name.endswith(".class") for name in names)
+            if DH_CODEC not in names:
+                if private:
+                    problems.append(f"{where}: private XZ has no owning DH codec")
+                continue
+            owners.append(label)
+            code = archive.read(DH_CODEC)
+            if _links_stock_xz(code):
+                problems.append(f"{where}: DH codec still links unrelocated XZ")
+            for required in XZ_REQUIRED:
+                if required not in names:
+                    problems.append(f"{where}: missing private XZ class {required}")
+            if XZ_LICENSE not in names or b"0BSD" not in archive.read(XZ_LICENSE):
+                problems.append(f"{where}: missing XZ 0BSD notice")
+    except zipfile.BadZipFile as error:
+        problems.append(f"{base}: unreadable DH codec archive ({error})")
+    if len(owners) != 1:
+        problems.append(f"{base}: expected exactly one DH codec/XZ owner, found {len(owners)}")
+    elif loader == "fabric" and (owners[0] is None or not owners[0].startswith("META-INF/jars/common-")):
+        problems.append(f"{base}: Fabric DH codec must live in its nested common jar")
+    elif loader in ("paper", "neoforge", "common") and owners[0] is not None:
+        problems.append(f"{base}: {loader} DH codec must be flattened with common")
 
 
 def check_yaml_parser(jar, loader, problems):
@@ -768,6 +847,10 @@ def check_third_party_notices(jar, is_fabric, problems):
         return
     if len(_read_raw(jar, "THIRD-PARTY-NOTICES")) < 100:
         problems.append(f"{base}: THIRD-PARTY-NOTICES is (near-)empty")
+    if any(DH_CODEC in names for _,names in [(None,_names(jar))]+_nested_jars(jar)):
+        notice=_read_raw(jar,"THIRD-PARTY-NOTICES")
+        if not all(word in notice for word in (b"XZ",b"1.10",b"0BSD")):
+            problems.append(f"{base}: missing XZ 1.10/0BSD third-party paragraph")
 
 
 def check_vss_fabric_identity(jar, problems):
@@ -1239,6 +1322,9 @@ def discover(problems, expected_version=None, root=ROOT):
     check_glob_hygiene(problems, soak)
     for jar in fab + pap + vfab + vpap + neo + vneo:
         sqlite_capsule.check(jar, problems)
+    for loader, jars in (("fabric", fab + vfab), ("paper", pap + vpap), ("neoforge", neo + vneo)):
+        for jar in jars:
+            check_dh_codec(jar, loader, problems)
     return fab, pap, vfab, vpap, neo, vneo, soak
 
 
@@ -1334,6 +1420,9 @@ def _selftest_fixtures():
         entries[YAML_NOTICE] = "SnakeYAML Engine 3.1.1 Copyright (c) 2018, SnakeYAML"
         entries[YAML_VERSION] = "version=3.1.1\n"
         entries.update({name: "config_version: 1\n" for name in YAML_TEMPLATES})
+        entries[DH_CODEC] = b"\xca\xfe\xba\xbe\x00\x00\x00\x41"
+        entries.update({name: b"\xca\xfe\xba\xbe\x00\x00\x00\x34" for name in XZ_REQUIRED})
+        entries[XZ_LICENSE] = "SPDX-License-Identifier: 0BSD"
         return entries
 
     def _nested_common(version="0.4.0"):
@@ -2093,6 +2182,18 @@ def _selftest_fixtures():
         # Relocated YAML parser: all six brands/loaders must enforce the same shape.
         yaml_flat = os.path.join(td, "yaml-flat.jar")
         _make_jar(yaml_flat, _yaml_entries())
+        fixture_nested = io.BytesIO()
+        with zipfile.ZipFile(fixture_nested, "w") as z:
+            z.writestr("dev/vox/lssfixture/dh/Probe.class", b"test-only")
+        for label, entries in (
+                ("fixture-flat", {"dev/vox/lssfixture/dh/Probe.class": b"test-only"}),
+                ("fixture-nested", {"META-INF/jars/common-test.jar": fixture_nested.getvalue()})):
+            bad = os.path.join(td, label + ".jar")
+            _make_jar(bad, entries)
+            p = []
+            _scan_forbidden(bad, label, COMMON_FORBIDDEN, p)
+            check(any("dev/vox/lssfixture/" in issue for issue in p), f"test fixture accepted: {p}")
+
         for loader in ("paper", "neoforge", "common"):
             p = []
             check_yaml_parser(yaml_flat, loader, p)
@@ -2126,6 +2227,48 @@ def _selftest_fixtures():
         p = []
         check_yaml_parser(yaml_missing, "paper", p)
         check(any("found 0" in issue for issue in p), f"missing parser accepted: {p}")
+
+        # XZ cannot escape into any flat or nested loader/brand artifact.
+        xz_stock = io.BytesIO()
+        with zipfile.ZipFile(xz_stock, "w") as z:
+            z.writestr("org/tukaani/xz/XZInputStream.class", b"stock")
+        for label, entries in (
+                ("xz-flat", {"org/tukaani/xz/XZInputStream.class": b"stock"}),
+                ("xz-nested", {"META-INF/jars/common-test.jar": xz_stock.getvalue()})):
+            bad = os.path.join(td, label + ".jar")
+            _make_jar(bad, entries)
+            p = []
+            _scan_forbidden(bad, label, COMMON_FORBIDDEN, p)
+            check(any("org/tukaani/" in issue for issue in p), f"unrelocated XZ accepted: {p}")
+
+        for loader in ("paper", "neoforge", "common"):
+            p = []
+            check_dh_codec(yaml_flat, loader, p)
+            check(not p, f"valid private XZ rejected on {loader}: {p}")
+        p = []
+        check_dh_codec(yaml_fabric, "fabric", p)
+        check(not p, f"valid nested private XZ rejected: {p}")
+        for label, change, expected in (
+                ("xz-link", {DH_CODEC: b"org/tukaani/xz/XZInputStream"}, "links unrelocated"),
+                ("xz-missing", {XZ_REQUIRED[0]: None}, "missing private"),
+                ("xz-notice", {XZ_LICENSE: None}, "missing XZ")):
+            entries = _yaml_entries()
+            for name, value in change.items():
+                if value is None:
+                    entries.pop(name)
+                else:
+                    entries[name] = value
+            bad = os.path.join(td, label + ".jar")
+            _make_jar(bad, entries)
+            p = []
+            check_dh_codec(bad, "paper", p)
+            check(any(expected in issue for issue in p), f"{label} accepted: {p}")
+        p = []
+        check_dh_codec(yaml_duplicate, "paper", p)
+        check(any("found 2" in issue for issue in p), f"duplicate DH/XZ owner accepted: {p}")
+        p = []
+        check_dh_codec(yaml_flat, "fabric", p)
+        check(any("nested common" in issue for issue in p), f"flat Fabric DH codec accepted: {p}")
 
         # ---- discover(): end-to-end wiring over a synthetic build tree ----
         # The leaf checks above prove each check works; these prove discover() actually
@@ -2185,7 +2328,7 @@ def _selftest_fixtures():
                 "META-INF/jars/common-0.7.0.jar": _nested_common("0.7.0"),
                 "lss-brand.properties": brand,
                 "LICENSE_lod-server-support-fabric": "MIT",
-                "THIRD-PARTY-NOTICES": "sqlite-jdbc / zstd-jni notices " + "x" * 100,
+                "THIRD-PARTY-NOTICES": "sqlite-jdbc / zstd-jni / XZ 1.10 (0BSD) notices " + "x" * 100,
             }
             entries.update(STORE_FABRIC_ENTRIES)
             entries.update(extra or {})
@@ -2199,7 +2342,7 @@ def _selftest_fixtures():
                 "lss-brand.properties": brand,
                 "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
                 "dev/vox/lss/common/PositionUtil.class": "x",
-                "THIRD-PARTY-NOTICES": "sqlite-jdbc / zstd-jni notices " + "x" * 100,
+                "THIRD-PARTY-NOTICES": "sqlite-jdbc / zstd-jni / XZ 1.10 (0BSD) notices " + "x" * 100,
             }
             entries.update(_store_paper_entries())
             entries.update(_yaml_entries())
@@ -2252,7 +2395,7 @@ def _selftest_fixtures():
                 "dev/vox/lss/common/store/StoreCodec.class":
                     "ref com/github/luben/zstd/Zstd ok",
                 "assets/lss/icon.png": "PNG",
-                "THIRD-PARTY-NOTICES": "sqlite-jdbc / zstd-jni notices " + "x" * 100,
+                "THIRD-PARTY-NOTICES": "sqlite-jdbc / zstd-jni / XZ 1.10 (0BSD) notices " + "x" * 100,
             }
             entries.update(_yaml_entries())
             entries.update(_store_neoforge_entries() if store_entries is None

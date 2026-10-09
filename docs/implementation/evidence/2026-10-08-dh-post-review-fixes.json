@@ -1,0 +1,200 @@
+{
+  "utc": "2026-10-08T20:17:59.895084+00:00",
+  "review": "docs/implementation/2026-10-08-dh-post-review-claude-review.md",
+  "candidate": "0.16.0-dh-post-review.dev20261008.2",
+  "production_unit_passes": 3421,
+  "final_fabric_test_log": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-08/post-review-fixes/final-fabric-tests-strengthened.log",
+  "gametests": {
+    "fabric": 78,
+    "neoforge": 8
+  },
+  "observer_unit_passes": 4,
+  "storage_tests": 9,
+  "watchdog_tests": 2,
+  "metrics_checker_tests": 5,
+  "release_selftests": 126,
+  "packaging": {
+    "release_check_passed": true,
+    "artifact_contracts_passed": true,
+    "artifacts": 6
+  },
+  "passing_packaged_cases": [
+    "fabric-official16",
+    "neoforge-conflict",
+    "neoforge-moving",
+    "neoforge-native-precedence",
+    "neoforge-no-service",
+    "neoforge-official15",
+    "neoforge-official16",
+    "neoforge-pressure",
+    "neoforge-support",
+    "neoforge-updates"
+  ],
+  "packaged_case_count": 10,
+  "failed_packaged_attempts_retained": [
+    {
+      "case": "neoforge-official16",
+      "attempt": 1,
+      "exit_code": 1
+    },
+    {
+      "case": "neoforge-official16",
+      "attempt": 2,
+      "exit_code": 1
+    }
+  ],
+  "production_sha256": "96f982a5027bc2a3d20e79f5e88324e057b414fd811eccbaa31128998627b538",
+  "source_manifest_sha256": "c24cd1cac4682f59e2c71194b9fe41738f388a03bc110194fd2a4eed16d559da",
+  "test_source_manifest_sha256": "b845d9d2a446d3cd08d0922a38a328d62ca58abfbf370ce75361cebf231085e6",
+  "observer_revision": 3,
+  "no_new_windows_gpu_or_server_load_benchmarks": true,
+  "pending_due_to_environment": [],
+  "environment_block": null,
+  "manual_server_status": "Ready at final read-time owner/TCP/protocol and console-save checks; readiness is a point-in-time observation.",
+  "accepted_Voxy_I1_limitation_unchanged": true,
+  "compiled_pressure_observer": "build/dh-neoforge/2026-10-08/post-review-fixes/pressure-overlay/lss-dh-live-fixture-test-only.jar",
+  "compiled_pressure_observer_sha256": "242ee2d7dbd044a8907d0aeb32fbceba12cdc751f6d2dd3bdb6a185a427cf41e",
+  "post_recovery_local_checks": {
+    "fixture_storage_and_metrics": 14,
+    "watchdog": 2,
+    "catalog_and_diff": true
+  },
+  "environment_recovered": true,
+  "pressure_proof": {
+    "pass": true,
+    "scope": "nine synthetic split frames injected at packaged capture boundary",
+    "same_connection": true,
+    "same_session": true,
+    "terrain_resumed": true,
+    "incomplete_buffers": 0,
+    "extra_raw_losses": 1
+  },
+  "prism_installation": {
+    "timestamp_utc": "2026-10-08T20:10:57.554994+00:00",
+    "instance": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing",
+    "jar": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing/minecraft/mods/lod-server-support-neoforge-dh-dev-mc1.21.1.jar",
+    "jar_sha256": "96f982a5027bc2a3d20e79f5e88324e057b414fd811eccbaa31128998627b538",
+    "previous_jar_sha256": "f053642d09296b57f95f61521223088c5e16538c621a6bbb9deb9dbfc03c788b",
+    "backup": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing/minecraft/lss-dh-backups/20261008T201056.342944Z",
+    "version": "0.16.0-dh-post-review.dev20261008.2",
+    "preferences_preserved": {
+      "instance.cfg": "53c4ac8c94937930717c53f08a06869fad4ba8a8aa5c67b6278630c8d1f64862",
+      "mmc-pack.json": "4ad8710929dc603e94bd54f647e90ee418475c41b015ddd7cd64c39ee3669e36",
+      "minecraft/options.txt": "a080252458fd5ae44d9e1b9c3781a5337c9772c1e1d34429a9b7a424cb65eb25",
+      "minecraft/config/connector.json": "67bee06b2b321ed25e0d4e9b5bac7ab76c8ae76442de6caf11f463ce2ae1ac5e",
+      "minecraft/config/connectorextras_energy_bridge-common.toml": "2960bccd52230cb571c760ba9122ec1f4b21b5079f977700d4ac03f1518aef6d",
+      "minecraft/config/fabric/indigo-renderer.properties": "94558e53f5a367ecf44c062b607a0cb60005e1e4f9c50a733ec5a572e273c65b",
+      "minecraft/config/fml.toml": "cc59fb1039726fda3ab1eb69b06d9b9aebb7496604ea579cfb735bc5377e7825",
+      "minecraft/config/lss-client-config.json": "0f2139961e5175efea7c49a0f1ee09d68c45f1e2fd340d6ab11eff813e53da2d",
+      "minecraft/config/lss-client-config.yaml": "70eabf5317a83ebfe6435dbbcc40b4da733695edb06153ded670f06d184b0bb6",
+      "minecraft/config/lss-server-config.json": "b30cdb7a7fbdb14e6d81c5b6934429084e8b9b41ec49891068114db00a8e5fb8",
+      "minecraft/config/neoforge-client.toml": "d58d93e2c429410d0abf25507d1679f732e1023b03bb52414348efcf5cf3ddb0",
+      "minecraft/config/neoforge-common.toml": "fe878a2717a145cd890621eac5b3be1e1fd656f7ff9abc6e8d53f670d37474c4",
+      "minecraft/config/neoforge-server.toml": "b1e3b38d612295f8d9dfa0fbdb538a992b7a1a3b7a766c491b4e9fdf3823396f",
+      "minecraft/config/sodium-fingerprint.json": "adb969068a82bf97016bddb48eda769b77095efbdcb43967f6bc803239bdfd1b",
+      "minecraft/config/sodium-mixins.properties": "b627c4456e6fa0bc4b5f85e2f1cd949faedae3cb9afdaf2a5f52e6f3b6ae1f01",
+      "minecraft/config/sodium-options.json": "ef3242a314c4311b64b88ce016acea790d42a35f7c81f0a02934841e64efcda1",
+      "minecraft/config/voxy-client.toml": "f8e5b60939eb9cb0ce9b2b63a758976144f45b4a89b328917668721d5202d483",
+      "minecraft/config/voxy-config.json": "930527d3836922196233057dc123c8c2659d9a2de679e955c6ec0dd95d9a7187",
+      "minecraft/config/vss-client-config.json": "6db6a8379a1d483d8b1eed9583e6cc91d4912b3c053553166c5a09e65421e363",
+      "minecraft/config/xaero/lib/client.cfg": "43ed9dbfa5b4d6f0f3d2e8c2ced17ad298164b22c68ff11d415257a39b074336",
+      "minecraft/config/xaero/lib/common.cfg": "98f698d96a6d21d830a455b4ad045b70516fa63c298021742d8499e7f0366cd2",
+      "minecraft/config/xaero/lib/profiles/default.cfg": "34ae854b17d896d7cb853bdc28c27231a3947e91cb9f0991f372846ee3c2a907",
+      "minecraft/config/xaero/lib/server_profiles/default.cfg": "d438aea41ca41e93697e059f523686935c0add482f6abe96b532bbf10c6ed80a",
+      "minecraft/config/xaero/world-map/client.cfg": "8f73b810f5d45a9f1a4fc36d76185e76e3059914b4ac0c0403bf85924c3f7558",
+      "minecraft/config/xaero/world-map/common.cfg": "0c229eb0daf85bd09af51f21eeeb99497a3bd50a825d5ab1ca695fb21bf6cf9d",
+      "minecraft/config/xaero/world-map/profiles/default.cfg": "5422abf9c83fedef6509144293fad20f588d4bb6ce0cf1af78cbcd2bcd0d2ccf",
+      "minecraft/config/xaero/world-map/server_profiles/default.cfg": "d438aea41ca41e93697e059f523686935c0add482f6abe96b532bbf10c6ed80a",
+      "minecraft/config/xaeropatreon.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "other_mods_preserved": true,
+    "windows_client_running_before_install": false,
+    "foreground_client_launched": false
+  },
+  "manual_server": {
+    "timestamp_utc": "2026-10-08T20:12:45.332144+00:00",
+    "owner": {
+      "pid": 673986,
+      "start": "30283620",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    },
+    "ready": true,
+    "endpoint": "[::1]:25585",
+    "same_world": true,
+    "properties_semantically_preserved": true,
+    "op_and_dh_config_hashes_preserved": true,
+    "fresh_list_and_save_ack": true,
+    "minecraft_status_protocol": 767,
+    "storage": {
+      "schema_version": 1,
+      "phase": "run",
+      "estimate": {
+        "schema_version": 2,
+        "copy_bytes": 279937024,
+        "growth_bytes": 2147483648,
+        "copied_files": 103,
+        "bounded_profile": "dh-p4-2g-v2"
+      },
+      "required_free_bytes": 45097156608,
+      "reserve_bytes": 42949672960,
+      "linux_path": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01",
+      "linux": {
+        "free_bytes": 331727261696,
+        "size_bytes": 1081101176832
+      },
+      "host": {
+        "origin": "registry",
+        "vhd_path": "C:\\Users\\Ian\\AppData\\Local\\wsl\\{abe21a68-805c-48db-988a-cdb79653ae8e}\\ext4.vhdx",
+        "vhd_bytes": 711084474368,
+        "volume_id": "\\\\?\\Volume{489cd244-97c8-4e7b-9db5-6bcea0516446}\\",
+        "drive_letter": "C",
+        "free_bytes": 98671206400,
+        "size_bytes": 1999367098368
+      },
+      "host_monitor": "/mnt/c"
+    },
+    "performance_runs": false
+  },
+  "manual_final_status": {
+    "checked_utc": "2026-10-08T20:17:59.872880+00:00",
+    "owner_alive": true,
+    "endpoint": "[::1]:25585",
+    "tcp_reachable": true,
+    "ready": true,
+    "problem": null,
+    "recorded_owner": {
+      "pid": 673986,
+      "start": "30283620",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    }
+  },
+  "watchdog_rehearsal": {
+    "utc": "2026-10-08T20:12:33.238456+00:00",
+    "pass": true,
+    "scope": "Explicit rehearsal through the watchdog stop helper; no disk-floor fault was injected",
+    "owner": {
+      "pid": 673739,
+      "start": "30274523",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    },
+    "stop_receipt": {
+      "console_commands": true,
+      "exit_code": 0,
+      "owner": {
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6",
+        "pid": 673739,
+        "start": "30274523"
+      },
+      "reason": "Authorized console-first storage-stop rehearsal; no actual low-water condition",
+      "sigterm_fallback": false,
+      "state": "stopped",
+      "utc": "2026-10-08T20:12:32.993679+00:00"
+    },
+    "console_save_and_stop_logged": true,
+    "sigterm_fallback": false,
+    "runtime_exit_code": 0,
+    "harness_released": true,
+    "same_world": "dh-neoforge-playable"
+  },
+  "ready_for_manual_testing": true
+}

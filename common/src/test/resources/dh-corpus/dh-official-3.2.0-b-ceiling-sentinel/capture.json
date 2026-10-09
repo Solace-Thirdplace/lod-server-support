@@ -1,0 +1,16 @@
+{
+  "producer": "DistantHorizons-3.2.0-b-1.21.1-fabric-neoforge.jar",
+  "producer_sha256": "d6a7a963f794501678113e2545d8b25c90e123ef6b9256bb5716907d059e1ef5",
+  "profile": "official_15",
+  "world": {
+    "min_y": -128,
+    "height": 512,
+    "sky": true
+  },
+  "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/content-official15/attempt-gsdvrkjw",
+  "files": {
+    "received-0003.bin": "97fe81dd8735e1e082c4c88435b945bdac92cce2e8d7c27a2563e3e20fba40d2",
+    "received-0004.bin": "7bc5a62998814f55dda23fdafc6c7e2fce98376d6a8f4ecb4be22863f75d294f"
+  },
+  "observation": "3072 original source spans are air at bottom=512, height=1. Captured raw frames, not normalized output."
+}

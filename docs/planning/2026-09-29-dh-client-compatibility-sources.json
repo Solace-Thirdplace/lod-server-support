@@ -1,0 +1,604 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-29",
+  "method": "Read-only tagged upstream source inspection; no DH-to-LSS client prototype or live interoperability run performed. Review-fold additions (2026-09-29) were hashed from the same pinned commits via local git objects.",
+  "dh_core_revisions": {
+    "3.3.4": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+    "3.3.0": "b180115507461f45e8fa3c5089a8f0d7968cc7bb",
+    "2.3.4b": "435cbde238dfe9d0382cd4b954f88aa5ef8c4416",
+    "2.4.5b": "eb2317934f313494caf8e11f7b2b8dff2e054e82",
+    "3.2.0b": "a0d2dfe405a8cd8f3c50639378315484e5b56609"
+  },
+  "dh_support": {
+    "tag": "0.14.0",
+    "commit": "0004539b41b2608cc8185e3063fef3ea71415c9c"
+  },
+  "lss_baselines": [
+    {
+      "line": "26.2",
+      "checkout": "/home/vox/projects/lss-settings-plan",
+      "revision": "502df760e96e0959ba916e5f0decd0d8e2dfc4dc"
+    },
+    {
+      "line": "1.21.1",
+      "checkout": "/home/vox/projects/lss-yaml-lines/1.21.1",
+      "revision": "f3567f59af4c2ff1e3fb552550fc6ba785aaa5d4"
+    },
+    {
+      "line": "1.21.10",
+      "checkout": "/home/vox/projects/lss-yaml-lines/1.21.10",
+      "revision": "6fc2711d8b9e4edb273c26508df122078938af68"
+    },
+    {
+      "line": "1.21.11",
+      "checkout": "/home/vox/projects/lss-yaml-lines/1.21.11",
+      "revision": "7364e2a044ba188f2015d218ced2129747b7714a"
+    },
+    {
+      "line": "26.1",
+      "checkout": "/home/vox/projects/lss-yaml-lines/26.1",
+      "revision": "3a8186b144e956744e8f69be6fb2c690a71e8245"
+    }
+  ],
+  "voxy_importer_reference": "59b62bee821518e06612e1d5c2c58c487bda761d",
+  "sources": [
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "api/src/main/java/com/seibel/distanthorizons/coreapi/ModInfo.java",
+      "sha256": "ac9865c6bf8c1eca785d7ca05ea98392457373379d5b55453628ec6b4f5d6185",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/api/src/main/java/com/seibel/distanthorizons/coreapi/ModInfo.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/api%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcoreapi%2FModInfo.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "api/src/main/java/com/seibel/distanthorizons/api/enums/worldGeneration/EDhApiGeneratorPlan.java",
+      "sha256": "084182af842ec62e04a8827721db07e60a21a96c2d2e0f7af961150dea62397f",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/api/src/main/java/com/seibel/distanthorizons/api/enums/worldGeneration/EDhApiGeneratorPlan.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/api%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fapi%2Fenums%2FworldGeneration%2FEDhApiGeneratorPlan.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "api/src/main/java/com/seibel/distanthorizons/api/enums/config/EDhApiDataCompressionMode.java",
+      "sha256": "55c0a6e4866ce70e274b4684b8981591484b538437800a26d2876799d3b749be",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/api/src/main/java/com/seibel/distanthorizons/api/enums/config/EDhApiDataCompressionMode.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/api%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fapi%2Fenums%2Fconfig%2FEDhApiDataCompressionMode.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/pos/DhSectionPos.java",
+      "sha256": "19d8a5eb65829651b2a15009b44aa5ae3c982357da61dd38d01f324b4f8415fb",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/pos/DhSectionPos.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fpos%2FDhSectionPos.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/sql/repo/FullDataSourceV2Repo.java",
+      "sha256": "449f1792c36ca518de75d886dd3c0ac0c02d189fb4240e9f137d4478f357133a",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/sql/repo/FullDataSourceV2Repo.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fsql%2Frepo%2FFullDataSourceV2Repo.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/level/AbstractDhServerLevel.java",
+      "sha256": "773e048170b1ac68b6a4a52346ceefe9bdd3a673e3f5bf1f162609ccc1cd964c",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/level/AbstractDhServerLevel.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Flevel%2FAbstractDhServerLevel.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/generation/DhWorldGenerator.java",
+      "sha256": "3d22fdeaf81167ec4b2ba913ed626a493721ca116d45baeeda7d8d4b20f8536f",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/generation/DhWorldGenerator.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fgeneration%2FDhWorldGenerator.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/generation/queues/RemoteWorldRetrievalQueue.java",
+      "sha256": "5fa9ef8278043f3032cd6dba9b989cf48cfb87b2e28d0d2664776138197908ed",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/generation/queues/RemoteWorldRetrievalQueue.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fgeneration%2Fqueues%2FRemoteWorldRetrievalQueue.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/file/fullDatafile/V2/FullDataUpdatePropagatorV2.java",
+      "sha256": "f2586e1699b7223877ad672e588625de9a53a5620c303594871681eeaacce656",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/file/fullDatafile/V2/FullDataUpdatePropagatorV2.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Ffile%2FfullDatafile%2FV2%2FFullDataUpdatePropagatorV2.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/file/fullDatafile/RemoteFullDataSourceProvider.java",
+      "sha256": "9c31d244ba1821600e8cb61dcb688594ca761f431f54c3685e6a6daaf51e177a",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/file/fullDatafile/RemoteFullDataSourceProvider.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Ffile%2FfullDatafile%2FRemoteFullDataSourceProvider.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/util/WorldGenUtil.java",
+      "sha256": "808ae4fd61bde64c213fe4db027bd56b04c74a0269046751a498b6ce59246036",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/util/WorldGenUtil.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Futil%2FWorldGenUtil.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/config/Config.java",
+      "sha256": "6c5074c0acc089986e320aa10c5e472f97f0431cd7016f22595e896e43d237fa",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/config/Config.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fconfig%2FConfig.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/network/messages/MessageRegistry.java",
+      "sha256": "17e9a4d5db6c5f4b01795a4f5eaa6d7ea5ca3a2f5036e1a48d7bb3ae638d33ab",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/network/messages/MessageRegistry.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fnetwork%2Fmessages%2FMessageRegistry.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/network/messages/AbstractTrackableMessage.java",
+      "sha256": "e90bca16cc13e0c4b166199e1349a59e3b20a8fa26b9898da0dba44a85f718df",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/network/messages/AbstractTrackableMessage.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fnetwork%2Fmessages%2FAbstractTrackableMessage.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/network/messages/base/LevelInitMessage.java",
+      "sha256": "7e702682e2b53108736526b5b4bcc392f28f7298882b78f15422d3f6ca2943ed",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/network/messages/base/LevelInitMessage.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fnetwork%2Fmessages%2Fbase%2FLevelInitMessage.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/network/messages/fullData/FullDataSourceRequestMessage.java",
+      "sha256": "aa8e8db20c8d5cce1ee2a1a2d7935045eea47363feeb47c8a5f7dc970ad03b24",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/network/messages/fullData/FullDataSourceRequestMessage.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fnetwork%2Fmessages%2FfullData%2FFullDataSourceRequestMessage.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/network/messages/fullData/FullDataSplitMessage.java",
+      "sha256": "f32afce2d4ba3104d960e5a28e5b022b9e708199f7e8c35438e8db9575087a56",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/network/messages/fullData/FullDataSplitMessage.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fnetwork%2Fmessages%2FfullData%2FFullDataSplitMessage.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/server/ServerPlayerState.java",
+      "sha256": "1c3e761896db7ca45e88d1cb8633f29add7d8992dbd670169269f09e38d51475",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/server/ServerPlayerState.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2Fserver%2FServerPlayerState.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/server/FullDataSourceRequestHandler.java",
+      "sha256": "1569ac0db952c9ab16249f54774ce80462603a49b64f6ad1d8e2c1d7729398fb",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/server/FullDataSourceRequestHandler.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2Fserver%2FFullDataSourceRequestHandler.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/client/ClientNetworkState.java",
+      "sha256": "414a1310088078e68e01ff787ff947836ab1c83243ee71dc4ca3eccc29fe0961",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/client/ClientNetworkState.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2Fclient%2FClientNetworkState.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/client/AbstractFullDataNetworkRequestQueue.java",
+      "sha256": "0497577641cbf58495251aadccc26d9ce8eb6e0d1a652b443632f18404075912",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/client/AbstractFullDataNetworkRequestQueue.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2Fclient%2FAbstractFullDataNetworkRequestQueue.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/config/SessionConfig.java",
+      "sha256": "82ff08a03e3f741bd45186f74e235ca2e3b3a60ee079a8009ffd8b4aa019872e",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/config/SessionConfig.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2Fconfig%2FSessionConfig.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/fullData/FullDataPayloadReceiver.java",
+      "sha256": "77443dbc091cfe1b1980870b62138ce63e06bd77cc08203d9e953f3a37b85ace",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/fullData/FullDataPayloadReceiver.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2FfullData%2FFullDataPayloadReceiver.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/fullData/FullDataPayloadSender.java",
+      "sha256": "ca33f9084bc860e2753191c129644e87d31c970f889111283b560c420980e895",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/fullData/FullDataPayloadSender.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2FfullData%2FFullDataPayloadSender.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/sql/dto/FullDataSourceV2DTO.java",
+      "sha256": "af43e55287da295dbe45bbace77d74645ca955d47712fd895645910e383cde61",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/sql/dto/FullDataSourceV2DTO.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fsql%2Fdto%2FFullDataSourceV2DTO.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/sql/dto/util/FullDataMinMaxPosUtil.java",
+      "sha256": "de61d9b01d2be2eec53f606db6af8be6782444e4191f5abc45572bd4b22f4b1a",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/sql/dto/util/FullDataMinMaxPosUtil.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fsql%2Fdto%2Futil%2FFullDataMinMaxPosUtil.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/dataObjects/fullData/FullDataPointIdMap.java",
+      "sha256": "d8e533dfe9d260ea28425e01b214087400d3523c79c3109cd17066ea1d8e26fc",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/dataObjects/fullData/FullDataPointIdMap.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2FdataObjects%2FfullData%2FFullDataPointIdMap.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/network/INetworkObject.java",
+      "sha256": "5897eb46f00952485c38481214a0e107e3199aca6510de3b238f1551c55f64b2",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/network/INetworkObject.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fnetwork%2FINetworkObject.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520"
+    },
+    {
+      "reference": "DH 2.3.4b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "435cbde238dfe9d0382cd4b954f88aa5ef8c4416",
+      "path": "api/src/main/java/com/seibel/distanthorizons/coreapi/ModInfo.java",
+      "sha256": "06c721390cfd5a5e6aa2fc517df2eea3843fdb7ff8cbca379a0a405b5c64d01a",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/435cbde238dfe9d0382cd4b954f88aa5ef8c4416/api/src/main/java/com/seibel/distanthorizons/coreapi/ModInfo.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/api%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcoreapi%2FModInfo.java/raw?ref=435cbde238dfe9d0382cd4b954f88aa5ef8c4416"
+    },
+    {
+      "reference": "DH 2.3.4b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "435cbde238dfe9d0382cd4b954f88aa5ef8c4416",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/config/SessionConfig.java",
+      "sha256": "4863cd982b106c7d1fe6e53480ce899114254b25ed11c431ff9f7f27c6be8cd6",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/435cbde238dfe9d0382cd4b954f88aa5ef8c4416/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/config/SessionConfig.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2Fconfig%2FSessionConfig.java/raw?ref=435cbde238dfe9d0382cd4b954f88aa5ef8c4416"
+    },
+    {
+      "reference": "DH 2.3.4b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "435cbde238dfe9d0382cd4b954f88aa5ef8c4416",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/sql/dto/FullDataSourceV2DTO.java",
+      "sha256": "b44ff21367e709e0f88dae388bd64880369ffe01ed8f0f0b5b0bb8c827309cf5",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/435cbde238dfe9d0382cd4b954f88aa5ef8c4416/core/src/main/java/com/seibel/distanthorizons/core/sql/dto/FullDataSourceV2DTO.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fsql%2Fdto%2FFullDataSourceV2DTO.java/raw?ref=435cbde238dfe9d0382cd4b954f88aa5ef8c4416"
+    },
+    {
+      "reference": "DH 2.4.5b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "eb2317934f313494caf8e11f7b2b8dff2e054e82",
+      "path": "api/src/main/java/com/seibel/distanthorizons/coreapi/ModInfo.java",
+      "sha256": "7948d20a33b82409a7e144307fd0dfd2888442f683a9abe8988de86d48b84a47",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/eb2317934f313494caf8e11f7b2b8dff2e054e82/api/src/main/java/com/seibel/distanthorizons/coreapi/ModInfo.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/api%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcoreapi%2FModInfo.java/raw?ref=eb2317934f313494caf8e11f7b2b8dff2e054e82"
+    },
+    {
+      "reference": "DH 2.4.5b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "eb2317934f313494caf8e11f7b2b8dff2e054e82",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/config/SessionConfig.java",
+      "sha256": "8e9c95dedcb88ac6115b4e7eb926d85d64dda5755dfa8211750866c438dc92f4",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/eb2317934f313494caf8e11f7b2b8dff2e054e82/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/config/SessionConfig.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2Fconfig%2FSessionConfig.java/raw?ref=eb2317934f313494caf8e11f7b2b8dff2e054e82"
+    },
+    {
+      "reference": "DH 2.4.5b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "eb2317934f313494caf8e11f7b2b8dff2e054e82",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/sql/dto/FullDataSourceV2DTO.java",
+      "sha256": "a36a44b1f9de7695d3d806bea51e27d3726338eab46140d295cbfa278da616a6",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/eb2317934f313494caf8e11f7b2b8dff2e054e82/core/src/main/java/com/seibel/distanthorizons/core/sql/dto/FullDataSourceV2DTO.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fsql%2Fdto%2FFullDataSourceV2DTO.java/raw?ref=eb2317934f313494caf8e11f7b2b8dff2e054e82"
+    },
+    {
+      "reference": "DH 2.4.5b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "eb2317934f313494caf8e11f7b2b8dff2e054e82",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/config/Config.java",
+      "sha256": "341ce31788630c9272300c37bf6b68471194db1d3fd03ce83812a6d9001e843f",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/eb2317934f313494caf8e11f7b2b8dff2e054e82/core/src/main/java/com/seibel/distanthorizons/core/config/Config.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fconfig%2FConfig.java/raw?ref=eb2317934f313494caf8e11f7b2b8dff2e054e82"
+    },
+    {
+      "reference": "DH 2.4.5b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "eb2317934f313494caf8e11f7b2b8dff2e054e82",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/generation/RemoteWorldRetrievalQueue.java",
+      "sha256": "b9be9165e75e2d36a1749db748cd78241815a1ab144ce3b10e7fd037deff608f",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/eb2317934f313494caf8e11f7b2b8dff2e054e82/core/src/main/java/com/seibel/distanthorizons/core/generation/RemoteWorldRetrievalQueue.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fgeneration%2FRemoteWorldRetrievalQueue.java/raw?ref=eb2317934f313494caf8e11f7b2b8dff2e054e82"
+    },
+    {
+      "reference": "DH 2.4.5b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "eb2317934f313494caf8e11f7b2b8dff2e054e82",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/level/AbstractDhServerLevel.java",
+      "sha256": "92b982307981c75df4fd7ec250086509fcc55474b6938ddd5ee6ff3dbd59101f",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/eb2317934f313494caf8e11f7b2b8dff2e054e82/core/src/main/java/com/seibel/distanthorizons/core/level/AbstractDhServerLevel.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Flevel%2FAbstractDhServerLevel.java/raw?ref=eb2317934f313494caf8e11f7b2b8dff2e054e82"
+    },
+    {
+      "reference": "DH 3.2.0b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "a0d2dfe405a8cd8f3c50639378315484e5b56609",
+      "path": "api/src/main/java/com/seibel/distanthorizons/coreapi/ModInfo.java",
+      "sha256": "e8869c7f0f28710124ad79726f77f65d15e5bb345642fb47cee2d025b00d9858",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/a0d2dfe405a8cd8f3c50639378315484e5b56609/api/src/main/java/com/seibel/distanthorizons/coreapi/ModInfo.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/api%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcoreapi%2FModInfo.java/raw?ref=a0d2dfe405a8cd8f3c50639378315484e5b56609"
+    },
+    {
+      "reference": "DH 3.2.0b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "a0d2dfe405a8cd8f3c50639378315484e5b56609",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/config/SessionConfig.java",
+      "sha256": "cb95e940e8e44ef25d8ce5c30942d2ae177ffc11222fa9d41f9de860c279b8dd",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/a0d2dfe405a8cd8f3c50639378315484e5b56609/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/config/SessionConfig.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2Fconfig%2FSessionConfig.java/raw?ref=a0d2dfe405a8cd8f3c50639378315484e5b56609"
+    },
+    {
+      "reference": "DH 3.2.0b",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "a0d2dfe405a8cd8f3c50639378315484e5b56609",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/sql/dto/FullDataSourceV2DTO.java",
+      "sha256": "1f9c2d172dd319f65b493798056511bc99fb2076bdb4fe9c565032fc68ce64e8",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/a0d2dfe405a8cd8f3c50639378315484e5b56609/core/src/main/java/com/seibel/distanthorizons/core/sql/dto/FullDataSourceV2DTO.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fsql%2Fdto%2FFullDataSourceV2DTO.java/raw?ref=a0d2dfe405a8cd8f3c50639378315484e5b56609"
+    },
+    {
+      "reference": "DH 3.3.0",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "b180115507461f45e8fa3c5089a8f0d7968cc7bb",
+      "path": "api/src/main/java/com/seibel/distanthorizons/coreapi/ModInfo.java",
+      "sha256": "38afff23a7e09b6aa83fc9fb686c36ab345ca8baedec6ec1cea4c4c60a314573",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/b180115507461f45e8fa3c5089a8f0d7968cc7bb/api/src/main/java/com/seibel/distanthorizons/coreapi/ModInfo.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/api%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcoreapi%2FModInfo.java/raw?ref=b180115507461f45e8fa3c5089a8f0d7968cc7bb"
+    },
+    {
+      "reference": "DH 3.3.0",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "b180115507461f45e8fa3c5089a8f0d7968cc7bb",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/config/SessionConfig.java",
+      "sha256": "82ff08a03e3f741bd45186f74e235ca2e3b3a60ee079a8009ffd8b4aa019872e",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/b180115507461f45e8fa3c5089a8f0d7968cc7bb/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/config/SessionConfig.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2Fconfig%2FSessionConfig.java/raw?ref=b180115507461f45e8fa3c5089a8f0d7968cc7bb"
+    },
+    {
+      "reference": "DH 3.3.0",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "b180115507461f45e8fa3c5089a8f0d7968cc7bb",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/sql/dto/FullDataSourceV2DTO.java",
+      "sha256": "af43e55287da295dbe45bbace77d74645ca955d47712fd895645910e383cde61",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/b180115507461f45e8fa3c5089a8f0d7968cc7bb/core/src/main/java/com/seibel/distanthorizons/core/sql/dto/FullDataSourceV2DTO.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fsql%2Fdto%2FFullDataSourceV2DTO.java/raw?ref=b180115507461f45e8fa3c5089a8f0d7968cc7bb"
+    },
+    {
+      "reference": "DH 3.3.4 outer",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons",
+      "revision": "eb1007cb6cc3e0419effe2b40ab485cf24e55b43",
+      "path": "common/src/main/java/com/seibel/distanthorizons/common/AbstractPluginPacketSender.java",
+      "sha256": "9719edddb07f32b1c9c012906280267f1e6dbab4f8370e241bb81d3fbcd30fcc",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons/-/blob/eb1007cb6cc3e0419effe2b40ab485cf24e55b43/common/src/main/java/com/seibel/distanthorizons/common/AbstractPluginPacketSender.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/18204078/repository/files/common%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcommon%2FAbstractPluginPacketSender.java/raw?ref=eb1007cb6cc3e0419effe2b40ab485cf24e55b43"
+    },
+    {
+      "reference": "DH 3.3.4 outer",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons",
+      "revision": "eb1007cb6cc3e0419effe2b40ab485cf24e55b43",
+      "path": "common/src/main/java/com/seibel/distanthorizons/common/CommonPacketPayload.java",
+      "sha256": "48d5a883d5ccaf551c63c20fed32958551ad35203633fbd037a9668c862bd861",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons/-/blob/eb1007cb6cc3e0419effe2b40ab485cf24e55b43/common/src/main/java/com/seibel/distanthorizons/common/CommonPacketPayload.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/18204078/repository/files/common%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcommon%2FCommonPacketPayload.java/raw?ref=eb1007cb6cc3e0419effe2b40ab485cf24e55b43"
+    },
+    {
+      "reference": "DH 3.3.4 outer",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons",
+      "revision": "eb1007cb6cc3e0419effe2b40ab485cf24e55b43",
+      "path": "fabric/src/main/java/com/seibel/distanthorizons/fabric/FabricPluginPacketSender.java",
+      "sha256": "23e01c0f5be35fbc639c47d677494de2e2fca1f2ee58d860063a51ed6ee7088f",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons/-/blob/eb1007cb6cc3e0419effe2b40ab485cf24e55b43/fabric/src/main/java/com/seibel/distanthorizons/fabric/FabricPluginPacketSender.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/18204078/repository/files/fabric%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Ffabric%2FFabricPluginPacketSender.java/raw?ref=eb1007cb6cc3e0419effe2b40ab485cf24e55b43"
+    },
+    {
+      "reference": "DH 3.3.4 outer",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons",
+      "revision": "eb1007cb6cc3e0419effe2b40ab485cf24e55b43",
+      "path": "neoforge/src/main/java/com/seibel/distanthorizons/neoforge/NeoforgePluginPacketSender.java",
+      "sha256": "47a2c20b274df8ec6a4a5d8ace3b1ff5a87fe2222b73aaf3ddda7d39bc3c0b01",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons/-/blob/eb1007cb6cc3e0419effe2b40ab485cf24e55b43/neoforge/src/main/java/com/seibel/distanthorizons/neoforge/NeoforgePluginPacketSender.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/18204078/repository/files/neoforge%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fneoforge%2FNeoforgePluginPacketSender.java/raw?ref=eb1007cb6cc3e0419effe2b40ab485cf24e55b43"
+    },
+    {
+      "reference": "DH Support 0.14.0",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin",
+      "revision": "0004539b41b2608cc8185e3063fef3ea71415c9c",
+      "path": "src/main/java/no/jckf/dhsupport/core/handler/PluginMessageHandler.java",
+      "sha256": "b910dc99e759b77569bbb2fab295f46b5a86f92edd2db1d9fe27a9836af7bd3c",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin/-/blob/0004539b41b2608cc8185e3063fef3ea71415c9c/src/main/java/no/jckf/dhsupport/core/handler/PluginMessageHandler.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/62013887/repository/files/src%2Fmain%2Fjava%2Fno%2Fjckf%2Fdhsupport%2Fcore%2Fhandler%2FPluginMessageHandler.java/raw?ref=0004539b41b2608cc8185e3063fef3ea71415c9c"
+    },
+    {
+      "reference": "DH Support 0.14.0",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin",
+      "revision": "0004539b41b2608cc8185e3063fef3ea71415c9c",
+      "path": "src/main/java/no/jckf/dhsupport/core/handler/LodHandler.java",
+      "sha256": "3c2bcd0361d35fcde9fe9dadec57a35a61a2faa36184921fe8a48d5167503095",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin/-/blob/0004539b41b2608cc8185e3063fef3ea71415c9c/src/main/java/no/jckf/dhsupport/core/handler/LodHandler.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/62013887/repository/files/src%2Fmain%2Fjava%2Fno%2Fjckf%2Fdhsupport%2Fcore%2Fhandler%2FLodHandler.java/raw?ref=0004539b41b2608cc8185e3063fef3ea71415c9c"
+    },
+    {
+      "reference": "DH Support 0.14.0",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin",
+      "revision": "0004539b41b2608cc8185e3063fef3ea71415c9c",
+      "path": "src/main/java/no/jckf/dhsupport/core/handler/PlayerConfigHandler.java",
+      "sha256": "487f88e231fe3d8a933f88c9f1e38711aa69cda72390cef77c4e37ed753052ed",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin/-/blob/0004539b41b2608cc8185e3063fef3ea71415c9c/src/main/java/no/jckf/dhsupport/core/handler/PlayerConfigHandler.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/62013887/repository/files/src%2Fmain%2Fjava%2Fno%2Fjckf%2Fdhsupport%2Fcore%2Fhandler%2FPlayerConfigHandler.java/raw?ref=0004539b41b2608cc8185e3063fef3ea71415c9c"
+    },
+    {
+      "reference": "DH Support 0.14.0",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin",
+      "revision": "0004539b41b2608cc8185e3063fef3ea71415c9c",
+      "path": "src/main/java/no/jckf/dhsupport/core/message/plugin/RemotePlayerConfigMessage.java",
+      "sha256": "ce70347cb01bff1e4f6fdfa48b516979da039db58a983b066302b7c4963317d4",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin/-/blob/0004539b41b2608cc8185e3063fef3ea71415c9c/src/main/java/no/jckf/dhsupport/core/message/plugin/RemotePlayerConfigMessage.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/62013887/repository/files/src%2Fmain%2Fjava%2Fno%2Fjckf%2Fdhsupport%2Fcore%2Fmessage%2Fplugin%2FRemotePlayerConfigMessage.java/raw?ref=0004539b41b2608cc8185e3063fef3ea71415c9c"
+    },
+    {
+      "reference": "DH Support 0.14.0",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin",
+      "revision": "0004539b41b2608cc8185e3063fef3ea71415c9c",
+      "path": "src/main/java/no/jckf/dhsupport/core/dataobject/Lod.java",
+      "sha256": "7b634797daddb51cc3c6d5aecfca067cbbd70bb4c15b81e410cc7fbc6b7a5022",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin/-/blob/0004539b41b2608cc8185e3063fef3ea71415c9c/src/main/java/no/jckf/dhsupport/core/dataobject/Lod.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/62013887/repository/files/src%2Fmain%2Fjava%2Fno%2Fjckf%2Fdhsupport%2Fcore%2Fdataobject%2FLod.java/raw?ref=0004539b41b2608cc8185e3063fef3ea71415c9c"
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/network/messages/ILevelRelatedMessage.java",
+      "sha256": "024d693a5faaa2bfc52e40a9e8808f058c2ec00a81a8ab844378fd4dbbae6d8b",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/network/messages/ILevelRelatedMessage.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fnetwork%2Fmessages%2FILevelRelatedMessage.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "note": "Added by the 2026-09-29 review fold (plan section 12); hashed from the pinned commit via git."
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/util/objects/dataStreams/DhDataInputStream.java",
+      "sha256": "dbc8fab3b3053b6b86a3038f720d7818d92cd51c35df5831a4b4da78e172a73a",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/util/objects/dataStreams/DhDataInputStream.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Futil%2Fobjects%2FdataStreams%2FDhDataInputStream.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "note": "Added by the 2026-09-29 review fold (plan section 12); hashed from the pinned commit via git."
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/util/objects/dataStreams/DhDataOutputStream.java",
+      "sha256": "ad8f576f6fa5718a3803fc16960aae19b689bacabcfed3f5ce0eadd93cc49542",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/util/objects/dataStreams/DhDataOutputStream.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Futil%2Fobjects%2FdataStreams%2FDhDataOutputStream.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "note": "Added by the 2026-09-29 review fold (plan section 12); hashed from the pinned commit via git."
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/util/ratelimiting/SupplierBasedRateAndConcurrencyLimiter.java",
+      "sha256": "9634496b71b681f2a3ccf48b7e00f26757a62bf4c6c231a96b8ce3cc2ba99a21",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/util/ratelimiting/SupplierBasedRateAndConcurrencyLimiter.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Futil%2Fratelimiting%2FSupplierBasedRateAndConcurrencyLimiter.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "note": "Added by the 2026-09-29 review fold (plan section 12); hashed from the pinned commit via git."
+    },
+    {
+      "reference": "DH 3.3.4",
+      "repository": "https://gitlab.com/jeseibel/distant-horizons-core",
+      "revision": "64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "path": "core/src/main/java/com/seibel/distanthorizons/core/api/internal/ClientPluginChannelApi.java",
+      "sha256": "1c7711ee024513bbc381a33d79d54fb26e85ab368a33100030e5f47b55897d6f",
+      "url": "https://gitlab.com/jeseibel/distant-horizons-core/-/blob/64410621767ee697e8bc175c2a3ebe4c5e2ce520/core/src/main/java/com/seibel/distanthorizons/core/api/internal/ClientPluginChannelApi.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/jeseibel%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fapi%2Finternal%2FClientPluginChannelApi.java/raw?ref=64410621767ee697e8bc175c2a3ebe4c5e2ce520",
+      "note": "Added by the 2026-09-29 review fold (plan section 12); hashed from the pinned commit via git."
+    },
+    {
+      "reference": "DH 3.3.4 outer",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons",
+      "revision": "eb1007cb6cc3e0419effe2b40ab485cf24e55b43",
+      "path": "common/src/main/java/com/seibel/distanthorizons/common/wrappers/world/ServerLevelWrapper.java",
+      "sha256": "f7b1f3e71a16019ff9140237cf4859f3ae5eea250c4aedd4d5bf34d1d2cc1db8",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons/-/blob/eb1007cb6cc3e0419effe2b40ab485cf24e55b43/common/src/main/java/com/seibel/distanthorizons/common/wrappers/world/ServerLevelWrapper.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/18204078/repository/files/common%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcommon%2Fwrappers%2Fworld%2FServerLevelWrapper.java/raw?ref=eb1007cb6cc3e0419effe2b40ab485cf24e55b43",
+      "note": "Added by the 2026-09-29 review fold (plan section 12); hashed from the pinned commit via git."
+    },
+    {
+      "reference": "DH 3.3.4 outer",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons",
+      "revision": "eb1007cb6cc3e0419effe2b40ab485cf24e55b43",
+      "path": "common/src/main/java/com/seibel/distanthorizons/common/wrappers/level/ServerKeyedClientLevelWrapper.java",
+      "sha256": "97b13a7b03be5781049c252d0b67df64a190d3df1e1573b3b1f1b4fcefdd3f8a",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons/-/blob/eb1007cb6cc3e0419effe2b40ab485cf24e55b43/common/src/main/java/com/seibel/distanthorizons/common/wrappers/level/ServerKeyedClientLevelWrapper.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/18204078/repository/files/common%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcommon%2Fwrappers%2Flevel%2FServerKeyedClientLevelWrapper.java/raw?ref=eb1007cb6cc3e0419effe2b40ab485cf24e55b43",
+      "note": "Added by the 2026-09-29 review fold (plan section 12); hashed from the pinned commit via git."
+    },
+    {
+      "reference": "DH Support 0.14.0",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin",
+      "revision": "0004539b41b2608cc8185e3063fef3ea71415c9c",
+      "path": "src/main/java/no/jckf/dhsupport/core/bytestream/Encoder.java",
+      "sha256": "cbaba475c82cbddebab3b203ddba4fd38c87e68d9c53b81c20e19308033a82a4",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin/-/blob/0004539b41b2608cc8185e3063fef3ea71415c9c/src/main/java/no/jckf/dhsupport/core/bytestream/Encoder.java",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/62013887/repository/files/src%2Fmain%2Fjava%2Fno%2Fjckf%2Fdhsupport%2Fcore%2Fbytestream%2FEncoder.java/raw?ref=0004539b41b2608cc8185e3063fef3ea71415c9c",
+      "note": "Added by the 2026-09-29 review fold (plan section 12); hashed from the pinned commit via git."
+    },
+    {
+      "reference": "DH Support 0.14.0",
+      "repository": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin",
+      "revision": "0004539b41b2608cc8185e3063fef3ea71415c9c",
+      "path": "src/main/resources/config.yml",
+      "sha256": "cb767fc1db26918c1e054cce09cc391cf2785e24c0951d983915536a142d18e2",
+      "url": "https://gitlab.com/distant-horizons-team/distant-horizons-server-plugin/-/blob/0004539b41b2608cc8185e3063fef3ea71415c9c/src/main/resources/config.yml",
+      "raw_api_url": "https://gitlab.com/api/v4/projects/62013887/repository/files/src%2Fmain%2Fresources%2Fconfig.yml/raw?ref=0004539b41b2608cc8185e3063fef3ea71415c9c",
+      "note": "Added by the 2026-09-29 review fold (plan section 12); hashed from the pinned commit via git."
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "kind": "three-subagent comparative source review of native LSS and DH client implementation",
+  "recorded_utc": "2026-10-08T02:03:03.909831+00:00",
+  "branch": "feat/dh-codec-p1-mc1.21.1",
+  "head": "6677fe93dfc35b8ca1e158972d4cf58eb9703bd2",
+  "reviewed_uncommitted_feature_sources": true,
+  "reviewers": [
+    {
+      "task": "/root/dh_diagnostics_parity_review",
+      "focus": "status/export, trace, commands and UI"
+    },
+    {
+      "task": "/root/dh_lifecycle_parity_review",
+      "focus": "lifecycle, reset/clearcache and cache ownership"
+    },
+    {
+      "task": "/root/dh_flow_parity_review",
+      "focus": "scheduler, rate limits, refusals and subscriptions"
+    }
+  ],
+  "primary_verified": true,
+  "methods": [
+    "Native/DH source comparison",
+    "Read existing behavior tests and dated decisions",
+    "Inspect actual installed DH3.3.3 bytecode with Java21 javap"
+  ],
+  "runtime_failures_reproduced_in_this_review": false,
+  "new_tests_run": false,
+  "production_changes_made": false,
+  "manual_server_stopped": false,
+  "foreground_or_windows_operations": false,
+  "new_performance_runs": false,
+  "source_manifest_sha256": "17539180aa8f70ac53c69bcbfbf8c458d632ac0449a8bb7624bff84991a7e6e0",
+  "test_source_manifest_sha256": "cfa42f76fa2c48d20a7c82e1cdf2c4cba841a85f7979e50cddf091633f3c3b9c",
+  "reviewed_candidate_sha256": {
+    "neoforge": "ac23f67b538d42ed405e8e330e6327eaf672da261e848780dba65cc577989fec",
+    "fabric": "4f61ca0b35e04e0616c6877a68920115c768dc33148dc1e75c941cee4c4a93d6"
+  },
+  "report_sha256": "b5aa5af7aa04f5deb6fd243aa1f3cf23c92c2f207d1580eaac5ca70daaa8d373",
+  "linked_source_doc_inputs": {
+    "docs/implementation/2026-10-07-dh-trace.md": "ba7030da432bddaf52f475d5524ee6a865c2628b1a320455b652dda1cf4f0eac",
+    "xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java": "e495ca3eb914668a9ad7a83077916c3ebd6b275397f86ffb7fa09e0541983f15",
+    "xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java": "155ab27b53bf8813cd82aec490fde4cd462764a23e25786ead9a4f891187eaf9",
+    "xplat/src/main/java/dev/vox/lss/networking/client/ResetCoordinator.java": "369411126dc460c0ebe2cc79f417e8c99b6d6a453df657db7d19ac1ffb443664",
+    "fabric/src/test/java/dev/vox/lss/networking/client/ResetCoordinatorTest.java": "17acd06e662af5775d171c69f9815d5c49f00306f068c1af3a348b3e6c96e70a",
+    "xplat/src/main/java/dev/vox/lss/networking/client/ClientSessionGate.java": "09737c4efb6bdaf7f55385e1a08eba24585964e1a2f42758ad7c827eb16d2a6f",
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java": "0809de30f78f1236a5127d5c47d04bea48d4f085f5e88e38e6910f3ce0dd506e",
+    "xplat/src/main/java/dev/vox/lss/networking/client/LodRequestManager.java": "1a549bf4bda761fc7b9101523af42bb6c62bc709be0f85035429929e7836afc4",
+    "xplat/src/main/java/dev/vox/lss/networking/client/SpiralScanner.java": "5847e11092efd0b648a296dba3a75c1542f65de239b8d3fd21947f2b54613fa1",
+    "fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java": "19ba79a01ae4f1557bd7856ab290f700af804a453178e03aa1094edb26c67db1",
+    "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java": "00ea6406774e62af942d6bb5c092719b656eccfd17b08b0023d88d7fe8de868d",
+    "docs/planning/2026-09-29-dh-client-compatibility-plan.md": "fcfe202412976c9eb075887ba4c979b3d292669f6ea550ee4f1ba38c71421e91",
+    "fabric/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java": "6da7800fe63bec25f54aa63a4d969bc3d867951f7b4a2cba0bc8df7f6473db1a",
+    "neoforge/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java": "b4917e4e13f97a499f7621d7456fe0bd5d095c64526536cc400742cedaae3914",
+    "xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java": "26065881595acc0d4ea223e00d2eaa390ed470e6b4c9e5984122df709f2fa5a2",
+    "xplat/src/main/java/dev/vox/lss/config/menu/MenuContext.java": "94accc2d4627e4c5e26491ec4a575147c20238bcfaeb15afa1041f7c07a5fdee",
+    "xplat/src/main/java/dev/vox/lss/compat/DhVoxyBridge.java": "79ed30b16783e49c03ace49e3a12148ee04740360f789718c346349511b79acc",
+    "docs/implementation/2026-10-07-dh-accepted-limitations.md": "7ebc113fed5b9ecc04e1113700616785d124243a9325b5fe1f1840f3d55f3fcb"
+  },
+  "upstream_bytecode": {
+    "jar_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+    "classes": [
+      "com.seibel.distanthorizons.core.multiplayer.server.ServerPlayerState",
+      "com.seibel.distanthorizons.core.level.AbstractDhServerLevel",
+      "com.seibel.distanthorizons.core.network.messages.requests.ExceptionMessage$1"
+    ]
+  },
+  "findings": [
+    {
+      "id": "N1",
+      "priority": "high",
+      "summary": "Reset confirmation bypass from fallback permission",
+      "related_low_priority": "clearcache promises acquisition with no DH service"
+    },
+    {
+      "id": "N2",
+      "priority": "medium",
+      "summary": "Live update preference not withdrawn at reception OFF/native takeover"
+    },
+    {
+      "id": "N3",
+      "priority": "medium",
+      "summary": "Manual download cap independently charged to sync and generation"
+    },
+    {
+      "id": "N4",
+      "priority": "medium",
+      "summary": "Range refusal consumes permanent rejection strikes"
+    },
+    {
+      "id": "N5",
+      "priority": "medium",
+      "summary": "DH client conflict remedy absent from typed ordinary status"
+    },
+    {
+      "id": "N6",
+      "priority": "medium",
+      "summary": "DH trace misses protocol-neutral vanilla network/movement telemetry"
+    },
+    {
+      "id": "N7",
+      "priority": "low",
+      "summary": "Native-only Slow Start/Xaero applicability absent from shared controls"
+    }
+  ],
+  "enhancements": [
+    "Explicit acquisition waiting reason and next allowed request time"
+  ],
+  "accepted_or_intentional_exclusions": [
+    "Accepted Voxy queued-write ordering/completion limitation",
+    "DH Voxy-only consumer route",
+    "Separate tile scheduler and upstream permit constraints"
+  ],
+  "user_movement_pause_cause_confirmed": false
+}

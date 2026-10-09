@@ -1,0 +1,225 @@
+{
+  "kind": "normal-versioned-Gradle-native-preferred-automatic-DH-family-selection",
+  "timestamp_utc": "2026-10-06T17:45:39.485661+00:00",
+  "normal_build_passed": true,
+  "candidate_verified": true,
+  "release_ready": false,
+  "build_version": "0.16.0-dh-auto.dev20261006",
+  "build": "/tmp/lss-dh-auto-20261006",
+  "artifact": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/lod-server-support-neoforge-dh-dev-mc1.21.1.jar",
+  "artifact_sha256": "c0713646df836d14a76eaddf59ea7a2139312eb7c9802f9653f2cf8e507a5893",
+  "candidate_artifact_sha256": "c0713646df836d14a76eaddf59ea7a2139312eb7c9802f9653f2cf8e507a5893",
+  "source_manifest_sha256": "0832aacd606e0c641008b29c9f751ec4acc33a68345ea6855326d83e626273e5",
+  "test_source_manifest_sha256": "40ae28b1c1141e55455cff8d3c9c689c5f9f47ef63911bd16bf1665d7485584e",
+  "unit_results": {
+    "common": {
+      "tests": 1012,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 1012
+    },
+    "fabric": {
+      "tests": 1759,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 4,
+      "passed": 1755
+    },
+    "paper": {
+      "tests": 536,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 536
+    },
+    "neoforge": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 23
+    }
+  },
+  "gametests": {
+    "fabric": 78,
+    "neoforge": 8
+  },
+  "packaging": {
+    "release_check_passed": true,
+    "artifacts": 6,
+    "selftest_passed": true,
+    "selftest_cases": 126,
+    "sqlite_helper_tests": 9
+  },
+  "private_live": {
+    "official15": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/private-official-15/attempt-1gq67clh",
+      "result": {
+        "pass": true,
+        "profile": "OFFICIAL_15",
+        "ordinary_connected": true,
+        "negotiation_reconnects": 1,
+        "requests": 43,
+        "tiles": 12,
+        "storage_samples": 18432,
+        "solid_samples": 13271,
+        "columns": 17
+      },
+      "result_sha256": "6599c112d9a3cbbaa2a7afed4d32f8822543df26cfb372b10ed7409c58490fd9"
+    },
+    "support15": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/private-support-15/attempt-2n_p4_ep",
+      "result": {
+        "pass": true,
+        "profile": "SUPPORT_15",
+        "ordinary_connected": true,
+        "negotiation_reconnects": 1,
+        "requests": 16,
+        "tiles": 14,
+        "storage_samples": 63744,
+        "solid_samples": 23213,
+        "columns": 32
+      },
+      "result_sha256": "f040537d135594cc00db67a31ec67da33d26f16991b23b92045b931b8928d98a"
+    },
+    "native": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/private-native-preferred/attempt-kbc_g5to",
+      "result": {
+        "source": "native",
+        "stationary": true,
+        "dh_fallback_enabled": true,
+        "dh_requests": 0,
+        "native_protocol": 20,
+        "requested_vanilla_radius": 12,
+        "effective_vanilla_radius": 8,
+        "loaded_outside_drawing": 71,
+        "sky_light_present": 71,
+        "missing_voxy_columns": 0,
+        "independent_stone_comparisons": 639,
+        "elapsed_seconds": 36.418124122,
+        "missing_columns": [],
+        "correctness_gate_passed": true,
+        "pass": true,
+        "report_only": false
+      },
+      "result_sha256": "7ca4483c412345ce1e949f6b238333af53295520c07a094cc1591643800def3d"
+    },
+    "dh": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/private-official-16-updates-menu/attempt-mgsa8p9u",
+      "result": {
+        "pass": true,
+        "source": "stock-official-DH-3.3.3",
+        "push_only_edits": true,
+        "live_disabled_retained_destination": true,
+        "air_removal_with_same_section_sentinel": true,
+        "same_connection_and_session": true,
+        "sync_hot_negotiation": true,
+        "independent_block_comparisons": 1200,
+        "unchanged_rejoin": true,
+        "rejoin_target_payloads": 0,
+        "rejoin_target_conversions": 0,
+        "edit_updates": 1,
+        "removal_updates": 1,
+        "terrain_requests_during_push_only": 0
+      },
+      "result_sha256": "bf3e6ea2588cfa86fbf1c25363c6e53c680b1cc6f5c74b45d09d132707d3c0cf"
+    }
+  },
+  "manual_setup": {
+    "status": "ready-for-manual-test",
+    "timestamp_utc": "2026-10-06T17:58:12.817527+00:00",
+    "artifact_sha256": "c0713646df836d14a76eaddf59ea7a2139312eb7c9802f9653f2cf8e507a5893",
+    "prism_installation": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/prism-installation.json",
+    "instance": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing",
+    "endpoint": "[::1]:25585",
+    "server_owner": {
+      "pid": 215509,
+      "start": "12826827",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    },
+    "current_liveness": {
+      "checked_utc": "2026-10-06T17:58:11.390334+00:00",
+      "owner_alive": true,
+      "endpoint": "[::1]:25585",
+      "tcp_reachable": true,
+      "ready": true,
+      "problem": null,
+      "recorded_owner": {
+        "pid": 215509,
+        "start": "12826827",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      }
+    },
+    "minecraft_status": {
+      "name": "1.21.1",
+      "protocol": 767
+    },
+    "windows_ipv6_tcp": true,
+    "existing_world_resumed": true,
+    "world": "dh-neoforge-playable",
+    "server_lss": false,
+    "server_dh_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+    "private_tests_passed": true,
+    "private_cells": 4,
+    "private_ui_status": "Actual Sodium 0.8.12, Auto scale 3, three DH checkboxes, no manual protocol selector; screenshot inspected",
+    "client_foreground_launched": false,
+    "client_preferences_preserved": true,
+    "generation": {
+      "max_distance_chunks": 32,
+      "plan": "SURFACE_THEN_CHUNKS",
+      "sync_on_load": true,
+      "unsolicited_updates": true
+    },
+    "test_player_op_preserved": true,
+    "console_fifo_tested": true,
+    "server_survived_launcher_exit": true,
+    "storage_preflight": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/manual-storage-preflight.json",
+    "storage_health": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/evidence/storage-health.json"
+  },
+  "fixture_sha256": "60ad55eeb8c59fb2ad88d06006a2807d8d20347492469197266b9c8001cdda42",
+  "fixture_receipt_sha256": "cc7b984ace976b7a47a56611f0aa1eb40a560b9ca5c3c17256275550c09318a3",
+  "private_updates_menu": {
+    "pass": true,
+    "updates": {
+      "pass": true,
+      "source": "stock-official-DH-3.3.3",
+      "push_only_edits": true,
+      "live_disabled_retained_destination": true,
+      "air_removal_with_same_section_sentinel": true,
+      "same_connection_and_session": true,
+      "sync_hot_negotiation": true,
+      "independent_block_comparisons": 1200,
+      "unchanged_rejoin": true,
+      "rejoin_target_payloads": 0,
+      "rejoin_target_conversions": 0,
+      "edit_updates": 1,
+      "removal_updates": 1,
+      "terrain_requests_during_push_only": 0
+    },
+    "menu": {
+      "pass": true,
+      "actual_sodium": true,
+      "gui_scale_setting": 0,
+      "gui_scale_actual": 3.0,
+      "lss_controls": 13,
+      "separate_dh_page": true,
+      "cross_page_reception_gate": true,
+      "source_checkbox": true,
+      "automatic_protocol": true,
+      "source_saved": "lss",
+      "synchronization_hot": true,
+      "diagnostics_export": true
+    }
+  },
+  "private_ui_status": "Actual Sodium 0.8.12, Auto scale 3, three DH checkboxes, no manual protocol selector; screenshot inspected",
+  "private_processes_stopped": true,
+  "private_verified_utc": "2026-10-06T17:55:11.364159+00:00",
+  "verification_scope": "Normal unit/server and packaging gates, plus packaged NeoForge automatic official-15, Support-15, official-16 sync/live/menu and native-priority border checks. No general Voxy completion/persistence or Windows GPU performance claim.",
+  "verified_utc": "2026-10-06T17:58:12.817527+00:00",
+  "prism_installation": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/prism-installation.json"
+}

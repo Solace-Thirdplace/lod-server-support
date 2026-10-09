@@ -82,7 +82,17 @@ final class ResetCoordinator {
                 Runnable farPlayerResubscribe,
                 Consumer<String> feedback,
                 Supplier<Object> connectionIdentity,
-                LongSupplier nanoTime) {}
+                LongSupplier nanoTime,
+                boolean dhActive) {
+        Deps(boolean managerActive, Runnable drainAndAwaitDecode, VoxyReset voxyReset,
+             Supplier<ModCompat.VoxyStorageProbe> voxyStorageProbe, Runnable lssFlush,
+             Runnable clearAllCaches, Runnable farPlayerResubscribe, Consumer<String> feedback,
+             Supplier<Object> connectionIdentity, LongSupplier nanoTime) {
+            this(managerActive,drainAndAwaitDecode,voxyReset,voxyStorageProbe,lssFlush,clearAllCaches,
+                    farPlayerResubscribe,feedback,connectionIdentity,nanoTime,false);
+        }
+        boolean terrainActive() { return managerActive || dhActive; }
+    }
 
     /** The default (never-forcing) entry point — {@code /lss reset [confirm]}. */
     static boolean run(Deps deps, boolean confirmed) {
@@ -119,7 +129,7 @@ final class ResetCoordinator {
             }
             grantedRoot = grant.normalizedLiveRoot();
         }
-        if (!deps.managerActive()) {
+        if (!deps.terrainActive()) {
             if (!confirmed) {
                 deps.feedback().accept("No active " + Brand.shortName() + " session — this wipes "
                         + "the Voxy and " + Brand.shortName() + " caches for ALL servers with NO "
@@ -145,8 +155,9 @@ final class ResetCoordinator {
         // re-send prefs AFTER the flush — the server answers ANY prefs receipt with a
         // bumped-epoch full roster, which repopulates. Inert while unsubscribed.
         deps.farPlayerResubscribe().run();
-        deps.feedback().accept(voxyLine(report) + Brand.shortName()
-                + " cache cleared — re-requesting everything from the server.");
+        deps.feedback().accept(voxyLine(report) + (deps.dhActive()
+                ? "DH receipts cleared — re-requesting terrain from the server."
+                : Brand.shortName() + " cache cleared — re-requesting everything from the server."));
         emitStorageDetail(deps, report, forceVoxyWipe);
         return true;
     }
@@ -172,7 +183,7 @@ final class ResetCoordinator {
             // A dead-end prompt must not leave an earlier grant armed behind it.
             FORCE_GRANT.set(null);
         }
-        VoxyStorageOverride.forcePromptLines(probe, deps.managerActive(), armable)
+        VoxyStorageOverride.forcePromptLines(probe, deps.terrainActive(), armable)
                 .forEach(deps.feedback());
         return false;
     }

@@ -1,0 +1,794 @@
+{
+  "prepared_utc": "2026-10-06T18:00:05.480267+00:00",
+  "implementation_checkout": "/home/vox/projects/voxel-server-support/.worktrees/dh-client-p1",
+  "baseline": "/tmp/lss-dh-postp4-claude-build.bdinrZ",
+  "baseline_verified_after_hashes": 75,
+  "baseline_manifest_sha256": "37e7869542b5cb7634426d3cafccceef57c2199986ebd8a6d956414cba8a6295",
+  "current_build_snapshot": "/tmp/lss-dh-auto-20261006",
+  "scope": "Repository-owned tracked and untracked files compared with the exact independent last-review snapshot. Preparation outputs excluded. Historical evidence/report inventoried but omitted from unified diff. No ignored runtime files.",
+  "counts": {
+    "production": 35,
+    "unit-test": 21,
+    "documentation": 13,
+    "evidence": 7,
+    "fixture": 10
+  },
+  "files": [
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/config/ClientSettings.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "4e90fca829cf9c4ca8d9ccf7406be38f33e3ea8edee382ac1c060ca0b9755a9e",
+      "after_sha256": "9966ad007a401ad303504dc89ec00dfefef089b356a031351cf49c26ccd42db7",
+      "after_bytes": 8265,
+      "build_snapshot_sha256": "9966ad007a401ad303504dc89ec00dfefef089b356a031351cf49c26ccd42db7"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/config/SettingsSchema.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "800786a6fa5f95a673124d9a661543969a769524056b65fda3643fb3d01a4415",
+      "after_sha256": "3fbadac16eea204ca9c8dcbc3efe1f246173162b9b0065fb9a2975a3faa8f53f",
+      "after_bytes": 16543,
+      "build_snapshot_sha256": "3fbadac16eea204ca9c8dcbc3efe1f246173162b9b0065fb9a2975a3faa8f53f"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/config/SettingsSchemaSpecs.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "77633ea3c620f73e7be10e9613a13ffccac592b29ac65c78a07192f9634e4397",
+      "after_sha256": "6adaa41a377303bd2a99d8527c591b5b3b78460411cf1072bce17742554c6da9",
+      "after_bytes": 10600,
+      "build_snapshot_sha256": "6adaa41a377303bd2a99d8527c591b5b3b78460411cf1072bce17742554c6da9"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "68ffbb0b573e22ae01ca0730531bfbde17b57a8651b383e8b8e8e867efa8acf8",
+      "after_sha256": "432dc2adb8c706d038447d2b65283a81414b5ce7a7138d6a3a23a518be2422fe",
+      "after_bytes": 9786,
+      "build_snapshot_sha256": "432dc2adb8c706d038447d2b65283a81414b5ce7a7138d6a3a23a518be2422fe"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhMessage.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "375ce8a2a4952e6e00ef80406aec18e35706bf16372ebd9a1342e61fa3c51dfc",
+      "after_sha256": "bff1660f9bc02c173c04c88a2b820037dc5da49421ee2390e278c5f404971e9b",
+      "after_bytes": 2631,
+      "build_snapshot_sha256": "bff1660f9bc02c173c04c88a2b820037dc5da49421ee2390e278c5f404971e9b"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhProtocolDiscovery.java",
+      "category": "production",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "2c069ab69073457b932dd7f859da1178930c186651ef793ebf6624a057873a43",
+      "after_bytes": 1497,
+      "build_snapshot_sha256": "2c069ab69073457b932dd7f859da1178930c186651ef793ebf6624a057873a43"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "3c14c85b70e495ef3b803cf63f9494ee6d60ea9e6230c3bad77f46559c228d1c",
+      "after_sha256": "4c55a9e8d9194791c1b18cf2932b6be775c7b2bafe6864d152cf488bf4757078",
+      "after_bytes": 6426,
+      "build_snapshot_sha256": "4c55a9e8d9194791c1b18cf2932b6be775c7b2bafe6864d152cf488bf4757078"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhTerrainCache.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "5902ec1b1cfb64ddfcad541941ad35da4f5d112cac5ddfadf8689cb931978e54",
+      "after_sha256": "8e5ec4a924fb61a4039e01e51e5af7dc12337be77d04ce9475eb07f025f3a340",
+      "after_bytes": 16679,
+      "build_snapshot_sha256": "8e5ec4a924fb61a4039e01e51e5af7dc12337be77d04ce9475eb07f025f3a340"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/diagnostics/ClientStatusText.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "f40b71b04da013aaf8cbe7727bb97ee1ab26a70ac66cdc81c78dcdc29c49a54e",
+      "after_sha256": "f178e76e004d93482ec8b0089c45dbe36abf26bfa42767ce4065decdf05faa22",
+      "after_bytes": 4507,
+      "build_snapshot_sha256": "f178e76e004d93482ec8b0089c45dbe36abf26bfa42767ce4065decdf05faa22"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/diagnostics/DhStatusSnapshot.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "68ed5aa52bcb0756df0bb7073ea07f3997aa6af524a9653a1acc57e61e5f80ab",
+      "after_sha256": "bb20fb05a587bcfdd46990388073694ba8446bd15648648dd57eb5a81bf2565f",
+      "after_bytes": 2359,
+      "build_snapshot_sha256": "bb20fb05a587bcfdd46990388073694ba8446bd15648648dd57eb5a81bf2565f"
+    },
+    {
+      "path": "common/src/main/resources/dev/vox/lss/settings/client.yaml",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "d2005cb6587c869fdaf39cf27a19f36f093bc4b35367f8632d27a698f6fbdb3e",
+      "after_sha256": "226ed494d1c23a2061fcea15fe265c36aedfec14117c2901d65f58828474c02a",
+      "after_bytes": 5952,
+      "build_snapshot_sha256": "226ed494d1c23a2061fcea15fe265c36aedfec14117c2901d65f58828474c02a"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/config/SettingsHandleTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "74449ed43e75dae561890c1c9fce03b54294cbb0ca3d3dd584e8c01808114668",
+      "after_sha256": "1cbc50333c4fa757524aad7cb0774dc0fb2660977fe52631a0203085209c5c66",
+      "after_bytes": 9460,
+      "build_snapshot_sha256": "1cbc50333c4fa757524aad7cb0774dc0fb2660977fe52631a0203085209c5c66"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/config/YamlSettingsCodecTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "c6f122e047face2707a715dc3ee9caccba59d5bf6c819a7010f4909a9117429c",
+      "after_sha256": "1ff8c46966423590820096794a61619db23b30586b43cb40151b18c112a1083b",
+      "after_bytes": 11902,
+      "build_snapshot_sha256": "1ff8c46966423590820096794a61619db23b30586b43cb40151b18c112a1083b"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhAssemblyTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "456372b814a8510aa5eaa85a37451fc5d76ffe2127fb1235cf21ce20dd697c00",
+      "after_sha256": "c24214cba472dde39b1109110497b71ec0e40306611163676252666792310025",
+      "after_bytes": 9252,
+      "build_snapshot_sha256": "c24214cba472dde39b1109110497b71ec0e40306611163676252666792310025"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhProtocolDiscoveryTest.java",
+      "category": "unit-test",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "696b4d2fca95bae68885da0f3efadb580b20d5a9de2b3feab08e50eac3533b87",
+      "after_bytes": 2147,
+      "build_snapshot_sha256": "696b4d2fca95bae68885da0f3efadb580b20d5a9de2b3feab08e50eac3533b87"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "338488ca2b5ab9159313236413070e4f7f7b6409619f7c96db346cbffab66a6c",
+      "after_sha256": "06bb3ba26ef0806c02f2a86b38a1276e5d3735bd43c1d5bcf3231682a15e7662",
+      "after_bytes": 9521,
+      "build_snapshot_sha256": "06bb3ba26ef0806c02f2a86b38a1276e5d3735bd43c1d5bcf3231682a15e7662"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhTerrainCacheTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "ccd13615dbc82035c8e835d0523375b6ea93ad3bbe55a6c29f4a23f4bbaaf476",
+      "after_sha256": "15a2ec175d825f0f1cd5fbabb243f8a44684f4ce203c004b5bf47b7b71b60fd9",
+      "after_bytes": 11646,
+      "build_snapshot_sha256": "15a2ec175d825f0f1cd5fbabb243f8a44684f4ce203c004b5bf47b7b71b60fd9"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/diagnostics/ClientStatusTextTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "220fb2e0898836900f3679893e144798e85fa567e7f52d9ca48c82f6c33932aa",
+      "after_sha256": "6b61ca46f497ce6a57f01a24c0657880f9b2fddba95a71b368b3e6d766936d43",
+      "after_bytes": 4430,
+      "build_snapshot_sha256": "6b61ca46f497ce6a57f01a24c0657880f9b2fddba95a71b368b3e6d766936d43"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/diagnostics/DiagnosticPrivacyTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "172d08830b15a96fa1dfd032b3e4bec90112d3a0b04c79034e8d2b4d9e15a180",
+      "after_sha256": "2535d6298f6ef615650458eea526a1805b73cf99438f8e924c694bb260ee5de7",
+      "after_bytes": 4937,
+      "build_snapshot_sha256": "2535d6298f6ef615650458eea526a1805b73cf99438f8e924c694bb260ee5de7"
+    },
+    {
+      "path": "docs/implementation/2026-10-01-dh-refresh-settings.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "7c5d09fc02cc9ed4a3c0597dc494b8e5aa7840ba9eb69e22f871b9b5c9e86a4b",
+      "after_sha256": "1726a06065f49cea530c9ca2c9d36639ee8c8d407d8f200ca96eb7fc54d78a3f",
+      "after_bytes": 8093,
+      "build_snapshot_sha256": "1726a06065f49cea530c9ca2c9d36639ee8c8d407d8f200ca96eb7fc54d78a3f"
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-manual-test-guide.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "71968fb29a25f09c808bdf384e9352347a6399d7da3ff8bcb109bbd69c707213",
+      "after_sha256": "be8aa3ed98c43e2f8244bd039021091b725ff0ab1d3084a4c1fe68617a1a351b",
+      "after_bytes": 11519,
+      "build_snapshot_sha256": "9dbf83b68333c1b2b287d5a96c7d68ee308defd079ae65fdb6a8e5d9522515c3"
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-ocean-lighting.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "c0a90b1732230d05dcb73fb5f6737dba64a15f60e259b8e44524990e582a27dd",
+      "after_sha256": "712bd1621feff870f4fe6de18213c7e3aa134a168267eae784963ef958e85fe6",
+      "after_bytes": 5340,
+      "build_snapshot_sha256": "712bd1621feff870f4fe6de18213c7e3aa134a168267eae784963ef958e85fe6"
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-p2-p4-continuation.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "3cebdfa12cfa53d27698d52418ec69c2473c0bfba093ec183ea22ecffe01adf6",
+      "after_sha256": "7fe833725ec7fe93143f529375a5642b9e6004e9e5d678584288f1668662214f",
+      "after_bytes": 11566,
+      "build_snapshot_sha256": "7fe833725ec7fe93143f529375a5642b9e6004e9e5d678584288f1668662214f"
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-post-p4-claude-review.md",
+      "category": "evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "9c161c834c0d1e4fff63bd5aab4148c51a76382c1193b9464fe6e23940dfd35b",
+      "after_bytes": 27202,
+      "build_snapshot_sha256": "9c161c834c0d1e4fff63bd5aab4148c51a76382c1193b9464fe6e23940dfd35b"
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-post-p4-review-disposition.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "59e63be9a25c4db77aec12d0390202c72d33e73d582494c457d4417d4eb11748",
+      "after_bytes": 14847,
+      "build_snapshot_sha256": "59e63be9a25c4db77aec12d0390202c72d33e73d582494c457d4417d4eb11748"
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-rejoin-cache.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "a15c8b3a9ee3ed6e112f559b677a15cef661a281525ec30be0f84b9ce1cbf359",
+      "after_sha256": "3fc653a9bef33797f102501d8e97a0613042d25e447d40cbcf69d07e4477c165",
+      "after_bytes": 7049,
+      "build_snapshot_sha256": "3fc653a9bef33797f102501d8e97a0613042d25e447d40cbcf69d07e4477c165"
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-voxy-cache-reuse.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "b7c8fcd03d2c2a09d12532d6e596ccf155075dd500d078ac840715f4b2e2020d",
+      "after_sha256": "ce24a0299c832a7770f64d0f1f9296442d3df3e446b58ea76d14c1e6b50ea6a7",
+      "after_bytes": 6725,
+      "build_snapshot_sha256": "ce24a0299c832a7770f64d0f1f9296442d3df3e446b58ea76d14c1e6b50ea6a7"
+    },
+    {
+      "path": "docs/implementation/2026-10-06-dh-automatic-selection.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "95d0b944a609a7f07b915d8fa70571dafa9795bad0fc37c9c727a98a97d169c3",
+      "after_bytes": 6274,
+      "build_snapshot_sha256": "e59f20cf37bbc725fac7457c7e1b56fe48a22bf8835ce737fc963f16f4b8d479"
+    },
+    {
+      "path": "docs/implementation/2026-10-06-dh-sync-live-updates.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "76cbaaf3fad9378fa6cde468e27fe4f1cde007ff568f527574149e57fbbbbdc4",
+      "after_bytes": 6682,
+      "build_snapshot_sha256": "76cbaaf3fad9378fa6cde468e27fe4f1cde007ff568f527574149e57fbbbbdc4"
+    },
+    {
+      "path": "docs/implementation/2026-10-06-vanilla-lod-border-gap.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "a3769c8f944e0647b68c3ce0fdbfb50df68f339deec37f55ca674e17ccb3fa0e",
+      "after_bytes": 5801,
+      "build_snapshot_sha256": "a3769c8f944e0647b68c3ce0fdbfb50df68f339deec37f55ca674e17ccb3fa0e"
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-05-dh-post-p4-review-fixes-checkpoint.json",
+      "category": "evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "0b3cef9f44dd1c7d35e33ebd9ad1acf66c300d926b703a85481a654b22ed46c3",
+      "after_bytes": 1324,
+      "build_snapshot_sha256": "0b3cef9f44dd1c7d35e33ebd9ad1acf66c300d926b703a85481a654b22ed46c3"
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-05-dh-post-p4-review-fixes-manifest.json",
+      "category": "evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "55bc4d1245de60a165c0851b917bdbfca078d0bc3bc4ad3ddb7a449feb9cfe1a",
+      "after_bytes": 12512,
+      "build_snapshot_sha256": "55bc4d1245de60a165c0851b917bdbfca078d0bc3bc4ad3ddb7a449feb9cfe1a"
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-05-dh-post-p4-review-fixes.diff",
+      "category": "evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "d84f4cad868eecb9edd3c38a1a05ac6eee9f483bf91254440124deacf7650633",
+      "after_bytes": 141528,
+      "build_snapshot_sha256": "d84f4cad868eecb9edd3c38a1a05ac6eee9f483bf91254440124deacf7650633"
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-06-dh-auto-manual-setup.json",
+      "category": "evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "d86229a7ae377201073812ea5a9f4ccc1644d36b99dac8d302c24376cb60d066",
+      "after_bytes": 2014,
+      "build_snapshot_sha256": null
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-06-dh-auto-private-summary.json",
+      "category": "evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "29c7bf63c9e3c5250a21fc1724ea823c235d126c902ef971c2ae2a97b37e98d3",
+      "after_bytes": 3546,
+      "build_snapshot_sha256": null
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-06-dh-auto-verification.json",
+      "category": "evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "8261282d495e9cfeac72225c85d2d7a6915f9f38d07836f1c91ca35649fa697e",
+      "after_bytes": 8462,
+      "build_snapshot_sha256": null
+    },
+    {
+      "path": "docs/planning/2026-09-29-dh-client-compatibility-plan.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "353684673657a2863a5b1620e31747f31251b302eea6ee9b5e1f73a295c02905",
+      "after_sha256": "0a2f763d7e61756b7d09a1c20525eb9f5d55c48598068d71c527d381ed2d53be",
+      "after_bytes": 86770,
+      "build_snapshot_sha256": "0a2f763d7e61756b7d09a1c20525eb9f5d55c48598068d71c527d381ed2d53be"
+    },
+    {
+      "path": "docs/reference/settings-schema.json",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "51db2bd0d6bd5cd213ee56013f764392439be20a17c1ce1a16719514f0f911d3",
+      "after_sha256": "b0e57652411ccd81a06745dded6cfe68d93fa46e7e166d3019d08af3d2acd0ad",
+      "after_bytes": 97044,
+      "build_snapshot_sha256": "b0e57652411ccd81a06745dded6cfe68d93fa46e7e166d3019d08af3d2acd0ad"
+    },
+    {
+      "path": "docs/reference/settings.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "3af8e73e047dc7efcd72aec8bc4165399bcc2b1bcd3294756ba59f6e475b263c",
+      "after_sha256": "39e6132ca69e3b050a66c0c23429d4d4416b689d95fcaf21ffd1803a8456139f",
+      "after_bytes": 40563,
+      "build_snapshot_sha256": "39e6132ca69e3b050a66c0c23429d4d4416b689d95fcaf21ffd1803a8456139f"
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "c04084e3b06ca3075bb4446a3859a25d28f94c0d71df436fc25cc2606178b96c",
+      "after_sha256": "163dbfad75ac6129ca18e09f8380a6682b9b856b6bf4d81658bc6a85a4bfe0d5",
+      "after_bytes": 7935,
+      "build_snapshot_sha256": "163dbfad75ac6129ca18e09f8380a6682b9b856b6bf4d81658bc6a85a4bfe0d5"
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "2149796e15f82112e1747346517b7d18a55517827c7cca2e29f527a35c13ab79",
+      "after_sha256": "82ab8316412b606f54fba5fbb3795909168c9aed17ec9ccb1fc67c7705942710",
+      "after_bytes": 25157,
+      "build_snapshot_sha256": "82ab8316412b606f54fba5fbb3795909168c9aed17ec9ccb1fc67c7705942710"
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/config/menu/SodiumDraftRefresh.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "b762f9c91435f10d8d05451c4258bd8743cc72aa95224c41be8a2fa40d230f30",
+      "after_sha256": "95dd0176430d3a5fe48bc7da5447e4ce2d22f6ed1cd1324a2084c71918f608e8",
+      "after_bytes": 5181,
+      "build_snapshot_sha256": "95dd0176430d3a5fe48bc7da5447e4ce2d22f6ed1cd1324a2084c71918f608e8"
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "9247760e0560b9d6e73c60794a087ef9a4c0841e8c94f71e05657cffd6a81d69",
+      "after_sha256": "4dcd8faecd9b9aecf9c14cbb83c0a1030c5183a4bde616088c555e2a377a8057",
+      "after_bytes": 2873,
+      "build_snapshot_sha256": "4dcd8faecd9b9aecf9c14cbb83c0a1030c5183a4bde616088c555e2a377a8057"
+    },
+    {
+      "path": "fabric/src/main/resources/assets/lss/lang/en_us.json",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "9147258f3c3940aa2d4d0147d7a3f875fc3856e6a6c5cf967b8edc78b6099913",
+      "after_sha256": "da8e2d4dfe54d41dd70e3c92fc966dfea45e5205fe94dfde038bb5f44dd5a74d",
+      "after_bytes": 12021,
+      "build_snapshot_sha256": "da8e2d4dfe54d41dd70e3c92fc966dfea45e5205fe94dfde038bb5f44dd5a74d"
+    },
+    {
+      "path": "fabric/src/main/resources/assets/lss/lang/zh_cn.json",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "b79874b2c3646e3311aafcbce8d095cd53ac712fc54bff7c91f2118051f49686",
+      "after_sha256": "cf4e131686e932935cee18118dd6c665eea1bc52ef8d80a568150241728ed2d2",
+      "after_bytes": 11742,
+      "build_snapshot_sha256": "cf4e131686e932935cee18118dd6c665eea1bc52ef8d80a568150241728ed2d2"
+    },
+    {
+      "path": "fabric/src/main/resources/assets/lss/lang/zh_tw.json",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "48ae1c927448f7ec36ea7a617e8b32ac74914ed81481beaf85127115fac0e24b",
+      "after_sha256": "24f1abfe683060b224c52d4e8b545efbe20d7664e8d7ce062b12e5277f252a05",
+      "after_bytes": 11814,
+      "build_snapshot_sha256": "24f1abfe683060b224c52d4e8b545efbe20d7664e8d7ce062b12e5277f252a05"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/compat/VoxyTerrainCacheTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "13c11b647f921793f4984f440346fd5b665acd475a7444196a2a3716a4555c13",
+      "after_sha256": "d6a2eceac6cf4d1b7181cf738b4b1af41db634c0a2dafe1d3bf747d202c95818",
+      "after_bytes": 5636,
+      "build_snapshot_sha256": "d6a2eceac6cf4d1b7181cf738b4b1af41db634c0a2dafe1d3bf747d202c95818"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/compat/VoxyVanillaCoverageTest.java",
+      "category": "unit-test",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "3dd2a32f816a0e6e30adf1093d8c54507786229a355ec49d7ff94ce01bd735d8",
+      "after_bytes": 9504,
+      "build_snapshot_sha256": "3dd2a32f816a0e6e30adf1093d8c54507786229a355ec49d7ff94ce01bd735d8"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/config/LSSConfigMenuTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "edc058d43885610f86a12bcdbc009d6c7977d235c81c9ea872fff671030cc04e",
+      "after_sha256": "628d237e72e6894d1cf5a878574e602ea22244772d38e81fbef65069acf9ee5a",
+      "after_bytes": 12663,
+      "build_snapshot_sha256": "628d237e72e6894d1cf5a878574e602ea22244772d38e81fbef65069acf9ee5a"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "107eee7496280646e48a917a725f6825416e6b246d67d2cc46741b6bb5f998dc",
+      "after_sha256": "80ece0c762b85c5edbd3de3be32f99de8ed77c90b56689c01dee831a54408e83",
+      "after_bytes": 17082,
+      "build_snapshot_sha256": "80ece0c762b85c5edbd3de3be32f99de8ed77c90b56689c01dee831a54408e83"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/config/menu/LegacySodiumPageTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "c9701e12c663e2942c15ba920815c9a9889a5f6fe0976c12b4842d8b1d392fcd",
+      "after_sha256": "db5f0907122953fa3d735d973f4a3c02a79f1775ef4c4cda7c7ff3f312a6bc39",
+      "after_bytes": 15110,
+      "build_snapshot_sha256": "db5f0907122953fa3d735d973f4a3c02a79f1775ef4c4cda7c7ff3f312a6bc39"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/ColumnCacheStoreTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "ed5a2f37bcbedda57d5fe9e549bd89cd583d6479fcbc169cfc642d00fd7ac4a2",
+      "after_sha256": "6639e4a049e6b950996cb8955b034a0544838e4b79e41e4dca07beca3d426164",
+      "after_bytes": 37746,
+      "build_snapshot_sha256": "6639e4a049e6b950996cb8955b034a0544838e4b79e41e4dca07beca3d426164"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "c898d8743c9e4a7258d0d570748461167df153641c1a706cc0c11de672eaaec7",
+      "after_sha256": "ad2f93cfa4570e35f7c8ff6400d46043656bfad03389c77318382f006bd6a6a9",
+      "after_bytes": 90017,
+      "build_snapshot_sha256": "ad2f93cfa4570e35f7c8ff6400d46043656bfad03389c77318382f006bd6a6a9"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "ac945a6bb1366efb047f9e88d8b43d25c99605a3001bae78dcccac9a2e30b044",
+      "after_sha256": "426e051652a85fa46d8dcd847d2e90135c9f50b91705133388843793116892fc",
+      "after_bytes": 21874,
+      "build_snapshot_sha256": "426e051652a85fa46d8dcd847d2e90135c9f50b91705133388843793116892fc"
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/ConfigBuilder.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "b8306f2e31bea6a7e7c8725538508953a47bf7135d31188cfeb023c9fd2b2365",
+      "after_sha256": "34319c91edc7e52c95e5957a19064259916934f5caba896817906439a06b2bd3",
+      "after_bytes": 547,
+      "build_snapshot_sha256": "34319c91edc7e52c95e5957a19064259916934f5caba896817906439a06b2bd3"
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/EnumOptionBuilder.java",
+      "category": "unit-test",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "353145035313e677c1b0cb7a4b82f52088c22e0ee062d13df0cab46c552d845a",
+      "after_bytes": 481,
+      "build_snapshot_sha256": "353145035313e677c1b0cb7a4b82f52088c22e0ee062d13df0cab46c552d845a"
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/RecordedEnum.java",
+      "category": "unit-test",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "cb2916a475e05992c8522fc10eda62f5b4b7849c651258f6d7e338092358872a",
+      "after_bytes": 787,
+      "build_snapshot_sha256": "cb2916a475e05992c8522fc10eda62f5b4b7849c651258f6d7e338092358872a"
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/RecordingConfigBuilder.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "96c160b914f3b2d53fe9dc5e9f1a0795816d27c9c9eccfd5623e7f04d6936785",
+      "after_sha256": "bf0a38819b9823236ec681bf3ee8e89c9f34493592b76482c7724f304f970b88",
+      "after_bytes": 1227,
+      "build_snapshot_sha256": "bf0a38819b9823236ec681bf3ee8e89c9f34493592b76482c7724f304f970b88"
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/client/gui/options/control/CyclingControl.java",
+      "category": "unit-test",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "82903db7c1e1faf9adfa768965697bc16c3aae92c1ecc328f31d0176ee26d0d7",
+      "after_bytes": 385,
+      "build_snapshot_sha256": "82903db7c1e1faf9adfa768965697bc16c3aae92c1ecc328f31d0176ee26d0d7"
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "2740b43553932ca15359dfda6d4f4f3391615d77d73ff68bd86342f46e0b4253",
+      "after_sha256": "8bc669e24a3528d00a9f8a21ab1b4607dd01e8821111ec34d0ac32efa09c03dc",
+      "after_bytes": 7680,
+      "build_snapshot_sha256": "8bc669e24a3528d00a9f8a21ab1b4607dd01e8821111ec34d0ac32efa09c03dc"
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "2149796e15f82112e1747346517b7d18a55517827c7cca2e29f527a35c13ab79",
+      "after_sha256": "82ab8316412b606f54fba5fbb3795909168c9aed17ec9ccb1fc67c7705942710",
+      "after_bytes": 25157,
+      "build_snapshot_sha256": "82ab8316412b606f54fba5fbb3795909168c9aed17ec9ccb1fc67c7705942710"
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/config/menu/SodiumDraftRefresh.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "b762f9c91435f10d8d05451c4258bd8743cc72aa95224c41be8a2fa40d230f30",
+      "after_sha256": "95dd0176430d3a5fe48bc7da5447e4ce2d22f6ed1cd1324a2084c71918f608e8",
+      "after_bytes": 5181,
+      "build_snapshot_sha256": "95dd0176430d3a5fe48bc7da5447e4ce2d22f6ed1cd1324a2084c71918f608e8"
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "92ea508cb58743e288d230eaf26c963721cd7e2dae2ef6075847a91f8f35c35b",
+      "after_sha256": "d43f4f9d50454b7261bdb3a7feb5200c081a8280288cf8398f928a493dda21cb",
+      "after_bytes": 6146,
+      "build_snapshot_sha256": "d43f4f9d50454b7261bdb3a7feb5200c081a8280288cf8398f928a493dda21cb"
+    },
+    {
+      "path": "neoforge/src/main/java/net/caffeinemc/mods/sodium/api/config/structure/ConfigBuilder.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "1150e0d32a8aababaf273fa10594b3f7411421c08a08257b11a4ae1e3cf28688",
+      "after_sha256": "00f034d139da5e6ce9340633cfe569a5dac2289e031cd7aec4d79f36b74c0790",
+      "after_bytes": 647,
+      "build_snapshot_sha256": "00f034d139da5e6ce9340633cfe569a5dac2289e031cd7aec4d79f36b74c0790"
+    },
+    {
+      "path": "neoforge/src/main/java/net/caffeinemc/mods/sodium/api/config/structure/EnumOptionBuilder.java",
+      "category": "production",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "353145035313e677c1b0cb7a4b82f52088c22e0ee062d13df0cab46c552d845a",
+      "after_bytes": 481,
+      "build_snapshot_sha256": "353145035313e677c1b0cb7a4b82f52088c22e0ee062d13df0cab46c552d845a"
+    },
+    {
+      "path": "test-fixtures/dh-live/README.md",
+      "category": "fixture",
+      "change": "modified",
+      "before_sha256": "6add79dde8fff31bf5879cc40c9e2ec1aca0bd310702014740770e65a3fff2d7",
+      "after_sha256": "46fa3f65deb190a52319119dd8419ea8dd31217deb89b0d2f1f03acdc864e0cc",
+      "after_bytes": 15034,
+      "build_snapshot_sha256": "46fa3f65deb190a52319119dd8419ea8dd31217deb89b0d2f1f03acdc864e0cc"
+    },
+    {
+      "path": "test-fixtures/dh-live/exercise.py",
+      "category": "fixture",
+      "change": "modified",
+      "before_sha256": "8b53bf6218ab59e00fb0f60f0d34c000f7f9c17ab1b8331631b06ccf0ecb3e46",
+      "after_sha256": "b3f314e4460ae225aaf7c47dd27c3bf687a9eb4a433ffa076c44dabbb43bbcc5",
+      "after_bytes": 4463,
+      "build_snapshot_sha256": "b3f314e4460ae225aaf7c47dd27c3bf687a9eb4a433ffa076c44dabbb43bbcc5"
+    },
+    {
+      "path": "test-fixtures/dh-live/prepare.py",
+      "category": "fixture",
+      "change": "modified",
+      "before_sha256": "22d927d3cefb6a4012c276ab3b1822d0a2c6b4a0996212c528d4647861dc7011",
+      "after_sha256": "d9118945b0800027fe874c0c3d6b26b4b551421afc34a06d46b3b9b453b662e8",
+      "after_bytes": 11525,
+      "build_snapshot_sha256": "d9118945b0800027fe874c0c3d6b26b4b551421afc34a06d46b3b9b453b662e8"
+    },
+    {
+      "path": "test-fixtures/dh-live/run.py",
+      "category": "fixture",
+      "change": "modified",
+      "before_sha256": "95441a0de312476465ef8e039656c58cfc4cd35093dd16ed7b7fe45c004789e7",
+      "after_sha256": "f5074e9a52ca1feba5f047f030b9c79b4d154d7c0629a5c9bafb9d8d1226c230",
+      "after_bytes": 10280,
+      "build_snapshot_sha256": "f5074e9a52ca1feba5f047f030b9c79b4d154d7c0629a5c9bafb9d8d1226c230"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/BoundaryProbe.java",
+      "category": "fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "d511d0a3ad9be753c6de2bd4c87ad946e379edcebc705a44cab4df65c5f6fbe9",
+      "after_bytes": 6917,
+      "build_snapshot_sha256": "d511d0a3ad9be753c6de2bd4c87ad946e379edcebc705a44cab4df65c5f6fbe9"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java",
+      "category": "fixture",
+      "change": "modified",
+      "before_sha256": "2d71a0b2f12bc7cf11867f4e3774410425b067c7afcae1abfa9ad7b2ea7e3460",
+      "after_sha256": "2a9854f52f8d9cf2d9f11f8044f135e9b47162678e0333520b3c05c79c216ce8",
+      "after_bytes": 23188,
+      "build_snapshot_sha256": "2a9854f52f8d9cf2d9f11f8044f135e9b47162678e0333520b3c05c79c216ce8"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java",
+      "category": "fixture",
+      "change": "modified",
+      "before_sha256": "65144aae8f30565ab52f2a58817618cb44e7d441ee7c313c0b117b35631decf6",
+      "after_sha256": "3abff1a9d4adcd9368f0c47a4a09252ac92dad9723ab7783edd017458b4e85d5",
+      "after_bytes": 37444,
+      "build_snapshot_sha256": "3abff1a9d4adcd9368f0c47a4a09252ac92dad9723ab7783edd017458b4e85d5"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/RejoinProbe.java",
+      "category": "fixture",
+      "change": "modified",
+      "before_sha256": "126a8299beabbdc0fa3df0889390eef82f4e77d4412575e1544e7f048f53e06b",
+      "after_sha256": "f88de7fd3ba628822e2d7c4712715d9dd0fc3bdeab75fa091cd669b0fa6ff16c",
+      "after_bytes": 15105,
+      "build_snapshot_sha256": "f88de7fd3ba628822e2d7c4712715d9dd0fc3bdeab75fa091cd669b0fa6ff16c"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ServiceProbe.java",
+      "category": "fixture",
+      "change": "modified",
+      "before_sha256": "eb22a2a45bfb7e8422d8b0d822bc661b836e6178204e2afe8a862d5be2571cfd",
+      "after_sha256": "d47c8abde83b5c709a8ecbab757a415d88e7c3862a26dbc6c4d6b6d898625d3a",
+      "after_bytes": 4041,
+      "build_snapshot_sha256": "d47c8abde83b5c709a8ecbab757a415d88e7c3862a26dbc6c4d6b6d898625d3a"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/UpdatesProbe.java",
+      "category": "fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "08b0edbf2ec55ff9be1fb830a5809a77ed0ace6f6e515cf0d3c0d1e27aede5c1",
+      "after_bytes": 11192,
+      "build_snapshot_sha256": "08b0edbf2ec55ff9be1fb830a5809a77ed0ace6f6e515cf0d3c0d1e27aede5c1"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/ModCompat.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "b73bdeebda5a7b1b09ab85eef3c9618ffede7017fcff9e19520fcdccb8df7362",
+      "after_sha256": "06e8f051db21627b861b804aaf82b004b069d0376c19609255435c88016e1838",
+      "after_bytes": 10840,
+      "build_snapshot_sha256": "06e8f051db21627b861b804aaf82b004b069d0376c19609255435c88016e1838"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/VoxyCompat.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "5c30eaeb066ccb9fa32db61ca40d11172ea2318533528e8053a8ad8be2d08f0e",
+      "after_sha256": "43d75a05ffe47abef26e2ac6e2f2924b210ccb87765da746fb546c639510d778",
+      "after_bytes": 52886,
+      "build_snapshot_sha256": "43d75a05ffe47abef26e2ac6e2f2924b210ccb87765da746fb546c639510d778"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/VoxyTerrainCache.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "e147aeda38f284ab953f4553d3da88f26896176f17f7f1050b2bc595cb0043b5",
+      "after_sha256": "b86c5811ea21e624fb23e62074c274dc2d343c996d4e7103bd42c98b8f5f61d5",
+      "after_bytes": 7554,
+      "build_snapshot_sha256": "b86c5811ea21e624fb23e62074c274dc2d343c996d4e7103bd42c98b8f5f61d5"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/VoxyVanillaCoverage.java",
+      "category": "production",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "aeee72b44011e55aa4a0e8a31dbdb44695b20bb6f660baeed7c0faca75b66b9c",
+      "after_bytes": 8409,
+      "build_snapshot_sha256": "aeee72b44011e55aa4a0e8a31dbdb44695b20bb6f660baeed7c0faca75b66b9c"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "09ad2541d5824d91e358744800d8879bb52f2056c99168e1cf3291cf5b74ac4a",
+      "after_sha256": "f4471833435de49ccfa54cf51664de84e8e822ad2f62631ea33df06f1e9a9686",
+      "after_bytes": 17603,
+      "build_snapshot_sha256": "f4471833435de49ccfa54cf51664de84e8e822ad2f62631ea33df06f1e9a9686"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/config/menu/OptionSpec.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "ef25db1103a62cba54a25d886751f4673980322fee29dd03768d91cfb88bd2d5",
+      "after_sha256": "98f2e91d74ed443781dcb991ce7cf952cd59cfc83fbba1aba15f7de27c4d6b87",
+      "after_bytes": 10309,
+      "build_snapshot_sha256": "98f2e91d74ed443781dcb991ce7cf952cd59cfc83fbba1aba15f7de27c4d6b87"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "33a6c69cf44c227a4422d9588aa357cff009a9f9b75e9dc32cffdf9c0d04a15c",
+      "after_sha256": "eaf4a051b1f58cd5bc0096999867559ccd44298c99404bbfcb11c07ea990037c",
+      "after_bytes": 19391,
+      "build_snapshot_sha256": "eaf4a051b1f58cd5bc0096999867559ccd44298c99404bbfcb11c07ea990037c"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientNetGlue.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "f66a35a9c1eb122413ee5ec2d72d01481d494e2378fdd7ca0a2d4888d5897f09",
+      "after_sha256": "5bfa1bf87bb78974185a1301a999f3ca5b071c90b2bd25e4bbffe60b2d767fd1",
+      "after_bytes": 27827,
+      "build_snapshot_sha256": "5bfa1bf87bb78974185a1301a999f3ca5b071c90b2bd25e4bbffe60b2d767fd1"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ColumnCacheStore.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "fe31446188963c1ef8dc54ca876801506b0ceb9053bfde7d79ae2bb4d1b08372",
+      "after_sha256": "882f5177a0c2d4d1052485ad2e46b4a2b88c19ac343505f261b45c97921034fe",
+      "after_bytes": 37238,
+      "build_snapshot_sha256": "882f5177a0c2d4d1052485ad2e46b4a2b88c19ac343505f261b45c97921034fe"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "405df4f50c5480df059c9c0ff10b493fc3147c1dec33084aca39fb2e7fa15c6a",
+      "after_sha256": "dc869ade4080174c493c876b255ea86525a84ca17ee6e9e95d9cc064e316c19c",
+      "after_bytes": 64846,
+      "build_snapshot_sha256": "dc869ade4080174c493c876b255ea86525a84ca17ee6e9e95d9cc064e316c19c"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/DhColumnConverter.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "cded75152860c6e80d60d7edcbf69cd90aab5c6cb2e3b159686a0ab164d8cc81",
+      "after_sha256": "8a05244e98daa85f823eec09138799b6537388d2fd22742e7fb9ea83724b65da",
+      "after_bytes": 6170,
+      "build_snapshot_sha256": "8a05244e98daa85f823eec09138799b6537388d2fd22742e7fb9ea83724b65da"
+    }
+  ],
+  "diff_file": "/home/vox/projects/voxel-server-support/.worktrees/dh-client-p1/docs/implementation/evidence/2026-10-06-dh-follow-up-review.diff",
+  "diff_sha256": "3d3e754a86118a053a570c220c933f954b6704a44bcec69d7d103d15e557628c"
+}

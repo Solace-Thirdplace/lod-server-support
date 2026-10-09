@@ -1,0 +1,22 @@
+
+Welcome to Gradle 9.5.1!
+
+Here are the highlights of this release:
+ - Task provenance in reports and failure messages
+ - Type-safe accessors for precompiled Kotlin Settings plugins
+
+For more details see https://docs.gradle.org/9.5.1/release-notes.html
+
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Gradle could not start your build.
+> Could not create service of type FileLockContentionHandler using BasicGlobalScopeServices.createFileLockContentionHandler().
+   > Could not determine a usable wildcard IP for this machine.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.

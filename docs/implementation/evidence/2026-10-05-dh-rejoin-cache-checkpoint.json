@@ -1,0 +1,256 @@
+{
+  "date": "2026-10-05",
+  "status": "rejoin-cache-tested-dev-installed-manual-ready-strict-milestones-open",
+  "build_version": "0.16.0-dh-rejoin.dev20261005",
+  "artifact_sha256": "a0bd5026e8a97ccbcd26b88a98e087c2b1d656661cc9d0b90c7522aac10d1ddb",
+  "normal_units": {
+    "common": {
+      "tests": 1005,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 1005
+    },
+    "fabric": {
+      "tests": 1711,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 4,
+      "passed": 1707
+    },
+    "paper": {
+      "tests": 536,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 536
+    },
+    "neoforge": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 23
+    }
+  },
+  "gametests": {
+    "fabric": 78,
+    "neoforge": 8
+  },
+  "packaging": {
+    "versioned_preflight": true,
+    "artifacts": 6,
+    "selftest_cases": 126
+  },
+  "private_rejoin_checks": {
+    "neoforge-rejoin": {
+      "name": "neoforge-rejoin",
+      "started_utc": "2026-10-05T18:10:37.205217+00:00",
+      "duration_seconds": 255.21,
+      "exit_code": 0,
+      "log": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/rejoin-cache/neoforge-rejoin-matrix-2.log",
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/rejoin-cache/neoforge-rejoin-runs/attempt-b0a707_3",
+      "dh-result.json": {
+        "pass": true,
+        "unchanged_rejoin": true,
+        "offline_edit": true,
+        "voxy_cache_loss": true,
+        "explicit_reset": true,
+        "source_cache_loss": true,
+        "block_comparisons": 2100,
+        "refresh_off": true
+      },
+      "dh-rejoin-cold.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "server_timestamp": 1791223888041,
+        "cached_source": true
+      },
+      "dh-rejoin-unchanged.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "conditional_timestamp": 1791223888041,
+        "target_payloads": 0,
+        "local_replay": true
+      },
+      "dh-rejoin-offline-edit.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "old_timestamp": 1791223888041,
+        "new_timestamp": 1791223940167,
+        "conditional_changed_reply": true
+      },
+      "dh-rejoin-voxy-loss.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "voxy_disk_and_memory_cleared": true,
+        "target_payloads": 0,
+        "replayed_timestamp": 1791223940167
+      },
+      "dh-rejoin-process-restart.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "new_client_jvm": true,
+        "target_payloads": 0,
+        "persistent_source_replayed": true
+      },
+      "dh-rejoin-reset.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "source_cache_cleared": true,
+        "target_full_timestamp_zero": true
+      },
+      "dh-rejoin-source-loss.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "target_missing_full_request": true,
+        "source_refilled": true
+      }
+    },
+    "fabric-rejoin": {
+      "name": "fabric-rejoin",
+      "started_utc": "2026-10-05T18:15:16.095340+00:00",
+      "duration_seconds": 243.6,
+      "exit_code": 0,
+      "log": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/rejoin-cache/fabric-rejoin-matrix-3.log",
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/rejoin-cache/fabric-rejoin-runs/attempt-q3mdjfhe",
+      "dh-result.json": {
+        "pass": true,
+        "unchanged_rejoin": true,
+        "offline_edit": true,
+        "voxy_cache_loss": true,
+        "explicit_reset": true,
+        "source_cache_loss": true,
+        "block_comparisons": 2100,
+        "refresh_off": true
+      },
+      "dh-rejoin-cold.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "server_timestamp": 1791224137005,
+        "cached_source": true
+      },
+      "dh-rejoin-unchanged.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "conditional_timestamp": 1791224137005,
+        "target_payloads": 0,
+        "local_replay": true
+      },
+      "dh-rejoin-offline-edit.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "old_timestamp": 1791224137005,
+        "new_timestamp": 1791224212781,
+        "conditional_changed_reply": true
+      },
+      "dh-rejoin-voxy-loss.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "voxy_disk_and_memory_cleared": true,
+        "target_payloads": 0,
+        "replayed_timestamp": 1791224212781
+      },
+      "dh-rejoin-process-restart.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "new_client_jvm": true,
+        "target_payloads": 0,
+        "persistent_source_replayed": true
+      },
+      "dh-rejoin-reset.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "source_cache_cleared": true,
+        "target_full_timestamp_zero": true
+      },
+      "dh-rejoin-source-loss.json": {
+        "pass": true,
+        "block_comparisons": 300,
+        "target_missing_full_request": true,
+        "source_refilled": true
+      }
+    }
+  },
+  "prism_installation": {
+    "status": "installed-and-verified",
+    "instance": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing",
+    "backup": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing/minecraft/lss-dh-backups/20261005T182143.197689Z",
+    "jar": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing/minecraft/mods/lod-server-support-neoforge-dh-dev-mc1.21.1.jar",
+    "jar_sha256": "a0bd5026e8a97ccbcd26b88a98e087c2b1d656661cc9d0b90c7522aac10d1ddb",
+    "yaml_sha256": "70eabf5317a83ebfe6435dbbcc40b4da733695edb06153ded670f06d184b0bb6",
+    "preferences_preserved": true,
+    "legacy_preserved": true,
+    "foreground_client_launched": false,
+    "verification": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/rejoin-cache/verification.json"
+  },
+  "manual_setup": {
+    "status": "ready-for-manual-test",
+    "timestamp_utc": "2026-10-05T18:23:40.865014+00:00",
+    "artifact_sha256": "a0bd5026e8a97ccbcd26b88a98e087c2b1d656661cc9d0b90c7522aac10d1ddb",
+    "prism_installation": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/rejoin-cache/prism-installation.json",
+    "instance": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing",
+    "endpoint": "[::1]:25585",
+    "server_owner": {
+      "pid": 85308,
+      "start": "4605699",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    },
+    "server_console_session": 7238,
+    "minecraft_status": {
+      "name": "1.21.1",
+      "protocol": 767
+    },
+    "windows_ipv6_tcp": true,
+    "existing_world_resumed": true,
+    "world": "dh-neoforge-playable",
+    "server_lss": false,
+    "server_dh_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+    "private_tests_passed": true,
+    "storage_preflight": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/launch-storage.json",
+    "storage_health": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/evidence/storage-health.json"
+  },
+  "manual_settings": {
+    "generation_chunks": 32,
+    "plan": "SURFACE_THEN_CHUNKS",
+    "synchronize_on_load": true,
+    "realtime_updates": false,
+    "TestPlayer_op": 4
+  },
+  "source_manifest_sha256": "b4fe52377503137cce19e1cde49d234908d62d94b541cfb96c8839486ce0fd82",
+  "test_source_manifest_sha256": "8b9b9ffa77c7dc1fa06379566b28ed645e3bb522fc2127d42c98e5e5744d768c",
+  "production_files_changed_since_ocean": [
+    "common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java",
+    "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java",
+    "common/src/main/java/dev/vox/lss/common/dh/DhTerrainCache.java",
+    "xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java",
+    "xplat/src/main/java/dev/vox/lss/networking/client/ColumnCacheStore.java",
+    "xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java"
+  ],
+  "ocean_converter_unchanged": true,
+  "source_cache_limits": {
+    "complete_tiles": 4096,
+    "complete_tile_bytes": 268435456
+  },
+  "persistent_voxy_receipts": false,
+  "strict_P2_P4_complete": false,
+  "release_ready": false,
+  "upstream_source_provenance": {
+    "main_commit": "f5788b79f0cc4d751a6c1c7d759ac926df917206",
+    "retrieved_utc": "2026-10-05T17:59:42.294463+00:00",
+    "sources": [
+      {
+        "path": "core/src/main/java/com/seibel/distanthorizons/core/file/fullDatafile/RemoteFullDataSourceProvider.java",
+        "url": "https://gitlab.com/api/v4/projects/distant-horizons-team%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Ffile%2FfullDatafile%2FRemoteFullDataSourceProvider.java/raw?ref=f5788b79f0cc4d751a6c1c7d759ac926df917206",
+        "sha256": "9c31d244ba1821600e8cb61dcb688594ca761f431f54c3685e6a6daaf51e177a"
+      },
+      {
+        "path": "core/src/main/java/com/seibel/distanthorizons/core/multiplayer/client/SyncOnLoadRequestQueue.java",
+        "url": "https://gitlab.com/api/v4/projects/distant-horizons-team%2Fdistant-horizons-core/repository/files/core%2Fsrc%2Fmain%2Fjava%2Fcom%2Fseibel%2Fdistanthorizons%2Fcore%2Fmultiplayer%2Fclient%2FSyncOnLoadRequestQueue.java/raw?ref=f5788b79f0cc4d751a6c1c7d759ac926df917206",
+        "sha256": "1ec0569aefb064d58f0f279986db2f3034cff3c818cebe9c47bc9e9f6d8a43c5"
+      }
+    ],
+    "note": "Current source corroborates behavior; exact 3.3.3 javap is the deployed artifact oracle."
+  },
+  "evidence_root": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/rejoin-cache"
+}

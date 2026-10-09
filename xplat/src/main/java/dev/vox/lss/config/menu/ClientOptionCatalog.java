@@ -21,15 +21,16 @@ import java.util.Optional;
  * value labels are {@link Label}s, environment facts come in through {@link MenuContext}.
  * The catalog test pins: unique {@code lss:} ids, every key present in {@code en_us.json},
  * defaults equal to a fresh config's fields, binding round-trips, {@code enabledBy}
- * dependencies on the same page, the slider curve inside the validate() clamps, and the
+ * dependencies across the shared catalog, the slider curve inside the validate() clamps, and the
  * shared disk-only storage hook.
  *
  * <p>Page/option ORDER is display order and is part of the shipped shape (n12: the
- * main page first, far players second).
+ * main page first, then far players).
  */
 public final class ClientOptionCatalog {
 
     public static final String ID_RECEIVE_SERVER_LODS = "lss:receive_server_lods";
+    public static final String ID_LOD_SOURCE = "lss:lod_source";
     public static final String ID_LOD_DISTANCE = "lss:lod_distance";
     public static final String ID_COLUMN_RATE_LIMIT = "lss:column_rate_limit";
     public static final String ID_JOIN_SLOW_START = "lss:join_slow_start";
@@ -42,6 +43,7 @@ public final class ClientOptionCatalog {
 
     public static final String PAGE_GENERAL = "general";
     public static final String PAGE_FAR_PLAYERS = "far_players";
+
 
     private static final List<PageSpec> PAGES = List.of(generalPage(), farPlayersPage());
 
@@ -68,6 +70,7 @@ public final class ClientOptionCatalog {
             dev.vox.lss.common.config.SettingDescriptor stored) {
         String id = switch (stored.key()) {
             case "lod.receive" -> ID_RECEIVE_SERVER_LODS;
+            case "lod.source" -> ID_LOD_SOURCE;
             case "lod.distance_chunks" -> ID_LOD_DISTANCE;
             case "lod.download.max_columns_per_second" -> ID_COLUMN_RATE_LIMIT;
             case "lod.download.slow_start_on_join" -> ID_JOIN_SLOW_START;
@@ -97,10 +100,16 @@ public final class ClientOptionCatalog {
     /** Metadata is derived from the same typed rows used by both Sodium generations. */
     public static dev.vox.lss.common.config.SettingDescriptor descriptor(OptionSpec option) {
         var type = option instanceof BoolSpec ? dev.vox.lss.common.config.SettingDescriptor.Type.BOOLEAN
-                : dev.vox.lss.common.config.SettingDescriptor.Type.INTEGER;
-        String domain = option instanceof IntSpec i ? i.min() + ".." + i.max() + " (UI indices)" : "true | false";
-        String defaults = option instanceof BoolSpec b ? Boolean.toString(b.defaultValue())
-                : Integer.toString(((IntSpec) option).defaultValue());
+                : option instanceof IntSpec ? dev.vox.lss.common.config.SettingDescriptor.Type.INTEGER
+                : dev.vox.lss.common.config.SettingDescriptor.Type.STRING;
+        String domain = switch(option) {
+            case BoolSpec b -> "true | false";
+            case IntSpec i -> i.min()+".."+i.max()+" (UI indices)";
+        };
+        String defaults = switch(option) {
+            case BoolSpec b -> Boolean.toString(b.defaultValue());
+            case IntSpec i -> Integer.toString(i.defaultValue());
+        };
         return new dev.vox.lss.common.config.SettingDescriptor(option.id(), type,
                 option.id().equals(ID_COLUMN_RATE_LIMIT) ? "slider index -> columns/s; 0 unlimited"
                         : option.id().equals(ID_LOD_DISTANCE) ? "chunks; 0 server default" : "option value",
@@ -178,10 +187,23 @@ public final class ClientOptionCatalog {
                 .name("lss.config.xaero_map_bridge")
                 .tooltip(Tooltip.conditional(Condition.XAERO_PRESENT,
                         "lss.config.xaero_map_bridge.tooltip",
-                        "lss.config.xaero_map_bridge.tooltip.not_installed"))
+                        "lss.config.xaero_map_bridge.tooltip.not_installed")
+                        .nativeOnly("lss.config.xaero_map_bridge.tooltip.native_only"))
                 .impact(Impact.LOW)
                 .defaultValue(false)
                 .bind(c -> c.bool("integrations.xaero_map.enabled"), (c, v) -> c.set("integrations.xaero_map.enabled", v))
+                .enabledBy(ID_RECEIVE_SERVER_LODS)
+                .build();
+
+        // Permit DH fallback when native LSS is unavailable; reconnect applies it.
+        // Synchronization and live-update preferences remain file-only settings.
+        var source = BoolSpec.builder(ID_LOD_SOURCE)
+                .name("lss.config.lod_source")
+                .tooltip("lss.config.lod_source.tooltip")
+                .impact(Impact.HIGH)
+                .defaultValue(false)
+                .bind(c -> "distant_horizons".equals(c.get("lod.source")),
+                        (c, useDh) -> c.set("lod.source", useDh ? "distant_horizons" : "lss"))
                 .enabledBy(ID_RECEIVE_SERVER_LODS)
                 .build();
 
@@ -189,7 +211,16 @@ public final class ClientOptionCatalog {
                 GroupSpec.of(receive),
                 GroupSpec.of(distance),
                 GroupSpec.of(rate, slowStart),
-                GroupSpec.of(xaero));
+                GroupSpec.of(xaero, source));
+    }
+
+    /** Include ancestors so source-specific controls also follow the reception master. */
+    public static java.util.List<String> enabledDependencies(OptionSpec option) {
+        var dependencies=new java.util.ArrayList<String>();String id=option.enabledBy();
+        while(id!=null && !dependencies.contains(id)) {
+            dependencies.add(id);id=find(id).orElseThrow().enabledBy();
+        }
+        return java.util.List.copyOf(dependencies);
     }
 
     // ---- Far players (E2, FARP §3.3): its own page — a distinct feature with its own

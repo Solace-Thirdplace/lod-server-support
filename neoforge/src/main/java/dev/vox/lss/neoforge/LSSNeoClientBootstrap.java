@@ -15,6 +15,9 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import dev.vox.lss.networking.client.DhClientTransport;
 
 import java.util.function.Consumer;
 
@@ -35,10 +38,12 @@ public final class LSSNeoClientBootstrap {
     }
 
     /** Invoked reflectively from {@code LSSNeoMod} (client dist only). */
-    public static void init() {
+    public static void init(IEventBus modBus) {
         // Upgrade the common LoaderServices install to the client-capable impl (adds
         // sendToServer) before any client networking can run.
         NeoForgeClientLoaderServices.installProductionClient();
+        DhClientTransport.init();
+        modBus.addListener(RegisterPayloadHandlersEvent.class, DhClientTransport::register);
 
         NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingIn.class,
                 e -> ClientNetGlue.onJoin());
@@ -54,6 +59,10 @@ public final class LSSNeoClientBootstrap {
                 LSSNeoClientBootstrap::registerClientCommands);
 
         ModCompat.init();
+        NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.ChunkEvent.Load.class,e -> {
+            if(e.getLevel() instanceof net.minecraft.client.multiplayer.ClientLevel level
+                    && e.getChunk() instanceof net.minecraft.world.level.chunk.LevelChunk chunk)ModCompat.vanillaChunkLoaded(level,chunk);
+        });
 
         // Far players: the render path is LIVE on NeoForge as of v0.14.0 (the twin of
         // Fabric's LSSClient.initRenderer() call). Registers the AFTER_ENTITIES render pass

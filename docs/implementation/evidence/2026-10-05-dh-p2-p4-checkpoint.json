@@ -1,0 +1,295 @@
+{
+  "date": "2026-10-05",
+  "status": "dev-installed-manual-ready-strict-milestones-open",
+  "build_version": "0.16.0-dh-p2p4.dev20261005.1",
+  "artifact_sha256": "b42dd5800cc9645434f810a1a6911d4400ab9addbcde35c53c589121001d044b",
+  "normal_units": {
+    "common": {
+      "tests": 994,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 994
+    },
+    "fabric": {
+      "tests": 1702,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 4,
+      "passed": 1698
+    },
+    "paper": {
+      "tests": 536,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 536
+    },
+    "neoforge": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 23
+    }
+  },
+  "gametests": {
+    "fabric": 78,
+    "neoforge": 8
+  },
+  "packaging": {
+    "versioned_preflight": true,
+    "artifacts": 6,
+    "selftest_cases": 126
+  },
+  "live": {
+    "official-15": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/official-15-runs/attempt-tlwk2s9n",
+      "duration_seconds": 95.96,
+      "storage": {
+        "pass": true,
+        "profile": "OFFICIAL_15",
+        "ordinary_connected": true,
+        "requests": 52,
+        "tiles": 21,
+        "storage_samples": 11520,
+        "solid_samples": 8519,
+        "columns": 12
+      }
+    },
+    "official-16": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/official-16-runs/attempt-pns3y7vx",
+      "duration_seconds": 94.51,
+      "storage": {
+        "pass": true,
+        "profile": "OFFICIAL_16",
+        "ordinary_connected": true,
+        "requests": 51,
+        "tiles": 19,
+        "storage_samples": 9792,
+        "solid_samples": 7054,
+        "columns": 10
+      }
+    },
+    "support-full": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/support-full-runs/attempt-0x6zo220",
+      "duration_seconds": 101.71,
+      "storage": {
+        "pass": true,
+        "profile": "SUPPORT_15",
+        "ordinary_connected": true,
+        "requests": 18,
+        "tiles": 17,
+        "storage_samples": 73728,
+        "solid_samples": 23213,
+        "columns": 32
+      }
+    },
+    "support-fast": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/support-fast-runs/attempt-7drngxrh",
+      "duration_seconds": 102.48,
+      "storage": {
+        "pass": true,
+        "profile": "SUPPORT_15",
+        "ordinary_connected": true,
+        "requests": 19,
+        "tiles": 18,
+        "storage_samples": 73728,
+        "solid_samples": 22688,
+        "columns": 32
+      }
+    },
+    "fabric-support": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/fabric-support-runs/attempt-a8ihqv87",
+      "duration_seconds": 95.92,
+      "storage": {
+        "pass": true,
+        "profile": "SUPPORT_15",
+        "ordinary_connected": true,
+        "requests": 17,
+        "tiles": 15,
+        "storage_samples": 73728,
+        "solid_samples": 22818,
+        "columns": 32
+      }
+    },
+    "fabric-official-16": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/fabric-official-16-runs/attempt-1n5nelvf",
+      "duration_seconds": 89.07,
+      "storage": {
+        "pass": true,
+        "profile": "OFFICIAL_16",
+        "ordinary_connected": true,
+        "requests": 50,
+        "tiles": 17,
+        "storage_samples": 8640,
+        "solid_samples": 6297,
+        "columns": 9
+      }
+    },
+    "vanilla-no-service": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/vanilla-no-service-runs/attempt-4c8f7es0",
+      "duration_seconds": 78.36,
+      "storage": {
+        "pass": true,
+        "expectation": "no-service",
+        "ordinary_connected": true,
+        "requests_after_stop": 0,
+        "requests_before_stop": 0,
+        "observation_ms": 30038
+      }
+    },
+    "profile-mismatch": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/profile-mismatch-runs/attempt-sw6_py54",
+      "duration_seconds": 94.51,
+      "storage": {
+        "pass": true,
+        "expectation": "mismatch",
+        "ordinary_connected": true,
+        "requests_after_stop": 0,
+        "requests_before_stop": 0,
+        "observation_ms": 30054
+      }
+    },
+    "real-dh-conflict": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/real-dh-conflict-runs/attempt-m8xjcfbc",
+      "duration_seconds": 90.64,
+      "storage": {
+        "pass": true,
+        "expectation": "conflict",
+        "ordinary_connected": true,
+        "requests_after_stop": 0,
+        "requests_before_stop": 0,
+        "observation_ms": 30005
+      }
+    },
+    "lifecycle": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/lifecycle-runs/attempt-ggvmm2zk",
+      "duration_seconds": 274.36,
+      "storage": null
+    },
+    "content": {
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/content-runs/attempt-f6r631jt",
+      "duration_seconds": 407.88,
+      "storage": null
+    }
+  },
+  "race": {
+    "counterexample_reproduced": true,
+    "correctness_gate_passed": false,
+    "release_blocker": true,
+    "real_voxy_commit": true,
+    "vanilla_authority_before_dh_commit": true,
+    "vanilla_expected": "yellow_concrete",
+    "observed_before_dh": "yellow_concrete",
+    "observed_after_dh": "red_concrete",
+    "controlled_delay_ms": 4516
+  },
+  "manual": {
+    "status": "ready-for-manual-test",
+    "timestamp_utc": "2026-10-05T16:27:19.126207+00:00",
+    "artifact_sha256": "b42dd5800cc9645434f810a1a6911d4400ab9addbcde35c53c589121001d044b",
+    "prism_installation": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/prism-installation.json",
+    "instance": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing",
+    "endpoint": "[::1]:25585",
+    "server_owner": {
+      "pid": 65227,
+      "start": "3923879",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    },
+    "server_console_session": 56687,
+    "minecraft_status": {
+      "name": "1.21.1",
+      "protocol": 767
+    },
+    "windows_ipv6_tcp": true,
+    "existing_world_resumed": true,
+    "world": "dh-neoforge-playable",
+    "server_lss": false,
+    "server_dh_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+    "private_tests_passed": true,
+    "storage_preflight": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/launch-storage.json",
+    "storage_health": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/evidence/storage-health.json",
+    "manual_course": {
+      "status": "executed-saved-and-server-blocks-verified",
+      "dedicated_world": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/dh-neoforge-playable",
+      "unused_region_before_setup": "r.-32.-32.mca",
+      "base": -16384,
+      "bounds": [
+        -16384,
+        -16384,
+        -16193,
+        -16193
+      ],
+      "tiles": 9,
+      "negative_coordinates": true,
+      "view_command": "/tp @s -16576 195 -16288 -90 4",
+      "near_command": "/tp @s -16352 185 -16352 -90 15",
+      "edit_command": "/fill -16368 181 -16240 -16353 188 -16225 minecraft:diamond_block",
+      "remove_command": "/fill -16368 181 -16240 -16353 188 -16225 minecraft:air",
+      "save_command": "/save-all flush",
+      "expected_marker": "LSS_MANUAL_DH_COURSE_READY",
+      "scope": "Fresh region of the existing dedicated manual-test world; not a personal world",
+      "command_count": 185,
+      "commands_sha256": "6783e76292c7d338e2f6013b9aeb4a8fc77a7b6004cf72de0e886c862455b55f",
+      "clearance_y": [
+        176,
+        319
+      ],
+      "executed_utc": "2026-10-05T16:28:45.456136+00:00",
+      "server_owner": {
+        "pid": 65227,
+        "start": "3923879",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "forced_chunks": 144,
+      "floor_fill_responses": 9,
+      "content_verified_marker": true,
+      "saved": true,
+      "region_bytes": 1795146,
+      "dh_tile_rows": 9,
+      "dh_database_receipt": "manual-course-dh-database.json",
+      "floor_mapping_receipt": "manual-course-floor-mappings.json",
+      "visual_weather": {
+        "time": "clear-noon",
+        "doDaylightCycle": false,
+        "doWeatherCycle": false
+      }
+    },
+    "manual_server_configuration": "manual-server-configuration.json",
+    "final_readiness_verified_utc": "2026-10-05T16:33:05.379591+00:00"
+  },
+  "remaining_gates": [
+    "Voxy supported commit guard and per-write completion acknowledgement",
+    "Matched-area official DH client load comparison",
+    "Windows hardware rendering/frame-time/manual checks",
+    "Remaining exhaustive configuration/failure and version cells",
+    "Upstream outreach pending"
+  ],
+  "detailed_evidence_root": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final",
+  "files": {
+    "verification.json": "7b722f7627ae9cf2141e5eb248f75135ada8d62b7029f3c81a6983c9294b0b18",
+    "source-manifest.json": "df7fe01405533626a3c34623e20d6e516b1344ebe462b8553edad9493d8599dc",
+    "test-source-manifest.json": "8fc315eaba90d41da993a6e29bf44b84981e872d5862a66aefd5c96bc7894e8c",
+    "live-matrix.json": "129f51192898539b74632b5a40f7f77261f10034fdef1fbd1df13a3f123bd38c",
+    "prism-installation.json": "df019510d785debf0bdf9ffb0b20d444e8d1c2a5907f0061ed83e127411da156",
+    "test-setup-completed.json": "8762e0125662f0ddc3a95dabfc7a6cded572a2f880aa909944fb48286f6e050a",
+    "manual-course.json": "174fa5d4703bde476d91e292ff6ed1a67202911ac8094975a6b442c399b9a645",
+    "manual-course-dh-database.json": "2ebef0421f6d62867801ce3c95a9633a91fcd533226b960fd7fea61ade075180",
+    "manual-course-floor-mappings.json": "3d60758e857bd09f22f9a1ff2a578e4767a5079d81b2cc39fa7aa9ed57c67a41",
+    "private-process-closure.json": "b303ad7031d93d049f719c6286e09ae8be0e53953e0b2c302f77667bec38291c",
+    "production-class-changes.json": "2580209e441b831df35af091b4a86faa4a15967b88fc6248c3315c78eaa22861",
+    "manual-server-configuration.json": "bb1f47bc716e7ffd7d90ad7ec530b7ce7b355c1109745ac5313f354304d673d0"
+  }
+}

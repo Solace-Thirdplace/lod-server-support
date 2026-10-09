@@ -1,0 +1,2003 @@
+--- a/common/src/main/java/dev/vox/lss/common/dh/DhTerrainDecoder.java
++++ b/common/src/main/java/dev/vox/lss/common/dh/DhTerrainDecoder.java
+@@ -110,7 +110,10 @@
+                 }
+             }
+             Coverage[] coverage = new Coverage[4096];
+-            for (int c = 0; c < 4096; c++) coverage[c] = validate(columns[c], materials, world, profile);
++            for (int c = 0; c < 4096; c++) {
++                columns[c] = withoutCeilingSentinel(columns[c], materials, world, profile, budget, leases);
++                coverage[c] = validate(columns[c], materials, world, profile, generation[c] & 255);
++            }
+             return new DhTerrainTile(pos, world, format, mode, hash, parent, children, regenerate, modified, created,
+                     columns, materials, generation, compression, coverage, leases);
+         } catch (DhCodecException e) { leases.forEach(DhMemoryBudget.Lease::close); throw e; }
+@@ -130,7 +133,7 @@
+         return result;
+     }
+     private static Coverage validate(long[] column, List<DhMaterial> mappings, WorldShape world,
+-                                     DhProfile profile) throws DhCodecException {
++                                     DhProfile profile, int generation) throws DhCodecException {
+         if (column == null) throw DhInput.malformed("Missing DH column");
+         if (column.length == 0) return Coverage.UNKNOWN;
+         var occupied = new BitSet(world.height());
+@@ -145,6 +148,17 @@
+                     && high == world.height() + 1 && low < world.height() && mappings.get(id).air()) {
+                 height--; high--; point = (point & ~(4095L << 32)) | ((long) height << 32);
+             }
++            // Captured official3.3.3 rough SURFACE output uses getHeight() as
++            // absolute maxY, then subtracts minY again. Its upper AIR ends at
++            // height-minY (448 in the -64/384 Overworld). Clip only that exact
++            // negative-minY AIR band with SURFACE metadata; retain quality5.
++            // This never fills a gap or admits solid/water overshoots.
++            if (profile == DhProfile.OFFICIAL_16 && generation == 5 && world.minY() < 0
++                    && low < world.height() && (long) high == (long) world.height() - world.minY()
++                    && mappings.get(id).air()) {
++                height = world.height() - low; high = world.height();
++                point = (point & ~(4095L << 32)) | ((long) height << 32);
++            }
+             if (height == 0 || high > world.height()) throw DhInput.malformed("DH span outside world height");
+             int next = occupied.nextSetBit(low);
+             if (next >= 0 && next < high) throw DhInput.malformed("Overlapping DH spans");
+@@ -155,6 +169,24 @@
+             column[i] = point;
+         }
+         return occupied.cardinality() == world.height() ? Coverage.COMPLETE : Coverage.PARTIAL;
++    }
++    private static long[] withoutCeilingSentinel(long[] column, List<DhMaterial> materials, WorldShape world,
++                                                DhProfile profile, DhMemoryBudget budget,
++                                                List<DhMemoryBudget.Lease> leases) throws DhCodecException {
++        if (column == null || (profile != DhProfile.OFFICIAL_16 && profile != DhProfile.OFFICIAL_15)) return column;
++        // Stock 3.2.0-b and 3.3.3 captured 512-height response can contain an AIR-only run
++        // beginning at the exclusive ceiling. It contributes no world coverage.
++        // Support and every larger/solid overshoot retain their strict bounds.
++        int kept = 0;
++        for (long point : column) {
++            int id = id(point);
++            if (bottom(point) == world.height() && height(point) == 1
++                    && id < materials.size() && materials.get(id).air()) continue;
++            column[kept++] = point;
++        }
++        if (kept == column.length) return column;
++        hold(leases, budget, kept * 8L + 64); // reserve replacement before allocation; old array remains charged
++        return Arrays.copyOf(column, kept);
+     }
+     private void allocate(int count, WorldShape world, Counter spans, DhMemoryBudget budget,
+                           List<DhMemoryBudget.Lease> leases) throws DhCodecException {
+--- a/common/src/test/java/dev/vox/lss/common/dh/DhTerrainDecoderTest.java
++++ b/common/src/test/java/dev/vox/lss/common/dh/DhTerrainDecoderTest.java
+@@ -45,6 +45,44 @@
+             assertEquals(0,budget.used());
+         }
+     }
++    @Test void officialSurfaceCaptureClipsOnlyTheVerifiedUpperAirBand() throws Exception {
++        String fixture="dh-official-3.3.3-surface-only-ceiling";
++        var position=new DhPosition(6,-3,-1);var memory=budget();
++        var codec=new DhProtocolCodec(DhProfile.OFFICIAL_16,DhLimits.DEFAULT);
++        var response=(Response)codec.decode(DhProtocolCodecTest.capture(fixture,"received-0004.bin"));
++        try(var assembly=new DhAssembly(DhLimits.DEFAULT,memory)) {
++            assembly.expect(response.requestId(),position);
++            assembly.accept((Split)codec.decode(DhProtocolCodecTest.capture(fixture,"received-0003.bin")));
++            try(var completed=assembly.response(response);var tile=completed.decode(new DhTerrainDecoder(DhLimits.DEFAULT),DhProfile.OFFICIAL_16,new WorldShape(-64,384,true))) {
++                assertEquals(2,tile.format());assertEquals(4,tile.compression());
++                for(int c=0;c<4096;c++) {
++                    assertEquals(5,tile.generation(c));assertEquals(Coverage.COMPLETE,tile.coverage(c));assertEquals(2,tile.spanCount(c));
++                    int covered=0;
++                    for(int n=0;n<2;n++) {var span=tile.span(c,n);covered+=span.height();assertTrue(span.bottom()+span.height()<=384);
++                        if(tile.materials().get(span.material()).air()){assertEquals(384,span.bottom()+span.height());assertEquals(15,span.skyLight());assertEquals(0,span.blockLight());}}
++                    assertEquals(384,covered);
++                }
++            }
++        }
++        assertEquals(0,memory.used());
++    }
++
++    @Test void surfaceAirBandDoesNotRelaxOtherQualityMaterialOrHeightBounds() throws Exception {
++        var shape=new WorldShape(-64,384,true);
++        for(var profile:DhProfile.values())for(int generation:new int[]{5,6,9})for(int material:new int[]{0,1,2})for(int top:new int[]{448,449}) {
++            var cols=new long[4096][];Arrays.fill(cols,new long[]{point(1,0,384,0)});
++            cols[0]=new long[]{point(material,100,top-100,15),point(1,0,100,0)};
++            var blobs=rawBlobs(2,cols,new String[]{"minecraft:plains_DH-BSW_minecraft:air","minecraft:plains_DH-BSW_minecraft:stone","minecraft:plains_DH-BSW_minecraft:water"});
++            Arrays.fill(blobs[5],(byte)generation);var bytes=dto(2,4,profile,blobs,false);var memory=budget();
++            boolean verified=profile==DhProfile.OFFICIAL_16 && generation==5 && material==0 && top==448;
++            if(verified)try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(bytes,profile,NEGATIVE,shape,memory)) {
++                assertEquals(Coverage.COMPLETE,tile.coverage(0));assertEquals(5,tile.generation(0));
++                assertEquals(284,tile.span(0,0).height());assertEquals(15,tile.span(0,0).skyLight());
++            } else assertThrows(DhCodecException.class,()->new DhTerrainDecoder(DhLimits.DEFAULT).decode(bytes,profile,NEGATIVE,shape,memory));
++            assertEquals(0,memory.used());
++        }
++    }
++
+     @Test void officialNeoForgeCapturePreservesItsCompleteAndUnknownHalves() throws Exception {
+         String fixture="dh-official-3.3.3-neoforge-partial";
+         var position=new DhPosition(6,-1,1);var budget=budget();
+@@ -87,6 +125,44 @@
+             }
+         }
+         assertEquals(0,budget.used());
++    }
++    @Test void stockOfficial16CeilingSentinelIsNotTerrainOrKnownAir() throws Exception {
++        var owned=budget();var codec=new DhProtocolCodec(DhProfile.OFFICIAL_16,DhLimits.DEFAULT);
++        var reply=(Response)codec.decode(DhProtocolCodecTest.capture("dh-official-3.3.3-ceiling-sentinel","received-0010.bin"));
++        try(var assembly=new DhAssembly(DhLimits.DEFAULT,owned)) {
++            assembly.expect(reply.requestId(),new DhPosition(6,-2,-1));
++            assembly.accept((Split)codec.decode(DhProtocolCodecTest.capture("dh-official-3.3.3-ceiling-sentinel","received-0009.bin")));
++            try(var completed=assembly.response(reply);var tile=completed.decode(new DhTerrainDecoder(DhLimits.DEFAULT),
++                    DhProfile.OFFICIAL_16,new WorldShape(-128,512,true))) {
++                int unknown=0,known=0;
++                for(int c=0;c<4096;c++) {
++                    if(tile.coverage(c)==Coverage.UNKNOWN){unknown++;assertEquals(0,tile.spanCount(c));}
++                    else known++;
++                    for(int i=0;i<tile.spanCount(c);i++)assertTrue(tile.span(c,i).bottom()+tile.span(c,i).height()<=512);
++                }
++                assertEquals(3072,unknown);assertEquals(1024,known);
++            }
++        }
++        assertEquals(0,owned.used());
++    }
++    @Test void stockOfficial15CeilingSentinelKeepsItsInWorldData() throws Exception {
++        var owned=budget();var codec=new DhProtocolCodec(DhProfile.OFFICIAL_15,DhLimits.DEFAULT);
++        var reply=(Response)codec.decode(DhProtocolCodecTest.capture("dh-official-3.2.0-b-ceiling-sentinel","received-0004.bin"));
++        try(var assembly=new DhAssembly(DhLimits.DEFAULT,owned)) {
++            assembly.expect(reply.requestId(),new DhPosition(6,-1,1));
++            assembly.accept((Split)codec.decode(DhProtocolCodecTest.capture("dh-official-3.2.0-b-ceiling-sentinel","received-0003.bin")));
++            try(var completed=assembly.response(reply);var tile=completed.decode(new DhTerrainDecoder(DhLimits.DEFAULT),
++                    DhProfile.OFFICIAL_15,new WorldShape(-128,512,true))) {
++                int unknown=0,known=0;
++                for(int c=0;c<4096;c++) {
++                    if(tile.coverage(c)==Coverage.UNKNOWN){unknown++;assertEquals(0,tile.spanCount(c));}
++                    else known++;
++                    for(int i=0;i<tile.spanCount(c);i++)assertTrue(tile.span(c,i).bottom()+tile.span(c,i).height()<=512);
++                }
++                assertEquals(1024,unknown);assertEquals(3072,known);assertEquals(18652,java.util.stream.IntStream.range(0,4096).map(tile::spanCount).sum());
++            }
++        }
++        assertEquals(0,owned.used());
+     }
+     @Test void customHeightCaptureReplaysSeededPlanesAndOwnedConditionalRemoval() throws Exception {
+         String fixture="dh-official-3.3.3-neoforge-content";
+@@ -330,12 +406,32 @@
+                 assertEquals(1,tile.span(0,0).height());assertEquals(Coverage.PARTIAL,tile.coverage(0));
+             }
+             assertEquals(0,budget.used());
+-            for(long bad: new long[]{point(0,0,66,15),point(0,64,1,15),point(0,65,1,15)}) {
++            for(long bad: new long[]{point(0,0,66,15),point(0,65,1,15)}) {
+                 Arrays.setAll(columns,c->new long[]{bad});
+                 assertFailure(dto(1,0,profile,rawBlobs(1,columns,
+                                 new String[]{"minecraft:plains_DH-BSW_minecraft:"+block}),false),
+                         profile,DhLimits.DEFAULT,SMALL);
+             }
++        }
++    }
++    @Test void ceilingOnlyOfficialAirRemainsUnknownButSolidsAndSupportStillFail() throws Exception {
++        for(var official:List.of(DhProfile.OFFICIAL_15,DhProfile.OFFICIAL_16))
++        for(String block:List.of("air","cave_air","void_air")) {
++            var columns=new long[4096][];Arrays.setAll(columns,c->new long[]{point(0,64,1,15)});
++            var blobs=rawBlobs(1,columns,new String[]{"minecraft:plains_DH-BSW_minecraft:"+block});
++            var owned=budget();
++            try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(dto(1,0,official,blobs,false),
++                    official,NEGATIVE,SMALL,owned)) {
++                for(int c=0;c<4096;c++){assertEquals(0,tile.spanCount(c));assertEquals(Coverage.UNKNOWN,tile.coverage(c));}
++            }
++            assertEquals(0,owned.used());
++            for(var other:List.of(DhProfile.SUPPORT_15))
++                assertFailure(dto(1,0,other,blobs,false),other,DhLimits.DEFAULT,SMALL);
++        }
++        for(String block:List.of("water","stone")) {
++            var columns=new long[4096][];Arrays.setAll(columns,c->new long[]{point(0,64,1,15)});
++            assertFailure(dto(1,0,DhProfile.OFFICIAL_16,rawBlobs(1,columns,
++                    new String[]{"minecraft:plains_DH-BSW_minecraft:"+block}),false),DhProfile.OFFICIAL_16,DhLimits.DEFAULT,SMALL);
+         }
+     }
+     @Test void hostileEnvelopeLengthsAndUnsupportedModesFailBeforeAllocation() throws Exception {
+--- a/common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/README.md
++++ b/common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/README.md
+@@ -0,0 +1 @@
++Original stock DH 3.2.0-b / official protocol 15 inbound frames from the owned custom-height P4 test. See capture.json for exact bytes/producer binding. The ceiling marker previously rejected the entire tile. No account or world identifier is included.
+--- a/common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/capture.json
++++ b/common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/capture.json
+@@ -0,0 +1,16 @@
++{
++  "producer": "DistantHorizons-3.2.0-b-1.21.1-fabric-neoforge.jar",
++  "producer_sha256": "d6a7a963f794501678113e2545d8b25c90e123ef6b9256bb5716907d059e1ef5",
++  "profile": "official_15",
++  "world": {
++    "min_y": -128,
++    "height": 512,
++    "sky": true
++  },
++  "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/content-official15/attempt-gsdvrkjw",
++  "files": {
++    "received-0003.bin": "97fe81dd8735e1e082c4c88435b945bdac92cce2e8d7c27a2563e3e20fba40d2",
++    "received-0004.bin": "7bc5a62998814f55dda23fdafc6c7e2fce98376d6a8f4ecb4be22863f75d294f"
++  },
++  "observation": "3072 original source spans are air at bottom=512, height=1. Captured raw frames, not normalized output."
++}
+Binary source/capture changed: common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/received-0003.bin
+--- a/common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/received-0004.bin
++++ b/common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/received-0004.bin
+@@ -0,0 +1 @@
++             --- a/common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/README.md
++++ b/common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/README.md
+@@ -0,0 +1 @@
++Stock DH 3.3.3, official protocol 16, original response from a local owned 512-height world. The exclusive-ceiling air sentinel caused the pre-fix production decoder to reject the tile. Only inbound split/response frames are retained; no account or world identifier was copied. See capture.json for exact producer and frame hashes.
+--- a/common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/capture.json
++++ b/common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/capture.json
+@@ -0,0 +1,16 @@
++{
++  "producer": "DistantHorizons-3.3.3-1.21.1-fabric-neoforge.jar",
++  "producer_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
++  "profile": "official_16",
++  "world": {
++    "min_y": -128,
++    "height": 512,
++    "sky": true
++  },
++  "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/content-official16/attempt-hq5nhrxy",
++  "files": {
++    "received-0009.bin": "989b3b1e4c88ff1d9e110fbd1e191ab58ab00677f9074689b657e312c9387868",
++    "received-0010.bin": "9b9e3da3cc0985d81d82b9dbb7eb03ff27c7c1898492c0ba295a35eac071f168"
++  },
++  "observation": "1024 source columns contain an air span with bottom=512, height=1. Input bytes are original complete DH payload frames, not normalized."
++}
+Binary source/capture changed: common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/received-0009.bin
+--- a/common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/received-0010.bin
++++ b/common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/received-0010.bin
+@@ -0,0 +1 @@
++             --- a/common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/provenance.json
++++ b/common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/provenance.json
+@@ -0,0 +1,22 @@
++{
++  "producer": "stock DH3.3.3 on NeoForge21.1.248 / Minecraft1.21.1",
++  "producer_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
++  "profile": "OFFICIAL_16",
++  "generator_plan": "SURFACE_ONLY",
++  "world": {
++    "min_y": -64,
++    "height": 384,
++    "sky": true
++  },
++  "tile": [
++    6,
++    -3,
++    -1
++  ],
++  "source_run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/r4-final/cases/surface-only/attempt-91bqmvym",
++  "frames": {
++    "received-0004.bin": "8c8ee4f2ce6baedd4a610ba81da9015504d297a2f3c83a39ff2e1b0c08a11de6",
++    "received-0003.bin": "26cdd843f4284e553c21aab4d6811df61b0dfae21832ea405643fc8034dd70e5"
++  },
++  "observed": "4096 columns with generation step5; two spans each. Upper AIR ends at relative448 due to getMaxHeight returning height384, then subtracting minY=-64. Original frames unmodified."
++}
+Binary source/capture changed: common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/received-0003.bin
+--- a/common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/received-0004.bin
++++ b/common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/received-0004.bin
+@@ -0,0 +1 @@
++             --- a/fabric/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java
++++ b/fabric/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java
+@@ -5,6 +5,7 @@
+ import dev.vox.lss.common.LSSLogger;
+ import dev.vox.lss.config.LSSClientConfig;
+ import net.minecraft.network.chat.Component;
++import net.minecraft.client.gui.screens.Screen;
+ 
+ import java.lang.invoke.MethodHandle;
+ import java.lang.invoke.MethodHandles;
+@@ -72,7 +73,7 @@
+      *  the ModMenu deep-link ({@code createScreen}, {@code currentPage}), not by this builder. */
+     public static final String OPTIONS_SCREEN = SodiumGeneration.LEGACY_SCREEN_SUFFIX;
+ 
+-    public enum MemberKind { STATIC_METHOD, METHOD, CONSTRUCTOR, INTERFACE_METHOD, ENUM, FIELD }
++    public enum MemberKind { STATIC_METHOD, METHOD, PRIVATE_METHOD, CONSTRUCTOR, INTERFACE_METHOD, ENUM, FIELD }
+ 
+     /** One resolved member: owner (relative class name), kind, name, parameter count. */
+     public record Member(String owner, MemberKind kind, String name, int arity) {
+@@ -83,6 +84,16 @@
+     public static final List<Member> SURFACE = List.of(
+             new Member(OPTIONS_SCREEN, MemberKind.FIELD, "pages", 0),
+             new Member(OPTIONS_SCREEN, MemberKind.FIELD, "currentPage", 0),
++            new Member(OPTIONS_SCREEN, MemberKind.FIELD, "donateButton", 0),
++            new Member(OPTIONS_SCREEN, MemberKind.FIELD, "hideDonateButton", 0),
++            new Member(OPTIONS_SCREEN, MemberKind.PRIVATE_METHOD, "rebuildGUI", 0),
++            new Member(".client.gui.widgets.FlatButtonWidget", MemberKind.FIELD, "dim", 0),
++            new Member(".client.gui.widgets.FlatButtonWidget", MemberKind.METHOD, "setVisible", 1),
++            new Member(".client.util.Dim2i", MemberKind.CONSTRUCTOR, "<init>", 4),
++            new Member(".client.util.Dim2i", MemberKind.METHOD, "x", 0),
++            new Member(".client.util.Dim2i", MemberKind.METHOD, "y", 0),
++            new Member(".client.util.Dim2i", MemberKind.METHOD, "width", 0),
++            new Member(".client.util.Dim2i", MemberKind.METHOD, "height", 0),
+             new Member(OPTIONS_SCREEN, MemberKind.CONSTRUCTOR, "<init>", 1),
+             new Member(OPTIONS_SCREEN, MemberKind.STATIC_METHOD, "createScreen", 1),
+             new Member(OPTION_IMPL, MemberKind.STATIC_METHOD, "createBuilder", 2),
+@@ -248,14 +259,73 @@
+                 }
+             }
+             // Legacy tabs sit beside Sodium's own with no per-mod grouping, so the tab
+-            // names carry the brand (plan D7): "LSS", "LSS Distant Horizons", "LSS Far Players".
++            // names carry the brand. Short labels keep all tabs readable at Auto GUI scale.
++            String titleKey = switch (pageSpec.titleKey()) {
++                case "lss.config.dh.page" -> "lss.config.dh.legacy_tab";
++                case "lss.config.far_players.page" -> "lss.config.far_players.legacy_tab";
++                default -> pageSpec.titleKey();
++            };
+             Component title = first
+                     ? Component.literal(brand)
+-                    : Component.literal(brand + " ").append(Component.translatable(pageSpec.titleKey()));
++                    : Component.literal(brand + " ").append(Component.translatable(titleKey));
+             pages.add(h.pageCtor().invoke(title, ImmutableList.copyOf(groups)));
+             first = false;
+         }
+         return pages;
++    }
++
++    /** Keep Sodium's donation controls usable when the extended tab row reaches them.
++     * Each rebuild creates new widgets; move only a colliding pair to the free footer,
++     * without changing Sodium's saved donation preference. All optional internals remain
++     * reflective and contained so an unsupported screen still opens normally. */
++    public static void fitDonationButtons(Object target) {
++        try {
++            Screen screen = (Screen) target;
++            Object donate = screenField(target, "donateButton"), dismiss = screenField(target, "hideDonateButton");
++            Object donationDim = screenField(donate, "dim");
++            int dx = dimension(donationDim, "x"), dy = dimension(donationDim, "y");
++            boolean overlaps = false;
++            for (Object child : screen.children()) {
++                if (child == donate || child == dismiss || !child.getClass().getSimpleName().equals("FlatButtonWidget")) continue;
++                Object bounds = screenField(child, "dim");
++                if (dimension(bounds, "y") == dy && dimension(bounds, "x") < dx
++                        && dimension(bounds, "x") + dimension(bounds, "width") > dx) overlaps = true;
++                if (dimension(bounds, "y") == dy && dimension(bounds, "x") >= dx) overlaps = true;
++            }
++            if (!overlaps) return;
++            int left = 6, y = screen.height - 30;
++            int donationWidth = dimension(donationDim, "width");
++            int dismissWidth = dimension(screenField(dismiss, "dim"), "width");
++            if (left + donationWidth + 4 + dismissWidth > screen.width - 211) {
++                // Extremely narrow screens have no free footer. Hide this rebuild only.
++                donate.getClass().getMethod("setVisible", boolean.class).invoke(donate, false);
++                dismiss.getClass().getMethod("setVisible", boolean.class).invoke(dismiss, false);
++                return;
++            }
++            moveButton(donate, left, y);
++            moveButton(dismiss, left + donationWidth + 4, y);
++        } catch (Throwable failure) {
++            warnOnce("could not fit Sodium's donation controls", failure);
++        }
++    }
++
++    private static int dimension(Object bounds, String name) throws ReflectiveOperationException {
++        return (int) bounds.getClass().getMethod(name).invoke(bounds);
++    }
++
++    private static Object screenField(Object target, String name) throws ReflectiveOperationException {
++        for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
++            try { var field = type.getDeclaredField(name); field.setAccessible(true); return field.get(target); }
++            catch (NoSuchFieldException absent) { /* walk a compatible screen subclass */ }
++        }
++        throw new NoSuchFieldException(name);
++    }
++
++    private static void moveButton(Object button, int x, int y) throws ReflectiveOperationException {
++        var field = button.getClass().getDeclaredField("dim"); field.setAccessible(true);
++        Object old = field.get(button);
++        field.set(button, old.getClass().getConstructor(int.class, int.class, int.class, int.class)
++                .newInstance(x, y, dimension(old, "width"), dimension(old, "height")));
+     }
+ 
+     private static Object buildOption(Handles h, OptionSpec spec, dev.vox.lss.config.menu.ClientSettingsEditSession cfg, MenuContext ctx,
+--- a/fabric/src/main/java/dev/vox/lss/mixin/sodium/SodiumLegacyOptionsHook.java
++++ b/fabric/src/main/java/dev/vox/lss/mixin/sodium/SodiumLegacyOptionsHook.java
+@@ -58,6 +58,11 @@
+         }
+     }
+ 
++    @Inject(method = "rebuildGUI", at = @At("RETURN"))
++    private void lss$fitExtendedTabRow(CallbackInfo ci) {
++        if (this.lss$injected != null) LegacySodiumPage.fitDonationButtons(this);
++    }
++
+     @Override
+     public List<Object> lss$injectedPages() {
+         List<Object> injected = this.lss$injected;
+--- a/fabric/src/main/resources/assets/lss/lang/en_us.json
++++ b/fabric/src/main/resources/assets/lss/lang/en_us.json
+@@ -111,6 +111,8 @@
+   "lss.settings.error_logged": "Technical details are recorded in the game log.",
+   "lss.settings.lod.source": "Allow DH fallback (reconnect required)",
+   "lss.config.dh.page": "Distant Horizons",
++  "lss.config.dh.legacy_tab": "DH",
++  "lss.config.far_players.legacy_tab": "Players",
+   "lss.config.dh_sync_on_load": "Sync on load",
+   "lss.config.dh_sync_on_load.tooltip": "Check saved DH terrain when loading it or rejoining. Unchanged terrain stays cached; changed terrain downloads again. Requires server synchronization. Apply takes effect immediately.",
+   "lss.config.dh_real_time_updates": "Live updates",
+--- a/fabric/src/main/resources/assets/lss/lang/zh_cn.json
++++ b/fabric/src/main/resources/assets/lss/lang/zh_cn.json
+@@ -111,6 +111,8 @@
+   "lss.settings.error_logged": "技术细节已记录到游戏日志。",
+   "lss.settings.lod.source": "地形来源（重新连接后生效）",
+   "lss.config.dh.page": "Distant Horizons",
++  "lss.config.dh.legacy_tab": "DH",
++  "lss.config.far_players.legacy_tab": "玩家",
+   "lss.config.dh_sync_on_load": "加载时同步",
+   "lss.config.dh_sync_on_load.tooltip": "加载已保存的 DH 地形或重连时检查更新。未改变的地形保留缓存，已改变的地形重新下载。需要服务器允许同步，应用后立即生效。",
+   "lss.config.dh_real_time_updates": "实时更新",
+--- a/fabric/src/main/resources/assets/lss/lang/zh_tw.json
++++ b/fabric/src/main/resources/assets/lss/lang/zh_tw.json
+@@ -111,6 +111,8 @@
+   "lss.settings.error_logged": "技術細節已記錄到遊戲日誌。",
+   "lss.settings.lod.source": "地形來源（重新連線後生效）",
+   "lss.config.dh.page": "Distant Horizons",
++  "lss.config.dh.legacy_tab": "DH",
++  "lss.config.far_players.legacy_tab": "玩家",
+   "lss.config.dh_sync_on_load": "載入時同步",
+   "lss.config.dh_sync_on_load.tooltip": "載入已儲存的 DH 地形或重新連線時檢查更新。未變更的地形保留快取，已變更的地形重新下載。需要伺服器允許同步，套用後立即生效。",
+   "lss.config.dh_real_time_updates": "即時更新",
+--- a/fabric/src/test/java/dev/vox/lss/config/menu/SodiumLegacyHookContractTest.java
++++ b/fabric/src/test/java/dev/vox/lss/config/menu/SodiumLegacyHookContractTest.java
+@@ -8,6 +8,8 @@
+ import java.nio.file.Files;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
++import java.util.HashSet;
++import java.util.Set;
+ 
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertFalse;
+@@ -19,8 +21,8 @@
+  * classloading under fabric-loader-junit). On BOTH loader trees: {@code @Pseudo} (an
+  * absent target is a silent skip — no config plugin, no plugin-time class load), the
+  * string target is exactly the probe's prefix + screen suffix, {@code remap = false},
+- * exactly ONE inject and it is {@code <init>} @ RETURN (no MC-inherited target — those
+- * cannot be remapped on the loom-remap lines), the body delegates to
++ * exactly two injects: {@code <init>} and Sodium's own {@code rebuildGUI}, at RETURN
++ * (no MC-inherited target — those cannot be remapped on the loom-remap lines), the body delegates to
+  * {@code LegacySodiumPage.build()}, the config is non-required and lists the hook, and
+  * both loader descriptors declare the config.
+  */
+@@ -43,13 +45,18 @@
+                     tree + ": remap = false — Sodium is not an MC class");
+             Matcher m = INJECT.matcher(src);
+             int injects = 0;
++            Set<String> methods = new HashSet<>();
+             while (m.find()) {
+                 injects++;
+                 String body = m.group(1);
+-                assertTrue(body.contains("method = \"<init>\""), tree + ": the only inject is the constructor: " + body);
++                Matcher method = Pattern.compile("method = \"([^\"]+)\"").matcher(body);
++                assertTrue(method.find(), tree + ": explicit Sodium target");
++                assertTrue(methods.add(method.group(1)), tree + ": duplicate injection target");
+                 assertTrue(body.contains("@At(\"RETURN\")"), tree + ": at RETURN — the page list is filled by then");
+             }
+-            assertEquals(1, injects, tree + ": exactly one inject (no MC-inherited targets)");
++            assertEquals(2, injects, tree + ": constructor plus Sodium's private layout rebuild");
++            assertEquals(Set.of("<init>", "rebuildGUI"), methods, tree + ": no MC-inherited targets");
++            assertTrue(src.contains("LegacySodiumPage.fitDonationButtons(this)"), tree + ": contain colliding donation controls after each rebuild");
+             assertTrue(src.contains("LegacySodiumPage.build()"), tree + ": the body delegates to the reflective builder");
+             assertTrue(src.contains("implements LegacyOptionsScreenHandle"), tree + ": the deep-link handle");
+             assertFalse(SodiumGenerationTest.CLASS_LOAD.matcher(SodiumGenerationTest.stripComments(src)).find(),
+--- a/fabric/src/test/java/dev/vox/lss/config/menu/SodiumLegacySurfaceResolvesTest.java
++++ b/fabric/src/test/java/dev/vox/lss/config/menu/SodiumLegacySurfaceResolvesTest.java
+@@ -175,6 +175,9 @@
+             boolean ok = switch (m.kind()) {
+                 case STATIC_METHOD -> hasMethod(node, m.name(), m.arity(), true);
+                 case METHOD -> hasMethod(node, m.name(), m.arity(), false);
++                case PRIVATE_METHOD -> node.methods.stream().anyMatch(method -> method.name.equals(m.name())
++                        && Type.getArgumentTypes(method.desc).length == m.arity()
++                        && (method.access & Opcodes.ACC_PRIVATE) != 0 && (method.access & Opcodes.ACC_STATIC) == 0);
+                 case CONSTRUCTOR -> hasMethod(node, "<init>", m.arity(), false);
+                 case INTERFACE_METHOD -> (node.access & Opcodes.ACC_INTERFACE) != 0
+                         && hasMethod(node, m.name(), m.arity(), false);
+--- a/neoforge/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java
++++ b/neoforge/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java
+@@ -5,6 +5,7 @@
+ import dev.vox.lss.common.LSSLogger;
+ import dev.vox.lss.config.LSSClientConfig;
+ import net.minecraft.network.chat.Component;
++import net.minecraft.client.gui.screens.Screen;
+ 
+ import java.lang.invoke.MethodHandle;
+ import java.lang.invoke.MethodHandles;
+@@ -72,7 +73,7 @@
+      *  the ModMenu deep-link ({@code createScreen}, {@code currentPage}), not by this builder. */
+     public static final String OPTIONS_SCREEN = SodiumGeneration.LEGACY_SCREEN_SUFFIX;
+ 
+-    public enum MemberKind { STATIC_METHOD, METHOD, CONSTRUCTOR, INTERFACE_METHOD, ENUM, FIELD }
++    public enum MemberKind { STATIC_METHOD, METHOD, PRIVATE_METHOD, CONSTRUCTOR, INTERFACE_METHOD, ENUM, FIELD }
+ 
+     /** One resolved member: owner (relative class name), kind, name, parameter count. */
+     public record Member(String owner, MemberKind kind, String name, int arity) {
+@@ -83,6 +84,16 @@
+     public static final List<Member> SURFACE = List.of(
+             new Member(OPTIONS_SCREEN, MemberKind.FIELD, "pages", 0),
+             new Member(OPTIONS_SCREEN, MemberKind.FIELD, "currentPage", 0),
++            new Member(OPTIONS_SCREEN, MemberKind.FIELD, "donateButton", 0),
++            new Member(OPTIONS_SCREEN, MemberKind.FIELD, "hideDonateButton", 0),
++            new Member(OPTIONS_SCREEN, MemberKind.PRIVATE_METHOD, "rebuildGUI", 0),
++            new Member(".client.gui.widgets.FlatButtonWidget", MemberKind.FIELD, "dim", 0),
++            new Member(".client.gui.widgets.FlatButtonWidget", MemberKind.METHOD, "setVisible", 1),
++            new Member(".client.util.Dim2i", MemberKind.CONSTRUCTOR, "<init>", 4),
++            new Member(".client.util.Dim2i", MemberKind.METHOD, "x", 0),
++            new Member(".client.util.Dim2i", MemberKind.METHOD, "y", 0),
++            new Member(".client.util.Dim2i", MemberKind.METHOD, "width", 0),
++            new Member(".client.util.Dim2i", MemberKind.METHOD, "height", 0),
+             new Member(OPTIONS_SCREEN, MemberKind.CONSTRUCTOR, "<init>", 1),
+             new Member(OPTIONS_SCREEN, MemberKind.STATIC_METHOD, "createScreen", 1),
+             new Member(OPTION_IMPL, MemberKind.STATIC_METHOD, "createBuilder", 2),
+@@ -248,14 +259,73 @@
+                 }
+             }
+             // Legacy tabs sit beside Sodium's own with no per-mod grouping, so the tab
+-            // names carry the brand (plan D7): "LSS", "LSS Distant Horizons", "LSS Far Players".
++            // names carry the brand. Short labels keep all tabs readable at Auto GUI scale.
++            String titleKey = switch (pageSpec.titleKey()) {
++                case "lss.config.dh.page" -> "lss.config.dh.legacy_tab";
++                case "lss.config.far_players.page" -> "lss.config.far_players.legacy_tab";
++                default -> pageSpec.titleKey();
++            };
+             Component title = first
+                     ? Component.literal(brand)
+-                    : Component.literal(brand + " ").append(Component.translatable(pageSpec.titleKey()));
++                    : Component.literal(brand + " ").append(Component.translatable(titleKey));
+             pages.add(h.pageCtor().invoke(title, ImmutableList.copyOf(groups)));
+             first = false;
+         }
+         return pages;
++    }
++
++    /** Keep Sodium's donation controls usable when the extended tab row reaches them.
++     * Each rebuild creates new widgets; move only a colliding pair to the free footer,
++     * without changing Sodium's saved donation preference. All optional internals remain
++     * reflective and contained so an unsupported screen still opens normally. */
++    public static void fitDonationButtons(Object target) {
++        try {
++            Screen screen = (Screen) target;
++            Object donate = screenField(target, "donateButton"), dismiss = screenField(target, "hideDonateButton");
++            Object donationDim = screenField(donate, "dim");
++            int dx = dimension(donationDim, "x"), dy = dimension(donationDim, "y");
++            boolean overlaps = false;
++            for (Object child : screen.children()) {
++                if (child == donate || child == dismiss || !child.getClass().getSimpleName().equals("FlatButtonWidget")) continue;
++                Object bounds = screenField(child, "dim");
++                if (dimension(bounds, "y") == dy && dimension(bounds, "x") < dx
++                        && dimension(bounds, "x") + dimension(bounds, "width") > dx) overlaps = true;
++                if (dimension(bounds, "y") == dy && dimension(bounds, "x") >= dx) overlaps = true;
++            }
++            if (!overlaps) return;
++            int left = 6, y = screen.height - 30;
++            int donationWidth = dimension(donationDim, "width");
++            int dismissWidth = dimension(screenField(dismiss, "dim"), "width");
++            if (left + donationWidth + 4 + dismissWidth > screen.width - 211) {
++                // Extremely narrow screens have no free footer. Hide this rebuild only.
++                donate.getClass().getMethod("setVisible", boolean.class).invoke(donate, false);
++                dismiss.getClass().getMethod("setVisible", boolean.class).invoke(dismiss, false);
++                return;
++            }
++            moveButton(donate, left, y);
++            moveButton(dismiss, left + donationWidth + 4, y);
++        } catch (Throwable failure) {
++            warnOnce("could not fit Sodium's donation controls", failure);
++        }
++    }
++
++    private static int dimension(Object bounds, String name) throws ReflectiveOperationException {
++        return (int) bounds.getClass().getMethod(name).invoke(bounds);
++    }
++
++    private static Object screenField(Object target, String name) throws ReflectiveOperationException {
++        for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
++            try { var field = type.getDeclaredField(name); field.setAccessible(true); return field.get(target); }
++            catch (NoSuchFieldException absent) { /* walk a compatible screen subclass */ }
++        }
++        throw new NoSuchFieldException(name);
++    }
++
++    private static void moveButton(Object button, int x, int y) throws ReflectiveOperationException {
++        var field = button.getClass().getDeclaredField("dim"); field.setAccessible(true);
++        Object old = field.get(button);
++        field.set(button, old.getClass().getConstructor(int.class, int.class, int.class, int.class)
++                .newInstance(x, y, dimension(old, "width"), dimension(old, "height")));
+     }
+ 
+     private static Object buildOption(Handles h, OptionSpec spec, dev.vox.lss.config.menu.ClientSettingsEditSession cfg, MenuContext ctx,
+--- a/neoforge/src/main/java/dev/vox/lss/mixin/sodium/SodiumLegacyOptionsHook.java
++++ b/neoforge/src/main/java/dev/vox/lss/mixin/sodium/SodiumLegacyOptionsHook.java
+@@ -58,6 +58,11 @@
+         }
+     }
+ 
++    @Inject(method = "rebuildGUI", at = @At("RETURN"))
++    private void lss$fitExtendedTabRow(CallbackInfo ci) {
++        if (this.lss$injected != null) LegacySodiumPage.fitDonationButtons(this);
++    }
++
+     @Override
+     public List<Object> lss$injectedPages() {
+         List<Object> injected = this.lss$injected;
+--- a/test-fixtures/dh-p4/README.md
++++ b/test-fixtures/dh-p4/README.md
+@@ -0,0 +1,67 @@
++# Local DH P4 coverage and measurements
++
++These are test-only overlays for the MC1.21.1 NeoForge rig. They never belong in a
++shipping jar. `build.py` binds the overlay to a normal versioned candidate and the
++existing independently built `dh-live` observer. Every run uses a fresh owned
++world, game/cache root, artifact hashes, shared harness lock, deadlines and exact
++process identities. Failed attempts remain evidence.
++
++`content` expands a complete raw 64×64 source tile and compares every stored voxel
++at Voxy levels0–4, including block state, biome and light. Expected L0 never reads
++converted `SectionData` or calls the production `matchesCache`. Higher levels use
++the pinned Voxy reducer on that independent L0; this checks stored propagation,
++not independent correctness of Voxy's reducer. The scene covers four biomes,
++vertical material/light planes, water and water plants, custom height and no-sky.
++The Support arm uses the ordinary 384-height world and its actual producer output.
++
++`cache-pressure` combines real 128-chunk-range acquisition and actual dimension
++changes with explicitly injected representative records across three owned disk
++buckets. It checks global quotas, progress, old-session memory release and warm
++return. Injected records are not thousands of real server downloads; a bounded
++progress run is not full-radius saturation.
++
++`legacy-menu` opens actual Sodium0.6.13, checks the three DH checkboxes, dependency,
++shared Apply/save, Auto scale and actual tab/text bounds. Inspect its screenshot
++separately. `NtfsCacheBenchmark` runs headless on Windows with current production
++cache code, a verified complete real-source DTO, actual force/rename/index/read
++operations and an owned Windows sharing lock. Synthetic positions are labeled.
++
++`benchmark` filters only the desired acquisition area; the normal LSS request,
++rate-limit, decoder and ingest pipeline still runs. It requires complete source
++and Voxy readback plus actual render geometry before measuring. The real official
++DH arm and server hooks are private linked validation code under the ignored run
++root, not part of this MIT fixture or shipping build. Both arms request the same
++nine registered tiles in generation mode, use independent identical server
++worlds, and record actual requests, CPU, received payload bytes, generation events,
++and persisted chunk statuses (FULL, proto or missing). Complete DH LOD data does
++not imply persisted vanilla FULL chunks. NeoForge can invoke encoding more than
++once per packet; bandwidth comes from received raw frames replayed by
++`CapturedTerrainSummary`, with encoding totals retained separately. The metric checker rejects wrong areas, incomplete
++terrain, software rendering and missing process/window ownership.
++
++The Windows owner creates a fresh non-input desktop, assigns its exact suspended
++Java process to a kill-on-close job, records creation identity and resource
++samples, and checks that the input desktop stays unchanged. No foreground input,
++clipboard access or desktop switching is used. A test-only mouse guard prevents
++Minecraft grabbing the host cursor. Native GL timers and frame entry intervals
++are collected asynchronously; they are not compositor/display latency. Timer spans
++include submission gaps and the frame cap, rather than isolating GPU busy time. Shared
++PC activity must be disclosed. The standard rig remains observation-only; this
++narrow native fixture has separate per-attempt ownership and GPU evidence.
++
++The user explicitly authorized smaller storage requirements for these bounded
++runs. `bounded_storage.py` preserves the 50GiB reserve, admits at most2GiB of
++copies plus2GiB growth, checks physical capacity every5 seconds, and stops owned
++work exceeding its2GiB growth cap. It is installed only in these P4 processes;
++generic rig defaults remain8GiB. Source manifests, receipts and log/artifact
++hashes are required alongside any claimed result.
++
++Run the fixture/checker tests:
++
++```sh
++python3 -m unittest discover -s test-fixtures/dh-p4/tests -v
++```
++
++Use `scripts/lib/harness-lock.sh` and `harness_run_script` for builds, preparation,
++clients and real-server runs. The preparer accepts explicit candidate/build roots;
++its dated defaults name this local experiment, not a reusable release recipe.
+--- a/test-fixtures/dh-p4/bounded_storage.py
++++ b/test-fixtures/dh-p4/bounded_storage.py
+@@ -0,0 +1,45 @@
++"""Explicit user-authorized bounded P4 budget; generic rig defaults remain unchanged.
++A 2 GiB growth cap and frequent capacity checks allow these bounded fixtures to
++run without reserving the generic 8 GiB. Exceeding either cap stops owned work.
++"""
++import os,time,subprocess
++from pathlib import Path
++import storage_guard as guard
++POLICY='dh-p4-2g-v1';GROWTH=2*guard.GIB
++
++def install():
++ if getattr(guard,'_dh_p4_bounded',False):return
++ estimate,requirement,monitor=guard.estimate,guard.requirement,guard.Monitor
++ def bounded_estimate(profile,runtime):
++  value=estimate(profile,runtime)
++  if value['copy_bytes']>GROWTH:raise ValueError('P4 copy estimate exceeds bounded profile')
++  return {**value,'schema_version':2,'growth_bytes':GROWTH,'bounded_profile':POLICY}
++ def bounded_requirement(value,phase):
++  if value.get('schema_version')!=2:return requirement(value,phase)
++  keys={'schema_version','copy_bytes','growth_bytes','copied_files','bounded_profile'}
++  if set(value)!=keys or value['bounded_profile']!=POLICY or value['growth_bytes']!=GROWTH or phase not in ['create','run'] or any(type(value[k]) is not int or value[k]<0 for k in ['copy_bytes','growth_bytes','copied_files']) or value['copy_bytes']>GROWTH:raise ValueError('Invalid bounded P4 admission estimate')
++  return guard.RESERVE+GROWTH+(value['copy_bytes'] if phase=='create' else 0)
++ class BoundedMonitor(monitor):
++  def __init__(self,root,preflight):
++   super().__init__(root,preflight);self.bounded=preflight['estimate'].get('bounded_profile')==POLICY;self.baseline=None;self.last_capacity=None;self.last_size=None
++   self.paths=[str(root)]
++   import json
++   runtime=Path(root)/'runtime.json'
++   if runtime.exists():
++    windows=json.loads(runtime.read_text()).get('windows_client')
++    if windows:self.paths.append(windows)
++   if self.bounded:self.baseline=self.size()
++  def size(self):
++   result=subprocess.run(['du','-sb',*self.paths],capture_output=True,text=True,timeout=20,check=True)
++   return sum(int(line.split()[0]) for line in result.stdout.splitlines())
++  def check(self):
++   if not self.bounded:return super().check()
++   now=time.monotonic()
++   if self.last_capacity is None or now-self.last_capacity>=5:
++    self.last_capacity=now
++    if guard.capacity(self.linux)['free_bytes']<guard.RESERVE or self.mount and guard.capacity(self.mount)['free_bytes']<guard.RESERVE:raise ValueError('P4 physical 50 GiB reserve reached')
++   if self.last_size is None or now-self.last_size>=30:
++    self.last_size=now
++    if self.size()-self.baseline>GROWTH:raise ValueError('Owned P4 growth exceeded 2 GiB cap')
++   super().check()
++ guard.estimate=bounded_estimate;guard.requirement=bounded_requirement;guard.Monitor=BoundedMonitor;guard._dh_p4_bounded=True
+--- a/test-fixtures/dh-p4/build.py
++++ b/test-fixtures/dh-p4/build.py
+@@ -0,0 +1,23 @@
++#!/usr/bin/env python3
++"""Overlay a separately compiled P4 controller on the frozen test-only observer."""
++import argparse,json,subprocess,zipfile,hashlib,shutil
++from pathlib import Path
++ROOT=Path(__file__).resolve().parents[2];P4=Path(__file__).resolve().parent
++p=argparse.ArgumentParser();p.add_argument('--build',type=Path,required=True);p.add_argument('--artifact',type=Path,required=True);p.add_argument('--base-fixture',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
++classes=a.output.parent/'p4-classes';
++if classes.exists():shutil.rmtree(classes)
++classes.mkdir(parents=True)
++cp=[a.artifact,a.base_fixture,*map(Path,(a.build/'neoforge/build/dh-fixture-classpath.txt').read_text().strip().split(':'))]
++for directory in [Path('/home/vox/projects/lss-multi-test/servers/neoforge-1.21.1/libraries'),Path('/home/vox/.local/share/lss-rig-prism-auth/libraries')]:cp.extend(p for p in directory.rglob('*.jar') if zipfile.is_zipfile(p))
++args=['-proc:none','--release','21','-classpath',':'.join(map(str,cp)),'-d',str(classes),*map(str,(P4/'src').rglob('*.java'))];argfile=a.output.parent/'p4-javac.args';argfile.write_text('\n'.join('"'+v.replace('\\','\\\\').replace('"','\\"')+'"' for v in args))
++subprocess.run(['/usr/lib/jvm/java-21-openjdk-amd64/bin/javac','@'+str(argfile)],check=True)
++with zipfile.ZipFile(a.base_fixture) as original,zipfile.ZipFile(a.output,'w',zipfile.ZIP_DEFLATED) as jar:
++ for name in original.namelist():
++  if name=='lss-dh-fixture.mixins.json':
++   data=json.loads(original.read(name));data['client'].remove('TickMixin');data['client'].remove('ReceiveMixin');jar.writestr(name,json.dumps(data))
++  elif name=='META-INF/neoforge.mods.toml':jar.writestr(name,original.read(name).decode()+'\n[[mixins]]\nconfig="lss-dh-p4.mixins.json"\n')
++  else:jar.writestr(name,original.read(name))
++ for file in classes.rglob('*.class'):jar.write(file,str(file.relative_to(classes)))
++ jar.writestr('lss-dh-p4.mixins.json',json.dumps({'required':True,'package':'dev.vox.lssfixture.p4.mixin','compatibilityLevel':'JAVA_21','client':['ClientTick','SourceCapture','MouseGuard','Frames','BenchmarkArea','RawCapture','VoxyDraw','DecodedSource'],'injectors':{'defaultRequire':1}}))
++sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
++receipt={'production_artifact_sha256':sha(a.artifact),'base_fixture_sha256':sha(a.base_fixture),'fixture_sha256':sha(a.output),'build':str(a.build.resolve()),'sources':{str(p.relative_to(ROOT)):sha(p) for p in [*P4.rglob('*.java'),P4/'build.py']},'purpose':'private P4 overlay; no production change'};a.output.with_suffix('.receipt.json').write_text(json.dumps(receipt,indent=2)+'\n');print(a.output)
+--- a/test-fixtures/dh-p4/fixed_area_metrics.py
++++ b/test-fixtures/dh-p4/fixed_area_metrics.py
+@@ -0,0 +1,65 @@
++"""Identity/correctness checks and fixed-area metric summaries; no fabricated idle/GPU proof."""
++import json,hashlib,sys,math
++from collections import Counter
++from pathlib import Path
++ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT/'tools/rig'))
++from mca_fixture import chunk
++TARGETS={(6,x,z) for x in range(-5,-2) for z in range(-1,2)}
++def unpack(p):
++ p&=(1<<64)-1;x=(p>>8)&0xfffffff;z=p>>36
++ return (p&255,x-(1<<28) if x&(1<<27) else x,z-(1<<28) if z&(1<<27) else z)
++def terrain(world):
++ region=Path(world)/'region';rows={}
++ for x in range(-20,-8):
++  for z in range(-4,8):
++   v=chunk(region,x,z)
++   if v and (v.get('xPos'),v.get('zPos'))!=(x,z):raise ValueError('Native MCA coordinate mismatch')
++   rows[f'{x},{z}']=v.get('Status') if v else None
++ return rows
++def quantiles(values):
++ if not values or any(type(x) not in [int,float] or not math.isfinite(x) or x<0 for x in values):raise ValueError('Invalid actual metric samples')
++ a=sorted(values)
++ def q(p):return a[min(len(a)-1,math.ceil(len(a)*p)-1)]
++ return {'samples':len(a),'p50':q(.5),'p95':q(.95),'p99':q(.99),'max':a[-1],'mean':sum(a)/len(a)}
++def persisted_generation(before,after):
++ if set(before)!=set(after):raise ValueError('Different persisted terrain coordinates')
++ return {'new_full_target_chunks':sum(v=='minecraft:full' and before[k]!='minecraft:full' for k,v in after.items()),'full_target_chunks_after':sum(v=='minecraft:full' for v in after.values()),'new_persisted_target_records':sum(v is not None and before[k] is None for k,v in after.items()),'persisted_target_status_counts':dict(sorted(Counter(v or 'missing' for v in after.values()).items()))}
++def validate(result,server,frames,owner,arm):
++ if result.get('pass') is not True or result.get('arm')!=arm:raise ValueError('Actual client proof missing')
++ if len(server.get('actual_requests',[]))!=9 or {unpack(r['packed']) for r in server['actual_requests']}!=TARGETS:raise ValueError('Different actual request area or request count')
++ if any(r['timestamp']!='generation' for r in server['actual_requests']):raise ValueError('Request mode differs')
++ if not server.get('terrain_payload_bytes',0)>153 or server.get('generation_events_failed')!=0 or server.get('generation_events_started')!=server.get('generation_events_completed'):raise ValueError('Incomplete server telemetry/generation')
++ if server['cpu_last_terrain_send_nanos']<=server['cpu_start_nanos'] or server['wall_last_terrain_send_nanos']<=server['wall_start_nanos']:raise ValueError('CPU/request interval absent')
++ if owner.get('timeout') is not False or owner.get('exit_code')!=0 or not owner.get('owned_top_level_windows',0)>0 or owner.get('input_desktop_before')!=owner.get('input_desktop_after'):raise ValueError('Native process/window ownership failed')
++ renderer=frames.get('gpu_renderer','').lower()
++ if not renderer or any(word in renderer for word in ['llvmpipe','software']) or len(frames.get('gpu_elapsed_ns',[]))<200 or len(frames.get('frame_entry_interval_ns',[]))<200:raise ValueError('Native rendered GPU/frame proof absent')
++ if arm=='lss' and (not result.get('all_source_complete_and_voxy_readback') or result.get('actual_loaded_geometry_sections',0)<=0):raise ValueError('Actual Voxy terrain absent')
++ if arm=='official' and (not result.get('genuine_installed_dh_queue_decoder_provider') or not result.get('all_provider_updates_complete') or result.get('actual_loaded_render_buffers',0)<=0):raise ValueError('Genuine installed official terrain absent')
++ return {'server_cpu_seconds':(server['cpu_last_terrain_send_nanos']-server['cpu_start_nanos'])/1e9,'server_terrain_wall_seconds':(server['wall_last_terrain_send_nanos']-server['wall_start_nanos'])/1e9,'terrain_payload_bytes':server['terrain_payload_bytes'],'generation_events':server['generation_events_completed'],'acquisition_wall_seconds':result['acquisition_wall_seconds'],'frame_interval_ms':quantiles([x/1e6 for x in frames['frame_entry_interval_ns']]),'gpu_elapsed_ms':quantiles([x/1e6 for x in frames['gpu_elapsed_ns']]),'gpu_renderer':frames['gpu_renderer'],'scope':frames['condition']}
++def collect(run):
++ run=Path(run);runtime=json.loads((run/'runtime.json').read_text());win=Path(runtime['windows_client']);game=win/'minecraft';load=lambda p:json.loads(p.read_text(encoding='utf-8-sig'))
++ result,server,frames,owner=map(load,[game/'dh-result.json',run/'evidence/benchmark-server.json',game/'dh-frame-metrics.json',win/'ownership.json']);metrics=validate(result,server,frames,owner,runtime['benchmark_arm'])
++ replay=load(run/'evidence/benchmark-source-replay.json')
++ if set(replay.get('tiles',{}))!={f'{x},{z}' for _,x,z in TARGETS} or any(row.get('complete_columns')!=4096 for row in replay['tiles'].values()):raise ValueError('Received source replay is incomplete or from another area')
++ actual_bytes=replay.get('terrain_payload_bytes',0)
++ if not 153<actual_bytes<=metrics['terrain_payload_bytes']:raise ValueError('Received bytes do not agree with encoding telemetry')
++ metrics['terrain_encode_invocation_bytes']=metrics['terrain_payload_bytes'];metrics['terrain_payload_bytes']=actual_bytes;metrics['terrain_payload_packets']=replay['terrain_payload_packets'];metrics['bandwidth_scope']='Actual received DH payload bytes, including DH headers, splits and responses; excludes Minecraft framing/TCP overhead. Encode invocation totals retained separately.'
++ before=load(run/'evidence/benchmark-native-before.json');after=terrain(run/'server/world');(run/'evidence/benchmark-native-after.json').write_text(json.dumps(after,indent=2)+'\n');metrics.update(persisted_generation(before,after))
++ # Artifacts and immutable dependency closure are rechecked after the actual measurement.
++ inputs=load(win/'inputs.json')
++ for rel,row in inputs['inputs'].items():
++  if rel.startswith('minecraft/config/') or rel=='minecraft/options.txt':continue
++  if hashlib.sha256((win/rel).read_bytes()).hexdigest()!=row['sha256']:raise ValueError('Windows immutable input changed: '+rel)
++ for name,row in inputs['shared_readonly_assets'].items():
++  if hashlib.sha256(Path(name).read_bytes()).hexdigest()!=row['sha256']:raise ValueError('Shared asset changed')
++ resources=load(win/'ownership.resources.json')
++ if any(resources.get(key)!=owner.get(key) for key in ['pid','creation_filetime']) or not resources.get('samples'):raise ValueError('Resource samples have different process ownership')
++ samples=resources['samples'];metrics['client_peak_working_set_bytes']=max(r['working_set_bytes'] for r in samples);metrics['client_peak_private_bytes']=max(r['private_bytes'] for r in samples);metrics['client_sampled_process_cpu_seconds_including_boot']=(samples[-1]['kernel_cpu_100ns']+samples[-1]['user_cpu_100ns'])/1e7
++ for key in ['conversionCpu','conversionWall','conversionSamples','conversionAllocation','peak_owned_bytes']:
++  if key in result:metrics[key]=result[key]
++ files=list((game/'.lss/cache/!dh-terrain-v1').rglob('*.dht'));metrics['source_cache_record_bytes_after']=sum(f.stat().st_size for f in files);metrics['source_cache_records_after']=len(files)
++ for folder,key in [('Distant_Horizons_server_data','official_client_cache_bytes_after'),('.voxy','voxy_cache_bytes_after')]:
++  metrics[key]=sum(f.stat().st_size for f in (game/folder).rglob('*') if f.is_file())
++ metrics.update(arm=runtime['benchmark_arm'],run=str(run),windows_root=str(win),runtime_sha256=hashlib.sha256((run/'runtime.json').read_bytes()).hexdigest(),windows_inputs_sha256=hashlib.sha256((win/'inputs.json').read_bytes()).hexdigest(),proof_sha256=hashlib.sha256((game/'dh-result.json').read_bytes()).hexdigest(),idle_machine_confirmed=runtime.get('idle_machine_confirmed') is True)
++ (run/'evidence/benchmark-metrics.json').write_text(json.dumps(metrics,indent=2)+'\n');return metrics
++if __name__=='__main__':print(json.dumps(collect(sys.argv[1]),indent=2))
+--- a/test-fixtures/dh-p4/prepare.py
++++ b/test-fixtures/dh-p4/prepare.py
+@@ -0,0 +1,49 @@
++#!/usr/bin/env python3
++"""Prepare new P4 worlds on top of the bounded existing rig; never mutate a prior run."""
++import argparse,os,json,subprocess,shutil,hashlib,sys
++from pathlib import Path
++ROOT=Path(__file__).resolve().parents[2];OUTER=Path('/home/vox/projects/voxel-server-support/build/dh-neoforge')
++p=argparse.ArgumentParser();p.add_argument('--case',choices=['content','cache-pressure','benchmark','legacy-menu','configuration'],required=True);p.add_argument('--base',type=Path,required=True);p.add_argument('--fixture',type=Path,required=True);p.add_argument('--profile',choices=['official_16','official_15','dh_support_15'],default='official_16');p.add_argument('--plan',choices=['DISABLED','CHUNKS_ONLY','SURFACE_THEN_CHUNKS','SURFACE_ONLY'],default='DISABLED');p.add_argument('--range',type=int,default=12);p.add_argument('--no-sky',action='store_true');p.add_argument('--builder',choices=['FullBuilder','FastOverworldBuilder'],default='FullBuilder');p.add_argument('--dummy-chunk',action='store_true');p.add_argument('--expect',choices=['complete','partial','missing','surface'],default='complete');p.add_argument('--build',type=Path,default=Path('/tmp/lss-dh-p4-20261007-r3'));p.add_argument('--candidate-dir',type=Path,default=OUTER/'2026-10-07/p4-coverage-performance');a=p.parse_args()
++previous=a.candidate_dir;build=a.build;env=os.environ.copy();env['LSS_SETTINGS_CLASSPATH']=(build/'common/build/settings-cli/classpath.txt').read_text().strip()
++family='support' if a.profile=='dh_support_15' else 'official';dh=OUTER/'2026-10-01/server/mods/DistantHorizons-3.3.3-1.21.1-fabric-neoforge.jar'
++if a.profile=='official_15':dh=OUTER/'2026-10-05/p2-p4-completion/official-15-runs/attempt-n2p837js/server/mods/DistantHorizons-3.2.0-b-1.21.1-fabric-neoforge.jar'
++scenario='menu' if a.case=='legacy-menu' else 'service' if family=='support' or a.profile=='official_15' else 'updates'
++bootstrap="import sys,runpy;sys.path[:0]=[sys.argv.pop(1),sys.argv.pop(1)];import bounded_storage;bounded_storage.install();sys.argv[0]=sys.argv.pop(1);runpy.run_path(sys.argv[0],run_name='__main__')"
++argv=['python3','-c',bootstrap,str(ROOT/'test-fixtures/dh-p4'),str(ROOT/'tools/rig'),str(ROOT/'test-fixtures/dh-live/prepare.py'),'--artifact',str(previous/'lod-server-support-neoforge-dh-dev-mc1.21.1.jar'),'--fixture',str(a.fixture),'--dh',str(dh),'--base',str(a.base),'--scenario',scenario,'--profile',a.profile,'--server-family',family,'--builder',a.builder]
++out=subprocess.check_output(argv,cwd=ROOT,env=env,text=True);run=Path(out.strip());(a.base/'private-run-path.txt').write_text(str(run)+'\n');runtime=json.loads((run/'runtime.json').read_text());runtime.update(p4_case=a.case,p4_plan=a.plan,p4_range=a.range,p4_no_sky=a.no_sky,scenario='p4')
++config=run/'instances/dh-neoforge/instance.cfg';text=config.read_text();text=text.replace('-Dlss.rig.scenario='+scenario,'-Dlss.rig.scenario=p4 -Dlss.p4.case='+a.case+' -Dlss.p4.range='+str(a.range)+' -Dlss.p4.expect='+a.expect);config.write_text(text)
++settings=run/'instances/dh-neoforge/minecraft/config/lss-client-config.yaml';sysroot=ROOT/'tools/settings'
++import sys;sys.path.insert(0,str(sysroot));from settings_file import edit
++os.environ['LSS_SETTINGS_CLASSPATH']=env['LSS_SETTINGS_CLASSPATH'];edit(settings,{'lod.distance_chunks':a.range,'lod.dh.real_time_updates':False},side='client')
++if a.case=='legacy-menu':
++ mods=run/'instances/dh-neoforge/minecraft/mods';legacy=Path('/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/lss-astra-validation-neoforge-legacy-1.21.1/minecraft/mods');removed=[]
++ for f in list(mods.glob('*.jar')):
++  if f.name.startswith(('voxy-','sodium-','connector-','ConnectorExtras-')):removed.append(str(f.relative_to(run)));f.unlink()
++ runtime['source_inputs']=[r for r in runtime['source_inputs'] if r['target'] not in removed]
++ for name in ['sodium-neoforge-0.6.13+mc1.21.1.jar','voxy-0.2.9-alpha.jar.disabled']:
++  source=legacy/name;target=mods/name.removesuffix('.disabled');shutil.copy2(source,target);runtime['source_inputs'].append({'target':str(target.relative_to(run)),'sha256':hashlib.sha256(source.read_bytes()).hexdigest()})
++if a.case in ['benchmark','configuration']:edit(settings,{'lod.dh.sync_on_load':False},side='client')
++if a.case=='content':
++ if family=='support' and a.no_sky:raise ValueError('No-sky content needs the owned custom dimension')
++ pack=run/'server/world/datapacks/lss-content-fixture'
++ if not pack.exists():
++  shutil.copytree(OUTER/'2026-10-07/p4-coverage-performance/content-official16/attempt-hq5nhrxy/server/world/datapacks/lss-content-fixture',pack)
++ dtype=pack/'data/lssfixture/dimension_type/tall.json';data=json.loads(dtype.read_text());data['has_skylight']=not a.no_sky;dtype.write_text(json.dumps(data))
++ dim=pack/'data/lssfixture/dimension/tall.json';data=json.loads(dim.read_text());data['generator']['settings']['layers']=[{'block':'minecraft:stone','height':256},{'block':'minecraft:red_concrete','height':32},{'block':'minecraft:sea_lantern','height':32},{'block':'minecraft:glass','height':32},{'block':'minecraft:oak_leaves','height':32},{'block':'minecraft:stone','height':104},{'block':'minecraft:water','height':24}];dim.write_text(json.dumps(data));runtime['p4_dimension']='minecraft:overworld' if family=='support' else 'lssfixture:tall'
++ config.write_text(config.read_text().replace('-Dlss.p4.case=content','-Dlss.p4.case=content -Dlss.p4.dimension='+runtime['p4_dimension']))
++if family=='support':
++ plugin_config=run/'server/plugins/DHSupport/config.yml';text=plugin_config.read_text().replace('render_distance: 12','render_distance: '+str(a.range))
++ if a.dummy_chunk:
++  text=text.replace('#generate_new_chunks: false','generate_new_chunks: false')
++  dummy='#dummy_chunk:\n#  - "0-4,bedrock"\n#  - "5-79,stone"\n#  - "80-126,water"'
++  if dummy not in text:raise ValueError('Pinned Support dummy config shape differs')
++  text=text.replace(dummy,'dummy_chunk:\n  - "0-4,bedrock"\n  - "5-79,stone"\n  - "80-126,water"')
++ plugin_config.write_text(text);runtime['dummy_chunk_enabled']=a.dummy_chunk
++if family=='official':
++ (run/'server/config').mkdir(exist_ok=True)
++ (run/'server/config/DistantHorizons.toml').write_text('_version = 5\n[server]\nenableRealTimeUpdates = false\nmaxGenerationRequestDistance = '+('0' if a.plan=='DISABLED' else '32')+'\nmaxSyncOnLoadRequestDistance = 128\n[common.worldGenerator]\ngeneratorPlan = "'+a.plan+'"\n')
++# Bind every owned distribution input to current content; generated world/config hashes are separate.
++for row in runtime['source_inputs']:
++ f=run/row['target'];assert hashlib.sha256(f.read_bytes()).hexdigest()==row['sha256']
++runtime['generated_inputs']={str(f.relative_to(run)):hashlib.sha256(f.read_bytes()).hexdigest() for f in [config,settings,*((run/'server/world/datapacks').rglob('*.json')),*((run/'server/config').glob('*.toml')),*((run/'server/plugins/DHSupport').glob('config.yml'))] if f.is_file()}
++(run/'runtime.json').write_text(json.dumps(runtime,indent=2)+'\n');print(run)
+--- a/test-fixtures/dh-p4/run.py
++++ b/test-fixtures/dh-p4/run.py
+@@ -0,0 +1,180 @@
++#!/usr/bin/env python3
++"""Own the private display, server and launcher; record evidence, then stop every child."""
++import shutil
++import argparse,json,os,re,signal,subprocess,sys,time
++from pathlib import Path
++ROOT=Path(__file__).resolve().parents[2]
++sys.path.insert(0,str(ROOT/'tools/rig'))
++import storage_guard
++from bounded_storage import install
++install()
++from rig import identity
++p=argparse.ArgumentParser();p.add_argument('run',type=Path);a=p.parse_args();run=a.run.resolve()
++pre=json.loads((run/'evidence/storage-preflight.json').read_text());storage_guard.preflight({'artifacts':[]},{},run,pre['estimate'],phase='run');monitor=storage_guard.Monitor(run,pre)
++children=[];server=None
++resource_samples=[]
++def sample_server():
++ if server is None:return
++ try:
++  proc=Path('/proc')/str(server.pid)
++  stat=(proc/'stat').read_text().rsplit(')',1)[1].split()
++  status=dict(line.split(':',1) for line in (proc/'status').read_text().splitlines() if ':' in line)
++  resource_samples.append({'wall_monotonic':time.monotonic(),'cpu_seconds':(int(stat[11])+int(stat[12]))/os.sysconf('SC_CLK_TCK'),'rss_kib':int(status['VmRSS'].split()[0]),'peak_rss_kib':int(status['VmHWM'].split()[0])})
++ except (OSError,KeyError,ValueError):pass
++(run/'evidence/supervisor-owner.json').write_text(json.dumps(identity(os.getpid())))
++def interrupted(signum,frame):raise KeyboardInterrupt()
++signal.signal(signal.SIGTERM,interrupted)
++try:
++ env=os.environ.copy()
++ for key in ['DISPLAY','WAYLAND_DISPLAY','XAUTHORITY','MESA_D3D12_DEFAULT_ADAPTER_NAME','DRI_PRIME']:env.pop(key,None)
++ auth=run/'Xauthority';auth.touch(mode=0o600);display=':'+str(1000+int.from_bytes(os.urandom(2),'big'))
++ subprocess.run(['xauth','-f',str(auth),'add',display,'.',os.urandom(16).hex()],check=True,capture_output=True)
++ xvfb=subprocess.Popen(['Xvfb',display,'-screen','0','1280x720x24','-nolisten','tcp','-auth',str(auth)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);children.append(xvfb)
++ env.update(DISPLAY=display,XAUTHORITY=str(auth),ALSOFT_DRIVERS='null',GALLIUM_DRIVER='llvmpipe',MESA_GL_VERSION_OVERRIDE='4.6',MESA_GLSL_VERSION_OVERRIDE='460')
++ time.sleep(.5)
++ if xvfb.poll() is not None:raise RuntimeError('Owned Xvfb exited; refusing display adoption')
++ subprocess.run(['xprop','-root'],env=env,check=True,capture_output=True)
++ (run/'evidence/gpu-control.txt').write_text(subprocess.check_output(['glxinfo','-B'],env=env,text=True))
++ (run/'evidence/display.json').write_text(json.dumps({'display':display,'xvfb':identity(xvfb.pid)}))
++ serverlog=(run/'server.log').open('w')
++ runtime=json.loads((run/'runtime.json').read_text())
++ if runtime.get('benchmark_arm'):
++  from fixed_area_metrics import terrain
++  (run/'evidence/benchmark-native-before.json').write_text(json.dumps(terrain(run/'server/world'),indent=2)+'\n')
++ args=['/usr/lib/jvm/java-21-openjdk-amd64/bin/java','-Xms512M','-Xmx3G','-XX:ActiveProcessorCount=4']
++ if runtime.get('benchmark_arm'):args+=['-Dlss.p4.serverMetricsPath='+str(run/'evidence/benchmark-server.json')]
++ if runtime.get('slow_config'):args+=['-Dlss.rig.slowConfig=true']
++ args+=['-jar','paper.jar','--nogui'] if runtime.get('server_family')=='support' else ['@libraries/net/neoforged/neoforge/21.1.248/unix_args.txt','nogui']
++ server=subprocess.Popen(args,cwd=run/'server',stdin=subprocess.PIPE,stdout=serverlog,stderr=subprocess.STDOUT,text=True);children.append(server)
++ (run/'evidence/server-owner.json').write_text(json.dumps(identity(server.pid)))
++ deadline=time.monotonic()+180
++ while 'Done (' not in (run/'server.log').read_text(errors='replace'):
++  if server.poll() is not None:raise RuntimeError('Server exited before ready')
++  if time.monotonic()>deadline:raise TimeoutError('Server readiness')
++  monitor.check();time.sleep(.5)
++ server.stdin.write('gamerule doMobSpawning false\ngamerule doDaylightCycle false\ngamerule doWeatherCycle false\nkill @e[type=!minecraft:player]\ntime set noon\nweather clear\n');server.stdin.flush()
++ if runtime.get('expectation')=='ocean':
++  # Two owned tiles outside vanilla view: 24-deep and 5-deep water, at section seams.
++  marker=len((run/'server.log').read_text(errors='replace'))
++  server.stdin.write('forceload add -192 0 -129 127\n');server.stdin.flush();time.sleep(8)
++  commands=[]
++  for z,floor in [(0,255),(64,274)]:
++   for y in range(255,320,8):commands.append(f'fill -192 {y} {z} -129 {min(y+7,319)} {z+63} minecraft:air')
++   commands.append(f'fill -192 {floor-1} {z} -129 {floor-1} {z+63} minecraft:stone')
++   commands.append(f'fill -192 {floor} {z} -129 {floor} {z+63} minecraft:sand')
++   for y in range(floor+1,280,8):commands.append(f'fill -192 {y} {z} -129 {min(y+7,279)} {z+63} minecraft:water')
++   for x in [-192,-129]:commands.append(f'fill {x} {floor+1} {z} {x} 279 {z+63} minecraft:blue_concrete')
++   for edge in [z,z+63]:commands.append(f'fill -192 {floor+1} {edge} -129 279 {edge} minecraft:blue_concrete')
++  commands+=['save-all flush','say LSS_PRIVATE_OCEAN_SEEDED']
++  server.stdin.write('\n'.join(commands)+'\n');server.stdin.flush()
++  deadline=time.monotonic()+90
++  while True:
++   seeded=(run/'server.log').read_text(errors='replace')[marker:]
++   if 'LSS_PRIVATE_OCEAN_SEEDED' in seeded and 'Saved the game' in seeded and seeded.count('Successfully filled 4096 block(s)')==4:break
++   if server.poll() is not None or time.monotonic()>deadline:raise TimeoutError('Private ocean seeding')
++   monitor.check();time.sleep(.5)
++ if json.loads((run/'runtime.json').read_text())['scenario'] in ['content','race','rejoin','updates','p4']:
++  seed_start=len((run/'server.log').read_text(errors='replace'))
++  if runtime.get('p4_case')=='content':
++   dimension=runtime['p4_dimension']; support=dimension=='minecraft:overworld'; low=-64 if support else -128; high=319 if support else 383
++   commands=['gamerule doMobSpawning false','gamerule randomTickSpeed 0','gamerule commandModificationBlockLimit 5000000',f'execute in {dimension} run forceload add -192 0 -129 63']
++   if support:
++    for lower,upper,block in [(-64,191,'stone'),(192,223,'red_concrete'),(224,255,'sea_lantern'),(256,271,'glass'),(272,287,'oak_leaves'),(288,295,'stone'),(296,311,'water'),(312,319,'air')]:commands.append(f'execute in {dimension} run fill -192 {lower} 0 -129 {upper} 63 minecraft:{block}')
++   for x,z,biome in [(-192,0,'desert'),(-160,0,'swamp'),(-192,32,'snowy_taiga'),(-160,32,'plains')]:commands.append(f'execute in {dimension} run fillbiome {x} {low} {z} {x+31} {high} {z+31} minecraft:{biome}')
++   plant_low=300 if support else 360; plant_top=310 if support else 382
++   commands+=[f'execute in {dimension} run fill -184 {plant_low} 8 -184 {plant_top-1} 8 minecraft:kelp_plant',f'execute in {dimension} run setblock -184 {plant_top} 8 minecraft:kelp',f'execute in {dimension} run setblock -176 {plant_low} 16 minecraft:seagrass',
++    f'execute in {dimension} run fill -192 {low+16} 0 -181 {low+19} 7 minecraft:air',
++    f'execute in {dimension} run setblock -190 {low+16} 1 minecraft:torch',
++    f'execute in {dimension} run fill -188 {low+16} 2 -185 {low+16} 5 minecraft:oak_stairs[facing=east,half=top,shape=straight,waterlogged=false]',
++    f'execute in {dimension} run fill -184 {low+32} 8 -177 {low+32} 15 minecraft:smooth_stone_slab[type=top,waterlogged=false]',
++    'save-all flush']
++   server.stdin.write('\n'.join(commands)+'\n');server.stdin.flush();time.sleep(10)
++  elif runtime.get('p4_case') in ['benchmark','cache-pressure','legacy-menu','configuration']:
++   server.stdin.write('gamerule doMobSpawning false\ngamerule randomTickSpeed 0\nsave-all flush\n');server.stdin.flush();time.sleep(3)
++  else:
++   server.stdin.write('execute in lssfixture:tall run forceload add -192 0 -129 63\nexecute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:red_concrete\nexecute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:blue_concrete\nexecute in lssfixture:tall run fill -192 340 0 -129 340 63 minecraft:gold_block\nsave-all flush\n');server.stdin.flush()
++  deadline=time.monotonic()+60
++  while True:
++   seeded=(run/'server.log').read_text(errors='replace')[seed_start:]
++   if runtime.get('p4_case') and 'Saved the game' in seeded and (runtime.get('p4_case')!='content' or seeded.count(('6144' if runtime['server_family']=='support' else '8192')+' biome entry/entries set')==4 and ('Successfully filled 10 block(s)' if runtime['server_family']=='support' else 'Successfully filled 22 block(s)') in seeded and 'Marked 16 chunks' in seeded):break
++   if not runtime.get('p4_case') and seeded.count('Successfully filled 8192 block(s)')==2 and 'Successfully filled 4096 block(s)' in seeded and 'Marked 16 chunks' in seeded and 'Saved the game' in seeded:break
++   if server.poll() is not None or time.monotonic()>deadline:raise TimeoutError('Custom-height terrain seeding')
++   monitor.check();time.sleep(.5)
++ clientlog=(run/'client.log').open('w')
++ windows=Path(runtime['windows_client']) if runtime.get('windows_client') else None
++ if windows:
++  game=windows/'minecraft'; spec=subprocess.check_output(['wslpath','-w',str(windows/'launch.json')],text=True).strip(); launcher=subprocess.check_output(['wslpath','-w',str(windows/'launch.ps1')],text=True).strip()
++  client=subprocess.Popen(['/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',launcher,'-Spec',spec],stdout=clientlog,stderr=subprocess.STDOUT,start_new_session=True)
++ else:
++  game=run/'instances/dh-neoforge/minecraft'
++  client=subprocess.Popen([sys.executable,str(ROOT/'tools/rig/launch_prism.py'),'--context','/home/vox/.local/share/lss-rig-prism-auth','--run',str(run),'--java','/usr/lib/jvm/java-21-openjdk-amd64/bin/java','--prism','/home/vox/.local/bin/prismlauncher','--instance','dh-neoforge'],cwd=run/'client',env=env,stdout=clientlog,stderr=subprocess.STDOUT,start_new_session=True)
++ children.append(client)
++ (run/'evidence/client-owner.json').write_text(json.dumps(identity(client.pid)))
++ content=runtime['scenario'] in ['content','p4']
++ race=json.loads((run/'runtime.json').read_text())['scenario'] in ['race','rejoin','updates','boundary']
++ rejoin=runtime['scenario']=='rejoin';restarts=0
++ deadline=time.monotonic()+(1860 if content else 1000 if rejoin else 660);positioned=False;handled=set();result=game/'dh-result.json'
++ while not result.exists():
++  latest=game/'logs/latest.log'
++  if list((game/'crash-reports').glob('*.txt')):raise RuntimeError('Private Minecraft crash report; inspect owned run')
++  if latest.is_file() and 'Incompatible mods found!' in latest.read_text(errors='replace'):
++   raise RuntimeError('Private Minecraft loader rejected the staged mods; inspect owned log')
++  if client.poll() is not None:
++   if rejoin and restarts==0 and (game/'dh-restart.json').is_file():
++    restarts+=1
++    (run/'evidence/client-owner-first.json').write_text((run/'evidence/client-owner.json').read_text())
++    clientlog=(run/'client-restarted.log').open('w')
++    client=subprocess.Popen([sys.executable,str(ROOT/'tools/rig/launch_prism.py'),'--context','/home/vox/.local/share/lss-rig-prism-auth','--run',str(run),'--java','/usr/lib/jvm/java-21-openjdk-amd64/bin/java','--prism','/home/vox/.local/bin/prismlauncher','--instance','dh-neoforge'],cwd=run/'client',env=env,stdout=clientlog,stderr=subprocess.STDOUT,start_new_session=True);children.append(client)
++    (run/'evidence/client-owner.json').write_text(json.dumps(identity(client.pid)))
++    continue
++   raise RuntimeError('Private client exited before result')
++  if server.poll() is not None:raise RuntimeError('Server died during client verification')
++  if time.monotonic()>deadline:raise TimeoutError('Client verification')
++  if not positioned:
++   log=(run/'server.log').read_text(errors='replace');joined=re.findall(r'([A-Za-z0-9_]{1,16})\[.*?\] logged in with entity id',log)
++   if joined:
++    player=joined[-1];commands=['op '+player]
++    if runtime.get('p4_case')=='content':commands.append('execute in '+runtime['p4_dimension']+' run tp '+player+' 0 '+('340' if runtime['server_family']=='support' else '410')+' 0 90 15')
++    elif runtime.get('p4_case'):commands.append('tp '+player+' 0 100 0 90 15')
++    elif not(content or race):commands.append('tp '+player+' 0 100 0 90 15')
++    server.stdin.write('\n'.join(commands)+'\n');server.stdin.flush();positioned=True
++  command=game/'dh-server-command.json'
++  if (content or race) and command.exists():
++   change=json.loads(command.read_text())
++   if change['id'] not in handled:
++    # Commands come only from this run-owned fixture; never another server/world.
++    marker=len((run/'server.log').read_text(errors='replace'))
++    server.stdin.write('\n'.join(change['commands'])+'\n');server.stdin.flush()
++    edit_deadline=time.monotonic()+60
++    while 'Saved the game' not in (run/'server.log').read_text(errors='replace')[marker:]:
++     if server.poll() is not None or time.monotonic()>edit_deadline:raise TimeoutError('Source-switch save')
++     monitor.check();time.sleep(.5)
++    time.sleep(3) # allow the official server's asynchronous save-to-LOD update
++    ack=command.parent/'dh-server-ack.tmp';ack.write_text(json.dumps({'id':change['id'],'saved':True}));ack.replace(command.parent/'dh-server-ack.json')
++    handled.add(change['id'])
++  sample_server();monitor.check();time.sleep(1)
++ print(result.read_text())
++ if not json.loads(result.read_text())['pass']:raise RuntimeError('Live proof failed')
++ client.wait(timeout=30)
++ if windows:
++  owner=json.loads((windows/'ownership.json').read_text(encoding='utf-8-sig'));assert not owner['timeout'] and owner['exit_code']==0 and owner['owned_top_level_windows']>0 and owner['input_desktop_before']==owner['input_desktop_after'];(run/'evidence/windows-owner.json').write_text(json.dumps(owner,indent=2)+'\n');shutil.copy2(windows/'ownership.resources.json',run/'evidence/windows-resources.json')
++  for name in ['dh-result.json','dh-p4.json','dh-frame-metrics.json']:
++   if (game/name).exists():shutil.copy2(game/name,run/'evidence'/('windows-'+name))
++finally:
++ sample_server()
++ (run/'evidence/server-resources.json').write_text(json.dumps({'includes_boot_and_generation':True,'samples':resource_samples},indent=2)+'\n')
++ if server is not None and server.poll() is None:
++  try:server.stdin.write('stop\n');server.stdin.flush();server.wait(timeout=40)
++  except (OSError,subprocess.TimeoutExpired):server.terminate()
++ if 'windows' in locals() and windows and client.poll() is None:
++  (windows/'ownership.stop').write_text('Owned run cleanup requested\n')
++  try:client.wait(timeout=20)
++  except subprocess.TimeoutExpired:pass
++ if 'client' in locals():
++  try:os.killpg(client.pid,signal.SIGTERM)
++  except ProcessLookupError:pass
++ for child in reversed(children):
++  if child.poll() is None:
++   child.terminate()
++   try:child.wait(timeout=10)
++   except subprocess.TimeoutExpired:child.kill();child.wait(timeout=10)
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/BenchmarkClient.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/BenchmarkClient.java
+@@ -0,0 +1,44 @@
++package dev.vox.lssfixture.p4;
++import dev.vox.lss.common.dh.*;
++import dev.vox.lss.networking.client.DhClientSession;
++import dev.vox.lss.compat.DhVoxyBridge;
++import net.minecraft.client.Minecraft;
++import java.util.*;
++import java.util.concurrent.*;
++import java.util.concurrent.atomic.AtomicLong;
++/** Fixed-area benchmark controller: filters the want area, keeps actual request/decode/ingest. */
++public final class BenchmarkClient {
++ public static final Set<DhPosition> TARGETS;
++ static{var s=new LinkedHashSet<DhPosition>();for(int x=-5;x<=-3;x++)for(int z=-1;z<=1;z++)s.add(new DhPosition(6,x,z));TARGETS=Set.copyOf(s);}
++ static final List<Map<String,Object>> asks=new CopyOnWriteArrayList<>();static long began,receivedAt,framesAt,peak,lastStatus,verifiedAt;static CompletableFuture<Boolean> verified;static Map<String,Object> row;
++ public static void sent(DhMessage message){if(!(P4Probe.mode().equals("benchmark") || P4Probe.mode().equals("configuration")) || !(message instanceof DhMessage.Request r))return;
++  if(!TARGETS.contains(r.position()))throw new IllegalStateException("Benchmark requested outside registered area: "+r.position());
++  if(began==0)began=System.nanoTime();asks.add(Map.of("pos",List.of(r.position().detail(),r.position().x(),r.position().z()),"generation",r.timestamp()==null,"timestamp",r.timestamp()==null?-1:r.timestamp()));
++ }
++ public static void tick(long now)throws Exception {
++  var mc=Minecraft.getInstance();if(!mc.level.dimension().location().toString().equals("minecraft:overworld"))return;
++  mc.player.getAbilities().flying=true;mc.player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);mc.player.setYRot(90);mc.player.setXRot(20);
++  Object s=P4Probe.field(DhClientSession.class,"session");if(s==null)return;if(!DhClientSession.running()){if(DhClientSession.status().contains("reconnecting once"))return;throw new IllegalStateException(DhClientSession.status());}
++  var memory=(DhMemoryBudget)P4Probe.field(s,"budget");peak=Math.max(peak,memory.peak());var policy=(DhSessionPolicy)P4Probe.field(s,"policy");
++  if(now-lastStatus>1_000_000_000L){lastStatus=now;P4Probe.write("dh-p4-status.json",Map.of("phase",framesAt==0?"acquiring":"rendering","source_snapshots",TARGETS.stream().filter(policy::hasSnapshot).count(),"requests",asks.size(),"diagnostics",DhClientSession.diagnostics()));}
++  if(framesAt!=0){if(now-framesAt<60_000_000_000L)return;if(Boolean.getBoolean("lss.p4.windowsNative"))P4Probe.write("dh-frame-metrics.json",FrameMetrics.finish());row.put("peak_owned_bytes",peak);P4Probe.pass(row);return;}
++  if(!TARGETS.stream().allMatch(policy::hasSnapshot) || !((Map<?,?>)P4Probe.field(s,"pending")).isEmpty())return;
++  if(receivedAt==0)receivedAt=now;
++  if(verified==null){var level=mc.level;var profile=DhClientSession.diagnostics().profile();verified=CompletableFuture.supplyAsync(()->{try{
++   var cache=(DhTerrainCache)P4Probe.field(s,"terrainCache");Object converter=P4Probe.field(s,"converter");var b=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
++   var method=Class.forName("dev.vox.lssfixture.dh.DhCacheProbe").getDeclaredMethod("matches",Object.class,DhTerrainTile.class,int.class,dev.vox.lss.compat.VoxyTerrainCache.class);method.setAccessible(true);
++   try(var reader=DhVoxyBridge.openCache(level)){
++    if(reader==null)return false;for(var pos:TARGETS)try(var entry=cache.read(pos,b)){
++     if(entry==null)return false;try(var tile=entry.decode(new DhTerrainDecoder(DhLimits.DEFAULT),profile,new DhTerrainTile.WorldShape(level.getMinBuildHeight(),level.getHeight(),level.dimensionType().hasSkyLight()))) {
++      for(int c=0;c<16;c++)if(!(boolean)method.invoke(null,converter,tile,c,reader))return false;
++     }
++    }
++   }if(b.used()!=0)throw new IllegalStateException("Benchmark readback leaked budget");return true;
++  }catch(Exception e){throw new CompletionException(e);}});return;}
++  if(!verified.isDone())return;if(!verified.get()){verified=null;return;}
++  if(verifiedAt==0)verifiedAt=now; if(now-verifiedAt<15_000_000_000L || VoxyDrawStats.sections()==0)return;
++  row=new LinkedHashMap<>();row.put("arm","lss");row.put("actual_loaded_geometry_sections",VoxyDrawStats.sections());row.put("actual_voxy_render_calls",VoxyDrawStats.calls);row.put("requests",asks);row.put("target_count",TARGETS.size());row.put("all_source_complete_and_voxy_readback",true);row.put("acquisition_wall_seconds",(receivedAt-began)/1e9);row.put("diagnostics",DhClientSession.diagnostics());
++  var probe=Class.forName("dev.vox.lssfixture.dh.Probe");for(String key:List.of("conversionCpu","conversionWall","conversionSamples","conversionAllocation"))row.put(key,((AtomicLong)P4Probe.field(probe,key)).get());
++  framesAt=now;if(Boolean.getBoolean("lss.p4.windowsNative"))FrameMetrics.start();
++ }
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/CachePressure.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/CachePressure.java
+@@ -0,0 +1,63 @@
++package dev.vox.lssfixture.p4;
++import dev.vox.lss.common.dh.*;
++import dev.vox.lss.networking.client.DhClientSession;
++import net.minecraft.client.Minecraft;
++import java.nio.file.*;
++import java.util.*;
++import java.util.concurrent.*;
++import java.util.concurrent.atomic.AtomicLong;
++/** Real radius/dimension acquisition plus explicitly injected global disk-cache pressure. */
++public final class CachePressure {
++ static int phase;static long deadline,last,peak,retireDeadline;static Object previous;static CompletableFuture<Map<String,Object>> pressure;
++ static final List<Map<String,Object>> observations=new ArrayList<>();
++ static String[] dimensions={"minecraft:overworld","minecraft:the_nether","minecraft:the_end","minecraft:overworld"};
++ static long count(Object s,String key)throws Exception{return ((AtomicLong)P4Probe.field(s,key)).get();}
++ static void command(String dimension)throws Exception {
++  String player=Minecraft.getInstance().player.getGameProfile().getName();
++  P4Probe.write("dh-server-command.json",Map.of("id","dimension-"+phase,"commands",List.of("execute in "+dimension+" run tp "+player+" 0 130 0 90 15","save-all flush")));
++ }
++ public static void tick(long now)throws Exception {
++  if(deadline==0)deadline=now+600_000_000_000L;if(now>deadline)throw new IllegalStateException("Cache/range phase "+phase+" timed out: "+DhClientSession.status());
++  var mc=Minecraft.getInstance();mc.player.getAbilities().flying=true;mc.player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
++  if(!mc.level.dimension().location().toString().equals(dimensions[Math.min(phase,3)]))return;
++  Object s=P4Probe.field(DhClientSession.class,"session");if(s==null)return;
++  if(!DhClientSession.running()){if(DhClientSession.status().contains("reconnecting once"))return;throw new IllegalStateException(DhClientSession.status());}
++  if(DhClientSession.diagnostics().state()!=dev.vox.lss.common.diagnostics.DhStatusSnapshot.State.READY)return;
++  var budget=(DhMemoryBudget)P4Probe.field(s,"budget");peak=Math.max(peak,budget.peak());
++  if(DhClientSession.diagnostics().effectiveRange()!=128)throw new IllegalStateException("128 chunk configured range not effective");
++  if(s==previous)return;
++  if(previous!=null && ((DhMemoryBudget)P4Probe.field(previous,"budget")).used()!=0) {
++   if(retireDeadline==0)retireDeadline=now+30_000_000_000L;
++   if(now>retireDeadline)throw new IllegalStateException("retired dimension retained source memory");return;
++  }
++  var cache=(DhTerrainCache)P4Probe.field(s,"terrainCache");if(cache==null)return;
++  if(now-last>2_000_000_000L){last=now;P4Probe.write("dh-p4-status.json",Map.of("phase",phase,"diagnostics",DhClientSession.diagnostics(),"peak_owned_bytes",peak));}
++  if(phase<3 && (count(s,"cacheWrites")<4 || count(s,"requested")<12))return;
++  if(phase==0){
++   if(pressure==null){pressure=CompletableFuture.supplyAsync(()->{try{return seed(cache);}catch(Exception e){throw new CompletionException(e);}});return;}
++   if(!pressure.isDone())return;observations.add(pressure.get());
++  }
++  // Global pressure may evict every original source. A return must either reuse
++  // retained records or make genuine request/write progress to reacquire them.
++  if(phase==3 && count(s,"cacheHits")==0 && (count(s,"cacheWrites")<4 || count(s,"requested")<12))return;
++  var row=new LinkedHashMap<String,Object>();row.put("dimension",dimensions[phase]);row.put("source_cache_files",cache.positions().size());row.put("cache_hits",count(s,"cacheHits"));row.put("cache_writes",count(s,"cacheWrites"));row.put("requests",count(s,"requested"));row.put("diagnostics",DhClientSession.diagnostics());observations.add(row);
++  if(phase==3){row.put("return_path",count(s,"cacheHits")>0?"retained_source_reuse":"reacquisition_after_global_eviction");P4Probe.pass(Map.of("observations",observations,"configured_range_chunks",128,"peak_owned_bytes",peak,"bounded_progress_not_full_radius_fill",true,"pressure_is_injected_representative_records",true));return;}
++  previous=s;phase++;retireDeadline=0;command(dimensions[phase]);deadline=now+600_000_000_000L;
++  // Subsequent tick validates old-session release after the dimension swap has completed.
++ }
++ static Map<String,Object> seed(DhTerrainCache home)throws Exception {
++  Path root=((Path)P4Probe.field(home,"root")).getParent();var positions=home.positions();var pos=positions.iterator().next();byte[] data;long stamp;
++  var memory=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
++  try(var entry=home.read(pos,memory)){if(entry==null)throw new IllegalStateException("pressure source lost");data=((byte[])P4Probe.field(entry,"data")).clone();stamp=entry.timestamp();}
++  if(memory.used()!=0)throw new IllegalStateException("pressure read retained memory");
++  var buckets=new ArrayList<DhTerrainCache>();for(String dimension:List.of("injected-overworld","injected-nether","injected-end"))buckets.add(new DhTerrainCache(root,new DhTerrainCache.Key("owned-pressure","owned-pressure","owned-pressure",dimension,0,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true))));
++  long began=System.nanoTime();int writes=DhTerrainCache.MAX_FILES+192;
++  for(int i=0;i<writes;i++){var p=new DhPosition(6,10000+i,10000);java.nio.ByteBuffer.wrap(data).putLong(p.packed());if(!buckets.get(i%3).write(p,stamp,data))throw new IllegalStateException("representative write refused");}
++  Path directory=root.resolve(DhTerrainCache.DIRECTORY);long files=0,bytes=0;
++  synchronized(P4Probe.field(DhTerrainCache.class,"IO_LOCK")) {
++   try(var walk=Files.walk(directory)){for(Path f:walk.filter(x->x.toString().endsWith(".dht")).filter(Files::isRegularFile).toList()){files++;bytes+=Files.size(f);}}
++  }
++  if(files>DhTerrainCache.MAX_FILES || bytes>DhTerrainCache.MAX_BYTES || files==0 || files>=writes)throw new IllegalStateException("global quota not enforced: "+files+" / "+bytes);
++  return Map.of("pressure_writes",writes,"pressure_buckets",3,"remaining_files",files,"remaining_bytes",bytes,"eviction_verified",files<writes,"write_wall_seconds",(System.nanoTime()-began)/1e9,"synthetic_representative_records",true);
++ }
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/CapturedTerrainSummary.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/CapturedTerrainSummary.java
+@@ -0,0 +1,36 @@
++package dev.vox.lssfixture.p4;
++import dev.vox.lss.common.dh.*;
++import java.nio.*;
++import java.nio.file.*;
++import java.security.*;
++import java.io.*;
++import java.util.*;
++/** Canonical replay of received real bytes, outside measured intervals. */
++public final class CapturedTerrainSummary {
++ public static void main(String[] args)throws Exception {
++  var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());var limits=DhLimits.DEFAULT;var codec=new DhProtocolCodec(DhProfile.OFFICIAL_16,limits);var decoder=new DhTerrainDecoder(limits);var rows=new TreeMap<String,Object>();long bytes=0;int packets=0;
++  try(var assembly=new DhAssembly(limits,budget)) {
++   assembly.expect(999999,new DhPosition(6,0,0));
++   for(Path f:Files.list(Path.of(args[0])).sorted().toList()){
++    if(!f.getFileName().toString().startsWith("received-"))continue;byte[] raw=Files.readAllBytes(f);var msg=codec.decode(raw);
++    if(msg instanceof DhMessage.Split split){bytes+=raw.length;packets++;assembly.accept(split);}
++    if(msg instanceof DhMessage.Response response){bytes+=raw.length;packets++;if(response.bufferId()==null)throw new IllegalStateException("Empty fixed-area response");
++     assembly.expect(response.requestId(),new DhPosition(6,0,0));try(var complete=assembly.response(response)){
++      var field=complete.getClass().getDeclaredField("data");field.setAccessible(true);byte[] dto=(byte[])field.get(complete);var pos=DhPosition.unpack(ByteBuffer.wrap(dto).getLong());
++      try(var tile=decoder.decode(dto,DhProfile.OFFICIAL_16,pos,new DhTerrainTile.WorldShape(-64,384,true),budget)){
++       if(rows.containsKey(pos.x()+","+pos.z()))throw new IllegalStateException("duplicate source tile");
++       var used=new TreeSet<String>();for(int c=0;c<4096;c++){if(tile.coverage(c)!=DhTerrainTile.Coverage.COMPLETE)throw new IllegalStateException("incomplete actual source");for(int n=0;n<tile.spanCount(c);n++)used.add(key(tile.materials().get(tile.span(c,n).material())));}
++       var canonical=new ArrayList<>(used);var ids=new int[tile.materials().size()];for(int i=0;i<ids.length;i++)ids[i]=canonical.indexOf(key(tile.materials().get(i)));
++       var digest=MessageDigest.getInstance("SHA-256");try(var out=new DataOutputStream(new DigestOutputStream(OutputStream.nullOutputStream(),digest))){for(String key:canonical)out.writeUTF(key);
++        long[] column=new long[384];for(int c=0;c<4096;c++){Arrays.fill(column,-1);for(int n=0;n<tile.spanCount(c);n++){var p=tile.span(c,n);long word=((long)ids[p.material()]<<8)|(p.skyLight()|(p.blockLight()<<4));Arrays.fill(column,p.bottom(),p.bottom()+p.height(),word);}for(long point:column){if(point<0)throw new IllegalStateException("source gap");out.writeLong(point);}}
++       }
++       rows.put(pos.x()+","+pos.z(),Map.of("canonical_blocks_biomes_raw_light_sha256",HexFormat.of().formatHex(digest.digest()),"complete_columns",4096,"generation_steps",java.util.stream.IntStream.range(0,4096).map(tile::generation).distinct().boxed().toList()));
++      }
++     }
++    }
++   }
++  }if(budget.used()!=0)throw new IllegalStateException("replay retained memory");
++  Files.writeString(Path.of(args[1]),new com.google.gson.Gson().toJson(Map.of("tiles",rows,"terrain_payload_bytes",bytes,"terrain_payload_packets",packets,"source","received real frames, replayed after measurement; canonical material IDs ignore palette ordering")));
++ }
++ static String key(DhMaterial m){return m.biome()+"|"+m.block()+"|"+new TreeMap<>(m.properties());}
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ConfigurationProbe.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ConfigurationProbe.java
+@@ -0,0 +1,51 @@
++package dev.vox.lssfixture.p4;
++
++import dev.vox.lss.common.dh.*;
++import dev.vox.lss.networking.client.DhClientSession;
++import net.minecraft.client.Minecraft;
++import java.util.*;
++import java.util.concurrent.*;
++import java.util.concurrent.atomic.AtomicLong;
++
++/** Actual producer configuration checks, including honest partial-source admission. */
++public final class ConfigurationProbe {
++    static final Map<DhPosition, Map<String,Object>> sources = new ConcurrentHashMap<>();
++    static long joined, observed;
++    public static void decoded(DhTerrainTile tile) {
++        if (!P4Probe.mode().equals("configuration") || !BenchmarkClient.TARGETS.contains(tile.position())) return;
++        int complete=0, partial=0, unknown=0, spans=0;
++        for(int c=0;c<4096;c++) {
++            switch(tile.coverage(c)) { case COMPLETE -> complete++; case PARTIAL -> partial++; case UNKNOWN -> unknown++; }
++            spans+=tile.spanCount(c);
++        }
++        var steps=new TreeSet<Integer>();for(int c=0;c<4096;c++)steps.add(tile.generation(c));
++        sources.put(tile.position(),Map.of("complete",complete,"partial",partial,"unknown",unknown,"spans",spans,"generation_steps",steps));
++    }
++    public static void tick(long now) throws Exception {
++        var mc=Minecraft.getInstance();
++        mc.player.getAbilities().flying=true;mc.player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
++        Object session=P4Probe.field(DhClientSession.class,"session");if(session==null)return;
++        if(!DhClientSession.running()) {
++            if(DhClientSession.status().contains("reconnecting once"))return;
++            throw new IllegalStateException(DhClientSession.status());
++        }
++        if(DhClientSession.diagnostics().state()!=dev.vox.lss.common.diagnostics.DhStatusSnapshot.State.READY)return;
++        if(joined==0)joined=now;
++        if(now-joined>180_000_000_000L)throw new IllegalStateException("Configuration deadline: "+sources+" / "+DhClientSession.diagnostics());
++        String expect=System.getProperty("lss.p4.expect","complete");
++        if(expect.equals("complete") || expect.equals("surface") && sources.size()==9 && sources.values().stream().allMatch(row->(int)row.get("complete")==4096)) {BenchmarkClient.tick(now);return;}
++        var policy=(DhSessionPolicy)P4Probe.field(session,"policy");
++        var cache=(DhTerrainCache)P4Probe.field(session,"terrainCache");
++        long requested=((AtomicLong)P4Probe.field(session,"requested")).get();
++        if(expect.equals("missing")) {
++            if(requested!=0 || !sources.isEmpty() || BenchmarkClient.TARGETS.stream().anyMatch(policy::hasSnapshot))throw new IllegalStateException("Disabled generation admitted absent terrain");
++            if(now-joined<30_000_000_000L)return;
++        } else if(expect.equals("partial") || expect.equals("surface")) {
++            var partial=sources.entrySet().stream().filter(e->(int)e.getValue().get("partial")>0 || (int)e.getValue().get("unknown")>0).toList();
++            if(partial.isEmpty())return;
++            for(var entry:partial)if(policy.hasSnapshot(entry.getKey()) || cache!=null && cache.positions().contains(entry.getKey()))throw new IllegalStateException("Partial source acquired a complete receipt/cache record");
++            if(observed==0)observed=now;if(now-observed<5_000_000_000L)return;
++        } else throw new IllegalArgumentException(expect);
++        P4Probe.pass(Map.of("expectation",expect,"observed_sources",sources.toString(),"requested",requested,"ordinary_connected",mc.getConnection()!=null,"no_false_complete_receipts",true,"diagnostics",DhClientSession.diagnostics()));
++    }
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ContentOracle.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ContentOracle.java
+@@ -0,0 +1,98 @@
++package dev.vox.lssfixture.p4;
++
++import dev.vox.lss.common.dh.*;
++import dev.vox.lss.networking.client.DhClientSession;
++import net.minecraft.client.Minecraft;
++import net.minecraft.core.registries.*;
++import net.minecraft.world.level.Level;
++import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.block.state.properties.Property;
++import java.util.*;
++import java.util.concurrent.*;
++import java.lang.reflect.*;
++
++/** Raw-source expansion oracle. Never reads converted SectionData or calls matchesCache. */
++public final class ContentOracle {
++    record Source(DhPosition pos,int min,int height,boolean sky,List<DhMaterial> materials,List<DhTerrainTile.Span>[] spans) {}
++    static volatile Source source;static long checkedAt;static CompletableFuture<Map<String,Object>> checking;
++    static String problem="waiting for complete source";
++    public static synchronized void capture(DhTerrainTile tile,int column) {
++        if(!P4Probe.mode().equals("content") || column!=0 || tile.position().x()!=-3 || tile.position().z()!=0)return;
++        
++        @SuppressWarnings("unchecked") List<DhTerrainTile.Span>[] spans=new List[4096];
++        for(int i=0;i<4096;i++){
++            if(tile.coverage(i)!=DhTerrainTile.Coverage.COMPLETE)return;
++            var rows=new ArrayList<DhTerrainTile.Span>();for(int n=0;n<tile.spanCount(i);n++)rows.add(tile.span(i,n));spans[i]=List.copyOf(rows);
++        }
++        source=new Source(tile.position(),tile.world().minY(),tile.world().height(),tile.world().sky(),tile.materials(),spans);
++    }
++    public static void tick(long now) throws Exception {
++        var mc=Minecraft.getInstance();mc.player.getAbilities().flying=true;mc.player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);mc.player.setYRot(90);mc.player.setXRot(15);
++        if(!mc.level.dimension().location().toString().equals(System.getProperty("lss.p4.dimension","lssfixture:tall")))return;
++        Object session=P4Probe.field(DhClientSession.class,"session");if(session==null)return; if(!DhClientSession.running()){if(DhClientSession.status().contains("reconnecting once"))return;throw new IllegalStateException(DhClientSession.status());}
++        if(checking!=null){if(!checking.isDone())return;var result=checking.get();checking=null;
++            if(Boolean.TRUE.equals(result.get("matched"))){P4Probe.pass(result);return;}problem=result.toString();}
++        P4Probe.write("dh-p4-status.json",Map.of("phase","source-comparison","status",DhClientSession.status(),"oracle",problem));
++        if(source==null || now-checkedAt<3_000_000_000L || !((Map<?,?>)P4Probe.field(session,"pending")).isEmpty())return;
++        var policy=(DhSessionPolicy)P4Probe.field(session,"policy");if(!policy.hasSnapshot(source.pos))return;checkedAt=now;
++        Object id=Class.forName("me.cortex.voxy.commonImpl.WorldIdentifier").getMethod("of",Level.class).invoke(null,mc.level);
++        Object engine=id.getClass().getMethod("getNullable").invoke(id);if(engine==null)return;
++        var biomes=mc.level.registryAccess().registryOrThrow(Registries.BIOME);Source captured=source;
++        checking=CompletableFuture.supplyAsync(()->{try{return compare(captured,engine,biomes);}catch(Exception e){throw new CompletionException(e);}});
++    }
++    @SuppressWarnings({"rawtypes","unchecked"})
++    static BlockState state(DhMaterial material) {
++        var block=BuiltInRegistries.BLOCK.get(net.minecraft.resources.ResourceLocation.parse(material.block()));BlockState state=block.defaultBlockState();
++        for(var entry:material.properties().entrySet()) {
++            Property property=block.getStateDefinition().getProperty(entry.getKey());if(property==null)throw new IllegalArgumentException("unknown source property");
++            state=state.setValue(property,(Comparable)property.getValue(entry.getValue()).orElseThrow());
++        }
++        return state;
++    }
++    static Map<String,Object> compare(Source s,Object engine,net.minecraft.core.Registry<net.minecraft.world.level.biome.Biome> biomes) throws Exception {
++        long begin=System.nanoTime();Class<?> ec=engine.getClass(),vs=Class.forName("me.cortex.voxy.common.voxelization.VoxelizedSection"),factory=Class.forName("me.cortex.voxy.common.voxelization.WorldConversionFactory"),sc=Class.forName("me.cortex.voxy.common.world.WorldSection"),mt=Class.forName("me.cortex.voxy.common.world.other.Mapper");
++        Object mapper=ec.getMethod("getMapper").invoke(engine);Method acquire=ec.getMethod("acquireIfExists",int.class,int.class,int.class,int.class),copy=sc.getMethod("copyData"),release=sc.getMethod("release"),mip=factory.getMethod("mipSection",vs,mt),compose=mt.getMethod("composeMappingId",byte.class,int.class,int.class);
++        var blocks=new HashMap<BlockState,Integer>();for(Object x:(Object[])mt.getMethod("getStateEntries").invoke(mapper))blocks.put((BlockState)x.getClass().getField("state").get(x),x.getClass().getField("id").getInt(x));
++        var ids=new HashMap<String,Integer>();for(Object x:(Object[])mt.getMethod("getBiomeEntries").invoke(mapper))ids.put((String)x.getClass().getField("biome").get(x),x.getClass().getField("id").getInt(x));
++        var states=new ArrayList<BlockState>();var names=new TreeSet<String>();var materials=new TreeSet<String>();
++        for(var m:s.materials){states.add(state(m));if(!m.air()){names.add(m.biome());materials.add(m.block());}}
++        if(names.size()<4)throw new IllegalStateException("Four source biome quadrants not present: "+names);
++        long[] compared=new long[5];long differences=0,blockDiff=0,biomeDiff=0,lightDiff=0;String first="";
++        var snapshots=new HashMap<String,long[]>();Method bid=mt.getMethod("getBlockId",long.class),bio=mt.getMethod("getBiomeId",long.class),lid=mt.getMethod("getLightId",long.class);
++        ec.getMethod("acquireRef").invoke(engine);
++        try {
++        for(int chunk=0;chunk<16;chunk++)for(int sy=0;sy<s.height/16;sy++) {
++            Object expected=vs.getMethod("createEmpty").invoke(null);long[] data=(long[])vs.getField("section").get(expected);
++            int cx=s.pos.x()*4+chunk/4,cz=s.pos.z()*4+chunk%4,sectionY=s.min/16+sy;
++            for(int y=0;y<16;y++)for(int z=0;z<16;z++)for(int x=0;x<16;x++) {
++                int relative=sy*16+y,index=(chunk/4*16+x)*64+chunk%4*16+z;DhTerrainTile.Span found=null;
++                for(var span:s.spans[index])if(relative>=span.bottom() && relative<span.bottom()+span.height()){found=span;break;}
++                if(found==null)throw new IllegalStateException("fixture unexpectedly has a gap");
++                var m=s.materials.get(found.material());BlockState state=states.get(found.material());
++                int sky=s.sky?found.skyLight():0;
++                if(!state.getFluidState().isEmpty())sky=Math.max(0,sky-(found.bottom()+found.height()-relative)); // fixture water/kelp: one light unit per depth
++                int light=sky|(found.blockLight()<<4),block=state.isAir()?0:blocks.getOrDefault(state,-1),biome=state.isAir()?0:ids.getOrDefault(m.biome(),-1);
++                if(block<0 || biome<0)throw new IllegalStateException("source registry identity missing from destination mappings");
++                data[y*256+z*16+x]=(long)compose.invoke(null,(byte)light,block,biome);
++            }
++            mip.invoke(null,expected,mapper); // installed reducer oracle; expected L0 is independent of LSS conversion
++            for(int level=0;level<=4;level++) {
++                int width=16>>level,base=(int)vs.getMethod("getBaseIndexForLevel",int.class).invoke(null,level);
++                int wx=cx*16,wy=sectionY*16,wz=cz*16,sx=wx>>(5+level),sz=wz>>(5+level),ys=wy>>(5+level);
++                String key=level+":"+sx+":"+ys+":"+sz;long[] actual=snapshots.get(key);
++                if(actual==null){Object node=acquire.invoke(engine,level,sx,ys,sz);if(node==null)return Map.of("matched",false,"missing",key);try{actual=(long[])copy.invoke(node);}finally{release.invoke(node);}snapshots.put(key,actual);}
++                for(int y=0;y<width;y++)for(int z=0;z<width;z++)for(int x=0;x<width;x++) {
++                    long wanted=data[base+(y*width+z)*width+x];int ix=((wx>>level)&31)+x,iy=((wy>>level)&31)+y,iz=((wz>>level)&31)+z;long got=actual[(iy<<10)|(iz<<5)|ix];compared[level]++;
++                    if(got!=wanted) {
++                        differences++;if((int)bid.invoke(null,got)!=(int)bid.invoke(null,wanted))blockDiff++;
++                        if((int)bio.invoke(null,got)!=(int)bio.invoke(null,wanted))biomeDiff++;
++                        if((int)lid.invoke(null,got)!=(int)lid.invoke(null,wanted))lightDiff++;
++                        if(first.isEmpty())first="level="+level+" block="+(wx+(x<<level))+","+(wy+(y<<level))+","+(wz+(z<<level))+" actual="+got+" wanted="+wanted;
++                    }
++                }
++            }
++        }
++        } finally {ec.getMethod("releaseRef").invoke(engine);}
++        var row=new LinkedHashMap<String,Object>();row.put("matched",differences==0);row.put("raw_source_not_converted_sections",true);row.put("lod_comparisons",compared);row.put("biomes",names);row.put("materials",materials);row.put("differences",differences);row.put("block_differences",blockDiff);row.put("biome_differences",biomeDiff);row.put("light_differences",lightDiff);row.put("first_difference",first);row.put("comparison_wall_seconds",(System.nanoTime()-begin)/1e9);row.put("mip_oracle","Pinned Voxy binary reducer applied to independently expanded source; checks stored propagation, not independent reducer correctness.");return row;
++    }
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/FrameMetrics.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/FrameMetrics.java
+@@ -0,0 +1,22 @@
++package dev.vox.lssfixture.p4;
++import org.lwjgl.opengl.*;
++import java.util.*;
++/** Asynchronous GPU timers and actual runTick entry intervals, excluding loading. */
++public final class FrameMetrics {
++ public static boolean measuring;static long previous;static int query;static final ArrayDeque<Integer> pending=new ArrayDeque<>();
++ static final List<Long> intervals=new ArrayList<>(),gpu=new ArrayList<>();
++ public static void start(){measuring=true;previous=0;intervals.clear();gpu.clear();}
++ public static void begin(){
++  if(!measuring || net.minecraft.client.Minecraft.getInstance().level==null)return;
++  long now=System.nanoTime();if(previous!=0)intervals.add(now-previous);previous=now;
++  while(!pending.isEmpty() && GL15.glGetQueryObjecti(pending.peek(),GL15.GL_QUERY_RESULT_AVAILABLE)!=0){int q=pending.remove();gpu.add(GL33.glGetQueryObjectui64(q,GL15.GL_QUERY_RESULT));GL15.glDeleteQueries(q);}
++  if(pending.size()<32){query=GL15.glGenQueries();GL15.glBeginQuery(GL33.GL_TIME_ELAPSED,query);}
++ }
++ public static void end(){if(query!=0){GL15.glEndQuery(GL33.GL_TIME_ELAPSED);pending.add(query);query=0;}}
++ public static Map<String,Object> finish(){
++  measuring=false;GL11.glFinish();while(!pending.isEmpty()){int q=pending.remove();gpu.add(GL33.glGetQueryObjectui64(q,GL15.GL_QUERY_RESULT));GL15.glDeleteQueries(q);}
++  if(intervals.size()<200 || gpu.size()<200)throw new IllegalStateException("insufficient rendered frame samples");
++  String renderer=GL11.glGetString(GL11.GL_RENDERER);if(renderer==null || renderer.toLowerCase().contains("llvmpipe")||renderer.toLowerCase().contains("software"))throw new IllegalStateException("native GPU measurement required");
++  return Map.of("gpu_vendor",GL11.glGetString(GL11.GL_VENDOR),"gpu_renderer",renderer,"gl_version",GL11.glGetString(GL11.GL_VERSION),"frame_entry_interval_ns",List.copyOf(intervals),"gpu_elapsed_ns",List.copyOf(gpu),"condition","1280x720 window on private non-input desktop; timer queries measure submitted GL work, frame intervals are not compositor/display latency");
++ }
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/NtfsCacheBenchmark.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/NtfsCacheBenchmark.java
+@@ -0,0 +1,45 @@
++package dev.vox.lssfixture.p4;
++import dev.vox.lss.common.dh.*;
++import java.nio.*;
++import java.nio.file.*;
++import java.nio.channels.*;
++import java.lang.management.*;
++import java.util.*;
++/** Headless current-production NTFS cache costs. All paths belong to the supplied new attempt. */
++public final class NtfsCacheBenchmark {
++ static final List<Long> writeNs=new ArrayList<>(),readNs=new ArrayList<>();
++ public static void main(String[] args)throws Exception {
++  Path root=Path.of(args[0]);if(!root.isAbsolute() || Files.exists(root))throw new IllegalArgumentException("New absolute cache root required");Files.createDirectories(root);
++  if(!Files.getFileStore(root).type().equalsIgnoreCase("NTFS"))throw new IllegalStateException("Measured filesystem is not NTFS");
++  var shape=new DhTerrainTile.WorldShape(args.length>3?Integer.parseInt(args[3]):-128,args.length>4?Integer.parseInt(args[4]):512,true);
++  byte[] original=Files.readAllBytes(Path.of(args[1]));var initial=DhPosition.unpack(ByteBuffer.wrap(original).getLong());var owned=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
++  try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(original,DhProfile.OFFICIAL_16,initial,shape,owned)){for(int c=0;c<4096;c++)if(tile.coverage(c)!=DhTerrainTile.Coverage.COMPLETE)throw new IllegalArgumentException("Complete real source required");}
++  if(owned.used()!=0)throw new IllegalStateException("source validation retained budget");
++  long began=System.nanoTime(),cpu=((com.sun.management.OperatingSystemMXBean)ManagementFactory.getOperatingSystemMXBean()).getProcessCpuTime();
++  var buckets=new ArrayList<DhTerrainCache>();for(String dim:List.of("owned-a","owned-b","owned-c"))buckets.add(new DhTerrainCache(root,new DhTerrainCache.Key("owned-ntfs","owned-ntfs","owned-ntfs",dim,0,DhProfile.OFFICIAL_16,shape)));
++  var positions=new ArrayList<DhPosition>();int total=DhTerrainCache.MAX_FILES+128;
++  for(int i=0;i<total;i++){
++   var p=new DhPosition(6,10000+i,10000);positions.add(p);ByteBuffer.wrap(original).putLong(p.packed());long start=System.nanoTime();if(!buckets.get(i%3).write(p,i+1,original))throw new IllegalStateException("NTFS write declined");writeNs.add(System.nanoTime()-start);
++  }
++  long files,bytes;try(var walk=Files.walk(root)){var names=walk.filter(Files::isRegularFile).toList();files=names.size();bytes=0;for(var f:names)bytes+=Files.size(f);}
++  long expectedFiles=Math.min(DhTerrainCache.MAX_FILES,DhTerrainCache.MAX_BYTES/(original.length+96));
++  if(files!=expectedFiles || bytes>DhTerrainCache.MAX_BYTES)throw new IllegalStateException("NTFS global quota failed: "+files+" != "+expectedFiles);
++  long coldIndex=0;var index=DhTerrainCache.class.getDeclaredField("INDEXES");index.setAccessible(true);((Map<?,?>)index.get(null)).clear();long start=System.nanoTime();int indexed=0;for(var b:buckets)indexed+=b.positions().size();coldIndex=System.nanoTime()-start;if(indexed!=files)throw new IllegalStateException("cold index lost files");
++  for(int i=total-256;i<total;i++){start=System.nanoTime();try(var entry=buckets.get(i%3).read(positions.get(i),owned)){if(entry==null || entry.timestamp()!=i+1)throw new IllegalStateException("NTFS readback identity failed");}readNs.add(System.nanoTime()-start);}
++  if(owned.used()!=0)throw new IllegalStateException("NTFS reads retained budget");
++  // A separate four-record quota isolates the fully protected branch from foreign-bucket eviction.
++  var ctor=DhTerrainCache.class.getDeclaredConstructor(Path.class,DhTerrainCache.Key.class,int.class,long.class);ctor.setAccessible(true);
++  var pinned=(DhTerrainCache)ctor.newInstance(root.resolve("pinned-case"),new DhTerrainCache.Key("owned-pinned","owned-pinned","owned-pinned","owned",0,DhProfile.OFFICIAL_16,shape),4,1L<<20);
++  for(int i=0;i<4;i++){var p=new DhPosition(6,20000+i,0);ByteBuffer.wrap(original).putLong(p.packed());if(!pinned.write(p,1,original))throw new IllegalStateException("pinned premise");}
++  pinned.protect(pinned.positions());var rejected=new DhPosition(6,999999,999999);ByteBuffer.wrap(original).putLong(rejected.packed());boolean declined=!pinned.write(rejected,100000,original);
++  if(!declined)throw new IllegalStateException("NTFS fully protected quota did not decline");pinned.protect(Set.of());if(!pinned.write(rejected,100001,original))throw new IllegalStateException("NTFS pressure did not recover");
++  Path file;try(var walk=Files.walk(root)){file=walk.filter(Files::isRegularFile).filter(f->{try{return ByteBuffer.wrap(Files.readAllBytes(f)).getLong(40)==rejected.packed();}catch(Exception e){throw new RuntimeException(e);}}).findFirst().orElseThrow();}
++  @SuppressWarnings({"rawtypes","unchecked"}) var noShare=(OpenOption)Enum.valueOf((Class)Class.forName("com.sun.nio.file.ExtendedOpenOption"),"NOSHARE_DELETE");
++  boolean sharingRefusal=false;
++  try(var locked=Files.newByteChannel(file,Set.of(StandardOpenOption.READ,noShare))){try{pinned.write(rejected,100002,original);}catch(java.io.IOException expected){sharingRefusal=true;}}
++  if(!sharingRefusal)throw new IllegalStateException("Owned NTFS share lock did not block replacement");
++  if(!pinned.write(rejected,100003,original))throw new IllegalStateException("NTFS share lock recovery failed");try(var entry=pinned.read(rejected,owned)){if(entry==null || entry.timestamp()!=100003)throw new IllegalStateException("NTFS replacement remained stale");}
++  var row=new LinkedHashMap<String,Object>();row.put("pass",true);row.put("filesystem",Files.getFileStore(root).type());row.put("real_source_dto_bytes",original.length);row.put("global_files",files);row.put("global_bytes",bytes);row.put("writes",total);row.put("limiting_quota",files<DhTerrainCache.MAX_FILES?"bytes":"files");row.put("write_nanos",writeNs);row.put("read_nanos",readNs);row.put("cold_index_nanos",coldIndex);row.put("write_read_pressure_wall_seconds",(System.nanoTime()-began)/1e9);row.put("whole_process_cpu_nanos",((com.sun.management.OperatingSystemMXBean)ManagementFactory.getOperatingSystemMXBean()).getProcessCpuTime()-cpu);row.put("owned_share_lock_refusal_and_recovery",sharingRefusal);row.put("fully_pinned_decline_and_release",declined);row.put("scope","Synthetic positions across three private identity buckets using a validated complete real-source DTO. Production per-record force(true), hashes, atomic rename, quota and index; not 8192 real server downloads.");
++  Files.writeString(Path.of(args[2]),new com.google.gson.Gson().toJson(row));
++ }
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/P4Probe.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/P4Probe.java
+@@ -0,0 +1,117 @@
++package dev.vox.lssfixture.p4;
++
++import com.google.gson.*;
++import net.minecraft.client.Minecraft;
++import net.minecraft.client.gui.screens.*;
++import net.minecraft.client.multiplayer.*;
++import net.minecraft.client.multiplayer.resolver.ServerAddress;
++import net.minecraft.client.Screenshot;
++import net.minecraft.network.chat.Component;
++import java.lang.reflect.*;
++import java.nio.file.*;
++import java.util.*;
++
++/** Run-owned P4 control; contains no production change and never handles desktop input. */
++public final class P4Probe {
++    public static boolean done;
++    static long started,changed; static int phase;
++    public static String mode(){return System.getProperty("lss.p4.case","legacy-menu");}
++    public static Object field(Object o,String n) throws Exception {
++        Class<?> c=o instanceof Class<?> k?k:o.getClass();
++        for(;c!=null;c=c.getSuperclass())try{var f=c.getDeclaredField(n);f.setAccessible(true);return f.get(o instanceof Class<?>?null:o);}catch(NoSuchFieldException absent){}
++        throw new NoSuchFieldException(n);
++    }
++    public static void write(String name,Object value) throws Exception {
++        Path p=Minecraft.getInstance().gameDirectory.toPath().resolve(name),tmp=p.resolveSibling(name+".tmp");
++        Files.writeString(tmp,new Gson().toJson(value));Files.move(tmp,p,StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
++    }
++    public static void pass(Map<String,Object> details) throws Exception {
++        var row=new LinkedHashMap<String,Object>(details);row.put("pass",true);row.put("case",mode()); if(Boolean.getBoolean("lss.p4.windowsNative")){row.put("gpu_renderer",org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER));row.put("gpu_vendor",org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_VENDOR));}
++        write("dh-p4.json",row);write("dh-result.json",row);done=true;Minecraft.getInstance().stop();
++    }
++    public static void tick() {
++        if(done)return;long now=System.nanoTime();if(started==0)started=now;
++        try {
++            if(now-started>900_000_000_000L)throw new IllegalStateException("P4 deadline, phase "+phase);
++            var mc=Minecraft.getInstance();
++            if(System.getProperty("lss.p4.backend", "lss").equals("official")){Class.forName("privatep4.OfficialClient").getMethod("tick",long.class).invoke(null,now);return;}
++            if(mode().equals("legacy-menu")){legacy(now);return;}
++            if(mc.level==null && mc.screen instanceof TitleScreen && phase==0) {phase=1;changed=now;
++                String address=System.getProperty("lss.rig.initialEndpoint","[::1]:25586");
++                ConnectScreen.startConnecting(mc.screen,mc,ServerAddress.parseString(address),new ServerData("Private P4",address,ServerData.Type.OTHER),false,null);return;}
++            if(mc.level==null||mc.player==null)return;
++            // Additional cases use separate controllers with no shared production state.
++            if(mode().equals("content")) ContentOracle.tick(now);
++            else if(mode().equals("cache-pressure")) CachePressure.tick(now);
++            else if(mode().equals("benchmark")) BenchmarkClient.tick(now);
++            else if(mode().equals("configuration")) ConfigurationProbe.tick(now);
++            else throw new IllegalArgumentException(mode());
++        } catch(Throwable failure) {
++            try{write("dh-result.json",Map.of("pass",false,"case",mode(),"phase",phase,"error",failure.toString()));}catch(Exception ignored){}
++            failure.printStackTrace();done=true;Minecraft.getInstance().stop();
++        }
++    }
++    static Map<String,Object> menuOptions;static Object menu;
++    static boolean screenshotStarted;
++    static final java.util.concurrent.atomic.AtomicBoolean screenshotSaved=new java.util.concurrent.atomic.AtomicBoolean();
++    static void legacy(long now) throws Exception {
++        var mc=Minecraft.getInstance();
++        Class<?> screen=Class.forName("net.caffeinemc.mods.sodium.client.gui.SodiumOptionsGUI");
++        if(phase==0 && mc.screen instanceof TitleScreen) {
++            menu=screen.getMethod("createScreen",Screen.class).invoke(null,mc.screen);mc.setScreen((Screen)menu);
++            var pages=(List<?>)field(menu,"pages");var selected=new ArrayList<Object>();
++            for(var page:pages){String label=((Component)page.getClass().getMethod("getName").invoke(page)).getString();if(label.startsWith("LSS")||label.startsWith("LOD")||label.equals("Distant Horizons")||label.equals("Far Players"))selected.add(page);}
++            if(selected.size()!=3)throw new IllegalStateException("Expected 3 LSS pages, got "+selected.size()+"; "+pages);
++            menuOptions=new LinkedHashMap<>();List<String> labels=new ArrayList<>();
++            for(var page:selected){labels.add(((Component)page.getClass().getMethod("getName").invoke(page)).getString());
++                for(var option:(List<?>)page.getClass().getMethod("getOptions").invoke(page)){
++                    var type=Class.forName("net.caffeinemc.mods.sodium.client.gui.options.Option");String name=((Component)type.getMethod("getName").invoke(option)).getString();menuOptions.put(name,option);
++                }}
++            for(String name:List.of("Use DH","Sync on load","Live updates")) {
++                Object option=menuOptions.get(name);if(option==null)throw new IllegalStateException("Missing actual translated option "+name);
++                Object control=option.getClass().getMethod("getControl").invoke(option);if(!control.getClass().getSimpleName().equals("TickBoxControl"))throw new IllegalStateException("Not a checkbox: "+name);
++            }
++            Object receive=menuOptions.get("Receive Server LODs");if(receive==null)receive=menuOptions.get("Receive server LODs");
++            if(receive==null)throw new IllegalStateException("Missing receive master: "+menuOptions.keySet());
++            var optionType=Class.forName("net.caffeinemc.mods.sodium.client.gui.options.Option");optionType.getMethod("setValue",Object.class).invoke(receive,false);
++            for(String name:List.of("Use DH","Sync on load","Live updates"))if((boolean)optionType.getMethod("isAvailable").invoke(menuOptions.get(name)))throw new IllegalStateException("Dependency stayed enabled");
++            optionType.getMethod("setValue",Object.class).invoke(receive,true);
++            for(String name:List.of("Use DH","Sync on load","Live updates")){
++                if(!(boolean)optionType.getMethod("isAvailable").invoke(menuOptions.get(name)))throw new IllegalStateException("Dependency stayed disabled");
++                optionType.getMethod("setValue",Object.class).invoke(menuOptions.get(name),false);
++            }
++            var apply=screen.getDeclaredMethod("applyChanges");apply.setAccessible(true);apply.invoke(menu);
++            screen.getMethod("setPage",Class.forName("net.caffeinemc.mods.sodium.client.gui.options.OptionPage")).invoke(menu,selected.get(1));
++            var tabs=new ArrayList<Map<String,Object>>();int right=0;
++            var allNames=new HashSet<String>();for(Object page:pages)allNames.add(((Component)page.getClass().getMethod("getName").invoke(page)).getString());
++            for(Object button:((Screen)menu).children()) {
++                if(!button.getClass().getSimpleName().equals("FlatButtonWidget"))continue;
++                Component label=(Component)button.getClass().getMethod("getLabel").invoke(button);if(!allNames.contains(label.getString()))continue;
++                Object bounds=field(button,"dim");int x=(int)bounds.getClass().getMethod("x").invoke(bounds),width=(int)bounds.getClass().getMethod("width").invoke(bounds);
++                if(x<right || x+width>mc.getWindow().getGuiScaledWidth() || mc.font.width(label)>width-8)throw new IllegalStateException("Legacy tab overlaps or clips: "+label.getString());right=x+width;
++                tabs.add(Map.of("label",label.getString(),"x",x,"width",width,"text_width",mc.font.width(label)));
++            }
++            if(tabs.size()!=pages.size())throw new IllegalStateException("Could not observe every actual page tab");
++            var donationBounds=new ArrayList<Map<String,Object>>();
++            for(String name:List.of("donateButton","hideDonateButton")) {
++                Object button=field(menu,name),bounds=field(button,"dim");int x=(int)bounds.getClass().getMethod("x").invoke(bounds),y=(int)bounds.getClass().getMethod("y").invoke(bounds),width=(int)bounds.getClass().getMethod("width").invoke(bounds);
++                if((boolean)field(button,"visible") && y==6 && x<right)throw new IllegalStateException("Donation control covers extended tabs");
++                donationBounds.add(Map.of("name",name,"x",x,"y",y,"width",width,"visible",field(button,"visible")));
++            }
++            write("dh-legacy-pages.json",Map.of("pages",labels,"controls",menuOptions.keySet(),"all_actual_tab_bounds",tabs,"donation_controls",donationBounds));phase=1;changed=now;
++        } else if(phase==1 && now-changed>3_000_000_000L) {
++            var handle=Class.forName("dev.vox.lss.config.LSSClientConfig").getField("CONFIG").get(null);Object setting=handle.getClass().getMethod("snapshot").invoke(handle),lod=setting.getClass().getMethod("lod").invoke(setting),dh=lod.getClass().getMethod("dh").invoke(lod);
++            if(!lod.getClass().getMethod("source").invoke(lod).equals("lss"))throw new IllegalStateException("Use DH save failed");
++            if((boolean)dh.getClass().getMethod("syncOnLoad").invoke(dh)||(boolean)dh.getClass().getMethod("realTimeUpdates").invoke(dh))throw new IllegalStateException("Hot controls save failed");
++            if(mc.options.guiScale().get()!=0 || mc.getWindow().getGuiScale()<3)throw new IllegalStateException("Auto scale not exercised");
++            if(!screenshotStarted) {
++                org.lwjgl.opengl.GL11.glFinish();
++                Screenshot.grab(mc.gameDirectory,"dh-legacy-menu.png",mc.getMainRenderTarget(),x->screenshotSaved.set(true));
++                screenshotStarted=true;return;
++            }
++            if(!screenshotSaved.get())return;
++            if(!Files.isRegularFile(mc.gameDirectory.toPath().resolve("screenshots/dh-legacy-menu.png")))throw new IllegalStateException("Legacy screenshot did not finish saving");
++            pass(Map.of("actual_legacy_sodium",true,"pages",3,"three_dh_checkboxes",true,"receive_dependency",true,"shared_apply_saved",true,"auto_gui_scale",mc.getWindow().getGuiScale()));
++        }
++    }
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/VoxyDrawStats.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/VoxyDrawStats.java
+@@ -0,0 +1,8 @@
++package dev.vox.lssfixture.p4;
++public final class VoxyDrawStats {
++ public static volatile Object latest;public static volatile long calls;
++ public static void rendered(Object renderer){latest=renderer;calls++;}
++ public static int sections()throws Exception {
++  if(latest==null)return 0;Object data=P4Probe.field(latest,"geometryData");return (int)Class.forName("me.cortex.voxy.client.core.rendering.section.geometry.IGeometryData").getMethod("getSectionCount").invoke(data);
++ }
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/BenchmarkArea.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/BenchmarkArea.java
+@@ -0,0 +1,12 @@
++package dev.vox.lssfixture.p4.mixin;
++import dev.vox.lss.common.dh.*;
++import dev.vox.lssfixture.p4.*;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.*;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
++@Mixin(targets="dev.vox.lss.networking.client.DhClientSession$Session",remap=false)
++public class BenchmarkArea {
++ @Redirect(method="requestNext",at=@At(value="INVOKE",target="Ldev/vox/lss/common/dh/DhSessionPolicy;inBorder(Ldev/vox/lss/common/dh/DhProfile;Ldev/vox/lss/common/dh/DhPosition;III)Z"),remap=false)
++ private boolean fixedArea(DhProfile profile,DhPosition pos,int x,int z,int radius){return (!(P4Probe.mode().equals("benchmark") || P4Probe.mode().equals("configuration")) || BenchmarkClient.TARGETS.contains(pos)) && DhSessionPolicy.inBorder(profile,pos,x,z,radius);}
++ @Inject(method="send",at=@At("HEAD"),remap=false) private void sent(DhMessage msg,CallbackInfo ci){BenchmarkClient.sent(msg);}
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/ClientTick.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/ClientTick.java
+@@ -0,0 +1,11 @@
++package dev.vox.lssfixture.p4.mixin;
++import dev.vox.lssfixture.p4.P4Probe;
++import net.minecraft.client.Minecraft;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.*;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
++@Mixin(Minecraft.class)
++public class ClientTick {
++ @Inject(method={"tick","method_1574"},at=@At("RETURN"),remap=false)
++ private void tick(CallbackInfo ci){P4Probe.tick();}
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/DecodedSource.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/DecodedSource.java
+@@ -0,0 +1,11 @@
++package dev.vox.lssfixture.p4.mixin;
++import dev.vox.lss.common.dh.*;
++import dev.vox.lssfixture.p4.ConfigurationProbe;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.*;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
++@Mixin(value=DhTerrainDecoder.class,remap=false)
++public class DecodedSource {
++ @Inject(method="decode",at=@At("RETURN"),remap=false)
++ private void decoded(CallbackInfoReturnable<DhTerrainTile> ci){ConfigurationProbe.decoded(ci.getReturnValue());}
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/Frames.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/Frames.java
+@@ -0,0 +1,10 @@
++package dev.vox.lssfixture.p4.mixin;
++import dev.vox.lssfixture.p4.FrameMetrics;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.*;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
++@Mixin(net.minecraft.client.Minecraft.class)
++public class Frames {
++ @Inject(method="runTick",at=@At("HEAD")) private void start(boolean render,CallbackInfo ci){if(render)FrameMetrics.begin();}
++ @Inject(method="runTick",at=@At("RETURN")) private void end(boolean render,CallbackInfo ci){if(render)FrameMetrics.end();}
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/MouseGuard.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/MouseGuard.java
+@@ -0,0 +1,9 @@
++package dev.vox.lssfixture.p4.mixin;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.*;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
++@Mixin(net.minecraft.client.MouseHandler.class)
++public class MouseGuard {
++ @Inject(method="grabMouse",at=@At("HEAD"),cancellable=true)
++ private void privateDesktopNeverGrabsHostMouse(CallbackInfo ci){if(Boolean.getBoolean("lss.p4.windowsNative"))ci.cancel();}
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/RawCapture.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/RawCapture.java
+@@ -0,0 +1,15 @@
++package dev.vox.lssfixture.p4.mixin;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.*;
++import org.spongepowered.asm.mixin.injection.callback.*;
++import java.nio.file.*;
++import java.util.concurrent.atomic.AtomicInteger;
++/** Observe bytes without parsing under an assumed protocol or changing production behavior. */
++@Mixin(targets="dev.vox.lss.networking.client.DhClientSession$Session",remap=false)
++public class RawCapture {
++ private static final AtomicInteger SEQUENCE=new AtomicInteger();
++ @Inject(method="receive",at=@At("HEAD"),remap=false)
++ private void capture(byte[] bytes,long arrived,CallbackInfo ci)throws Exception {
++  String root=System.getProperty("lss.rig.captureDir");if(root!=null)Files.write(Path.of(root,String.format("received-%04d.bin",SEQUENCE.incrementAndGet())),bytes);
++ }
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/SourceCapture.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/SourceCapture.java
+@@ -0,0 +1,12 @@
++package dev.vox.lssfixture.p4.mixin;
++import dev.vox.lssfixture.p4.ContentOracle;
++import dev.vox.lss.common.dh.DhTerrainTile;
++import dev.vox.lss.api.VoxelColumnData;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.*;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
++@Mixin(targets="dev.vox.lss.networking.client.DhColumnConverter",remap=false)
++public class SourceCapture {
++ @Inject(method="convert",at=@At("RETURN"),remap=false)
++ private void source(DhTerrainTile tile,int column,CallbackInfoReturnable<VoxelColumnData> ci){if(ci.getReturnValue()!=null)ContentOracle.capture(tile,column);}
++}
+--- a/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/VoxyDraw.java
++++ b/test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/VoxyDraw.java
+@@ -0,0 +1,9 @@
++package dev.vox.lssfixture.p4.mixin;
++import dev.vox.lssfixture.p4.VoxyDrawStats;
++import org.spongepowered.asm.mixin.*;
++import org.spongepowered.asm.mixin.injection.*;
++import org.spongepowered.asm.mixin.injection.callback.*;
++@Pseudo @Mixin(targets="me.cortex.voxy.client.core.VoxyRenderSystem",remap=false)
++public class VoxyDraw {
++ @Inject(method="renderOpaque",at=@At("RETURN"),require=0,remap=false)private void rendered(CallbackInfo ci){VoxyDrawStats.rendered(this);}
++}
+--- a/test-fixtures/dh-p4/summarize.py
++++ b/test-fixtures/dh-p4/summarize.py
+@@ -0,0 +1,77 @@
++#!/usr/bin/env python3
++"""Summarize the registered three cold and three warm pairs, retaining raw runs."""
++import argparse
++import hashlib
++import json
++import statistics
++from pathlib import Path
++from fixed_area_metrics import collect
++
++
++def sha(path):
++    return hashlib.sha256(path.read_bytes()).hexdigest()
++
++
++def summarize(base):
++    rows, pairs = [], []
++    for condition in ('cold', 'warm'):
++        for number in range(1, 4):
++            paired = []
++            source = None
++            warm_identity = None
++            for arm in ('official', 'lss'):
++                parent = base / f'{condition}-pair{number}-{arm}'
++                run = Path((parent / 'private-run-path.txt').read_text().strip())
++                metrics = collect(run)
++                runtime = json.loads((run / 'runtime.json').read_text())
++                replay = json.loads((run / 'evidence/benchmark-source-replay.json').read_text())
++                if source is not None and source != replay['tiles']:
++                    raise ValueError(f'Different blocks/biomes/light in {condition} pair {number}')
++                source = replay['tiles']
++                before = json.loads((run / 'evidence/benchmark-native-before.json').read_text())
++                if condition == 'cold' and any(v is not None for v in before.values()):
++                    raise ValueError('Cold target had pre-existing native records')
++                if condition == 'warm':
++                    current = runtime.get('warm_world_sha256')
++                    if not current or warm_identity is not None and current != warm_identity:
++                        raise ValueError('Warm producer world inputs differ')
++                    warm_identity = current
++                metrics.update(condition=condition, pair=number,
++                               replay_sha256=sha(run / 'evidence/benchmark-source-replay.json'))
++                rows.append(metrics)
++                paired.append(metrics)
++            pairs.append({'condition': condition, 'pair': number,
++                          'identical_complete_source_blocks_biomes_light': True,
++                          'identical_received_bytes': paired[0]['terrain_payload_bytes'] == paired[1]['terrain_payload_bytes'],
++                          'server_cpu_lss_over_official': paired[1]['server_cpu_seconds'] / paired[0]['server_cpu_seconds'],
++                          'acquisition_lss_over_official': paired[1]['acquisition_wall_seconds'] / paired[0]['acquisition_wall_seconds']})
++    summaries = []
++    for condition in ('cold', 'warm'):
++        for arm in ('official', 'lss'):
++            group = [r for r in rows if r['condition'] == condition and r['arm'] == arm]
++            values = {
++                'server_cpu_seconds': [r['server_cpu_seconds'] for r in group],
++                'acquisition_wall_seconds': [r['acquisition_wall_seconds'] for r in group],
++                'frame_p99_ms': [r['frame_interval_ms']['p99'] for r in group],
++                'gl_timer_p99_ms': [r['gpu_elapsed_ms']['p99'] for r in group],
++                'peak_working_set_mib': [r['client_peak_working_set_bytes'] / 2**20 for r in group],
++            }
++            summaries.append({'condition': condition, 'arm': arm, 'runs': len(group),
++                              'metrics': {k: {'median': statistics.median(v), 'min': min(v), 'max': max(v)} for k, v in values.items()},
++                              'received_bytes': [r['terrain_payload_bytes'] for r in group],
++                              'generation_events': [r['generation_events'] for r in group]})
++    return {'scope': 'Nine fixed tiles; warm means warm producer and fresh client. Three pairs per condition. '
++                     '120fps cap, steady camera after loading, private non-input Windows desktop. '
++                     'GL timer spans include submission gaps/cap; these are not isolated GPU busy time or display latency.',
++            'all_idle_confirmed': all(r['idle_machine_confirmed'] for r in rows),
++            'pairs': pairs, 'summary': summaries, 'runs': rows}
++
++
++if __name__ == '__main__':
++    parser = argparse.ArgumentParser()
++    parser.add_argument('base', type=Path)
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    result = summarize(args.base)
++    args.output.write_text(json.dumps(result, indent=2) + '\n')
++    print(json.dumps(result['summary'], indent=2))
+--- a/test-fixtures/dh-p4/tests/test_bounded_storage.py
++++ b/test-fixtures/dh-p4/tests/test_bounded_storage.py
+@@ -0,0 +1,29 @@
++import importlib,sys,tempfile,unittest
++from pathlib import Path
++from unittest.mock import patch
++ROOT=Path(__file__).resolve().parents[3]
++sys.path[:0]=[str(ROOT/'tools/rig'),str(ROOT/'test-fixtures/dh-p4')]
++import storage_guard as guard
++import bounded_storage as bounded
++class StorageTests(unittest.TestCase):
++ def setUp(self):bounded.install()
++ def value(self):return {'schema_version':2,'copy_bytes':100,'growth_bytes':2*guard.GIB,'copied_files':1,'bounded_profile':bounded.POLICY}
++ def test_general_estimates_remain_strict(self):
++  old={'schema_version':1,'copy_bytes':100,'growth_bytes':8*guard.GIB,'copied_files':1}
++  self.assertEqual(guard.RESERVE+8*guard.GIB+100,guard.requirement(old,'create'))
++  old['growth_bytes']=2*guard.GIB
++  with self.assertRaises(ValueError):guard.requirement(old,'create')
++ def test_bounded_profile_is_explicit_and_exact(self):
++  self.assertEqual(guard.RESERVE+2*guard.GIB+100,guard.requirement(self.value(),'create'))
++  for change in [{'bounded_profile':'unknown'},{'growth_bytes':0},{'copy_bytes':3*guard.GIB},{'copied_files':True},{'extra':1}]:
++   with self.assertRaises(ValueError):guard.requirement({**self.value(),**change},'create')
++ def test_growth_and_floor_are_enforced(self):
++  with tempfile.TemporaryDirectory() as t:
++   pre={'estimate':self.value(),'linux_path':t,'host_monitor':None,'host':None}
++   with patch.object(guard.Monitor,'size',return_value=100):monitor=guard.Monitor(Path(t),pre)
++   with patch.object(guard,'capacity',return_value={'free_bytes':guard.RESERVE+1}),patch.object(monitor,'size',return_value=100+bounded.GROWTH+1):
++    with self.assertRaisesRegex(ValueError,'growth exceeded'):monitor.check()
++   monitor.last_capacity=None
++   with patch.object(guard,'capacity',return_value={'free_bytes':guard.RESERVE-1}):
++    with self.assertRaisesRegex(ValueError,'reserve'):monitor.check()
++if __name__=='__main__':unittest.main()
+--- a/test-fixtures/dh-p4/tests/test_dh_p4_metrics.py
++++ b/test-fixtures/dh-p4/tests/test_dh_p4_metrics.py
+@@ -0,0 +1,29 @@
++import sys,unittest
++from pathlib import Path
++sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
++from fixed_area_metrics import validate,quantiles,TARGETS,persisted_generation
++class PerformanceProof(unittest.TestCase):
++ def data(self):
++  packed=lambda p:(p[0]|((p[1]&0xfffffff)<<8)|((p[2]&0xfffffff)<<36))
++  return {'pass':True,'arm':'official','acquisition_wall_seconds':2,'genuine_installed_dh_queue_decoder_provider':True,'all_provider_updates_complete':True,'actual_loaded_render_buffers':1},{'actual_requests':[{'packed':packed(p),'timestamp':'generation'} for p in TARGETS],'terrain_payload_bytes':300,'generation_events_failed':0,'generation_events_started':9,'generation_events_completed':9,'cpu_start_nanos':1,'cpu_last_terrain_send_nanos':2,'wall_start_nanos':1,'wall_last_terrain_send_nanos':2},{'gpu_renderer':'NVIDIA test','gpu_elapsed_ns':[1]*200,'frame_entry_interval_ns':[1]*200,'condition':'private desktop'},{'timeout':False,'exit_code':0,'owned_top_level_windows':1,'input_desktop_before':'Default','input_desktop_after':'Default'}
++ def test_real_area_and_ownership_required(self):
++  r,s,f,o=self.data();validate(r,s,f,o,'official')
++  s['actual_requests'].append(s['actual_requests'][0])
++  with self.assertRaisesRegex(ValueError,'request'):validate(r,s,f,o,'official')
++ def test_software_and_changed_input_desktop_rejected(self):
++  r,s,f,o=self.data();f['gpu_renderer']='llvmpipe'
++  with self.assertRaises(ValueError):validate(r,s,f,o,'official')
++  f['gpu_renderer']='NVIDIA test';o['input_desktop_after']='foreign'
++  with self.assertRaises(ValueError):validate(r,s,f,o,'official')
++ def test_queued_only_terrain_and_failed_generation_rejected(self):
++  r,s,f,o=self.data();r['actual_loaded_render_buffers']=0
++  with self.assertRaises(ValueError):validate(r,s,f,o,'official')
++  r['actual_loaded_render_buffers']=1;s['generation_events_failed']=1
++  with self.assertRaises(ValueError):validate(r,s,f,o,'official')
++ def test_percentiles_retain_actual_sample_count(self):
++  q=quantiles(list(range(1,101)));self.assertEqual((100,50,95,99,100),(q['samples'],q['p50'],q['p95'],q['p99'],q['max']))
++ def test_proto_records_are_not_full_generation(self):
++  r=persisted_generation({'a':None,'b':None,'c':'minecraft:full'},{'a':'minecraft:biomes','b':None,'c':'minecraft:full'})
++  self.assertEqual(0,r['new_full_target_chunks']);self.assertEqual(1,r['full_target_chunks_after']);self.assertEqual(1,r['new_persisted_target_records']);self.assertEqual({'minecraft:biomes':1,'minecraft:full':1,'missing':1},r['persisted_target_status_counts'])
++  with self.assertRaises(ValueError):persisted_generation({'a':None},{'b':None})
++if __name__=='__main__':unittest.main()
+--- a/tools/rig/OwnedJavaBootstrap.java
++++ b/tools/rig/OwnedJavaBootstrap.java
+@@ -0,0 +1,10 @@
++import java.nio.file.*;
++import java.io.*;
++/** Independent stdin/log adapter. Installed Prism handles its own actual launch protocol. */
++public final class OwnedJavaBootstrap {
++ public static void main(String[] args)throws Exception {
++  System.setOut(new PrintStream(Files.newOutputStream(Path.of(args[1])),true,java.nio.charset.StandardCharsets.UTF_8));System.setErr(System.out);
++  System.setIn(Files.newInputStream(Path.of(args[0])));
++  Class.forName("org.prismlauncher.EntryPoint").getMethod("main",String[].class).invoke(null,(Object)new String[0]);
++ }
++}
+--- a/tools/rig/windows_java_fixture.py
++++ b/tools/rig/windows_java_fixture.py
+@@ -0,0 +1,82 @@
++#!/usr/bin/env python3
++"""Stage cached exact NeoForge closure into an owned Windows root, offline subject only.
++No accounts, hooks, personal instances, desktop input or dependency downloads.
++"""
++import argparse,json,hashlib,shutil,subprocess,zipfile,sys
++from pathlib import Path
++from storage_guard import preflight,capacity,RESERVE,GIB
++sys.path.insert(0,str(Path(__file__).resolve().parents[2]/"test-fixtures/dh-p4"))
++from bounded_storage import install
++install()
++ROOT=Path(__file__).resolve().parents[2]
++ASSETS=Path('/home/vox/.local/share/lss-rig-prism-auth/assets')
++WIN=Path('/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher'); META=Path('/home/vox/.local/share/lss-rig-prism-auth/meta')
++p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--game-source',type=Path,required=True);p.add_argument('--case',default='legacy-menu');p.add_argument('--backend',default='lss');p.add_argument('--endpoint',default='[::1]:25586');a=p.parse_args()
++if a.root.exists():raise SystemExit('New immutable Windows attempt required')
++# Admission covers both host volumes and a conservative private closure copy budget.
++storage=preflight({'artifacts':[]},{},a.root,{'schema_version':2,'copy_bytes':GIB,'growth_bytes':2*GIB,'copied_files':0,'bounded_profile':'dh-p4-2g-v1'})
++if capacity(a.root.parent)['free_bytes']<RESERVE+3*GIB:raise RuntimeError('Windows stage requires full physical headroom')
++a.root.mkdir(parents=True);(a.root/'storage-preflight.json').write_text(json.dumps(storage,indent=2)+'\n');game=a.root/'minecraft';game.mkdir();(game/'config').mkdir();libs=a.root/'libraries';libs.mkdir()
++win=lambda p:subprocess.check_output(['wslpath','-w',str(p.resolve())],text=True).strip()
++sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
++inputs={}
++def copy(src,dst,expected=None):
++ if not src.is_file():raise RuntimeError('Missing cached dependency '+str(src))
++ if expected and hashlib.sha1(src.read_bytes()).hexdigest()!=expected:raise RuntimeError('Cached SHA1 mismatch '+str(src))
++ dst.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(src,dst);inputs[str(dst.relative_to(a.root))]={'sha256':sha(dst),'source':str(src)};return dst
++for n in ['org.lwjgl3/3.3.3.json','net.minecraft/1.21.1.json','net.neoforged/21.1.248.json']:copy(META/n,a.root/'metadata'/n)
++def allowed(item):
++ rules=item.get('rules');result=not rules
++ for rule in rules or []:
++  os=rule.get('os',{});match=os.get('name','windows')=='windows' and os.get('arch','x86_64') in ['x86_64','amd64']
++  if rule.get('features'):match=False
++  if match:result=rule['action']=='allow'
++ return result
++def rel(item):
++ if item.get('downloads',{}).get('artifact',{}).get('path'):return Path(item['downloads']['artifact']['path'])
++ group,artifact,version,*classifier=item['name'].split(':');ext='jar'
++ if '@' in version:version,ext=version.split('@')
++ return Path(group.replace('.','/'))/artifact/version/(artifact+'-'+version+('-'+classifier[0] if classifier else '')+'.'+ext)
++items={};maven={};mc=None;neo=None
++for n in ['org.lwjgl3/3.3.3.json','net.minecraft/1.21.1.json','net.neoforged/21.1.248.json']:
++ j=json.loads((META/n).read_text())
++ for item in j.get('libraries',[]):
++  if allowed(item):
++   name=item['name'].split(':');items[(name[0],name[1],tuple(name[3:]))]=item
++ for item in j.get('mavenFiles',[]):maven[str(rel(item))]=item
++ if j.get('uid')=='net.minecraft':mc=j
++ if j.get('uid')=='net.neoforged':neo=j
++classpath=[]
++for item in items.values():
++ dest=copy(WIN/'libraries'/rel(item),libs/rel(item),item.get('downloads',{}).get('artifact',{}).get('sha1'));classpath.append(dest)
++for item in maven.values():
++ dest=libs/rel(item)
++ if not dest.exists():copy(WIN/'libraries'/rel(item),dest,item.get('downloads',{}).get('artifact',{}).get('sha1'))
++main=copy(WIN/'libraries'/rel(mc['mainJar']),libs/rel(mc['mainJar']),mc['mainJar']['downloads']['artifact']['sha1']);classpath.append(main)
++bootstrap=copy(Path('/mnt/c/Users/Ian/AppData/Local/Programs/PrismLauncher/jars/NewLaunch.jar'),a.root/'NewLaunch.jar');classpath.insert(0,bootstrap)
++for d in ['mods','config']:
++ for f in (a.game_source/d).glob('*'):
++  if f.is_file():copy(f,game/d/f.name)
++copy(a.game_source/'options.txt',game/'options.txt');options=(game/'options.txt').read_text();options=options.replace('maxFps:30','maxFps:120').replace('guiScale:2','guiScale:0');(game/'options.txt').write_text(options)
++# No credentials are consumed. The fixture server is explicitly offline and accepts this synthetic subject.
++values={'auth_player_name':'LSSP4','version_name':'1.21.1','game_directory':win(game),'assets_root':win(ASSETS),'assets_index_name':mc['assetIndex']['id'],'auth_uuid':'c966098a7fa13a4bad102b3f2b25ca6a','auth_access_token':'0','user_type':'legacy','version_type':'owned-fixture'}
++raw=neo['minecraftArguments'];argv=raw.split()
++for k,v in values.items():argv=[x.replace('${'+k+'}',v) for x in argv]
++protocol=['launcher standard','launcherBrand PrismLauncher','launcherVersion 11.1','instanceName LSS owned P4','mainClass '+neo['mainClass'],'windowParams 1280x720',*['param '+v for v in argv],'launch']
++(a.root/'protocol.txt').write_text('\n'.join(protocol)+'\n');classes=a.root/'bootstrap-classes';classes.mkdir();copy(ROOT/'tools/rig/OwnedJavaBootstrap.java',a.root/'OwnedJavaBootstrap.java')
++subprocess.run(['/usr/lib/jvm/java-21-openjdk-amd64/bin/javac','--release','21','-d',str(classes),str(a.root/'OwnedJavaBootstrap.java')],check=True);classpath.insert(0,classes)
++inputs['bootstrap-classes/OwnedJavaBootstrap.class']={'sha256':sha(classes/'OwnedJavaBootstrap.class'),'source':'compiled from receipt-bound OwnedJavaBootstrap.java with Java21'}
++asset_inputs={}
++index=ASSETS/'indexes'/(mc['assetIndex']['id']+'.json')
++if hashlib.sha1(index.read_bytes()).hexdigest()!=mc['assetIndex']['sha1']:raise RuntimeError('Cached asset index SHA1 mismatch')
++asset_inputs[str(index)]={'sha256':sha(index)}
++for item in json.loads(index.read_text())['objects'].values():
++ f=ASSETS/'objects'/item['hash'][:2]/item['hash']
++ if hashlib.sha1(f.read_bytes()).hexdigest()!=item['hash']:raise RuntimeError('Cached asset object SHA1 mismatch')
++ asset_inputs[str(f)]={'sha256':sha(f)}
++java=WIN/'java/java-runtime-delta/bin/java.exe';copy(ROOT/'tools/rig/windows_private_desktop.ps1',a.root/'launch.ps1')
++args=['-Xms512M','-Xmx3G','-XX:ActiveProcessorCount=4','-Dforgewrapper.librariesDir='+win(libs),'-Djava.io.tmpdir='+win(a.root/'tmp'),'-Dlss.p4.windowsNative=true','-Dlss.p4.case='+a.case,'-Dlss.p4.backend='+a.backend,'-Dlss.rig.scenario=p4','-Dlss.rig.initialEndpoint='+a.endpoint,'-Dlss.rig.profile=OFFICIAL_16','-Dlss.rig.captureDir='+win(a.root/'captures'),'-cp',';'.join(map(win,classpath)),'OwnedJavaBootstrap',win(a.root/'protocol.txt'),win(a.root/'client.log')]
++(a.root/'tmp').mkdir();(a.root/'captures').mkdir()
++(a.root/'java.args').write_text('\n'.join('"'+x.replace('\\','\\\\').replace('"','\\"')+'"' for x in args)+'\n')
++(a.root/'launch.json').write_text(json.dumps({'application':win(java),'command_line':'"'+win(java)+'" "@'+win(a.root/'java.args')+'"','working_directory':win(game),'evidence':win(a.root/'ownership'),'deadline_seconds':900},indent=2)+'\n')
++(a.root/'inputs.json').write_text(json.dumps({'inputs':inputs,'shared_readonly_assets':asset_inputs,'java_sha256':sha(java),'subject':'synthetic LSSP4 on owned offline local server','personal_accounts_copied':False,'case':a.case,'backend':a.backend,'generated':{str(f.relative_to(a.root)):sha(f) for f in [a.root/'java.args',a.root/'protocol.txt',a.root/'launch.json',game/'options.txt']}},indent=2)+'\n');print(a.root)
+--- a/tools/rig/windows_private_desktop.ps1
++++ b/tools/rig/windows_private_desktop.ps1
+@@ -0,0 +1,72 @@
++param([Parameter(Mandatory=$true)][string]$Spec)
++$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'
++$cfg=Get-Content -LiteralPath $Spec -Raw | ConvertFrom-Json
++Add-Type -TypeDefinition @'
++using System;
++using System.IO;
++using System.Text;
++using System.Threading;
++using System.Collections.Generic;
++using System.Runtime.InteropServices;
++public static class LssPrivateDesktop {
++ [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] struct STARTUPINFO {public int cb;public string reserved,desktop,title;public uint x,y,cx,cy,xchars,ychars,fill,flags;public ushort show,extra;public IntPtr bytes,input,output,error;}
++ [StructLayout(LayoutKind.Sequential)] struct PROCESSINFO {public IntPtr process,thread;public uint pid,tid;}
++ [StructLayout(LayoutKind.Sequential)] struct BASICLIMIT {public long processTime,jobTime;public uint flags;public UIntPtr min,max;public uint active;public UIntPtr affinity;public uint priority,scheduling;}
++ [StructLayout(LayoutKind.Sequential)] struct IOCOUNTERS {public ulong a,b,c,d,e,f;}
++ [StructLayout(LayoutKind.Sequential)] struct EXTLIMIT {public BASICLIMIT basic;public IOCOUNTERS io;public UIntPtr processMemory,jobMemory,peakProcess,peakJob;}
++ [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr CreateDesktopW(string name,IntPtr device,IntPtr mode,uint flags,uint access,IntPtr security);
++ [DllImport("user32.dll",SetLastError=true)] static extern bool CloseDesktop(IntPtr h);
++ [DllImport("user32.dll",SetLastError=true)] static extern IntPtr OpenInputDesktop(uint flags,bool inherit,uint access);
++ [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool GetUserObjectInformationW(IntPtr h,int index,StringBuilder text,int length,out int needed);
++ delegate bool EnumWindow(IntPtr window,IntPtr param);
++ [DllImport("user32.dll",SetLastError=true)] static extern bool EnumDesktopWindows(IntPtr desktop,EnumWindow callback,IntPtr param);
++ [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
++ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool CreateProcessW(string app,StringBuilder command,IntPtr pa,IntPtr ta,bool inherit,uint flags,IntPtr env,string cwd,ref STARTUPINFO si,out PROCESSINFO pi);
++ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr CreateJobObjectW(IntPtr sa,string name);
++ [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job,int cls,ref EXTLIMIT info,int size);
++ [DllImport("kernel32.dll",SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
++ [DllImport("kernel32.dll",SetLastError=true)] static extern bool IsProcessInJob(IntPtr process,IntPtr job,out bool found);
++ [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetProcessTimes(IntPtr process,out long created,out long exited,out long kernel,out long user);
++ [StructLayout(LayoutKind.Sequential)] struct MEMORYINFO {public uint cb,pagefault;public UIntPtr peakWorking,working,peakPaged,paged,peakNonpaged,nonpaged,pagefile,peakPagefile,privateUsage;}
++ [DllImport("psapi.dll",SetLastError=true)] static extern bool GetProcessMemoryInfo(IntPtr process,ref MEMORYINFO counters,uint size);
++ [DllImport("kernel32.dll")] static extern uint ResumeThread(IntPtr thread);
++ [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr handle,uint milliseconds);
++ [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr process,out uint exit);
++ [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
++ static string Name(IntPtr h){var t=new StringBuilder(256);int n;if(!GetUserObjectInformationW(h,2,t,512,out n))throw new System.ComponentModel.Win32Exception();return t.ToString();}
++ static string InputName(){var h=OpenInputDesktop(0,false,1);if(h==IntPtr.Zero)throw new System.ComponentModel.Win32Exception();try{return Name(h);}finally{CloseDesktop(h);}}
++ public static int Run(string app,string command,string cwd,string evidence,int seconds) {
++  if(!Path.IsPathRooted(cwd)||!File.Exists(app)||seconds<1||seconds>3600)throw new ArgumentException("invalid owned launch");
++  string before=InputName(),name="LSSP4_"+Guid.NewGuid().ToString("N");
++  IntPtr desktop=CreateDesktopW(name,IntPtr.Zero,IntPtr.Zero,0,0xFF,IntPtr.Zero),job=IntPtr.Zero;PROCESSINFO pi=new PROCESSINFO();
++  if(desktop==IntPtr.Zero)throw new System.ComponentModel.Win32Exception();
++  var windows=new HashSet<long>();var samples=new List<string>();bool timeout=false,stopped=false;uint exit=1;long creation=0,kernel,user,ended;bool inJob;
++  try{
++   if(Name(desktop)!=name)throw new InvalidOperationException("desktop identity mismatch");
++   job=CreateJobObjectW(IntPtr.Zero,null);var limit=new EXTLIMIT();limit.basic.flags=0x2000;
++   if(job==IntPtr.Zero||!SetInformationJobObject(job,9,ref limit,Marshal.SizeOf(typeof(EXTLIMIT))))throw new System.ComponentModel.Win32Exception();
++   var si=new STARTUPINFO();si.cb=Marshal.SizeOf(typeof(STARTUPINFO));si.desktop="WinSta0\\"+name;
++   if(!CreateProcessW(app,new StringBuilder(command),IntPtr.Zero,IntPtr.Zero,false,4|512,IntPtr.Zero,cwd,ref si,out pi))throw new System.ComponentModel.Win32Exception();
++   if(!AssignProcessToJobObject(job,pi.process)||!IsProcessInJob(pi.process,job,out inJob)||!inJob)throw new InvalidOperationException("job assignment failed");
++   if(!GetProcessTimes(pi.process,out creation,out ended,out kernel,out user))throw new System.ComponentModel.Win32Exception();
++   File.WriteAllText(evidence+".owner.json","{\"pid\":"+pi.pid+",\"creation_filetime\":"+creation+",\"private_desktop\":\""+name+"\",\"job_kill_on_close\":true}");
++   if(ResumeThread(pi.thread)==0xFFFFFFFF)throw new System.ComponentModel.Win32Exception();
++   DateTime opened=DateTime.UtcNow,deadline=opened.AddSeconds(seconds);
++   while(WaitForSingleObject(pi.process,200)==0x102){
++    var memory=new MEMORYINFO();memory.cb=(uint)Marshal.SizeOf(typeof(MEMORYINFO));long sampleCreation,sampleEnd,sampleKernel,sampleUser;
++    if(!GetProcessTimes(pi.process,out sampleCreation,out sampleEnd,out sampleKernel,out sampleUser)||sampleCreation!=creation||!GetProcessMemoryInfo(pi.process,ref memory,memory.cb))throw new InvalidOperationException("owned resource sampling failed");
++    samples.Add("{\"elapsed_ms\":"+((long)(DateTime.UtcNow-opened).TotalMilliseconds)+",\"kernel_cpu_100ns\":"+sampleKernel+",\"user_cpu_100ns\":"+sampleUser+",\"working_set_bytes\":"+memory.working.ToUInt64()+",\"private_bytes\":"+memory.privateUsage.ToUInt64()+"}");
++    EnumDesktopWindows(desktop,(window,param)=>{uint id;GetWindowThreadProcessId(window,out id);if(id==pi.pid)windows.Add(window.ToInt64());return true;},IntPtr.Zero);
++    if(InputName()!=before)throw new InvalidOperationException("input desktop changed; isolated ownership no longer proved");
++    if(File.Exists(evidence+".stop")){stopped=true;break;}
++    if(DateTime.UtcNow>deadline){timeout=true;break;}
++   }
++   File.WriteAllText(evidence+".resources.json","{\"pid\":"+pi.pid+",\"creation_filetime\":"+creation+",\"samples\":["+String.Join(",",samples)+"]}");
++   GetExitCodeProcess(pi.process,out exit);long latest;if(!GetProcessTimes(pi.process,out latest,out ended,out kernel,out user)||latest!=creation)throw new InvalidOperationException("process identity changed");
++   File.WriteAllText(evidence+".json","{\"pid\":"+pi.pid+",\"creation_filetime\":"+creation+",\"private_desktop\":\""+name+"\",\"input_desktop_before\":\""+before+"\",\"input_desktop_after\":\""+InputName()+"\",\"owned_top_level_windows\":"+windows.Count+",\"job_kill_on_close\":true,\"timeout\":"+timeout.ToString().ToLower()+",\"exit_code\":"+exit+"}");
++   return stopped?130:timeout?124:(int)exit;
++  }finally{if(job!=IntPtr.Zero)CloseHandle(job);if(pi.process!=IntPtr.Zero){WaitForSingleObject(pi.process,10000);CloseHandle(pi.process);}if(pi.thread!=IntPtr.Zero)CloseHandle(pi.thread);CloseDesktop(desktop);}
++ }
++}
++'@
++exit [LssPrivateDesktop]::Run($cfg.application,$cfg.command_line,$cfg.working_directory,$cfg.evidence,[int]$cfg.deadline_seconds)

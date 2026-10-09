@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "package": "dev.vox.lssfixture.dh.mixin",
+  "plugin": "dev.vox.lssfixture.dh.FixtureMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "TickMixin",
+    "ConverterMixin",
+    "ReceiveMixin",
+    "SendMixin",
+    "VoxyRenderMixin",
+    "VoxyIngestRaceMixin",
+    "CaptureMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "mixins": []
+}

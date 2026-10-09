@@ -37,16 +37,27 @@ public final class SettingsSchema<T> {
         var descs=new LinkedHashMap<String,Descriptor>();
         for (Spec spec:specs) {
             Object raw=lookup(fullTree,spec.path());
+            if(client && raw==null)raw=switch(spec.path()) {
+                case "lod.source" -> "lss";
+                case "lod.dh.sync_on_load", "lod.dh.real_time_updates" -> true;
+                default -> null;
+            };
             if (raw==null && spec.path().endsWith("by_world")) raw=Map.of();
             if (paper && spec.path().equals("storage.lod_store.resweep_interval_seconds")) raw=300;
             Object value=typed(spec,raw);
             defs.put(spec.path(),value);
             double[] range=range(spec.path(),client);
             String inline=inlineComment(template,spec.path());
+            if(client && inline.isEmpty())inline=switch(spec.path()) {
+                case "lod.source" -> "[reconnect] lss = native only; distant_horizons = allow automatic DH fallback when native LSS is absent.";
+                case "lod.dh.sync_on_load" -> "Check saved DH terrain timestamps when loading it, if the server permits synchronization.";
+                case "lod.dh.real_time_updates" -> "Receive server-pushed DH terrain changes when allowed; no periodic polling.";
+                default -> "";
+            };
             if (inline.isEmpty()) inline=inlineComment(resource("server"),spec.path());
             if (inline.isEmpty()) inline=inlineComment(resource("paper"),spec.path());
             descs.put(spec.path(),new Descriptor(spec.path(),spec.legacyKey(),spec.kind(),value,spec.timing(),spec.platform(),spec.sensitive(),group(spec.path()),units(spec.path()),
-                    range==null?null:range[0],range==null?null:range[1],range!=null&&range[2]==1,inline,"lss.settings."+spec.path()));
+                    range==null?null:range[0],range==null?null:range[1],range!=null&&range[2]==1,inline,spec.path().equals("lod.source")?"lss.config.lod_source":"lss.settings."+spec.path()));
         }
         defaults=Collections.unmodifiableMap(defs); descriptors=Collections.unmodifiableMap(descs);
     }
@@ -110,6 +121,8 @@ public final class SettingsSchema<T> {
             if(e.getKey().contains(".")) throw new SettingsException("Use nested YAML mappings instead of dotted keys at "
                     +(prefix.isEmpty()?e.getKey():prefix+"."+e.getKey()));
             String p=prefix.isEmpty()?e.getKey():prefix+"."+e.getKey();
+            // Local DH timer retirement: tolerate its existing YAML without restoring a runtime setting.
+            if (client && (p.equals("lod.dh.refresh_seconds") || p.equals("lod.dh.profile"))) continue;
             if (p.equals("config_version")||descriptors.containsKey(p)) out.put(p,e.getValue());
             else {
                 boolean knownGroup=descriptors.keySet().stream().anyMatch(k->k.startsWith(p+"."));
@@ -129,6 +142,8 @@ public final class SettingsSchema<T> {
             case NUMBER -> { if (!(value instanceof Number n)) throw type(p,"finite number"); double v=n.doubleValue(); if (!Double.isFinite(v)) throw type(p,"finite number"); yield v; }
             case STRING -> {
                 if (!(value instanceof String s)) throw type(p,"string");
+                if (p.equals("lod.source") && !Set.of("lss", "distant_horizons").contains(s))
+                    throw new SettingsException("lod.source must be lss or distant_horizons");
                 if (p.equals("far_players.mode")&&!Set.of("off","on","opt_in").contains(s)) throw type(p,"off, opt_in or on");
                 if (p.equals("privacy.xray.mode")&&!Set.of("auto","on","off").contains(s)) throw type(p,"auto, on or off");
                 if (p.equals("compatibility.block_fallbacks.default")&&s.isBlank()) throw type(p,"nonblank block identifier");

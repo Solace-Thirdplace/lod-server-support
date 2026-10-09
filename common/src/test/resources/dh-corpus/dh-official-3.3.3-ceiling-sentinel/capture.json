@@ -1,0 +1,16 @@
+{
+  "producer": "DistantHorizons-3.3.3-1.21.1-fabric-neoforge.jar",
+  "producer_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+  "profile": "official_16",
+  "world": {
+    "min_y": -128,
+    "height": 512,
+    "sky": true
+  },
+  "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/content-official16/attempt-hq5nhrxy",
+  "files": {
+    "received-0009.bin": "989b3b1e4c88ff1d9e110fbd1e191ab58ab00677f9074689b657e312c9387868",
+    "received-0010.bin": "9b9e3da3cc0985d81d82b9dbb7eb03ff27c7c1898492c0ba295a35eac071f168"
+  },
+  "observation": "1024 source columns contain an air span with bottom=512, height=1. Input bytes are original complete DH payload frames, not normalized."
+}

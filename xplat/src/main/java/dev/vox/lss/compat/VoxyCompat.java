@@ -62,6 +62,7 @@ class VoxyCompat {
     // Test seams: default-wired to production by resetSeams() (zero behavior change);
     // VoxyCompatTest swaps them to drive the bridge's failure ladder against stub classes.
     static ClassResolver classResolver;
+    private static VoxyVanillaCoverage vanillaCoverage;
     static ReportSink reportSink;
     static Consumer<VoxelColumnConsumer> consumerRegistrar;
 
@@ -71,12 +72,16 @@ class VoxyCompat {
 
     /** Restores production wiring for the test seams. */
     static void resetSeams() {
+        if(vanillaCoverage!=null)vanillaCoverage.clear();
+        vanillaCoverage=null;
         classResolver = Class::forName;
         reportSink = LSSApi::reportIngestFailure;
         consumerRegistrar = LSSApi::registerColumnConsumer;
     }
 
     static boolean init() {
+        retireVanillaBorder();
+        vanillaCoverage=null;
         try {
             var lookup = MethodHandles.lookup();
 
@@ -93,6 +98,7 @@ class VoxyCompat {
                             DataLayer.class, DataLayer.class));
 
             initBacklogProbe(lookup, ingestClass);
+            vanillaCoverage=VoxyVanillaCoverage.resolve(classResolver);
 
             // Register column consumer — an anonymous class, not a lambda, so it can
             // override pendingIngestBacklog() with the live Voxy queue depth.
@@ -127,9 +133,41 @@ class VoxyCompat {
         }
     }
 
+    private static final AtomicBoolean dhBridgeDead = new AtomicBoolean();
+    public static boolean isInitialized() { return rawIngest != null; }
+    public static int dhIngestBacklog() { return probeIngestBacklog(); }
+    /** DH acquisition must wait for a live world and ingest service, and stop on a latched ABI failure. */
+    public static boolean dhReady(ClientLevel level) {
+        if (!isInitialized() || dhBridgeDead.get() || level == null) return false;
+        try {
+            if(worldIdentifierOf.invoke(level) == null) return false;
+            var instanceProbe=voxyGetInstance;
+            if(instanceProbe==null) return true; // supported ingest-only ABI; use conservative pacing
+            Object instance=(Object)instanceProbe.invokeExact();
+            return instance!=null && (Object)getIngestService.invokeExact(instance)!=null;
+        } catch (LinkageError e) {
+            dhBridgeDead.set(true);
+            return false;
+        } catch (Throwable e) {
+            if (e instanceof Error err && !(e instanceof AssertionError)) throw err;
+            return false;
+        }
+    }
+    public static boolean dhFailed() { return dhBridgeDead.get(); }
+    static void vanillaChunkLoaded(net.minecraft.client.multiplayer.ClientLevel level,net.minecraft.world.level.chunk.LevelChunk chunk) {
+        if(vanillaCoverage!=null)vanillaCoverage.loaded(level,chunk);
+    }
+    static void vanillaBorderRendered() {if(vanillaCoverage!=null)vanillaCoverage.afterRender();}
+    static void vanillaBorderTick() {if(vanillaCoverage!=null)vanillaCoverage.clientTick();}
+    static void retireVanillaBorder() {if(vanillaCoverage!=null)vanillaCoverage.clear();}
+    /** Direct Voxy-only sink; caller binds a DH failure handle and validates its epoch. */
+    public static void ingestDistantColumn(ClientLevel level, int x, int z, VoxelColumnData data) {
+        ingestColumn(dhBridgeDead, level, level.dimension(), x, z, data);
+    }
+
     /** The ingest body — the pre-#71 consumer lambda, unchanged, hoisted so the anonymous
      *  consumer class stays a thin dispatch shell. */
-    private static void ingestColumn(AtomicBoolean bridgeDead,
+    static void ingestColumn(AtomicBoolean bridgeDead,
                                      ClientLevel level,
                                      ResourceKey<Level> dimension, int chunkX, int chunkZ,
                                      VoxelColumnData columnData) {

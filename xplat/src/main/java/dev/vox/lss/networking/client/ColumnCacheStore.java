@@ -391,6 +391,15 @@ public class ColumnCacheStore {
      * {@link #clearForServer} and {@link #clearAll}).
      */
     public static void clearForServers(java.util.Collection<String> addressComponents) {
+        clearForServers(addressComponents, false);
+    }
+
+    /** DH cannot hand off terrain while old native receipts survive a failed sweep. */
+    public static void clearForServersStrict(java.util.Collection<String> addressComponents) {
+        clearForServers(addressComponents, true);
+    }
+
+    private static void clearForServers(java.util.Collection<String> addressComponents, boolean strict) {
         if (addressComponents.isEmpty()) return;
         var targets = new java.util.HashSet<String>();
         for (String component : addressComponents) {
@@ -400,8 +409,10 @@ public class ColumnCacheStore {
         }
         if (targets.isEmpty()) return;
         runIoAndWait(() -> {
-            if (!Files.isDirectory(cacheDir())) return;
+            if (strict ? Files.notExists(cacheDir(), java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                    : !Files.isDirectory(cacheDir())) return;
             int cleared = 0;
+            IOException failure = null;
             try (DirectoryStream<Path> entries = Files.newDirectoryStream(cacheDir())) {
                 for (Path entry : entries) {
                     String name = entry.getFileName().toString();
@@ -413,15 +424,18 @@ public class ColumnCacheStore {
                         deleteBucketDir(entry);
                         cleared++;
                     } catch (IOException e) {
+                        failure = e;
                         LSSLogger.warn("Failed to clear column cache bucket " + name, e);
                     }
                 }
             } catch (IOException e) {
+                failure = e;
                 LSSLogger.warn("Failed to enumerate the column cache for the reset sweep", e);
             }
             LSSLogger.info("Cleared " + cleared + " column cache bucket(s) for "
                     + addressComponents.size() + " server spelling(s)");
-        });
+            if (strict && failure != null) throw new java.io.UncheckedIOException(failure);
+        }, strict);
     }
 
     /** Delete one bucket directory: files, then the dir. Non-recursive on purpose —
@@ -569,21 +583,22 @@ public class ColumnCacheStore {
     }
 
     public static void clearAll() {
-        // Run on the IO thread (serialized FIFO with in-flight saves/loads) and wait, to preserve
-        // the synchronous clear contract.
         runIoAndWait(() -> {
-            if (!Files.exists(cacheDir())) return;
-
+            if (!Files.exists(cacheDir(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return;
+            IOException failure=null;
+            try {dev.vox.lss.common.dh.DhTerrainCache.clear(cacheDir(), null);}
+            catch(IOException e) {failure=e;}
             try (DirectoryStream<Path> servers = Files.newDirectoryStream(cacheDir())) {
                 for (Path serverDir : servers) {
+                    // The source-cache owns this namespace and preserves foreign children.
+                    if(java.util.Set.of(dev.vox.lss.common.dh.DhTerrainCache.DIRECTORY,dev.vox.lss.common.dh.DhTerrainCache.LEGACY_DIRECTORY).contains(serverDir.getFileName().toString()))continue;
                     if (!Files.isDirectory(serverDir, java.nio.file.LinkOption.NOFOLLOW_LINKS)
                             && !Files.isSymbolicLink(serverDir)) continue;
-                    deleteBucketDir(serverDir);
+                    try {deleteBucketDir(serverDir);}catch(IOException e) {failure=e;}
                 }
-                LSSLogger.info("Cleared all column caches");
-            } catch (IOException e) {
-                LSSLogger.warn("Failed to clear all column caches", e);
-            }
+            } catch(IOException e) {failure=e;}
+            if(failure!=null) LSSLogger.warn("Failed to clear some column caches",failure);
+            else LSSLogger.info("Cleared all column caches");
         });
     }
 
@@ -596,6 +611,14 @@ public class ColumnCacheStore {
      */
     public static void flushPendingIo() {
         runIoAndWait(() -> {});
+    }
+
+    /** Explicit DH reset only; native receipt invalidation must preserve cached source terrain. */
+    static void clearDhTerrain(String address) {
+        runIoAndWait(() -> {
+            try { dev.vox.lss.common.dh.DhTerrainCache.clear(cacheDir(), address); }
+            catch (IOException e) { throw new java.io.UncheckedIOException(e); }
+        }, true);
     }
 
     /**
@@ -616,14 +639,21 @@ public class ColumnCacheStore {
 
     /** Run a cache IO task on the single IO thread and wait for it (serializes with saves/loads). */
     private static void runIoAndWait(Runnable task) {
+        runIoAndWait(task, false);
+    }
+
+    private static void runIoAndWait(Runnable task, boolean strict) {
         var future = IO_EXECUTOR.submit(task);
         try {
             future.get(ioWaitTimeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            if (strict) throw new IllegalStateException("Native cache sweep interrupted", e);
         } catch (ExecutionException e) {
+            if (strict) throw new IllegalStateException("Native cache sweep failed", e.getCause());
             LSSLogger.warn("Column cache IO task failed", e.getCause());
         } catch (TimeoutException e) {
+            if (strict) throw new IllegalStateException("Native cache sweep timed out", e);
             LSSLogger.warn("Column cache IO wait exceeded " + ioWaitTimeoutMs
                     + "ms — abandoning the wait (the task stays queued on the IO thread)");
         }

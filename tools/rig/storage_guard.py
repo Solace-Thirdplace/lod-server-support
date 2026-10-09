@@ -75,13 +75,14 @@ def drvfs(host):
 def preflight(profile,runtime,state,value=None,phase='create'):
  if phase=='run' and value is None:raise ValueError('Created run lacks immutable storage estimate')
  value=estimate(profile,runtime) if value is None else value;required=requirement(value,phase)
+ reserve=required-value['growth_bytes']-(value['copy_bytes'] if phase=='create' else 0)
  linux_path=existing(state);linux=capacity(linux_path)
- if linux['free_bytes']<required:raise ValueError('Linux storage below 50 GiB reserve plus run budget')
+ if linux['free_bytes']<required:raise ValueError(f'Linux storage below {reserve//GIB} GiB reserve plus run budget')
  host=None;mount=None
  if wsl():
   host=windows_host();mount=drvfs(host)
-  if min(host['free_bytes'],capacity(mount)['free_bytes'])<required:raise ValueError('Physical VHD host storage below 50 GiB reserve plus run budget')
- return {'schema_version':1,'phase':phase,'estimate':value,'required_free_bytes':required,'reserve_bytes':RESERVE,'linux_path':str(linux_path),'linux':linux,'host':host,'host_monitor':mount}
+  if min(host['free_bytes'],capacity(mount)['free_bytes'])<required:raise ValueError(f'Physical VHD host storage below {reserve//GIB} GiB reserve plus run budget')
+ return {'schema_version':1,'phase':phase,'estimate':value,'required_free_bytes':required,'reserve_bytes':reserve,'linux_path':str(linux_path),'linux':linux,'host':host,'host_monitor':mount}
 
 class Monitor:
  def __init__(self,root,preflight):

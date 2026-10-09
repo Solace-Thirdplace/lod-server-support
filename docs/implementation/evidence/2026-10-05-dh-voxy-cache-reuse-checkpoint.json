@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-05",
+  "status": "local-tested-and-ready",
+  "build_version": "0.16.0-dh-voxycache.dev20261005",
+  "release_ready": false,
+  "strict_p2_p4_gates_open": true,
+  "evidence": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/voxy-cache-reuse",
+  "verification_sha256": "65cb53ae36351f33cebc4e576ba8ca8aa224fbded3e3fb80195ea241f66f2bd2",
+  "fabric_verification_sha256": "37776ff2383ad8a035b0f29a9b67d656b52ecdd052330b25c1c39116fdc3ac57",
+  "neoforge_artifact_sha256": "b69426d30887f91fbc4e4d390345126df4a8c8b489c831a5a0995947d6d62609",
+  "fabric_artifact_sha256": "d7b204f16e49815ebbe9c42f17004dd6b0440918245df8a0d173c1995d559a5d",
+  "voxy_artifact_sha256": "024d58076649dbd348ad75c3778f90916ec35b7b9a1196b0662823a72f071a49",
+  "source_manifest_sha256": "2d7aef35606697f3ba94819108c5793b21a1a4c0af3c88462ce18387660c0e83",
+  "test_source_manifest_sha256": "676e3af975da2047f067abb71f551f97cec43ef5207bd679dabc1a2e41c4cc67",
+  "unit_passed": 3279,
+  "unit_existing_skips": 4,
+  "server_gametests": 86,
+  "packaging_artifacts": 6,
+  "private_block_comparisons": 4800,
+  "unchanged_and_jvm_restart_target_conversions": 0,
+  "unchanged_and_jvm_restart_target_ingests": 0,
+  "damaged_cache_target_converted_columns": 1,
+  "voxy_loss_target_converted_columns": 16,
+  "manual_setup": {
+    "status": "ready-for-manual-test",
+    "timestamp_utc": "2026-10-05T19:25:29.463678+00:00",
+    "artifact_sha256": "b69426d30887f91fbc4e4d390345126df4a8c8b489c831a5a0995947d6d62609",
+    "prism_installation": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/voxy-cache-reuse/prism-installation.json",
+    "instance": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing",
+    "endpoint": "[::1]:25585",
+    "server_owner": {
+      "pid": 100350,
+      "start": "4966842",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    },
+    "server_console_session": 45011,
+    "minecraft_status": {
+      "name": "1.21.1",
+      "protocol": 767
+    },
+    "windows_ipv6_tcp": true,
+    "existing_world_resumed": true,
+    "world": "dh-neoforge-playable",
+    "server_lss": false,
+    "server_dh_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+    "private_tests_passed": true,
+    "storage_preflight": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/launch-storage.json",
+    "storage_health": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/evidence/storage-health.json"
+  },
+  "preferences_preserved": true
+}

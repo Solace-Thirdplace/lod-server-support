@@ -1,0 +1,23 @@
+{
+  "completed_utc": "2026-10-05T22:25:12.808144+00:00",
+  "source_snapshot": "/tmp/lss-dh-postp4-fixes-20261005",
+  "build_version": "0.16.0-dh-postp4fix.dev20261005",
+  "normal_build_passed": true,
+  "candidate_verified": true,
+  "manual_setup_ready": true,
+  "release_ready": false,
+  "unit_passed": 3308,
+  "gametests": {
+    "fabric": 78,
+    "neoforge": 8
+  },
+  "private_cells": 5,
+  "evidence_directory": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/post-p4-review-fixes",
+  "source_validation_sha256": "12ef92801cdd26345b3d4a1da3b40c6c8d03e7b89f8b47f21d8c224fa364eff5",
+  "fixes_manifest": "2026-10-05-dh-post-p4-review-fixes-manifest.json",
+  "fixes_manifest_sha256": "55bc4d1245de60a165c0851b917bdbfca078d0bc3bc4ad3ddb7a449feb9cfe1a",
+  "setup_receipt_sha256": "55bf020d548c8ea91ebbe12376401715c53b7f6549b6d2a2f15af5fb6b4050c8",
+  "candidate_artifact_sha256": "d0acf45774c9d61291cc2f0ff9b123dc9e2787cf0bd80a480bc1423d80be41dd",
+  "fabric_artifact_sha256": "1e3cfd63af5ad6c172243f89132159657ce04d1d29383d90e54d541de76372de",
+  "qualification": "Final normal Java21 gauntlet, exact packaged clients on both loaders, native Windows structural cache IO/junction/long-path check, selected Prism update and resumed manual world; no absolute Voxy completion/I1, GPU or full-range load claim."
+}

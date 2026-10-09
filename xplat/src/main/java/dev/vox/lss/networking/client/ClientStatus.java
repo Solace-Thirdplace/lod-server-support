@@ -80,6 +80,16 @@ public final class ClientStatus {
         if (!CACHE.due(System.nanoTime())) return;
         var mc = Minecraft.getInstance();
         var cfg = LSSClientConfig.CONFIG;
+        if(DhClientSession.selected()) {
+            var dh=DhClientSession.diagnostics();
+            CACHE.publish(lifecycle,new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION,lifecycle,System.currentTimeMillis(),
+                    mc.getConnection()!=null,false,cfg.receiveServerLods(),false,
+                    dev.vox.lss.compat.DhVoxyBridge.available(),false,0,0,0,0,0,0,-1,0,
+                    cfg.lodColumnsPerSecondLimit(),0,0,ClientStatusSnapshot.Discovery.DORMANT,
+                    ClientStatusSnapshot.Availability.DISABLED,null,
+                    dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(),cfg.diagnosticSettings(),dh));
+            return;
+        }
         var manager = ClientNetGlue.getRequestManager();
         boolean active = manager != null && mc.level != null && ClientNetGlue.isServerEnabled();
         if (baselineLifecycle != lifecycle) {
@@ -110,7 +120,7 @@ public final class ClientStatus {
                 cfg.lodColumnsPerSecondLimit(), Math.max(0, rateGated - lastRateGated),
                 xaero.pendingRebuilds(), ClientNetGlue.discoveryStatus(), availability,
                 active ? captureDetails(manager) : null,
-                dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(), cfg.diagnosticSettings());
+                dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(), cfg.diagnosticSettings(),DhClientSession.fallbackEnabled()?DhClientSession.diagnostics():null);
         lastRateGated = rateGated;
         CACHE.publish(lifecycle, snapshot);
     }

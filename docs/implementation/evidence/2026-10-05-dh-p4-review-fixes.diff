@@ -1,0 +1,935 @@
+--- a/common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java
++++ b/common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java
+@@ -8,7 +8,8 @@
+     public static final int MAX_REJECTED_ATTEMPTS = 4;
+     private final Set<Long> vanilla = new HashSet<>();
+     private final LinkedHashMap<DhPosition, Receipt> receipts = new LinkedHashMap<>();
+-    private record Receipt(long timestamp, long due, boolean generate, boolean snapshot, boolean held, int failures, boolean unreachable) {}
++    private long appliedRefresh = -1;
++    private record Receipt(long timestamp, long acceptedAt, long due, boolean generate, boolean snapshot, boolean held, int failures, boolean unreachable) {}
+     public void vanilla(int x, int z) {
+         if (vanilla.size() >= 262_144 && !vanilla.contains(column(x,z)))
+             throw new IllegalStateException("DH vanilla authority limit reached; reconnect to resume");
+@@ -41,38 +42,48 @@
+     /** Reconcile hot settings without restarting failed work or delaying incomplete acquisition. */
+     public void configureRefresh(long refresh, long now) {
+         if(refresh<0) throw new IllegalArgumentException("DH refresh cannot be negative");
+-        receipts.replaceAll((position, receipt) -> receipt.snapshot && !receipt.generate && receipt.failures==0
+-                ? new Receipt(receipt.timestamp,now+refresh,false,true,refresh==0,0,false) : receipt);
++        // Policies outlive Session/ClientLevel replacements on this connection.
++        // A repeated setting must not postpone overdue work or erase its age order.
++        if(refresh==appliedRefresh) return;
++        appliedRefresh=refresh;
++        receipts.replaceAll((position, receipt) -> {
++            if(!receipt.snapshot || receipt.generate || receipt.failures!=0) return receipt;
++            // Enabling a held snapshot starts a new timer. Active snapshots retain
++            // their last successful acceptance time, including already overdue ones.
++            long at=receipt.held && refresh>0 ? now : receipt.acceptedAt;
++            return new Receipt(receipt.timestamp,at,at+refresh,false,true,refresh==0,0,false);
++        });
+     }
+     /** A held snapshot may be checked only through the server's synchronization service. */
+     public boolean refreshAllowed(DhPosition p, boolean synchronize, int syncRate) {
+         return !snapshot(p) || synchronize && syncRate>0;
+     }
++    private long acceptedAt(DhPosition p) { var r=receipts.get(p); return r==null ? 0 : r.acceptedAt; }
+     private int failures(DhPosition p) { var r=receipts.get(p); return r==null ? 0 : r.failures; }
+     /** One missing sync is enough when generation cannot resolve it. Movement may restore reachability. */
+     public void absent(DhPosition p, long now, boolean generationAllowed) {
+-        put(p, new Receipt(timestamp(p), generationAllowed ? now+2_000_000_000L : Long.MAX_VALUE,
++        put(p, new Receipt(timestamp(p),acceptedAt(p), generationAllowed ? now+2_000_000_000L : Long.MAX_VALUE,
+                 generationAllowed,snapshot(p),held(p) || !generationAllowed,failures(p),!generationAllowed));
+     }
+     /** Unpark only missing, reachable generation work, never a rejected or successful held snapshot. */
+     public void reconcileGeneration(DhPosition p, boolean reachable, long now) {
+         var r=receipts.get(p);
+         if(r!=null && r.unreachable && reachable && r.failures<MAX_REJECTED_ATTEMPTS && (!r.snapshot || r.failures>0))
+-            put(p,new Receipt(r.timestamp,now,true,r.snapshot,false,r.failures,false));
++            put(p,new Receipt(r.timestamp,r.acceptedAt,now,true,r.snapshot,false,r.failures,false));
+     }
+     /** Bound repeated rejection, cancellation or timeout without inventing a successful receipt. */
+     public void cooldown(DhPosition p, long now) {
+         int failures=Math.min(MAX_REJECTED_ATTEMPTS,failures(p)+1);
+         long delay=30_000_000_000L << (failures-1);
+         var previous=receipts.get(p);
+-        put(p,new Receipt(timestamp(p),now+delay,previous!=null && previous.generate,snapshot(p),
++        put(p,new Receipt(timestamp(p),acceptedAt(p),now+delay,previous!=null && previous.generate,snapshot(p),
+                 held(p) || failures>=MAX_REJECTED_ATTEMPTS,failures,false));
+     }
+     /** Every eligible MC column must have been accepted. Zero refresh holds the snapshot until reset. */
+     public boolean accepted(DhPosition p, int eligibleMask, int acceptedMask, long timestamp, long now, long refresh) {
+         if(refresh<0) throw new IllegalArgumentException("DH refresh cannot be negative");
+         if (eligibleMask==0 || (acceptedMask & eligibleMask)!=eligibleMask) { cooldown(p,now); return false; }
+-        put(p,new Receipt(timestamp,now+refresh,false,true,refresh==0,0,false)); return true;
++        put(p,new Receipt(timestamp,now,now+refresh,false,true,refresh==0,0,false)); return true;
+     }
+     public void clearReceipts() { receipts.clear(); }
+     /** DH Support advertises its Bukkit border in blocks; official DH uses chunks. */
+--- a/common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java
++++ b/common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java
+@@ -60,6 +60,20 @@
+         assertEquals(99,p.timestamp(tile));
+         p.configureRefresh(0,200);assertFalse(p.due(tile,Long.MAX_VALUE));
+     }
++    @Test void unchangedIntervalPreservesOverdueDeadlinesAndAcceptanceOrderAcrossSessions() {
++        var policy=new DhSessionPolicy();var first=new DhPosition(6,0,0);var second=new DhPosition(6,1,0);
++        policy.configureRefresh(30,0);
++        policy.accepted(first,1,1,1,10,30);policy.accepted(second,1,1,2,20,30);
++        policy.configureRefresh(30,100);
++        assertEquals(40,policy.dueNanos(first));assertEquals(50,policy.dueNanos(second));
++        assertTrue(policy.due(first,100));assertTrue(policy.due(second,100));
++        policy.configureRefresh(60,100);
++        assertEquals(70,policy.dueNanos(first));assertEquals(80,policy.dueNanos(second));
++        assertTrue(policy.due(first,100));assertTrue(policy.due(second,100));
++        policy.configureRefresh(15,200);
++        assertEquals(25,policy.dueNanos(first));assertEquals(35,policy.dueNanos(second));
++    }
++
+     @Test void refreshReloadDoesNotUnparkFailuresOrDelayMissingTerrain() {
+         var p=new DhSessionPolicy();var held=new DhPosition(6,0,0);var missing=new DhPosition(6,1,0);
+         p.accepted(held,1,1,42,0,30_000_000_000L);
+--- a/fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java
++++ b/fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java
+@@ -244,6 +244,83 @@
+             assertTrue(policy(s).unchanged(request.position(),request.timestamp(),now,30_000_000_000L));
+         }
+         assertEquals(wanted,visited);assertTrue(active(s));assertEquals(0,budget(s).used());
++    }
++
++    @Test void replacingSessionOnTheSameConnectionKeepsTheRemainingRefreshSweepAheadOfRenewedTiles() throws Exception {
++        long origin=System.nanoTime();var s=refreshFrontier(origin);
++        var visited=new HashSet<DhPosition>();
++        for(int attempt=0;attempt<25;attempt++) {
++            long now=origin+attempt*10_000_000_000L;
++            if(attempt==12) {
++                var oldPolicy=policy(s);invoke(s,"retire");s=session();assertSame(oldPolicy,policy(s));
++                configureFrontier(s);invoke(s,"tick");
++            }
++            var request=scan(s,now);
++            assertNotNull(request);assertTrue(visited.add(request.position()),"Session replacement restarted the near sweep");
++            completeScan(s,request,now);
++        }
++        assertEquals(25,visited.size());
++    }
++
++    @Test void refreshTiesKeepRingOrderAndTheTenSecondCeiling() throws Exception {
++        long origin=System.nanoTime();var s=refreshFrontier(origin);
++        var expected=List.of(new DhPosition(6,0,0),new DhPosition(6,-1,-1),new DhPosition(6,-1,0),new DhPosition(6,-1,1));
++        for(int i=0;i<expected.size();i++) {
++            long now=origin+i*10_000_000_000L;var request=scan(s,now);
++            assertEquals(expected.get(i),request.position());completeScan(s,request,now);
++            assertNull(scan(s,now+5_000_000_000L),"Refresh ceiling must hold between eligible requests");
++        }
++    }
++
++    @Test void aPendingOlderRefreshDoesNotBlockAnotherDueTile() throws Exception {
++        long origin=System.nanoTime();var s=refreshFrontier(origin);
++        var first=scan(s,origin);assertEquals(new DhPosition(6,0,0),first.position());
++        var second=scan(s,origin+11_000_000_000L);
++        assertEquals(new DhPosition(6,-1,-1),second.position());assertEquals(2,pendingMap(s).size());
++    }
++
++    @Test void olderVanillaBorderAndRangeIneligibleTilesCannotBlockEligibleRefreshes() throws Exception {
++        long origin=System.nanoTime();var s=refreshFrontier(origin);
++        var blocked=new DhPosition(6,0,0);
++        for(int x=0;x<4;x++)for(int z=0;z<4;z++)policy(s).vanilla(x,z);
++        assertEquals(new DhPosition(6,-1,-1),scan(s,origin).position());
++        invoke(s,"retire");DhClientSession.disconnect();s=refreshFrontier(origin);
++        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,-2,-2,1,0,false,0,true,8,50,500));
++        assertEquals(new DhPosition(6,-1,-1),scan(s,origin).position());
++        invoke(s,"retire");DhClientSession.disconnect();s=refreshFrontier(origin);
++        // (-2,-2) is visited but outside the centre-distance limit of 7.
++        settings.store().saveDraft(settings.store().read().hash(),Map.of("lod.distance_chunks",7));settings.commit(settings.prepareReload());
++        policy(s).accepted(new DhPosition(6,-2,-2),1,1,123,origin-100_000_000_000L,30_000_000_000L);
++        assertEquals(new DhPosition(6,0,0),scan(s,origin).position());
++    }
++
++    @Test void acceptedRefreshesRequireServerSynchronizationBeforeSelection() throws Exception {
++        long origin=System.nanoTime();var s=refreshFrontier(origin);
++        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,false,8,50,500));
++        assertNull(scan(s,origin));
++        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,true,8,0,500));
++        assertNull(scan(s,origin));
++    }
++
++    private Object refreshFrontier(long origin) throws Exception {
++        settings.store().saveDraft(settings.store().read().hash(),Map.of("lod.dh.refresh_seconds",30));settings.commit(settings.prepareReload());
++        var s=session();configureFrontier(s);invoke(s,"tick");
++        for(int x=-2;x<=2;x++)for(int z=-2;z<=2;z++)
++            policy(s).accepted(new DhPosition(6,x,z),1,1,123,origin-31_000_000_000L,30_000_000_000L);
++        return s;
++    }
++    private void configureFrontier(Object s) {
++        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,true,8,50,500));
++        write(s,SESSION,"levelKey","test-world");
++    }
++    private DhMessage.Request scan(Object s,long now) throws Exception {
++        int before=sent.size();invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,new ChunkPos(2,2));
++        waitWorker(s);Runnable task;while((task=mainTasks.poll())!=null)task.run();
++        return sent.size()==before?null:(DhMessage.Request)codec(s).decode(sent.getLast());
++    }
++    private void completeScan(Object s,DhMessage.Request request,long now) throws Exception {
++        assembly(s).cancel(request.requestId());pendingMap(s).remove(request.requestId());
++        assertTrue(policy(s).unchanged(request.position(),request.timestamp(),now,30_000_000_000L));
+     }
+ 
+     @Test void aConnectionAuthorityBlockReportsReconnectRequiredWithoutBlamingVoxy() {
+--- a/test-fixtures/dh-live/README.md
++++ b/test-fixtures/dh-live/README.md
+@@ -14,13 +14,19 @@
+ Use Java21 and the shared harness lock, an owned Xvfb display and llvmpipe. Prepare
+ only distribution libraries and pinned mods into a new run, never an existing
+ world/config/account context. Storage admission and runtime monitoring are required.
+-Stop the manual test server before running another heavy build or live rig.
++If the manual test server is running, stop its recorded owner before another
++heavy build or live rig and restore its existing world afterward.
+ The authorized private Prism context is used by `launch_prism.py`, with frozen
+ launcher inputs; the Windows foreground client is never automated.
+ 
+-Build `build.py --build /tmp/lss-dh-neo-build --output <test-only.jar>` after the
+-normal production build. `exercise.py` uses the local artifact directory under
+-`build/dh-neoforge/2026-10-01`; run it under `harness_run_script`. The supervisor
++Export the exact classpath from the isolated build with
++`bash tools/verify/run-gradle.sh -I <checkout>/test-fixtures/dh-live/classpath.gradle :neoforge:exportDhFixtureClasspath`.
++Build `build.py --build <isolated-build> --artifact <normal-candidate.jar> --output <test-only.jar>` after the
++normal production build. `exercise.py` requires explicit `--artifact`, `--fixture`, `--build` and
++`--verification` paths; run it under `harness_run_script`. The verification JSON
++must bind normal-build success and candidate/fixture SHA256s. The fixture receipt
++checks the build root, compiled source hashes and ABI artifact; the production
++manifest must match both the review checkout and build copy. The supervisor
+ owns server/display/launcher children, stops and saves the server, and terminates
+ only its own private client process group. See `verification.json` for exact final
+ fixture/artifact hashes and the selected successful run. Retained earlier observer
+@@ -56,18 +62,46 @@
+ Y=-118, including the four corners of a negative-coordinate tile outside vanilla
+ view. Generation and unsolicited DH updates are disabled.
+ 
+-The scenario first receives native LSS columns and warms a cache bucket with real
+-server stamps, reconnects with DH selected, verifies both slabs in actual Voxy
+-storage and checks that the native bucket was cleared. It removes the upper slab,
+-enables refresh through actual Sodium Apply, and requires a changed conditional
+-reply, a newer receipt and actual air storage while the lower slab remains. Finally
+-it reconnects with native LSS selected and requires native negotiation and column
+-delivery with no new DH requests. Each phase has a deadline. Known-tile terrain
+-frames are retained separately, with a 64-frame cap and no control identities.
++The content range is 12 chunks. Initial native red/blue slabs warm a disk cache
++bucket with real server stamps. The client physically disconnects before the
++supervisor saves lime/cyan slabs, so native delivery cannot prepopulate the new
++expectations. DH must convert all 16 target columns and update actual Voxy storage
++with those new colours. A gold slab at Y=340 keeps each upper 32³ section present;
++a missing/unreadable section is never interpreted as air. Storage checks run at
++most once a second and include 300 corner-inclusive samples across the three levels.
+ 
+-The first content run against the P3 review artifact passes custom height and
+-cache invalidation, then fails its removal deadline because refresh repeatedly
+-selects nearby tiles. It is retained as failure evidence, not a passed scenario.
+-The P4 fix selects the oldest due eligible refresh. The packaged rerun remains
+-pending while the session sandbox blocks local sockets. Standalone Java tests are
+-supplementary and do not replace the normal build or private live gates.
++The fixture waits for no untouched eligible frontier, no pending requests, and
++five seconds of stable request counts. It enables refresh through Sodium Apply,
++first requires an owned unchanged response for the target, then edits lime→air
++and cyan→purple in the same DH epoch. The removal deadline is 30 seconds plus
++completed tiles × ten seconds plus a 90-second margin. A pass requires a newer
++accepted receipt linked to the same owned changed response and 16 converted target
++columns, real air/purple storage, and intact gold sentinels. Source-specific storage
++observations establish this fixture's eventual ingestion, not a public general
++Voxy completion acknowledgement.
++
++Another physical disconnect lets the supervisor save yellow upper terrain before
++the native reconnect. That phase requires v20, 16 native columns containing the
++new expected blocks, matching Voxy storage, no new DH asks, and zero retired DH
++budget. Native suppression and DH liveness are checked continuously. Source-switch
++commands are issued only against the owned fresh world and acknowledged after
++save. Permission readiness/teleport retry, full seeding acknowledgement and aligned
++1800/1860-second client/supervisor ceilings keep rig timing explicit. Observer
++errors are contained in a fixture failure flag and fail the test promptly.
++
++`dh-requests.jsonl` records each ask/reply's position, timestamp, monotonic and wall
++time, and changed/unchanged/empty outcome. Target requests, fragments and responses
++are retained separately with a 256-frame cap; content mode skips generic control
++captures. Request level keys are replaced with the public fixture dimension by a
++labelled reconstruction; upstream terrain/response frames remain verbatim.
++
++The first P3 content run missed the target conditional-request deadline. Both
++frontier preemption and fixed-order starvation fit its evidence; the separate
++regression demonstrates the latter. Its identical native/DH storage comparisons
++are not attributable to DH. See the P4 review disposition for corrected candidate
++results and the preserved historical failure.
++
++Observer failure tests run separately under the real Fabric JUnit loader:
++`bash tools/verify/run-gradle.sh -I <checkout>/test-fixtures/dh-live/fixture-tests.gradle :fabric:test --tests dev.vox.lssfixture.dh.ContentProbeTest`.
++The init script includes the observer only in the test source set; shipping jars
++remain unchanged. Preserve the normal full-suite XML before this focused task.
+--- a/test-fixtures/dh-live/build.py
++++ b/test-fixtures/dh-live/build.py
+@@ -1,13 +1,15 @@
+ #!/usr/bin/env python3
+ """Compile a NeoForge named test-only observer; never add it to production jars."""
+-import argparse,subprocess,zipfile,shutil
++import argparse,subprocess,zipfile,shutil,hashlib,json
+ from pathlib import Path
+-p=argparse.ArgumentParser();p.add_argument('--build',required=True,type=Path);p.add_argument('--output',required=True,type=Path);a=p.parse_args()
++p=argparse.ArgumentParser();p.add_argument('--build',required=True,type=Path);p.add_argument('--output',required=True,type=Path);p.add_argument('--artifact',required=True,type=Path);a=p.parse_args()
+ root=Path(__file__).resolve().parent
+ classes=a.output.parent/'fixture-classes'
+ if classes.exists():shutil.rmtree(classes)
+ classes.mkdir(parents=True,exist_ok=True)
+-cp=[a.build/'neoforge/build/moddev/artifacts/neoforge-21.1.248-merged.jar',a.build/'neoforge/build/libs/lod-server-support-neoforge.jar']
++classpath=a.build/'neoforge/build/dh-fixture-classpath.txt'
++if not classpath.is_file():raise ValueError('Export the matching NeoForge compile classpath with classpath.gradle first')
++cp=[a.artifact,*map(Path,classpath.read_text().strip().split(':'))]
+ for directory in [Path('/home/vox/projects/lss-multi-test/servers/neoforge-1.21.1/libraries'),Path('/home/vox/.local/share/lss-rig-prism-auth/libraries')]:cp.extend(p for p in directory.rglob('*.jar') if zipfile.is_zipfile(p))
+ args=['-proc:none','--release','21','-classpath',':'.join(map(str,cp)),'-d',str(classes),*map(str,(root/'src').rglob('*.java'))]
+ argfile=a.output.parent/'fixture-javac.args';argfile.write_text('\n'.join('"'+v.replace('\\','\\\\').replace('"','\\"')+'"' for v in args))
+@@ -16,4 +18,6 @@
+  for base in [classes,root/'resources']:
+   for path in base.rglob('*'):
+    if path.is_file():z.write(path,str(path.relative_to(base)))
++receipt={'production_artifact_sha256':hashlib.sha256(a.artifact.read_bytes()).hexdigest(),'fixture_sha256':hashlib.sha256(a.output.read_bytes()).hexdigest(),'build':str(a.build.resolve()),'classpath':{str(path):hashlib.sha256(path.read_bytes()).hexdigest() for path in cp if path.is_file()},'sources':{str(path.relative_to(root)):hashlib.sha256(path.read_bytes()).hexdigest() for path in [root/'build.py',root/'classpath.gradle',*(root/'src').rglob('*'),*(root/'resources').rglob('*')] if path.is_file()}}
++a.output.with_suffix('.receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+ print(a.output)
+--- /dev/null
++++ b/test-fixtures/dh-live/classpath.gradle
+@@ -0,0 +1,11 @@
++// Read-only build input export for the separately compiled test fixture.
++gradle.projectsEvaluated {
++    def neo = gradle.rootProject.project(':neoforge')
++    neo.tasks.register('exportDhFixtureClasspath') {
++        doLast {
++            def target = neo.layout.buildDirectory.file('dh-fixture-classpath.txt').get().asFile
++            target.parentFile.mkdirs()
++            target.text = neo.sourceSets.main.compileClasspath.asPath
++        }
++    }
++}
+--- a/test-fixtures/dh-live/exercise.py
++++ b/test-fixtures/dh-live/exercise.py
+@@ -1,21 +1,40 @@
+ #!/usr/bin/env python3
+-import argparse,os,subprocess
++import argparse,os,subprocess,hashlib,json,zipfile
+ from pathlib import Path
+ root=Path(__file__).resolve().parents[2]
+ setup=Path('/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01')
+ p=argparse.ArgumentParser()
+-p.add_argument('--artifact',type=Path,default=setup/'lod-server-support-neoforge-dh-dev-mc1.21.1.jar')
+-p.add_argument('--fixture',type=Path,default=setup/'lss-dh-live-fixture-test-only.jar')
++p.add_argument('--artifact',type=Path,required=True)
++p.add_argument('--fixture',type=Path,required=True)
+ p.add_argument('--dh',type=Path,default=setup/'DistantHorizons-3.3.3-1.21.1-fabric-neoforge.jar')
+ p.add_argument('--base',type=Path,default=setup/'private-tests')
+ p.add_argument('--scenario',choices=['lifecycle','menu','absence','content'],default='lifecycle')
+-p.add_argument('--build',type=Path,default=Path('/tmp/lss-dh-neo-build'))
++p.add_argument('--build',type=Path,required=True)
++p.add_argument('--verification',type=Path,required=True)
+ a=p.parse_args()
+-cp=str(a.build/'common/build/libs/common-0.16.0.jar')
++def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
++verify=json.loads(a.verification.read_text());receipt=json.loads(a.fixture.with_suffix('.receipt.json').read_text())
++if not verify.get('normal_build_passed') or verify.get('candidate_artifact_sha256')!=sha(a.artifact) or verify.get('fixture_sha256')!=sha(a.fixture):raise ValueError('Candidate/fixture does not match normal-build verification receipt')
++if receipt['production_artifact_sha256']!=sha(a.artifact) or receipt['fixture_sha256']!=sha(a.fixture) or Path(receipt['build']).resolve()!=a.build.resolve():raise ValueError('Fixture ABI/build provenance mismatch')
++for path,digest in receipt['sources'].items():
++ if sha(root/'test-fixtures/dh-live'/path)!=digest:raise ValueError('Fixture sources changed since compilation: '+path)
++source_manifest=a.verification.parent/'source-manifest.json';test_manifest=a.verification.parent/'test-source-manifest.json'
++if sha(source_manifest)!=verify['source_manifest_sha256'] or sha(test_manifest)!=verify['test_source_manifest_sha256']:raise ValueError('Source manifest hash mismatch')
++for path,digest in json.loads(test_manifest.read_text()).items():
++ if sha(root/path)!=digest:raise ValueError('Test/rig sources changed since verification binding: '+path)
++production=json.loads(source_manifest.read_text())
++for path,digest in production.items():
++ if sha(root/path)!=digest or sha(a.build/path)!=digest:raise ValueError('Production source differs from candidate build: '+path)
++cp=str(a.build/'common/build/libs'/('common-'+verify['build_version']+'.jar'))
++if not Path(cp).is_file():raise ValueError('Missing matching common artifact')
+ for module in ['org.slf4j/slf4j-api','com.google.code.gson/gson']:
+  cp+=':'+str(next((Path('/home/vox/.gradle/caches/modules-2/files-2.1')/module).rglob('*.jar')))
+ env=os.environ.copy();env['LSS_SETTINGS_CLASSPATH']=cp;env['JAVA_HOME']='/usr/lib/jvm/java-21-openjdk-amd64'
+ cmd=['python3',str(root/'test-fixtures/dh-live/prepare.py'),'--artifact',str(a.artifact),'--fixture',str(a.fixture),'--dh',str(a.dh),'--base',str(a.base),'--scenario',a.scenario]
+-p=subprocess.run(cmd,env=env,check=True,text=True,capture_output=True)
++p=subprocess.run(cmd,env=env,text=True,capture_output=True)
++if p.returncode:
++ a.base.mkdir(parents=True,exist_ok=True)
++ failure=a.base/'preparation-failure.log';failure.write_text(p.stderr)
++ raise RuntimeError('Private preparation failed; see '+str(failure))
+ print(p.stdout,flush=True);a.base.mkdir(parents=True,exist_ok=True);(a.base/'private-run-path.txt').write_text(p.stdout.strip()+'\n')
+ subprocess.run(['python3',str(root/'test-fixtures/dh-live/run.py'),p.stdout.strip()],check=True)
+--- /dev/null
++++ b/test-fixtures/dh-live/fixture-tests.gradle
+@@ -0,0 +1,7 @@
++// Separate observer tests; these sources never enter production jars.
++gradle.projectsEvaluated {
++    def fabric = gradle.rootProject.project(':fabric')
++    def fixture = new File(initscript.sourceFile.parentFile, '.')
++    fabric.sourceSets.test.java.srcDir(new File(fixture, 'src'))
++    fabric.sourceSets.test.java.srcDir(new File(fixture, 'tests'))
++}
+--- a/test-fixtures/dh-live/prepare.py
++++ b/test-fixtures/dh-live/prepare.py
+@@ -26,12 +26,15 @@
+  dest=run/t;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(f,dest)
+ profile={'components':[{'uid':'org.lwjgl3','version':'3.3.3'},{'uid':'net.minecraft','version':'1.21.1'},{'uid':'net.neoforged','version':'21.1.248'}]}
+ (runtime:={"scenario":a.scenario,"launcher_inputs":launcher_inputs(context,profile),"source_inputs":[{'target':t,'sha256':hashlib.file_digest(f.open('rb'),'sha256').hexdigest()} for f,t in inputs]})
++if a.scenario=='content':
++ hashes={item['target']:item['sha256'] for item in runtime['source_inputs']}
++ if hashes['server/mods/lod-server-support-neoforge.jar']!=hashes['instances/dh-neoforge/minecraft/mods/lod-server-support-neoforge.jar']:raise ValueError('Client/server candidate hash mismatch')
+ (run/'runtime.json').write_text(json.dumps(runtime,indent=2))
+ instance=run/'instances/dh-neoforge';game=instance/'minecraft';(game/'config').mkdir(parents=True,exist_ok=True)
+ (instance/'mmc-pack.json').write_text(json.dumps({'formatVersion':1,'components':profile['components']}))
+ (instance/'instance.cfg').write_text('[General]\nInstanceType=OneSix\nname=DH NeoForge private verification\nOverrideJavaLocation=true\nJavaPath=/usr/lib/jvm/java-21-openjdk-amd64/bin/java\nOverrideJavaArgs=true\nJvmArgs=-XX:ActiveProcessorCount=4 -Dlss.rig.runId='+run.name+' -Dlss.rig.scenario='+a.scenario+' -Dlss.rig.initialEndpoint=[::1]:25586 -Dlss.rig.captureDir='+str(run/'captures')+'\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc=3072\nOverrideWindow=true\nMinecraftWinWidth=960\nMinecraftWinHeight=540\nLaunchMaximized=false\nOverrideCommands=true\nPreLaunchCommand=\nPostExitCommand=\nWrapperCommand=\n')
+ (game/'options.txt').write_text('maxFps:30\nrenderDistance:4\nsimulationDistance:5\npauseOnLostFocus:false\nenableVsync:false\nguiScale:2\nonboardAccessibility:false\n')
+-(game/'config/lss-client-config.yaml').write_text(render({'lod.source':'lss' if a.scenario=='content' else 'distant_horizons','lod.receive':True,'lod.dh.profile':'official_16','lod.dh.refresh_seconds':0,'lod.distance_chunks':40 if a.scenario=='absence' else 32,'integrations.xaero_map.enabled':False},side='client'))
++(game/'config/lss-client-config.yaml').write_text(render({'lod.source':'lss' if a.scenario=='content' else 'distant_horizons','lod.receive':True,'lod.dh.profile':'official_16','lod.dh.refresh_seconds':0,'lod.distance_chunks':40 if a.scenario=='absence' else 12 if a.scenario=='content' else 32,'integrations.xaero_map.enabled':False},side='client'))
+ (run/'server/eula.txt').write_text('eula=true\n')
+ if a.scenario=='absence':
+  (run/'server/config').mkdir(exist_ok=True)
+--- a/test-fixtures/dh-live/run.py
++++ b/test-fixtures/dh-live/run.py
+@@ -34,15 +34,19 @@
+   monitor.check();time.sleep(.5)
+  server.stdin.write('gamerule doMobSpawning false\ntime set noon\nweather clear\n');server.stdin.flush()
+  if json.loads((run/'runtime.json').read_text())['scenario']=='content':
+-  server.stdin.write('execute in lssfixture:tall run forceload add -192 0 -129 63\nexecute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:red_concrete\nexecute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:blue_concrete\nsave-all flush\n');server.stdin.flush()
++  seed_start=len((run/'server.log').read_text(errors='replace'))
++  server.stdin.write('execute in lssfixture:tall run forceload add -192 0 -129 63\nexecute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:red_concrete\nexecute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:blue_concrete\nexecute in lssfixture:tall run fill -192 340 0 -129 340 63 minecraft:gold_block\nsave-all flush\n');server.stdin.flush()
+   deadline=time.monotonic()+60
+-  while 'Successfully filled 8192 block(s)' not in (run/'server.log').read_text(errors='replace'):
++  while True:
++   seeded=(run/'server.log').read_text(errors='replace')[seed_start:]
++   if seeded.count('Successfully filled 8192 block(s)')==2 and 'Successfully filled 4096 block(s)' in seeded and 'Marked 16 chunks' in seeded and 'Saved the game' in seeded:break
+    if server.poll() is not None or time.monotonic()>deadline:raise TimeoutError('Custom-height terrain seeding')
+    monitor.check();time.sleep(.5)
+  clientlog=(run/'client.log').open('w')
+  client=subprocess.Popen([sys.executable,str(ROOT/'tools/rig/launch_prism.py'),'--context','/home/vox/.local/share/lss-rig-prism-auth','--run',str(run),'--java','/usr/lib/jvm/java-21-openjdk-amd64/bin/java','--prism','/home/vox/.local/bin/prismlauncher','--instance','dh-neoforge'],cwd=run/'client',env=env,stdout=clientlog,stderr=subprocess.STDOUT,start_new_session=True);children.append(client)
+  (run/'evidence/client-owner.json').write_text(json.dumps(identity(client.pid)))
+- deadline=time.monotonic()+660;positioned=False;result=run/'instances/dh-neoforge/minecraft/dh-result.json'
++ content=json.loads((run/'runtime.json').read_text())['scenario']=='content'
++ deadline=time.monotonic()+(1860 if content else 660);positioned=False;handled=set();result=run/'instances/dh-neoforge/minecraft/dh-result.json'
+  while not result.exists():
+   if client.poll() is not None:raise RuntimeError('Private client exited before result')
+   if server.poll() is not None:raise RuntimeError('Server died during client verification')
+@@ -50,7 +54,21 @@
+   if not positioned:
+    log=(run/'server.log').read_text(errors='replace');joined=re.findall(r'([A-Za-z0-9_]{1,16})\[.*?\] logged in with entity id',log)
+    if joined:
+-    player=joined[-1];server.stdin.write('op '+player+'\ntp '+player+' 0 100 0 90 15\n');server.stdin.flush();positioned=True
++    player=joined[-1];server.stdin.write('op '+player+'\n'+('' if content else 'tp '+player+' 0 100 0 90 15\n'));server.stdin.flush();positioned=True
++  command=run/'instances/dh-neoforge/minecraft/dh-server-command.json'
++  if content and command.exists():
++   change=json.loads(command.read_text())
++   if change['id'] not in handled:
++    # Commands come only from this run-owned fixture; never another server/world.
++    marker=len((run/'server.log').read_text(errors='replace'))
++    server.stdin.write('\n'.join(change['commands'])+'\n');server.stdin.flush()
++    edit_deadline=time.monotonic()+60
++    while 'Saved the game' not in (run/'server.log').read_text(errors='replace')[marker:]:
++     if server.poll() is not None or time.monotonic()>edit_deadline:raise TimeoutError('Source-switch save')
++     monitor.check();time.sleep(.5)
++    time.sleep(3) # allow the official server's asynchronous save-to-LOD update
++    ack=command.parent/'dh-server-ack.tmp';ack.write_text(json.dumps({'id':change['id'],'saved':True}));ack.replace(command.parent/'dh-server-ack.json')
++    handled.add(change['id'])
+   monitor.check();time.sleep(1)
+  print(result.read_text())
+  if not json.loads(result.read_text())['pass']:raise RuntimeError('Live proof failed')
+--- a/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java
+@@ -3,7 +3,6 @@
+ import dev.vox.lss.api.LSSApi;
+ import dev.vox.lss.api.VoxelColumnData;
+ import dev.vox.lss.common.dh.*;
+-import dev.vox.lss.config.LSSClientConfig;
+ import dev.vox.lss.networking.client.*;
+ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.gui.screens.TitleScreen;
+@@ -23,67 +22,147 @@
+ import java.util.concurrent.atomic.*;
+ import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
+ 
+-/** Independent known blocks at both ends of a custom height; storage reads are test-only. */
++/** Independent source-specific known blocks; internal Voxy storage reads stay test-only. */
+ public final class ContentProbe {
+     static final ResourceKey<Level> DIM=ResourceKey.create(Registries.DIMENSION,ResourceLocation.parse("lssfixture:tall"));
+     static final DhPosition TILE=new DhPosition(6,-3,0);
+     static final List<BlockPos> SAMPLES=new ArrayList<>();
+     static { for(int x=-192;x<=-129;x+=7)for(int z=0;z<=63;z+=7)SAMPLES.add(new BlockPos(x,350,z)); }
+     static final Set<Long> nativeColumns=ConcurrentHashMap.newKeySet();
+-    static final AtomicLong nativeDeliveries=new AtomicLong(),targetConditional=new AtomicLong(),targetChanged=new AtomicLong();
+-    static final Map<Integer,Long> targetRequests=new ConcurrentHashMap<>();
++    static final AtomicLong nativeDeliveries=new AtomicLong(),targetConditional=new AtomicLong();
++    static final AtomicReference<Throwable> callbackFailure=new AtomicReference<>();
++    static final Map<Integer,Ask> requests=new ConcurrentHashMap<>();
++    static final List<Reply> replies=new CopyOnWriteArrayList<>();
+     static final Set<Integer> captureBuffers=ConcurrentHashMap.newKeySet();
++    static final ThreadLocal<Reply> decoding=new ThreadLocal<>();
+     static final AtomicInteger captureSequence=new AtomicInteger();
+-    static final AtomicReference<Throwable> callbackFailure=new AtomicReference<>();
+-    static int phase; static long changed=System.nanoTime(),oldStamp,newStamp,nativeBaseline,dhBaseline,lastStatus;
++    record Ask(Object epoch,DhMessage.Request request,boolean target) {}
++    static final class Reply {
++        final Ask ask;final int id;final boolean changed;final AtomicInteger columns=new AtomicInteger();
++        volatile long stamp;
++        Reply(Ask ask,int id,boolean changed) {this.ask=ask;this.id=id;this.changed=changed;}
++    }
++    static volatile int phase;
++    static long changed=System.nanoTime(),deadline=changed+240_000_000_000L,oldStamp,newStamp,nativeBaseline,dhBaseline,lastStatus,lastRead,lastTeleport,idleSince,lastRequests=-1;
+     static Object dhEpoch,firstConnection;
+-    static String bucket;
++    static String bucket,edit;
+     static CompletableFuture<?> saved;
+     static long warmedEntries,emptyEntries;
++    static int completedTiles;
+     static boolean registered;
+ 
+-    public static void sent(DhMessage message) {
+-        if(message instanceof DhMessage.Request r && r.position().equals(TILE) && r.timestamp()!=null && r.timestamp()>0) {
+-            targetConditional.incrementAndGet();targetRequests.put(r.requestId(),r.timestamp());
+-        }
+-    }
+-    public static void received(byte[] bytes) throws Exception {
+-        // Retain only this known tile's terrain frames, excluding opaque control
+-        // identities. Selection reads the first DTO position; it does not decode
+-        // or allocate a second copy of every incoming terrain message.
+-        if(Minecraft.getInstance().level!=null && Minecraft.getInstance().level.dimension().equals(DIM)
+-                && bytes.length>=13 && bytes[2]==0 && bytes[3]==10) {
+-            var raw=java.nio.ByteBuffer.wrap(bytes);int buffer=raw.getInt(4),length=raw.getInt(8);
+-            if(length>=8 && length==bytes.length-13 && bytes[bytes.length-1]==1 && raw.getLong(12)==TILE.packed())captureBuffers.add(buffer);
+-            if(captureBuffers.contains(buffer))capture(bytes);
+-        }
+-        if(bytes.length<4 || bytes[2]!=0 || bytes[3]!=8)return;
+-        var response=(DhMessage.Response)new DhProtocolCodec(DhProfile.OFFICIAL_16,DhLimits.DEFAULT).decode(bytes);
+-        if(response.bufferId()!=null && captureBuffers.remove(response.bufferId()))capture(bytes);
+-        if(targetRequests.remove(response.requestId())!=null && response.bufferId()!=null)targetChanged.incrementAndGet();
+-    }
+-    static void capture(byte[] bytes) throws Exception {
++    static void failure(Throwable e) {callbackFailure.compareAndSet(null,e);}
++    static synchronized void telemetry(String event,int id,DhPosition p,Long stamp,String outcome) throws Exception {
++        var row=new com.google.gson.JsonObject();row.addProperty("event",event);row.addProperty("request_id",id);
++        if(p!=null) {row.addProperty("detail",p.detail());row.addProperty("x",p.x());row.addProperty("z",p.z());}
++        if(stamp!=null)row.addProperty("timestamp",stamp);
++        row.addProperty("wall_time",java.time.Instant.now().toString());row.addProperty("monotonic_nanos",System.nanoTime());row.addProperty("phase",phase);row.addProperty("outcome",outcome);
++        java.nio.file.Files.writeString(Minecraft.getInstance().gameDirectory.toPath().resolve("dh-requests.jsonl"),row+"\n",java.nio.file.StandardOpenOption.CREATE,java.nio.file.StandardOpenOption.APPEND);
++    }
++    public static void sent(Object owner,DhMessage message) {
++        try {
++            if(!(message instanceof DhMessage.Request r))return;
++            Object epoch=Probe.field(DhClientSession.class,"session");
++            if(epoch!=owner || !(boolean)Probe.field(owner,"active"))return;
++            Probe.requests.incrementAndGet();
++            var level=(net.minecraft.client.multiplayer.ClientLevel)Probe.field(epoch,"level");
++            boolean target=r.position().equals(TILE) && level.dimension().equals(DIM);
++            requests.put(r.requestId(),new Ask(epoch,r,target));
++            telemetry("request",r.requestId(),r.position(),r.timestamp(),"");
++            if(target) {
++                if(r.timestamp()!=null && r.timestamp()>0)targetConditional.incrementAndGet();
++                // Level keys are opaque. Preserve all other request fields and
++                // explicitly label this local reconstruction in capture metadata.
++                capture("request",new DhProtocolCodec(DhProfile.OFFICIAL_16,DhLimits.DEFAULT).encode(new DhMessage.Request(r.requestId(),DIM.location().toString(),r.position(),r.timestamp())));
++            }
++        } catch(Throwable e) {failure(e);}
++    }
++    public static void received(byte[] bytes) {
++        decoding.remove();
++        try {
++            var level=Minecraft.getInstance().level;
++            if(level!=null && level.dimension().equals(DIM) && bytes.length>=21 && bytes[2]==0 && bytes[3]==10) {
++                var raw=java.nio.ByteBuffer.wrap(bytes);int buffer=raw.getInt(4),length=raw.getInt(8);
++                if(length==bytes.length-13 && bytes[bytes.length-1]==1 && raw.getLong(12)==TILE.packed())captureBuffers.add(buffer);
++                if(captureBuffers.contains(buffer))capture("split",bytes);
++            }
++            if(bytes.length<4 || bytes[2]!=0 || bytes[3]!=8)return;
++            var response=(DhMessage.Response)new DhProtocolCodec(DhProfile.OFFICIAL_16,DhLimits.DEFAULT).decode(bytes);
++            var ask=requests.remove(response.requestId());
++            if(ask==null)return;
++            boolean conditional=ask.request.timestamp()!=null && ask.request.timestamp()>0;
++            telemetry("reply",response.requestId(),ask.request.position(),ask.request.timestamp(),response.bufferId()!=null?"changed":conditional?"unchanged":"empty");
++            if(!ask.target)return;
++            capture("response",bytes);if(response.bufferId()!=null)captureBuffers.remove(response.bufferId());
++            Object epoch=Probe.field(DhClientSession.class,"session");
++            if(epoch!=ask.epoch)return;
++            var pending=(Map<?,?>)Probe.field(epoch,"pending");
++            if(!pending.containsKey(response.requestId()))return;
++            var reply=new Reply(ask,response.requestId(),response.bufferId()!=null);replies.add(reply);decoding.set(reply);
++        } catch(Throwable e) {failure(e);}
++    }
++    static synchronized void capture(String type,byte[] bytes) throws Exception {
+         int sequence=captureSequence.incrementAndGet();
+-        if(sequence>64)throw new IllegalStateException("Known-tile capture bound exceeded");
+-        java.nio.file.Files.write(java.nio.file.Path.of(System.getProperty("lss.rig.captureDir"),String.format("target-%04d.bin",sequence)),bytes);
++        if(sequence>256)throw new IllegalStateException("Known-tile capture bound exceeded");
++        java.nio.file.Files.write(java.nio.file.Path.of(System.getProperty("lss.rig.captureDir"),String.format("target-%04d-%s.bin",sequence,type)),bytes);
++    }
++    public static void converted(DhTerrainTile tile,int column,VoxelColumnData data) {
++        try {
++            var reply=decoding.get();if(reply==null || !tile.position().equals(TILE))return;
++            int stage=phase==5?2:1;
++            int cx=TILE.x()*4+column/4,cz=TILE.z()*4+column%4;
++            for(var p:SAMPLES)if(p.getX()>>4==cx && p.getZ()>>4==cz)
++                for(int y:new int[]{350,-118,340})if(state(data,p.getX()&15,y,p.getZ()&15)!=expected(stage,y))return;
++            reply.stamp=tile.modifiedTimestamp();reply.columns.getAndUpdate(mask->mask | 1<<column);
++        } catch(Throwable e) {failure(e);}
++    }
++    static BlockState state(VoxelColumnData data,int x,int y,int z) {
++        for(var s:data.sections())if(s.sectionY()==y>>4)return s.section().getBlockState(x,y&15,z);
++        return null; // missing data is not evidence of air
++    }
++    static BlockState expected(int stage,int y) {
++        if(y==340)return Blocks.GOLD_BLOCK.defaultBlockState();
++        if(y==-118)return (stage==0?Blocks.BLUE_CONCRETE:stage==1?Blocks.CYAN_CONCRETE:Blocks.PURPLE_CONCRETE).defaultBlockState();
++        return (stage==0?Blocks.RED_CONCRETE:stage==1?Blocks.LIME_CONCRETE:stage==2?Blocks.AIR:Blocks.YELLOW_CONCRETE).defaultBlockState();
+     }
+     static void nativeColumn(net.minecraft.client.multiplayer.ClientLevel level,ResourceKey<Level> dimension,int x,int z,VoxelColumnData data) {
+         try {
+             if(DhClientSession.selected())throw new IllegalStateException("Native column delivered while DH owns the connection");
+             if(dimension.equals(DIM) && x>=-12 && x<=-9 && z>=0 && z<=3) {
+-                nativeDeliveries.incrementAndGet();nativeColumns.add(net.minecraft.world.level.ChunkPos.asLong(x,z));
+-            }
+-        } catch(Throwable e) { callbackFailure.compareAndSet(null,e); }
+-    }
+-    static void reconnect() {
+-        var mc=Minecraft.getInstance();mc.level.disconnect();mc.disconnect();
++                nativeDeliveries.incrementAndGet();int stage=phase>=6?3:0;
++                for(var p:SAMPLES)if(p.getX()>>4==x && p.getZ()>>4==z)
++                    for(int y:new int[]{350,-118,340})if(state(data,p.getX()&15,y,p.getZ()&15)!=expected(stage,y))return;
++                nativeColumns.add(net.minecraft.world.level.ChunkPos.asLong(x,z));
++            }
++        } catch(Throwable e) {failure(e);}
++    }
++    static void disconnectAndEdit(String name,List<String> commands) throws Exception {
++        var mc=Minecraft.getInstance();mc.level.disconnect();mc.disconnect();edit=name;
++        var json=new com.google.gson.JsonObject();json.addProperty("id",name);var list=new com.google.gson.JsonArray();commands.forEach(list::add);list.add("save-all flush");json.add("commands",list);
++        var command=mc.gameDirectory.toPath().resolve("dh-server-command.json");
++        var temporary=command.resolveSibling("dh-server-command.tmp");
++        java.nio.file.Files.writeString(temporary,json.toString());
++        java.nio.file.Files.move(temporary,command,java.nio.file.StandardCopyOption.ATOMIC_MOVE,java.nio.file.StandardCopyOption.REPLACE_EXISTING);
++        requests.clear();captureBuffers.clear();decoding.remove();
++    }
++    static boolean reconnectAfterEdit() throws Exception {
++        var mc=Minecraft.getInstance();var ack=mc.gameDirectory.toPath().resolve("dh-server-ack.json");
++        if(!java.nio.file.Files.exists(ack))return false;
++        var json=com.google.gson.JsonParser.parseString(java.nio.file.Files.readString(ack)).getAsJsonObject();
++        if(!json.get("id").getAsString().equals(edit))return false;
+         String addr=System.getProperty("lss.rig.initialEndpoint");
+-        ConnectScreen.startConnecting(new TitleScreen(),mc,ServerAddress.parseString(addr),new ServerData("DH content test",addr,ServerData.Type.OTHER),false,null);
+-    }
+-    static void teleport() { Minecraft.getInstance().getConnection().sendCommand("execute in lssfixture:tall run tp @s 0 100 0"); }
+-    static boolean knownBlocks(boolean removed) throws Exception {
++        ConnectScreen.startConnecting(new TitleScreen(),mc,ServerAddress.parseString(addr),new ServerData("DH content test",addr,ServerData.Type.OTHER),false,null);return true;
++    }
++    static void advance(int next,long now,long seconds) {phase=next;changed=now;deadline=now+seconds*1_000_000_000L;lastRead=0;idleSince=0;}
++    static void teleport(long now) {
+         var mc=Minecraft.getInstance();
+-        if(!mc.level.dimension().equals(DIM))return false;
++        if(mc.player!=null && mc.player.hasPermissions(4) && now-lastTeleport>=1_000_000_000L) {
++            mc.getConnection().sendCommand("execute in lssfixture:tall run tp @s 0 100 0");lastTeleport=now;
++        }
++    }
++    static boolean knownBlocks(int stage,long now) throws Exception {
++        if(now-lastRead<1_000_000_000L)return false;lastRead=now;
++        var mc=Minecraft.getInstance();if(!mc.level.dimension().equals(DIM))return false;
+         if(mc.level.getMinBuildHeight()!=-128 || mc.level.getHeight()!=512)throw new IllegalStateException("Custom height was not negotiated");
+         var s=Probe.field(DhClientSession.class,"session");
+         if(DhClientSession.selected()) {
+@@ -92,89 +171,106 @@
+             for(BlockPos p:SAMPLES)if(!policy.eligible(p.getX()>>4,p.getZ()>>4))throw new IllegalStateException("Fixture column has vanilla authority");
+         }
+         Class<?> identifier=Class.forName("me.cortex.voxy.commonImpl.WorldIdentifier");
+-        Object engine=identifier.getMethod("getNullable").invoke(identifier.getMethod("of",Level.class).invoke(null,mc.level));
+-        if(engine==null)return false;
++        Object engine=identifier.getMethod("getNullable").invoke(identifier.getMethod("of",Level.class).invoke(null,mc.level));if(engine==null)return false;
+         Class<?> ec=Class.forName("me.cortex.voxy.common.world.WorldEngine"),sc=Class.forName("me.cortex.voxy.common.world.WorldSection"),mapperType=Class.forName("me.cortex.voxy.common.world.other.Mapper");
+         Object mapper=ec.getMethod("getMapper").invoke(engine);
+         Method acquire=ec.getMethod("acquireIfExists",int.class,int.class,int.class,int.class),copy=sc.getMethod("copyData"),release=sc.getMethod("release"),getId=mapperType.getMethod("getBlockId",long.class),getState=mapperType.getMethod("getBlockStateFromBlockId",int.class);
+         Map<String,long[]> snapshots=new HashMap<>();
+-        for(BlockPos high:SAMPLES)for(int y:new int[]{350,-118}) {
+-            BlockPos p=new BlockPos(high.getX(),y,high.getZ());
+-            String key=(p.getX()>>5)+":"+(y>>5)+":"+(p.getZ()>>5);
++        for(BlockPos high:SAMPLES)for(int y:new int[]{350,-118,340}) {
++            BlockPos p=new BlockPos(high.getX(),y,high.getZ());String key=(p.getX()>>5)+":"+(y>>5)+":"+(p.getZ()>>5);
+             long[] values=snapshots.get(key);
+             if(values==null) {
+-                Object section=acquire.invoke(engine,0,p.getX()>>5,y>>5,p.getZ()>>5);
+-                if(section==null)values=new long[32768];
+-                else { try { values=(long[])copy.invoke(section); }finally {release.invoke(section);} }
+-                snapshots.put(key,values);
++                Object section=acquire.invoke(engine,0,p.getX()>>5,y>>5,p.getZ()>>5);if(section==null)return false;
++                try {values=(long[])copy.invoke(section);}finally {release.invoke(section);}snapshots.put(key,values);
+             }
+             long value=values[((y&31)<<10)|((p.getZ()&31)<<5)|(p.getX()&31)];
+-            BlockState actual=(BlockState)getState.invoke(mapper,(int)getId.invoke(null,value));
+-            BlockState want=y==-118?Blocks.BLUE_CONCRETE.defaultBlockState():removed?Blocks.AIR.defaultBlockState():Blocks.RED_CONCRETE.defaultBlockState();
+-            if(actual!=want)return false;
++            if(getState.invoke(mapper,(int)getId.invoke(null,value))!=expected(stage,y))return false;
+         }
+         return true;
++    }
++    static Reply acceptedReply(Object epoch,long stamp,boolean conditional) throws Exception {
++        var pending=(Map<?,?>)Probe.field(epoch,"pending");
++        for(var r:replies)if(r.ask.epoch==epoch && r.changed && r.columns.get()==0xffff && r.stamp==stamp && !pending.containsKey(r.id)
++                && (!conditional || r.ask.request.timestamp()!=null && r.ask.request.timestamp()==oldStamp))return r;
++        return null;
++    }
++    static boolean idle(Object s,long now) throws Exception {
++        var policy=(DhSessionPolicy)Probe.field(s,"policy");var cfg=(DhMessage.SessionConfig)Probe.field(s,"config");
++        int range=DhClientSession.diagnostics().effectiveRange(),count=0;
++        var player=Minecraft.getInstance().player.chunkPosition();int cx=Math.floorDiv(player.x,4),cz=Math.floorDiv(player.z,4),rings=(range+3)/4;
++        for(int dx=-rings;dx<=rings;dx++)for(int dz=-rings;dz<=rings;dz++) {
++            var p=new DhPosition(6,cx+dx,cz+dz);int x=p.x()*4,z=p.z()*4;
++            if(Math.max(Math.abs(x+2-player.x),Math.abs(z+2-player.z))>range || !DhSessionPolicy.inBorder(DhProfile.OFFICIAL_16,p,cfg.centerX(),cfg.centerZ(),cfg.borderRadius()))continue;
++            boolean eligible=false;for(int ox=0;ox<4;ox++)for(int oz=0;oz<4;oz++)eligible|=policy.eligible(x+ox,z+oz);if(!eligible)continue;
++            if(policy.acquisitionPriority(p)!=2 && policy.due(p,now)) {idleSince=0;return false;}
++            if(policy.acquisitionPriority(p)==2)count++;
++        }
++        long requested=Probe.requests.get();
++        if(!((Map<?,?>)Probe.field(s,"pending")).isEmpty() || requested!=lastRequests) {lastRequests=requested;idleSince=0;return false;}
++        completedTiles=count;if(idleSince==0)idleSince=now;return now-idleSince>=5_000_000_000L;
+     }
+     public static void tick(long now) throws Exception {
+         var mc=Minecraft.getInstance();
+-        if(now-lastStatus>1_000_000_000L) {
+-            lastStatus=now;Probe.write("dh-content-status.txt",phase+" "+DhClientSession.status()+"; native="+nativeDeliveries+" target refresh="+targetConditional+" changed="+targetChanged);
+-        }
+-        if(now-changed>240_000_000_000L)throw new IllegalStateException("Content phase "+phase+" timed out; "+DhClientSession.status());
+-        if(callbackFailure.get()!=null)throw new IllegalStateException("Native observer failure",callbackFailure.get());
+-        if(!registered) { LSSApi.registerColumnConsumer(ContentProbe::nativeColumn);registered=true; }
++        if(callbackFailure.get()!=null)throw new IllegalStateException("Content observer failure",callbackFailure.get());
++        if(now>deadline)throw new IllegalStateException("Content phase "+phase+" timed out; "+DhClientSession.status());
++        if(now-lastStatus>1_000_000_000L) {lastStatus=now;Probe.write("dh-content-status.txt",phase+" "+DhClientSession.status()+"; native="+nativeDeliveries+" target refresh="+targetConditional);}
++        if(phase==3 || phase==6) {if(reconnectAfterEdit())advance(phase==3?8:9,now,240);return;}
++        if((phase==5 || phase==10) && (mc.level==null || mc.getConnection()==null || !DhClientSession.running()
++                || Probe.field(DhClientSession.class,"session")!=dhEpoch))
++            throw new IllegalStateException("Established content epoch became inactive: "+DhClientSession.status());
++        if(mc.level==null || mc.player==null)return;
++        if(!registered) {LSSApi.registerColumnConsumer(ContentProbe::nativeColumn);registered=true;}
+         mc.player.getAbilities().flying=true;mc.player.onUpdateAbilities();mc.player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
++        if((phase==1 || phase==4 || phase==7) && !mc.level.dimension().equals(DIM)) {teleport(now);return;}
++        if(phase==4 || phase==5 || phase==10) {
++            if(!DhClientSession.selected() || !DhClientSession.running())throw new IllegalStateException("DH content session inactive: "+DhClientSession.status());
++            if(ClientNetGlue.hasReceivedSessionConfig() || ClientNetGlue.getRequestManager()!=null || nativeDeliveries.get()!=nativeBaseline)
++                throw new IllegalStateException("Native terrain pipeline became active in DH mode");
++        }
+         if(phase==0 && ClientNetGlue.hasReceivedSessionConfig()) {
+-            if(DhClientSession.selected() || Probe.requests.get()!=0)throw new IllegalStateException("Initial native connection sent DH work");
+-            firstConnection=mc.getConnection();teleport();phase=1;changed=now;
+-        } else if(phase==1 && nativeColumns.size()==16 && now-changed>5_000_000_000L && knownBlocks(false)) {
+-            // Preserve real native server stamps, then prove DH invalidates that warm disk bucket.
+-            var manager=ClientNetGlue.getRequestManager();bucket=(String)Probe.field(manager,"serverAddress");
+-            var stamps=new Long2LongOpenHashMap();
+-            for(long p:nativeColumns) {
+-                long stamp=manager.getColumnTimestamp((int)p,(int)(p>>32));
+-                if(stamp<=0)return;stamps.put(p,stamp);
+-            }
+-            saved=CompletableFuture.runAsync(()->ColumnCacheStore.save(bucket,DIM,stamps));
+-            phase=2;changed=now;
++            if(DhClientSession.selected() || Probe.requests.get()!=0 || ClientNetGlue.getSessionVersion()!=20)throw new IllegalStateException("Initial native v20 premise failed");
++            firstConnection=mc.getConnection();advance(1,now,240);teleport(now);
++        } else if(phase==1 && nativeColumns.size()==16 && knownBlocks(0,now)) {
++            var manager=ClientNetGlue.getRequestManager();bucket=(String)Probe.field(manager,"serverAddress");var stamps=new Long2LongOpenHashMap();
++            for(long p:nativeColumns) {long stamp=manager.getColumnTimestamp((int)p,(int)(p>>32));if(stamp<=0)return;stamps.put(p,stamp);}
++            saved=CompletableFuture.runAsync(()->ColumnCacheStore.save(bucket,DIM,stamps));advance(2,now,240);
+         } else if(phase==2 && saved.isDone()) {
+-            saved.join();warmedEntries=ColumnCacheStore.load(bucket,DIM).size();
+-            if(warmedEntries<16)throw new IllegalStateException("Warm native cache premise failed");
+-            nativeBaseline=nativeDeliveries.get();Probe.sodiumApply(Map.of("lss:lod_source",1));
+-            if(DhClientSession.selected())throw new IllegalStateException("Source changed before reconnect");
+-            reconnect();phase=3;changed=now;
+-        } else if(phase==3 && DhClientSession.selected() && mc.getConnection()!=firstConnection) {
+-            if(ClientNetGlue.hasReceivedSessionConfig() || ClientNetGlue.getRequestManager()!=null)throw new IllegalStateException("DH joined native terrain pipeline");
+-            teleport();phase=4;changed=now;
+-        } else if(phase==4 && now-changed>5_000_000_000L && knownBlocks(false)) {
+-            dhEpoch=Probe.field(DhClientSession.class,"session");
+-            var limits=(DhMessage.SessionConfig)Probe.field(dhEpoch,"config");
+-            if(limits.plan()!=DhMessage.GeneratorPlan.DISABLED || limits.updates() || limits.generationDistance()!=0)
+-                throw new IllegalStateException("Content proof requires disabled generation and unsolicited updates");
+-            var policy=(DhSessionPolicy)Probe.field(dhEpoch,"policy");oldStamp=policy.timestamp(TILE);
+-            emptyEntries=ColumnCacheStore.load(bucket,DIM).size();
+-            if(emptyEntries!=0 || nativeDeliveries.get()!=nativeBaseline)throw new IllegalStateException("DH did not isolate/invalidate native stamps");
+-            Probe.write("dh-custom-height.json","{\"pass\":true,\"min_y\":-128,\"height\":512,\"high_y\":350,\"low_y\":-118,\"block_comparisons\":"+(2*SAMPLES.size())+",\"warm_native_entries\":"+warmedEntries+",\"entries_after_dh\":"+emptyEntries+"}");
+-            Probe.sodiumApply(Map.of("lss:dh_refresh",1));
++            saved.join();warmedEntries=ColumnCacheStore.load(bucket,DIM).size();if(warmedEntries<16)throw new IllegalStateException("Warm native cache premise failed");
++            nativeBaseline=nativeDeliveries.get();Probe.sodiumApply(Map.of("lss:lod_source",1));if(DhClientSession.selected())throw new IllegalStateException("Source changed before reconnect");
++            disconnectAndEdit("dh-colours",List.of("execute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:lime_concrete","execute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:cyan_concrete"));advance(3,now,240);
++        } else if(phase==8 && DhClientSession.selected() && mc.getConnection()!=firstConnection) {advance(4,now,240);teleport(now);
++        } else if(phase==4) {
++            var s=Probe.field(DhClientSession.class,"session");var limits=(DhMessage.SessionConfig)Probe.field(s,"config");if(limits==null)return;
++            if(limits.plan()!=DhMessage.GeneratorPlan.DISABLED || limits.updates() || limits.generationDistance()!=0 || !limits.synchronize() || limits.syncRate()<=0 || limits.syncDistance()<12)
++                throw new IllegalStateException("Content requires active full-range sync, disabled generation and disabled unsolicited updates");
++            var policy=(DhSessionPolicy)Probe.field(s,"policy");long stamp=policy.timestamp(TILE);
++            if(acceptedReply(s,stamp,false)==null || !idle(s,now) || !knownBlocks(1,now))return;
++            dhEpoch=s;oldStamp=stamp;emptyEntries=ColumnCacheStore.load(bucket,DIM).size();if(emptyEntries!=0)throw new IllegalStateException("DH did not invalidate native stamps");
++            Probe.write("dh-custom-height.json","{\"pass\":true,\"min_y\":-128,\"height\":512,\"block_comparisons\":300,\"source_specific_converted_columns\":16,\"warm_native_entries\":"+warmedEntries+",\"entries_after_dh\":"+emptyEntries+",\"acquisition_idle_seconds\":5,\"completed_tiles\":"+completedTiles+"}");
++            Probe.sodiumApply(Map.of("lss:dh_refresh",1));advance(10,now,30+completedTiles*10L+90);
++        } else if(phase==10) {
++            if(Probe.field(DhClientSession.class,"session")!=dhEpoch)throw new IllegalStateException("Unchanged proof crossed a session boundary");
++            var pending=(Map<?,?>)Probe.field(dhEpoch,"pending");
++            boolean unchanged=false;
++            for(var r:replies)if(r.ask.epoch==dhEpoch && !r.changed && r.ask.request.timestamp()!=null && r.ask.request.timestamp()==oldStamp && !pending.containsKey(r.id))unchanged=true;
++            var policy=(DhSessionPolicy)Probe.field(dhEpoch,"policy");
++            if(!unchanged || policy.refreshTimestamp(TILE)!=oldStamp || policy.due(TILE,now))return;
++            Probe.write("dh-unchanged.json","{\"pass\":true,\"owned_conditional_timestamp\":"+oldStamp+"}");
+             mc.getConnection().sendCommand("execute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:air");
+-            mc.getConnection().sendCommand("save-all flush");phase=5;changed=now;
++            mc.getConnection().sendCommand("execute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:purple_concrete");mc.getConnection().sendCommand("save-all flush");
++            advance(5,now,30+completedTiles*10L+90);
+         } else if(phase==5) {
+-            var s=Probe.field(DhClientSession.class,"session");
+-            if(s!=dhEpoch || mc.getConnection()==null)throw new IllegalStateException("Removal proof crossed a session boundary");
+-            newStamp=((DhSessionPolicy)Probe.field(s,"policy")).timestamp(TILE);
+-            if(newStamp<=oldStamp || targetChanged.get()==0 || now-changed<3_000_000_000L || !knownBlocks(true))return;
+-            Probe.write("dh-removal.json","{\"pass\":true,\"block_comparisons\":"+(2*SAMPLES.size())+",\"conditional_requests\":"+targetConditional+",\"changed_conditional_replies\":"+targetChanged+",\"old_timestamp\":"+oldStamp+",\"new_timestamp\":"+newStamp+",\"elapsed_ms\":"+(now-changed)/1_000_000L+",\"same_session\":true,\"low_terrain_retained\":true}");
+-            nativeColumns.clear();dhBaseline=Probe.requests.get();
+-            Probe.sodiumApply(Map.of("lss:lod_source",0));
+-            if(!DhClientSession.selected())throw new IllegalStateException("Source switched without reconnect");
+-            reconnect();phase=6;changed=now;
+-        } else if(phase==6 && !DhClientSession.selected() && ClientNetGlue.hasReceivedSessionConfig()) {
+-            Probe.retired(dhEpoch);teleport();phase=7;changed=now;
+-        } else if(phase==7 && nativeColumns.size()==16 && now-changed>5_000_000_000L && knownBlocks(true)) {
+-            if(Probe.requests.get()!=dhBaseline || Probe.field(DhClientSession.class,"session")!=null)throw new IllegalStateException("DH work continued in native mode");
+-            Probe.write("dh-native-switch.json","{\"pass\":true,\"native_protocol\":"+ClientNetGlue.getSessionVersion()+",\"native_columns\":"+nativeColumns.size()+",\"new_native_deliveries\":"+(nativeDeliveries.get()-nativeBaseline)+",\"retired_budget\":"+Probe.observedRetiredBytes+",\"dh_requests_stopped\":true,\"native_storage_comparisons\":"+(2*SAMPLES.size())+"}");
+-            Probe.write("dh-result.json","{\"pass\":true,\"custom_height\":true,\"refresh_after_removal\":true,\"warm_native_cache_invalidated\":true,\"native_lss_reconnect_and_terrain\":true}");
+-            Probe.done=true;mc.stop();
++            var s=Probe.field(DhClientSession.class,"session");if(s!=dhEpoch)throw new IllegalStateException("Removal crossed a session boundary");
++            newStamp=((DhSessionPolicy)Probe.field(s,"policy")).timestamp(TILE);var accepted=acceptedReply(s,newStamp,true);
++            if(newStamp<=oldStamp || accepted==null || !knownBlocks(2,now))return;
++            Probe.write("dh-removal.json","{\"pass\":true,\"block_comparisons\":300,\"conditional_requests\":"+targetConditional+",\"accepted_request_id\":"+accepted.id+",\"old_timestamp\":"+oldStamp+",\"new_timestamp\":"+newStamp+",\"elapsed_ms\":"+(now-changed)/1_000_000L+",\"same_session\":true,\"low_terrain_changed\":true,\"present_sections_with_sentinel\":true}");
++            nativeColumns.clear();dhBaseline=Probe.requests.get();Probe.sodiumApply(Map.of("lss:lod_source",0));if(!DhClientSession.selected())throw new IllegalStateException("Source switched without reconnect");
++            disconnectAndEdit("native-colours",List.of("execute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:yellow_concrete"));advance(6,now,240);
++        } else if(phase==9 && !DhClientSession.selected() && ClientNetGlue.hasReceivedSessionConfig()) {Probe.retired(dhEpoch);advance(7,now,240);teleport(now);
++        } else if(phase==7 && nativeColumns.size()==16 && knownBlocks(3,now)) {
++            if(ClientNetGlue.getSessionVersion()!=20 || Probe.requests.get()!=dhBaseline || Probe.field(DhClientSession.class,"session")!=null)throw new IllegalStateException("Native v20 switch-back ownership failed");
++            Probe.write("dh-native-switch.json","{\"pass\":true,\"native_protocol\":20,\"native_columns\":16,\"new_native_deliveries\":"+(nativeDeliveries.get()-nativeBaseline)+",\"retired_budget\":"+Probe.observedRetiredBytes+",\"dh_requests_stopped\":true,\"source_specific_storage_comparisons\":300}");
++            Probe.write("dh-result.json","{\"pass\":true,\"custom_height\":true,\"refresh_after_removal\":true,\"warm_native_cache_invalidated\":true,\"native_lss_reconnect_and_terrain\":true}");Probe.done=true;mc.stop();
+         }
+     }
+ }
+--- a/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java
+@@ -134,8 +134,8 @@
+             write("dh-result.json","{\"pass\":true,\"menu\":true,\"sodium_apply\":true,\"diagnostics_export\":true}");done=true;mc.stop();
+         }
+     }
+-    public static void sent(DhMessage message) {
+-        if(System.getProperty("lss.rig.scenario","").equals("content")) ContentProbe.sent(message);
++    public static void sent(Object owner,DhMessage message) {
++        if(System.getProperty("lss.rig.scenario","").equals("content")) {ContentProbe.sent(owner,message);return;}
+         if(message instanceof DhMessage.Request r) {
+             requests.incrementAndGet();
+             lastTerrainRequest=System.nanoTime();
+@@ -153,7 +153,7 @@
+         } else if(message instanceof DhMessage.Cancel c) conditional.remove(c.requestId());
+     }
+     public static void received(byte[] bytes) throws Exception {
+-        if(System.getProperty("lss.rig.scenario","").equals("content")) ContentProbe.received(bytes);
++        if(System.getProperty("lss.rig.scenario","").equals("content")) {ContentProbe.received(bytes);return;}
+         // Inspect only responses, avoiding duplicate terrain-fragment allocations.
+         if(bytes.length<4 || bytes[2]!=0 || bytes[3]!=8) return;
+         var response=(DhMessage.Response)new DhProtocolCodec(DhProfile.OFFICIAL_16,DhLimits.DEFAULT).decode(bytes);
+@@ -212,6 +212,7 @@
+     }
+     public static synchronized void converted(DhTerrainTile tile,int c,VoxelColumnData data) {
+         if(done) return;
++        if(System.getProperty("lss.rig.scenario","").equals("content")) {ContentProbe.converted(tile,c,data);return;}
+         if(!tile.world().sky()) for(var section:data.sections())
+             for(int y=0;y<16;y++) {
+                 if(section.skyLight()==null || section.skyLight().get(2,y,2)!=0)
+@@ -277,7 +278,7 @@
+         if(done || System.getProperty("lss.rig.runId","").isEmpty()) return;
+         var mc=Minecraft.getInstance(); long now=System.nanoTime();
+         try {
+-            if(now-started>600_000_000_000L) throw new IllegalStateException("Live test deadline in phase "+phase+"; "+DhClientSession.status());
++            if(now-started>(System.getProperty("lss.rig.scenario","").equals("content")?1_800_000_000_000L:600_000_000_000L)) throw new IllegalStateException("Live test deadline in phase "+phase+"; "+DhClientSession.status());
+             if(System.getProperty("lss.rig.scenario","").equals("menu")) {menu(now);return;}
+             if(!connecting && mc.screen instanceof TitleScreen) {
+                 // The backend bakes HAS_STATISTICS into shaders at construction.
+@@ -287,8 +288,8 @@
+                 ConnectScreen.startConnecting(mc.screen,mc,ServerAddress.parseString(addr),new ServerData("DH private test",addr,ServerData.Type.OTHER),false,null);
+             }
+             if(now-logged>1_000_000_000L) { logged=now; write("dh-status.txt",phase+" "+DhClientSession.status()); }
++            if(System.getProperty("lss.rig.scenario","").equals("content")) {ContentProbe.tick(now);return;}
+             if(mc.level==null || mc.player==null) return;
+-            if(System.getProperty("lss.rig.scenario","").equals("content")) {ContentProbe.tick(now);return;}
+             if(!positioned) {
+                 positioned=true; changed=now; mc.options.hideGui=true;
+                 mc.player.getAbilities().flying=true; mc.player.onUpdateAbilities();
+--- a/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/ReceiveMixin.java
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/ReceiveMixin.java
+@@ -12,6 +12,7 @@
+     @Inject(method="receive",at=@At("HEAD"),remap=false)
+     private void capture(byte[] bytes,long arrived,CallbackInfo ci) throws Exception {
+         Probe.received(bytes);
++        if(System.getProperty("lss.rig.scenario","").equals("content")) return;
+         int id=sequence.incrementAndGet();
+         if(id<=64) Files.write(Path.of(System.getProperty("lss.rig.captureDir"),String.format("received-%04d.bin",id)),bytes);
+     }
+--- a/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/SendMixin.java
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/SendMixin.java
+@@ -8,5 +8,5 @@
+ @Mixin(targets="dev.vox.lss.networking.client.DhClientSession$Session",remap=false)
+ public class SendMixin {
+     @Inject(method="send",at=@At("HEAD"),remap=false)
+-    private void observe(DhMessage message,CallbackInfo ci) { Probe.sent(message); }
++    private void observe(DhMessage message,CallbackInfo ci) { Probe.sent(this,message); }
+ }
+--- /dev/null
++++ b/test-fixtures/dh-live/tests/dev/vox/lssfixture/dh/ContentProbeTest.java
+@@ -0,0 +1,63 @@
++package dev.vox.lssfixture.dh;
++
++import dev.vox.lss.api.VoxelColumnData;
++import dev.vox.lss.common.dh.*;
++import net.minecraft.SharedConstants;
++import net.minecraft.server.Bootstrap;
++import net.minecraft.client.Minecraft;
++import net.minecraft.client.multiplayer.ClientLevel;
++import net.minecraft.world.level.block.Blocks;
++import org.junit.jupiter.api.*;
++import org.junit.jupiter.api.io.TempDir;
++import org.mockito.MockMakers;
++import org.objenesis.ObjenesisStd;
++import java.lang.reflect.Field;
++import java.nio.file.Path;
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.Mockito.*;
++
++/** Runs separately under Fabric's real JUnit loader; observer failures cannot escape into Session.receive. */
++class ContentProbeTest {
++    @TempDir Path dir;
++    Object previous;
++    String capture;
++    ClassLoader context;
++    @BeforeAll static void bootstrap() {SharedConstants.tryDetectVersion();Bootstrap.bootStrap();}
++    @BeforeEach void setup() throws Exception {
++        context=Thread.currentThread().getContextClassLoader();Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
++        Field field=Minecraft.class.getDeclaredField("instance");field.setAccessible(true);previous=field.get(null);
++        var mc=new ObjenesisStd().newInstance(Minecraft.class);var level=mock(ClientLevel.class,withSettings().mockMaker(MockMakers.SUBCLASS));
++        doReturn(ContentProbe.DIM).when(level).dimension();mc.level=level;field.set(null,mc);
++        ContentProbe.callbackFailure.set(null);ContentProbe.captureBuffers.clear();ContentProbe.captureSequence.set(0);
++        capture=System.getProperty("lss.rig.captureDir");System.setProperty("lss.rig.captureDir",dir.toString());
++    }
++    @AfterEach void cleanup() throws Exception {
++        Field field=Minecraft.class.getDeclaredField("instance");field.setAccessible(true);field.set(null,previous);
++        if(capture==null)System.clearProperty("lss.rig.captureDir");else System.setProperty("lss.rig.captureDir",capture);
++        ContentProbe.callbackFailure.set(null);ContentProbe.captureBuffers.clear();ContentProbe.captureSequence.set(0);
++        Thread.currentThread().setContextClassLoader(context);
++    }
++    byte[] split() throws Exception {
++        byte[] dto=java.nio.ByteBuffer.allocate(8).putLong(ContentProbe.TILE.packed()).array();
++        return new DhProtocolCodec(DhProfile.OFFICIAL_16,DhLimits.DEFAULT).encode(new DhMessage.Split(123,dto,true));
++    }
++    @Test void captureLimitReportsFixtureFailureWithoutEscapingTheDecodeCallback() throws Exception {
++        ContentProbe.captureSequence.set(256);byte[] bytes=split();
++        assertDoesNotThrow(()->ContentProbe.received(bytes));
++        assertInstanceOf(IllegalStateException.class,ContentProbe.callbackFailure.get());
++    }
++    @Test void writeFailureReportsFixtureFailureWithoutEscapingTheDecodeCallback() throws Exception {
++        System.setProperty("lss.rig.captureDir",dir.resolve("missing").toString());byte[] bytes=split();
++        assertDoesNotThrow(()->ContentProbe.received(bytes));
++        assertInstanceOf(java.nio.file.NoSuchFileException.class,ContentProbe.callbackFailure.get());
++    }
++    @Test void disconnectWithoutALevelIsNotAProductionFailure() throws Exception {
++        Minecraft.getInstance().level=null;byte[] bytes=split();
++        assertDoesNotThrow(()->ContentProbe.received(bytes));assertNull(ContentProbe.callbackFailure.get());
++    }
++    @Test void aMissingNativeSectionCannotSatisfyTheRemovalAirExpectation() {
++        assertNull(ContentProbe.state(new VoxelColumnData(new VoxelColumnData.SectionData[0],123),0,350,0));
++        assertEquals(Blocks.AIR.defaultBlockState(),ContentProbe.expected(2,350));
++        assertNotEquals(ContentProbe.expected(2,350),ContentProbe.state(new VoxelColumnData(new VoxelColumnData.SectionData[0],123),0,350,0));
++    }
++}

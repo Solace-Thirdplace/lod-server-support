@@ -1,0 +1,123 @@
+{
+  "date": "2026-10-05",
+  "status": "lighting-fixed-dev-installed-manual-ready-strict-milestones-open",
+  "build_version": "0.16.0-dh-ocean.dev20261005",
+  "artifact_sha256": "885e22e5f90695fe4db369488a039becf43da219d2e34620561cbff848a3e0ea",
+  "normal_units": {
+    "common": {
+      "tests": 994,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 994
+    },
+    "fabric": {
+      "tests": 1705,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 4,
+      "passed": 1701
+    },
+    "paper": {
+      "tests": 536,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 536
+    },
+    "neoforge": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 23
+    }
+  },
+  "gametests": {
+    "fabric": 78,
+    "neoforge": 8
+  },
+  "packaging": {
+    "versioned_preflight": true,
+    "artifacts": 6,
+    "selftest_cases": 126
+  },
+  "real_ocean_oracle": {
+    "upstream_database_tiles": 54,
+    "water_floor_pairs": 178031,
+    "matching_pairs": 178031
+  },
+  "private_ocean_readback": {
+    "neoforge-ocean": {
+      "pass": true,
+      "deep_samples": 450,
+      "shallow_samples": 450,
+      "columns": 32,
+      "source_floor_light_oracle": true,
+      "deep_floor_sky": 0,
+      "shallow_floor_sky": 10,
+      "surface_water_sky": 14
+    },
+    "fabric-ocean": {
+      "pass": true,
+      "deep_samples": 450,
+      "shallow_samples": 450,
+      "columns": 32,
+      "source_floor_light_oracle": true,
+      "deep_floor_sky": 0,
+      "shallow_floor_sky": 10,
+      "surface_water_sky": 14
+    }
+  },
+  "generation": {
+    "max_distance_chunks": 32,
+    "plan": "SURFACE_THEN_CHUNKS",
+    "same_world": true,
+    "sync_on_load": true,
+    "unsolicited_updates": false
+  },
+  "manual_setup": {
+    "status": "ready-for-manual-test",
+    "timestamp_utc": "2026-10-05T17:18:59.798829+00:00",
+    "artifact_sha256": "885e22e5f90695fe4db369488a039becf43da219d2e34620561cbff848a3e0ea",
+    "prism_installation": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/ocean-lighting/prism-installation.json",
+    "instance": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing",
+    "endpoint": "[::1]:25585",
+    "server_owner": {
+      "pid": 74554,
+      "start": "4230634",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    },
+    "server_console_session": 68295,
+    "minecraft_status": {
+      "name": "1.21.1",
+      "protocol": 767
+    },
+    "windows_ipv6_tcp": true,
+    "existing_world_resumed": true,
+    "world": "dh-neoforge-playable",
+    "server_lss": false,
+    "server_dh_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+    "private_tests_passed": true,
+    "storage_preflight": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/launch-storage.json",
+    "storage_health": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/evidence/storage-health.json",
+    "generation": {
+      "max_distance_chunks": 32,
+      "plan": "SURFACE_THEN_CHUNKS",
+      "same_world": true,
+      "sync_on_load": true,
+      "unsolicited_updates": false
+    },
+    "test_player_op_preserved": true
+  },
+  "release_ready": false,
+  "evidence_root": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/ocean-lighting",
+  "manual_user_feedback": {
+    "recorded_utc": "2026-10-05T17:28:01.091117+00:00",
+    "quote": "lighting is fixed, looking pretty good overall to me",
+    "ocean_depth_lighting": "passed by user visual observation",
+    "overall_appearance": "positive user feedback",
+    "hardware_frame_times_measured": false,
+    "other_manual_checks_confirmed": false
+  }
+}

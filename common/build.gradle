@@ -16,6 +16,10 @@ configurations {
         canBeConsumed = false
         transitive = false
     }
+    xzEngine {
+        canBeConsumed = false
+        transitive = false
+    }
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -33,6 +37,13 @@ dependencies {
     // SQLite is compiled only by the private bridge and packaged as an opaque
     // resource (gradle/sqlite-runtime.gradle). Platforms still provide zstd.
     compileOnly 'com.github.luben:zstd-jni:1.5.7-3'
+    compileOnly 'org.tukaani:xz:1.10'
+    xzEngine 'org.tukaani:xz:1.10'
+}
+
+// Captured DH frames are shared by MC-independent and loader conversion tests.
+tasks.named('processTestFixturesResources') {
+    from('src/test/resources') { include 'dh-corpus/**' }
 }
 
 // P6a: MC/loader-free tests execute on Java 21 on every support line.
@@ -43,6 +54,7 @@ dependencies {
     testImplementation 'it.unimi.dsi:fastutil:8.5.18'
     testImplementation 'com.google.code.gson:gson:2.13.2'
     testImplementation 'com.github.luben:zstd-jni:1.5.7-3'
+    testImplementation 'org.tukaani:xz:1.10'
 }
 
 // One relocated parser copy travels with common, whether nested by Fabric or
@@ -50,8 +62,9 @@ dependencies {
 tasks.named('jar') { archiveClassifier = 'plain' }
 tasks.named('shadowJar') {
     archiveClassifier = ''
-    configurations = [project.configurations.yamlEngine]
+    configurations = [project.configurations.yamlEngine, project.configurations.xzEngine]
     relocate 'org.snakeyaml.engine', 'dev.vox.lss.internal.yaml'
+    relocate 'org.tukaani.xz', 'dev.vox.lss.internal.xz'
     exclude 'module-info.class', 'META-INF/versions/**/module-info.class'
     exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA'
     // Parser license/notice are tracked in common's META-INF/licenses resources.

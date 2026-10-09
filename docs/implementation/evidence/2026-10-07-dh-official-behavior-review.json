@@ -1,0 +1,20 @@
+{
+  "reviewers": [
+    "dh_official_scheduling_review",
+    "dh_lifecycle_parity_review",
+    "dh_diagnostics_parity_review"
+  ],
+  "fix_review": "dh_flow_parity_review; no source blockers remaining",
+  "source_sha256": {
+    "common/src/main/java/dev/vox/lss/common/dh/DhBandwidthRamp.java": "7df22804562a8a69ede02a90313af7b19ba784d873f39e23c9fc0b731d4a74f5",
+    "common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java": "35c5084f58e22e1e9622cb15046213803f52ee5ba2f86ec3667d184e19a5740d",
+    "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java": "da7b158c1fb6cb9fdb9db119bb477ff941f9a5f4bd1f78b30e965d9df8d68ec1",
+    "xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java": "e6b46fa47ae9f094643cf0dac76d1ff5ad1fbbebcba22a8e2f577b790b763dbb",
+    "xplat/src/main/java/dev/vox/lss/networking/client/ClientNetTrace.java": "f3fbdbab0925a9c6cd12763391a2594b6033608ceac4bb74740c64180d68aa61"
+  },
+  "upstream_evidence": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/parity-fixes/official-review-evidence.json",
+  "performance_measured": false,
+  "candidate_validation": "complete: final normal build, seven packaged cases, Prism installation, same-world server restoration",
+  "verification": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/parity-fixes/final/verification.json",
+  "verified_support_exception": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/parity-fixes/dh-support-bandwidth-evidence.json"
+}

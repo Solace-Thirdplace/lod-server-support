@@ -74,6 +74,18 @@ class ClientSessionGateTest {
         return new SessionConfigS2CPayload(protocolVersion, enabled, 64, true);
     }
 
+    @Test void dhSourceNeverStartsTheNativeDiscoveryOrAcceptsItsOffer() {
+        gate.onJoin(true,false,true,true,true,false);
+        for(int i=0;i<1000;i++) gate.tickDiscoveryLadder();
+        gate.onSessionConfig(config(V,true),true,true);
+        assertEquals(0,handshakesSent.get());
+        assertNull(gate.getRequestManager()); assertFalse(gate.isServerEnabled());
+        assertFalse(gate.hasReceivedSessionConfig());
+        gate.onJoin(true,false,true,true,true,true);
+        assertEquals(1,handshakesSent.get());
+        gate.onSessionConfig(config(V,true),true,true);
+        assertNotNull(gate.getRequestManager());
+    }
     @org.junit.jupiter.api.Test
     void sessionConfigRePushCarriesTheGovernorAcrossTheManagerRebuild() {
         // Review-wave C-M1: a mid-session re-push (/lsslod set, a Paper /reload

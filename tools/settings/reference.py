@@ -29,7 +29,10 @@ def render(data: dict | None = None) -> str:
               "backup. Migration accepts the old Gson loader's comments and lenient JSON syntax.",
               "Migration is one-way: v0.15.x reads the retained JSON and ignores YAML edits;",
               "copy any desired changes back into JSON before downgrading.",
-              "Invalid authoritative YAML never falls back to JSON. Reload does not write files.", ""]
+              "Invalid authoritative YAML never falls back to JSON. Reload does not write files.", "",
+              "DH defaults are omitted when saving so native-only settings remain readable by v0.16.0.",
+              "Before downgrading a client with DH enabled or nondefault DH preferences, remove",
+              "`lod.source` and the `lod.dh` mapping from its YAML: v0.16.0 rejects those unknown keys.", ""]
     for key, title in [("server", "Fabric / NeoForge server"), ("paper", "Paper / Folia server"), ("client", "Client")]:
         schema = data[key]
         output += ["## " + title, "", "| YAML path | Type | Default | Range / units | Timing | Applicability |", "| --- | --- | --- | --- | --- | --- |"]

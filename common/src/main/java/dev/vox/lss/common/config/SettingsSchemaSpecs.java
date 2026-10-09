@@ -52,6 +52,9 @@ final class SettingsSchemaSpecs {
         server.add(new Spec("far_players.send_spectators", "farPlayersSendSpectators", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         server.add(new Spec("far_players.excluded_players", "farPlayersExclude", Kind.STRING_LIST, Timing.H, Platform.ALL, true));
         server.add(new Spec("paper.update_events", "updateEvents", Kind.STRING_LIST, Timing.R, Platform.PAPER, false));
+        client.add(new Spec("lod.source", "dhTerrainSource", Kind.STRING, Timing.S, Platform.ALL, false));
+        client.add(new Spec("lod.dh.sync_on_load", "dhSynchronizeOnLoad", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
+        client.add(new Spec("lod.dh.real_time_updates", "dhRealTimeUpdates", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         client.add(new Spec("lod.receive", "receiveServerLods", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         client.add(new Spec("lod.distance_chunks", "lodDistanceChunks", Kind.INTEGER, Timing.H, Platform.ALL, false));
         client.add(new Spec("lod.download.max_columns_per_second", "lodColumnsPerSecondLimit", Kind.INTEGER, Timing.H, Platform.ALL, false));

@@ -20,6 +20,21 @@ public final class ClientStatusText {
     public static List<Message> lines(ClientStatusSnapshot s, long nowMillis) {
         if (s == null) return List.of(text("waiting"));
         var lines = new ArrayList<Message>();
+        if(s.dh()!=null && s.dh().reason()!=DhStatusSnapshot.Reason.NATIVE_OFFER && s.dh().reason()!=DhStatusSnapshot.Reason.NATIVE_PREFERRED) {
+            var d=s.dh();
+            lines.add(text("dh.source",d.profile().name(),enumText("dh.state",d.state())));
+            lines.add(text("dh.terrain",d.completeColumns(),d.partialColumns(),d.unknownColumns()));
+            lines.add(text("dh.tiles",d.requestedTiles(),d.enqueuedTiles(),d.incompleteTiles(),d.refusedTiles()));
+            lines.add(text("dh.columns",d.convertedColumns(),d.enqueuedColumns(),d.vanillaSkippedColumns(),d.failedColumns()));
+            lines.add(text("dh.resources",d.wireBytes(),d.ownedBytes(),d.peakOwnedBytes(),d.decodeQueue(),d.inFlight(),d.ingestBacklog()));
+            lines.add(text("dh.limits",d.effectiveRange(),d.generationRate(),d.syncRate(),d.bandwidthKB()));
+            lines.add(text("dh.reason",enumText("dh.reason",d.reason())));
+            lines.add(text("dh.acquisition",enumText("dh.wait",d.acquisitionWait()),d.acquisitionWaitMillis()));
+            lines.add(text("dh.cache",d.cacheDeclinedAdmissions(),d.pressureDroppedTerrainFrames(),d.reusedColumns(),d.preservedColumns()));
+            lines.add(text("dh.freshness",onOff(d.syncOnLoad()),text(d.syncAvailable()?"available":"disabled"),
+                    onOff(d.liveUpdates()),text(d.liveAvailable()?"available":"disabled"),
+                    d.receivedUpdates(),d.enqueuedUpdates(),d.lastSyncAgeMillis()));
+        } else {
         lines.add(text("connection", enumText("discovery", s.discovery()), s.protocol()));
         lines.add(text("reception", onOff(s.receptionEnabled()), text(s.consumerAvailable() ? "available" : "none")));
         lines.add(text("server", text(s.discovery() == ClientStatusSnapshot.Discovery.PROTOCOL_REJECTED
@@ -32,6 +47,8 @@ public final class ClientStatusText {
         lines.add(text("rate", s.rateGatedTicks(), s.rateCap()));
         lines.add(text("queues", s.queuedColumns(), s.ingestBacklog(), s.xaeroPendingRebuilds()));
         lines.add(text("remote_unknown"));
+        if(s.dh()!=null)lines.add(text("dh.reason",enumText("dh.reason",s.dh().reason())));
+        }
         var settings = s.settings();
         if (settings != null) {
             lines.add(text("settings.available", text(settings.available() ? "available" : "disabled")));

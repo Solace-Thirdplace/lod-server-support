@@ -1,0 +1,11 @@
+{
+  "codec_layout": "pass",
+  "settings_without_stock_yaml_or_xz": "pass",
+  "minecraft_namespace": "intermediary",
+  "frozen_tiles": {
+    "ocean": "d4466603cf698f715933c6cc986bde4e766ff06a559b15361a002f1f4661310f",
+    "meadow": "d446d3356f55b9164c2ddc251e09c869e551d15f00a4c144647cb7ee6b9685a3"
+  },
+  "loopback_probe": "PermissionError: [Errno 1] Operation not permitted",
+  "live_gate": "pending"
+}

@@ -1,0 +1,8 @@
+{
+  "manual_launcher": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/start-server.sh",
+  "launcher_sha256": "0dff61d2f7a4ec7764b861547ea62862ba70db68c1e1455cb89cdd8dbec2b3cf",
+  "termination_grace_seconds": 90,
+  "slow_save_test": true,
+  "grace_test_log": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/owned-process-grace.log",
+  "grace_test_cases": 2
+}

@@ -1,0 +1,9 @@
+Note: /home/vox/projects/voxel-server-support/.worktrees/dh-client-p1/common/src/main/java/dev/vox/lss/common/config/LegacySettingsMigration.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+All 119 common production Java sources compiled on Java 21, with no MC/loader dependency.
+dh-support-0.14.0-ocean: private XZ packaged decode PASS; peak_owned=34569698
+dh-support-0.14.0-meadow: private XZ packaged decode PASS; peak_owned=34774056
+common: relocated codec/XZ layout validation PASS
+fabric: relocated codec/XZ layout validation PASS
+paper: relocated codec/XZ layout validation PASS
+neoforge: relocated codec/XZ layout validation PASS

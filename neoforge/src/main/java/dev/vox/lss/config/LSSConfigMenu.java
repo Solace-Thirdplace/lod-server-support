@@ -113,8 +113,11 @@ public class LSSConfigMenu implements ConfigEntryPoint {
         }
         option.setStorageHandler(save);
         if (spec.enabledBy() != null) {
-            ResourceLocation dep = ResourceLocation.parse(spec.enabledBy());
-            option.setEnabledProvider(state -> state.readBooleanOption(dep), dep);
+            ResourceLocation[] deps=ClientOptionCatalog.enabledDependencies(spec).stream().map(ResourceLocation::parse).toArray(ResourceLocation[]::new);
+            option.setEnabledProvider(state -> {
+                for(ResourceLocation dep:deps)if(!state.readBooleanOption(dep))return false;
+                return true;
+            }, deps);
         }
         return option;
     }

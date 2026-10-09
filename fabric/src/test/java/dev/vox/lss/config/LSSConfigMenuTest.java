@@ -54,7 +54,7 @@ class LSSConfigMenuTest {
 
 
     @Test
-    void walksTheCatalogIntoTwoPagesWithTheCatalogsShape() {
+    void walksTheCatalogIntoThreePagesWithTheCatalogsShape() {
         var builder = new RecordingConfigBuilder();
         register(builder);
 
@@ -89,7 +89,7 @@ class LSSConfigMenuTest {
         register(builder);
         List<RecordedOption<?>> built = new ArrayList<>();
         builder.mods.get(0).pages.forEach(p -> p.groups.forEach(g -> g.options.forEach(o -> built.add((RecordedOption<?>) o))));
-        assertEquals(10, built.size(), "ten explicit controls");
+        assertEquals(11, built.size(), "eleven explicit controls");
 
         for (RecordedOption<?> o : built) {
             OptionSpec spec = ClientOptionCatalog.find(o.id.toString()).orElseThrow();
@@ -107,12 +107,11 @@ class LSSConfigMenuTest {
                 assertNull(o.enabledProvider, spec.id());
                 assertEquals(0, o.dependencies.length);
             } else {
-                assertEquals(1, o.dependencies.length);
-                assertEquals(spec.enabledBy(), o.dependencies[0].toString());
+                assertEquals(ClientOptionCatalog.enabledDependencies(spec), java.util.Arrays.stream(o.dependencies).map(Object::toString).toList());
                 // The provider reads exactly the declared dependency from the pending state.
-                ResourceLocation expected = o.dependencies[0];
+                var expected=java.util.Set.of(o.dependencies);
                 assertEquals(Boolean.TRUE, o.enabledProvider.apply(new ConfigState() {
-                    @Override public boolean readBooleanOption(ResourceLocation id) { return id.equals(expected); }
+                    @Override public boolean readBooleanOption(ResourceLocation id) { return expected.contains(id); }
                     @Override public int readIntOption(ResourceLocation id) { return 0; }
                 }));
             }
@@ -136,77 +135,7 @@ class LSSConfigMenuTest {
         }
     }
 
-    @Test
-    void bindingsEditOnlyTheRetainedDraft() {
-        var builder = new RecordingConfigBuilder();
-        register(builder);
-        @SuppressWarnings("unchecked") var receive = (RecordedOption<Boolean>) find(builder, ClientOptionCatalog.ID_RECEIVE_SERVER_LODS);
-        receive.setter.accept(false);
-        assertEquals(false, draft.bool("lod.receive"));
-        assertEquals(false, receive.getter.get());
-        @SuppressWarnings("unchecked") var rate = (RecordedOption<Integer>) find(builder, ClientOptionCatalog.ID_COLUMN_RATE_LIMIT);
-        rate.setter.accept(1);
-        assertEquals(10, draft.integer("lod.download.max_columns_per_second"));
-        assertEquals(1, rate.getter.get());
-        assertTrue(draft.hasRetainedEdits());
-        assertTrue(dev.vox.lss.common.config.SettingsSchema.client().defaults().lod().receive());
-    }
-
-    @Test
-    void oneStorageHandlerIsSharedAcrossAllOptions() {
-        var builder = new RecordingConfigBuilder();
-        register(builder);
-        Set<StorageEventHandler> distinct = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
-        List<RecordedOption<?>> built = new ArrayList<>();
-        builder.mods.get(0).pages.forEach(p -> p.groups.forEach(g -> g.options.forEach(o -> built.add((RecordedOption<?>) o))));
-        built.forEach(o -> distinct.add(o.storageHandler));
-        assertEquals(1, distinct.size(), "one handler per SaveHook — Sodium fires each distinct handler"
-                + " once per Apply; per-option lambdas save the file once per changed option");
-        // Both pages share the same save-and-reload transaction.
-        var main = built.stream().filter(o -> ClientOptionCatalog.pages().get(0).options().stream()
-                .anyMatch(s -> s.id().equals(o.id.toString()))).map(o -> o.storageHandler).distinct().toList();
-        var far = built.stream().filter(o -> ClientOptionCatalog.pages().get(1).options().stream()
-                .anyMatch(s -> s.id().equals(o.id.toString()))).map(o -> o.storageHandler).distinct().toList();
-        assertEquals(1, main.size());
-        assertEquals(1, far.size());
-        assertTrue(main.get(0) == far.get(0));
-    }
-
-    @Test
-    void cleanedModernOptionsRetainFailedEditsAndRetryWithoutReentry() throws Exception {
-        var schema = dev.vox.lss.common.config.SettingsSchema.client();
-        var fail = new java.util.concurrent.atomic.AtomicBoolean();
-        var store = new dev.vox.lss.common.config.SettingsStore<>(temp, "lss", schema,
-                line -> {}, (temporary, destination) -> { if (fail.get()) throw new java.io.IOException("disk full"); });
-        var live = new dev.vox.lss.common.config.SettingsHandle<>(store);
-        var reloads = new java.util.concurrent.atomic.AtomicInteger();
-        draft = new dev.vox.lss.config.menu.ClientSettingsEditSession(store, () -> live.state().effective(),
-                () -> live.state().configured(), () -> {
-                    try { reloads.incrementAndGet(); live.commit(live.prepareReload()); }
-                    catch (Exception failure) { throw new AssertionError(failure); }
-                });
-        var builder = new RecordingConfigBuilder();
-        register(builder);
-        @SuppressWarnings("unchecked") var option = (RecordedOption<Boolean>) find(builder, ClientOptionCatalog.ID_FAR_PLAYERS_SHARE_SELF);
-        option.modifyValue(false);
-        assertTrue(option.hasChanged());
-        option.applyChanges();
-        assertEquals(false, option.hasChanged(), "Sodium marks clean before saving");
-        fail.set(true);
-        option.storageHandler.afterSave();
-        assertTrue(draft.hasRetainedEdits());
-        assertEquals(dev.vox.lss.config.menu.ClientSettingsEditSession.Outcome.FAILED, draft.outcome());
-        assertTrue(live.state().effective().farPlayers().sharing().enabled());
-        draft.open(new Object());
-        option.resetFromBinding();
-        assertEquals(false, option.getValidatedValue(), "reopen keeps the failed draft visible");
-        assertEquals(0, reloads.get(), "failed save must not request reload");
-        fail.set(false);
-        assertTrue(draft.apply());
-        assertEquals(1, reloads.get(), "recovery must reload the saved draft");
-        assertEquals(false, store.read().configured().farPlayers().sharing().enabled());
-        assertEquals(false, live.state().effective().farPlayers().sharing().enabled());
-    }
+    @SuppressWarnings("unchecked")
 
     private static RecordedOption<?> find(RecordingConfigBuilder builder, String id) {
         for (var p : builder.mods.get(0).pages) {

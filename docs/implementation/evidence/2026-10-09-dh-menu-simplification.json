@@ -1,0 +1,765 @@
+{
+  "timestamp_utc": "2026-10-09T16:13:48.349952+00:00",
+  "status": "complete",
+  "scope": "Sodium DH menu simplification and full-feature review handoff",
+  "build_version": "0.16.0-dh-menu.dev20261009.1",
+  "normal_verification": {
+    "timestamp_utc": "2026-10-09T16:02:26.193779+00:00",
+    "normal_build_passed": true,
+    "candidate_verified": true,
+    "release_ready": false,
+    "artifact": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-09/menu-simplification/lod-server-support-neoforge-dh-dev-mc1.21.1.jar",
+    "candidate_artifact_sha256": "77923e2f0f944aebf3d71a2079c72d0c13ae3388cd940c84313d6ccd6e22abd8",
+    "fixture_sha256": "db881e471482838ed3999fdc9caf20ec0eaf4ed66b0ea60e20a98c4e970ae439",
+    "build_version": "0.16.0-dh-menu.dev20261009.1",
+    "build": "/tmp/lss-dh-menu-20261009-r1",
+    "source_manifest_sha256": "3af96d194396455e5175669ff9a19547ae7ac85ec778c7111987edc402fb45a1",
+    "test_source_manifest_sha256": "4f61e61732b33f5a8ce0f6613d9774061b5c255ffa7c6d62a0dda93f41aae045",
+    "unit_results": {
+      "common": {
+        "tests": 1044,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 1044
+      },
+      "fabric": {
+        "tests": 1822,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 4,
+        "passed": 1818
+      },
+      "paper": {
+        "tests": 536,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 536
+      },
+      "neoforge": {
+        "tests": 23,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 23
+      }
+    },
+    "gametests": {
+      "fabric": 78,
+      "neoforge": 8
+    },
+    "packaging": {
+      "release_check_passed": true,
+      "artifact_contracts_passed": true,
+      "artifacts": 6
+    },
+    "performance_runs": false,
+    "offline_allocation_probe": null,
+    "accepted_limitations": {
+      "Voxy_I1_completion_persistence": {
+        "accepted_for_now": true,
+        "release_blocker": false,
+        "decision": "docs/implementation/2026-10-07-dh-accepted-limitations.md"
+      }
+    },
+    "fixture_tool_rebinding_utc": "2026-10-09T16:03:07.060082+00:00",
+    "fixture_tool_rebinding_reason": "Permit the new menu-only observer scenario on Fabric; production artifact and unit tests unchanged"
+  },
+  "normal_build_result": {
+    "exit_code": 0,
+    "duration_seconds": 243.45230745500885,
+    "build": "/tmp/lss-dh-menu-20261009-r1",
+    "tasks": [
+      "bash",
+      "tools/verify/run-gradle.sh",
+      ":common:test",
+      ":fabric:build",
+      ":paper:build",
+      ":neoforge:build",
+      ":neoforge:runGameTestServer",
+      "vssJars",
+      "--console=plain"
+    ],
+    "version": "0.16.0-dh-menu.dev20261009.1"
+  },
+  "functional_cases": [
+    {
+      "name": "neoforge-menu",
+      "exit_code": 0,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-09/menu-simplification/cases/neoforge-menu/attempt-44b0hj2t",
+      "fixture_sha256": "db881e471482838ed3999fdc9caf20ec0eaf4ed66b0ea60e20a98c4e970ae439",
+      "proofs": {
+        "dh-result.json": {
+          "pass": true,
+          "menu": true,
+          "sodium_apply": true,
+          "diagnostics_export": true
+        },
+        "dh-menu.json": {
+          "pass": true,
+          "actual_sodium": true,
+          "gui_scale_setting": 0,
+          "gui_scale_actual": 3.0,
+          "lss_controls": 11,
+          "general_dh_fallback": true,
+          "reception_gate": true,
+          "sync_and_updates_config_only": true,
+          "sync_and_updates_preserved_on": true,
+          "source_checkbox": true,
+          "automatic_protocol": true,
+          "source_saved": "lss",
+          "diagnostics_export": true
+        }
+      }
+    },
+    {
+      "name": "fabric-menu",
+      "exit_code": 0,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-09/menu-simplification/cases/fabric-menu/attempt-9_t3ko_x",
+      "fixture_sha256": "de71f570091bc59b0e0ba0d0edaa72444e5f2eb8daf0394aecc72fdf65d045dc",
+      "proofs": {
+        "dh-result.json": {
+          "pass": true,
+          "menu": true,
+          "sodium_apply": true,
+          "diagnostics_export": true
+        },
+        "dh-menu.json": {
+          "pass": true,
+          "actual_sodium": true,
+          "gui_scale_setting": 0,
+          "gui_scale_actual": 3.0,
+          "lss_controls": 11,
+          "general_dh_fallback": true,
+          "reception_gate": true,
+          "sync_and_updates_config_only": true,
+          "sync_and_updates_preserved_on": true,
+          "source_checkbox": true,
+          "automatic_protocol": true,
+          "source_saved": "lss",
+          "diagnostics_export": true
+        }
+      }
+    },
+    {
+      "name": "neoforge-updates",
+      "exit_code": 0,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-09/menu-simplification/cases/neoforge-updates/attempt-zewttsqy",
+      "fixture_sha256": "db881e471482838ed3999fdc9caf20ec0eaf4ed66b0ea60e20a98c4e970ae439",
+      "proofs": {
+        "dh-result.json": {
+          "pass": true,
+          "menu": true,
+          "sodium_apply": true,
+          "diagnostics_export": true
+        },
+        "dh-updates.json": {
+          "pass": true,
+          "source": "stock-official-DH-3.3.3",
+          "push_only_edits": true,
+          "live_disabled_retained_destination": true,
+          "air_removal_with_same_section_sentinel": true,
+          "same_connection_and_session": true,
+          "sync_hot_negotiation": true,
+          "receive_off_server_pushes": 0,
+          "receive_off_saved_live_preference": true,
+          "receive_resume_same_connection": true,
+          "independent_block_comparisons": 10411,
+          "requests_while_pause_pending": 1,
+          "requests_while_reception_applied_off": 0,
+          "comparison_counter_includes_settle_retries": true,
+          "unchanged_rejoin": true,
+          "rejoin_target_payloads": 0,
+          "rejoin_target_conversions": 0,
+          "edit_updates": 1,
+          "removal_updates": 1,
+          "terrain_requests_during_push_only": 0
+        },
+        "dh-server-command.json": {
+          "id": "receive-off-edit",
+          "commands": [
+            "execute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:diamond_block",
+            "execute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:emerald_block",
+            "save-all flush"
+          ]
+        },
+        "dh-menu.json": {
+          "pass": true,
+          "actual_sodium": true,
+          "gui_scale_setting": 0,
+          "gui_scale_actual": 3.0,
+          "lss_controls": 11,
+          "general_dh_fallback": true,
+          "reception_gate": true,
+          "sync_and_updates_config_only": true,
+          "sync_and_updates_preserved_on": true,
+          "source_checkbox": true,
+          "automatic_protocol": true,
+          "source_saved": "lss",
+          "diagnostics_export": true
+        },
+        "dh-resources.json": {
+          "conversion_wall_nanos": 613798162,
+          "conversion_allocated_bytes": 34891824,
+          "absent_air_samples_not_validated": 0,
+          "conversion_cpu_nanos": 640440194,
+          "diagnostics": {
+            "profile": "OFFICIAL_16",
+            "state": "READY",
+            "requestedTiles": 0,
+            "enqueuedTiles": 0,
+            "incompleteTiles": 0,
+            "refusedTiles": 0,
+            "convertedColumns": 0,
+            "enqueuedColumns": 0,
+            "vanillaSkippedColumns": 0,
+            "failedColumns": 0,
+            "wireBytes": 105,
+            "ownedBytes": 0,
+            "peakOwnedBytes": 1985,
+            "decodeQueue": 0,
+            "inFlight": 0,
+            "ingestBacklog": 0,
+            "effectiveRange": 12,
+            "generationRate": 20,
+            "syncRate": 50,
+            "bandwidthKB": 50,
+            "syncOnLoad": true,
+            "syncAvailable": true,
+            "liveUpdates": true,
+            "liveAvailable": true,
+            "receivedUpdates": 0,
+            "enqueuedUpdates": 0,
+            "lastSyncAgeMillis": -1,
+            "completeColumns": 0,
+            "partialColumns": 0,
+            "unknownColumns": 0,
+            "cacheDeclinedAdmissions": 0,
+            "pressureDroppedTerrainFrames": 0,
+            "reason": "NONE",
+            "reusedColumns": 0,
+            "preservedColumns": 0,
+            "acquisitionWait": "CACHE",
+            "acquisitionGates": 1024,
+            "acquisitionWaitMillis": -1
+          },
+          "hardware_frame_time_measured": false,
+          "successful_conversion_calls": 394
+        },
+        "dh-server-ack.json": {
+          "id": "receive-off-edit",
+          "saved": true
+        }
+      }
+    },
+    {
+      "name": "neoforge-legacy-menu",
+      "exit_code": 0,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-09/menu-simplification/legacy/cases/attempt-v0wgqk44",
+      "fixture_sha256": "b01b6f1e48b6d03a0fd84e289f6e42835e9e4a97bb21886f79af9fd7ede2c7d4",
+      "proofs": {
+        "dh-result.json": {
+          "pages": 2,
+          "receive_dependency": true,
+          "sync_and_updates_preserved_on": true,
+          "auto_gui_scale": 3.0,
+          "actual_legacy_sodium": true,
+          "shared_apply_saved": true,
+          "general_dh_checkbox": true,
+          "pass": true,
+          "case": "legacy-menu"
+        },
+        "dh-legacy-pages.json": {
+          "all_page_layouts": [
+            {
+              "visible_tabs": [
+                {
+                  "x": 6,
+                  "width": 51,
+                  "text_width": 39,
+                  "label": "General"
+                },
+                {
+                  "x": 63,
+                  "width": 45,
+                  "text_width": 33,
+                  "label": "Quality"
+                },
+                {
+                  "x": 114,
+                  "width": 77,
+                  "text_width": 65,
+                  "label": "Performance"
+                },
+                {
+                  "x": 197,
+                  "width": 60,
+                  "text_width": 48,
+                  "label": "Advanced"
+                },
+                {
+                  "x": 263,
+                  "width": 30,
+                  "text_width": 18,
+                  "label": "LSS"
+                },
+                {
+                  "x": 299,
+                  "width": 73,
+                  "text_width": 61,
+                  "label": "LSS Players"
+                }
+              ],
+              "page": "General",
+              "donation_controls": [
+                {
+                  "visible": false,
+                  "y": 6,
+                  "x": 299,
+                  "name": "donateButton",
+                  "width": 100
+                },
+                {
+                  "visible": false,
+                  "y": 6,
+                  "x": 401,
+                  "name": "hideDonateButton",
+                  "width": 20
+                }
+              ]
+            },
+            {
+              "visible_tabs": [
+                {
+                  "x": 6,
+                  "width": 51,
+                  "text_width": 39,
+                  "label": "General"
+                },
+                {
+                  "x": 63,
+                  "width": 45,
+                  "text_width": 33,
+                  "label": "Quality"
+                },
+                {
+                  "x": 114,
+                  "width": 77,
+                  "text_width": 65,
+                  "label": "Performance"
+                },
+                {
+                  "x": 197,
+                  "width": 60,
+                  "text_width": 48,
+                  "label": "Advanced"
+                },
+                {
+                  "x": 263,
+                  "width": 30,
+                  "text_width": 18,
+                  "label": "LSS"
+                },
+                {
+                  "x": 299,
+                  "width": 73,
+                  "text_width": 61,
+                  "label": "LSS Players"
+                }
+              ],
+              "page": "Quality",
+              "donation_controls": [
+                {
+                  "visible": false,
+                  "y": 6,
+                  "x": 299,
+                  "name": "donateButton",
+                  "width": 100
+                },
+                {
+                  "visible": false,
+                  "y": 6,
+                  "x": 401,
+                  "name": "hideDonateButton",
+                  "width": 20
+                }
+              ]
+            },
+            {
+              "visible_tabs": [
+                {
+                  "x": 6,
+                  "width": 51,
+                  "text_width": 39,
+                  "label": "General"
+                },
+                {
+                  "x": 63,
+                  "width": 45,
+                  "text_width": 33,
+                  "label": "Quality"
+                },
+                {
+                  "x": 114,
+                  "width": 77,
+                  "text_width": 65,
+                  "label": "Performance"
+                },
+                {
+                  "x": 197,
+                  "width": 60,
+                  "text_width": 48,
+                  "label": "Advanced"
+                },
+                {
+                  "x": 263,
+                  "width": 30,
+                  "text_width": 18,
+                  "label": "LSS"
+                },
+                {
+                  "x": 299,
+                  "width": 73,
+                  "text_width": 61,
+                  "label": "LSS Players"
+                }
+              ],
+              "page": "Performance",
+              "donation_controls": [
+                {
+                  "visible": true,
+                  "y": 210,
+                  "x": 6,
+                  "name": "donateButton",
+                  "width": 100
+                },
+                {
+                  "visible": true,
+                  "y": 210,
+                  "x": 110,
+                  "name": "hideDonateButton",
+                  "width": 20
+                }
+              ]
+            },
+            {
+              "visible_tabs": [
+                {
+                  "x": 6,
+                  "width": 51,
+                  "text_width": 39,
+                  "label": "General"
+                },
+                {
+                  "x": 63,
+                  "width": 45,
+                  "text_width": 33,
+                  "label": "Quality"
+                },
+                {
+                  "x": 114,
+                  "width": 77,
+                  "text_width": 65,
+                  "label": "Performance"
+                },
+                {
+                  "x": 197,
+                  "width": 60,
+                  "text_width": 48,
+                  "label": "Advanced"
+                },
+                {
+                  "x": 263,
+                  "width": 30,
+                  "text_width": 18,
+                  "label": "LSS"
+                },
+                {
+                  "x": 299,
+                  "width": 73,
+                  "text_width": 61,
+                  "label": "LSS Players"
+                }
+              ],
+              "page": "Advanced",
+              "donation_controls": [
+                {
+                  "visible": true,
+                  "y": 210,
+                  "x": 6,
+                  "name": "donateButton",
+                  "width": 100
+                },
+                {
+                  "visible": true,
+                  "y": 210,
+                  "x": 110,
+                  "name": "hideDonateButton",
+                  "width": 20
+                }
+              ]
+            },
+            {
+              "visible_tabs": [
+                {
+                  "x": 6,
+                  "width": 51,
+                  "text_width": 39,
+                  "label": "General"
+                },
+                {
+                  "x": 63,
+                  "width": 45,
+                  "text_width": 33,
+                  "label": "Quality"
+                },
+                {
+                  "x": 114,
+                  "width": 77,
+                  "text_width": 65,
+                  "label": "Performance"
+                },
+                {
+                  "x": 197,
+                  "width": 60,
+                  "text_width": 48,
+                  "label": "Advanced"
+                },
+                {
+                  "x": 263,
+                  "width": 30,
+                  "text_width": 18,
+                  "label": "LSS"
+                },
+                {
+                  "x": 299,
+                  "width": 73,
+                  "text_width": 61,
+                  "label": "LSS Players"
+                }
+              ],
+              "page": "LSS",
+              "donation_controls": [
+                {
+                  "visible": true,
+                  "y": 210,
+                  "x": 6,
+                  "name": "donateButton",
+                  "width": 100
+                },
+                {
+                  "visible": true,
+                  "y": 210,
+                  "x": 110,
+                  "name": "hideDonateButton",
+                  "width": 20
+                }
+              ]
+            },
+            {
+              "visible_tabs": [
+                {
+                  "x": 6,
+                  "width": 51,
+                  "text_width": 39,
+                  "label": "General"
+                },
+                {
+                  "x": 63,
+                  "width": 45,
+                  "text_width": 33,
+                  "label": "Quality"
+                },
+                {
+                  "x": 114,
+                  "width": 77,
+                  "text_width": 65,
+                  "label": "Performance"
+                },
+                {
+                  "x": 197,
+                  "width": 60,
+                  "text_width": 48,
+                  "label": "Advanced"
+                },
+                {
+                  "x": 263,
+                  "width": 30,
+                  "text_width": 18,
+                  "label": "LSS"
+                },
+                {
+                  "x": 299,
+                  "width": 73,
+                  "text_width": 61,
+                  "label": "LSS Players"
+                }
+              ],
+              "page": "LSS Players",
+              "donation_controls": [
+                {
+                  "visible": true,
+                  "y": 210,
+                  "x": 6,
+                  "name": "donateButton",
+                  "width": 100
+                },
+                {
+                  "visible": true,
+                  "y": 210,
+                  "x": 110,
+                  "name": "hideDonateButton",
+                  "width": 20
+                }
+              ]
+            }
+          ],
+          "pages": [
+            "LSS",
+            "LSS Players"
+          ],
+          "height": 240,
+          "controls": [
+            "Receive Server LODs",
+            "LOD Distance",
+            "Max LOD Download Rate",
+            "Slow Start on Join",
+            "Write LODs to Xaero's Map",
+            "Use Distant Horizons",
+            "Show Far Players",
+            "Share My Position",
+            "Far Player Name Tags",
+            "Full Bright Far Players",
+            "Far Player Render Limit"
+          ],
+          "width": 427
+        },
+        "dh-p4.json": {
+          "pages": 2,
+          "receive_dependency": true,
+          "sync_and_updates_preserved_on": true,
+          "auto_gui_scale": 3.0,
+          "actual_legacy_sodium": true,
+          "shared_apply_saved": true,
+          "general_dh_checkbox": true,
+          "pass": true,
+          "case": "legacy-menu"
+        }
+      }
+    }
+  ],
+  "class_comparison": {
+    "fabric": {
+      "previous_artifact_sha256": "143e862163583d99b51afecba070d0e398e1108dd8a482b3851e35a4d3c77604",
+      "current_artifact_sha256": "f5a1df877ab9c60e0de849e07915d412531a0c5a44e4c71b6a5597504f542c0a",
+      "changed_class_files": [
+        "dev/vox/lss/config/menu/ClientOptionCatalog.class",
+        "dev/vox/lss/config/menu/LegacySodiumPage$Bounds.class",
+        "dev/vox/lss/config/menu/LegacySodiumPage.class"
+      ],
+      "unchanged_dh_pipeline_class_files": 21,
+      "unchanged_nested_dh_core_class_files": 54
+    },
+    "neoforge": {
+      "previous_artifact_sha256": "96f982a5027bc2a3d20e79f5e88324e057b414fd811eccbaa31128998627b538",
+      "current_artifact_sha256": "77923e2f0f944aebf3d71a2079c72d0c13ae3388cd940c84313d6ccd6e22abd8",
+      "changed_class_files": [
+        "dev/vox/lss/config/menu/ClientOptionCatalog.class",
+        "dev/vox/lss/config/menu/LegacySodiumPage$Bounds.class",
+        "dev/vox/lss/config/menu/LegacySodiumPage.class"
+      ],
+      "unchanged_dh_pipeline_class_files": 75
+    }
+  },
+  "private_owners_retired": true,
+  "prism_installation": {
+    "timestamp_utc": "2026-10-09T16:10:38.653219+00:00",
+    "instance": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing",
+    "jar": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing/minecraft/mods/lod-server-support-neoforge-dh-dev-mc1.21.1.jar",
+    "jar_sha256": "77923e2f0f944aebf3d71a2079c72d0c13ae3388cd940c84313d6ccd6e22abd8",
+    "previous_jar_sha256": "96f982a5027bc2a3d20e79f5e88324e057b414fd811eccbaa31128998627b538",
+    "backup": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing/minecraft/lss-dh-backups/20261009T161037.506024Z",
+    "version": "0.16.0-dh-menu.dev20261009.1",
+    "preferences_preserved": {
+      "instance.cfg": "f5df63a0efc5e0963a8c30e3bfd405806ac6cceb5395d314b3032a3d9816244a",
+      "mmc-pack.json": "e748779ac72c9bb7a154dad9b9445e65f1cedfaf2cbcea899bfa8bcd37c54fde",
+      "minecraft/options.txt": "a080252458fd5ae44d9e1b9c3781a5337c9772c1e1d34429a9b7a424cb65eb25",
+      "minecraft/config/connector.json": "67bee06b2b321ed25e0d4e9b5bac7ab76c8ae76442de6caf11f463ce2ae1ac5e",
+      "minecraft/config/connectorextras_energy_bridge-common.toml": "2960bccd52230cb571c760ba9122ec1f4b21b5079f977700d4ac03f1518aef6d",
+      "minecraft/config/fabric/indigo-renderer.properties": "a8de693f48ebe37cf980109febf25735fa8bf2ba984cebb952f7767f549cf9f1",
+      "minecraft/config/fml.toml": "cc59fb1039726fda3ab1eb69b06d9b9aebb7496604ea579cfb735bc5377e7825",
+      "minecraft/config/lss-client-config.json": "0f2139961e5175efea7c49a0f1ee09d68c45f1e2fd340d6ab11eff813e53da2d",
+      "minecraft/config/lss-client-config.yaml": "70eabf5317a83ebfe6435dbbcc40b4da733695edb06153ded670f06d184b0bb6",
+      "minecraft/config/lss-server-config.json": "b30cdb7a7fbdb14e6d81c5b6934429084e8b9b41ec49891068114db00a8e5fb8",
+      "minecraft/config/neoforge-client.toml": "d58d93e2c429410d0abf25507d1679f732e1023b03bb52414348efcf5cf3ddb0",
+      "minecraft/config/neoforge-common.toml": "fe878a2717a145cd890621eac5b3be1e1fd656f7ff9abc6e8d53f670d37474c4",
+      "minecraft/config/neoforge-server.toml": "b1e3b38d612295f8d9dfa0fbdb538a992b7a1a3b7a766c491b4e9fdf3823396f",
+      "minecraft/config/sodium-fingerprint.json": "adb969068a82bf97016bddb48eda769b77095efbdcb43967f6bc803239bdfd1b",
+      "minecraft/config/sodium-mixins.properties": "b627c4456e6fa0bc4b5f85e2f1cd949faedae3cb9afdaf2a5f52e6f3b6ae1f01",
+      "minecraft/config/sodium-options.json": "ef3242a314c4311b64b88ce016acea790d42a35f7c81f0a02934841e64efcda1",
+      "minecraft/config/voxy-client.toml": "f8e5b60939eb9cb0ce9b2b63a758976144f45b4a89b328917668721d5202d483",
+      "minecraft/config/voxy-config.json": "930527d3836922196233057dc123c8c2659d9a2de679e955c6ec0dd95d9a7187",
+      "minecraft/config/vss-client-config.json": "6db6a8379a1d483d8b1eed9583e6cc91d4912b3c053553166c5a09e65421e363",
+      "minecraft/config/xaero/lib/client.cfg": "43ed9dbfa5b4d6f0f3d2e8c2ced17ad298164b22c68ff11d415257a39b074336",
+      "minecraft/config/xaero/lib/common.cfg": "98f698d96a6d21d830a455b4ad045b70516fa63c298021742d8499e7f0366cd2",
+      "minecraft/config/xaero/lib/profiles/default.cfg": "34ae854b17d896d7cb853bdc28c27231a3947e91cb9f0991f372846ee3c2a907",
+      "minecraft/config/xaero/lib/server_profiles/default.cfg": "d438aea41ca41e93697e059f523686935c0add482f6abe96b532bbf10c6ed80a",
+      "minecraft/config/xaero/world-map/client.cfg": "8f73b810f5d45a9f1a4fc36d76185e76e3059914b4ac0c0403bf85924c3f7558",
+      "minecraft/config/xaero/world-map/common.cfg": "0c229eb0daf85bd09af51f21eeeb99497a3bd50a825d5ab1ca695fb21bf6cf9d",
+      "minecraft/config/xaero/world-map/profiles/default.cfg": "5422abf9c83fedef6509144293fad20f588d4bb6ce0cf1af78cbcd2bcd0d2ccf",
+      "minecraft/config/xaero/world-map/server_profiles/default.cfg": "d438aea41ca41e93697e059f523686935c0add482f6abe96b532bbf10c6ed80a",
+      "minecraft/config/xaeropatreon.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "other_mods_preserved": true,
+    "windows_client_running_before_install": false,
+    "foreground_client_launched": false
+  },
+  "manual_server_restoration": {
+    "timestamp_utc": "2026-10-09T16:12:36.143841+00:00",
+    "owner": {
+      "pid": 755100,
+      "start": "37134883",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    },
+    "ready": true,
+    "endpoint": "[::1]:25585",
+    "same_world": true,
+    "properties_semantically_preserved": true,
+    "op_and_dh_config_hashes_preserved": true,
+    "fresh_list_and_save_ack": true,
+    "minecraft_status_protocol": 767,
+    "storage": {
+      "schema_version": 1,
+      "phase": "run",
+      "estimate": {
+        "schema_version": 2,
+        "copy_bytes": 279937024,
+        "growth_bytes": 2147483648,
+        "copied_files": 103,
+        "bounded_profile": "dh-p4-2g-v2"
+      },
+      "required_free_bytes": 45097156608,
+      "reserve_bytes": 42949672960,
+      "linux_path": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01",
+      "linux": {
+        "free_bytes": 329825624064,
+        "size_bytes": 1081101176832
+      },
+      "host": {
+        "origin": "registry",
+        "vhd_path": "C:\\Users\\Ian\\AppData\\Local\\wsl\\{abe21a68-805c-48db-988a-cdb79653ae8e}\\ext4.vhdx",
+        "vhd_bytes": 712929968128,
+        "volume_id": "\\\\?\\Volume{489cd244-97c8-4e7b-9db5-6bcea0516446}\\",
+        "drive_letter": "C",
+        "free_bytes": 101897961472,
+        "size_bytes": 1999367098368
+      },
+      "host_monitor": "/mnt/c"
+    },
+    "performance_runs": false
+  },
+  "menu_screenshots_visually_inspected": true,
+  "new_performance_measurements": false,
+  "all_manifest_inputs_match_current_checkout": true
+}

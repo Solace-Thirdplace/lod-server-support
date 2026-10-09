@@ -52,9 +52,13 @@ final class ClientIdentityResolver {
     private final AtomicLong fallbacks = new AtomicLong();
 
     ClientIdentityResolver(Registry<Biome> biomeRegistry, IdMap<Holder<Biome>> biomeIdMap) {
+        this(biomeRegistry, biomeIdMap, LSSClientConfig.CONFIG.snapshot().compatibility().blockFallbacks());
+    }
+
+    ClientIdentityResolver(Registry<Biome> biomeRegistry, IdMap<Holder<Biome>> biomeIdMap,
+                           dev.vox.lss.common.config.ClientSettings.CompatibilityBlockFallbacks fallback) {
         this.biomeRegistry = biomeRegistry;
         this.biomeIdMap = biomeIdMap;
-        var fallback = LSSClientConfig.CONFIG.snapshot().compatibility().blockFallbacks();
         this.curated = fallback.overrides();
         this.terminalBlockId = resolveTerminalBlock(fallback.defaultBlock());
         this.fallbackBiomeId = resolveFallbackBiome();
@@ -102,6 +106,19 @@ final class ClientIdentityResolver {
             this.blockIds.putIfAbsent(identity, id);
         }
         return id;
+    }
+
+    /** DH has its own property grammar; unknown names/values keep local defaults. */
+    int blockIdForDh(dev.vox.lss.common.dh.DhMaterial material) {
+        var name=ResourceLocation.tryParse(material.block());
+        var block=name==null?null:net.minecraft.core.registries.BuiltInRegistries.BLOCK.getOptional(name).orElse(null);
+        if(block==null) return blockIdFor(material.block());
+        BlockState state=block.defaultBlockState();
+        for(var entry:material.properties().entrySet()) {
+            var property=block.getStateDefinition().getProperty(entry.getKey());
+            if(property!=null) state=applyProperty(state,property,entry.getValue());
+        }
+        return Block.BLOCK_STATE_REGISTRY.getId(state);
     }
 
     int biomeIdFor(String identity) {

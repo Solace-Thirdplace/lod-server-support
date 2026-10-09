@@ -13,7 +13,16 @@ import java.util.Objects;
  * enumerate every key the tooltip may ever resolve to — that is what lets the catalog
  * test pin lang-file completeness without guessing context combinations.
  */
-public record Tooltip(Condition condition, String whenTrueKey, String whenFalseKey) {
+public record Tooltip(Condition condition, String whenTrueKey, String whenFalseKey, String nativeOnlyKey) {
+
+    public Tooltip(Condition condition, String whenTrueKey, String whenFalseKey) {
+        this(condition, whenTrueKey, whenFalseKey, null);
+    }
+
+    /** A native-only integration has a truthful tooltip while DH is selected. */
+    public Tooltip nativeOnly(String key) {
+        return new Tooltip(condition, whenTrueKey, whenFalseKey, Objects.requireNonNull(key));
+    }
 
     /** The environment tests a tooltip may switch on. Each maps to one {@link MenuContext}
      *  fact; {@link #ALWAYS} is the fixed-tooltip degenerate case. */
@@ -49,11 +58,13 @@ public record Tooltip(Condition condition, String whenTrueKey, String whenFalseK
     }
 
     public String resolve(MenuContext ctx) {
-        return condition.test(ctx) ? whenTrueKey : whenFalseKey;
+        return nativeOnlyKey != null && !ctx.nativeTerrain() ? nativeOnlyKey
+                : condition.test(ctx) ? whenTrueKey : whenFalseKey;
     }
 
     /** Every key this tooltip can resolve to (distinct, in declaration order). */
     public List<String> keys() {
-        return whenTrueKey.equals(whenFalseKey) ? List.of(whenTrueKey) : List.of(whenTrueKey, whenFalseKey);
+        return java.util.stream.Stream.of(whenTrueKey, whenFalseKey, nativeOnlyKey)
+                .filter(Objects::nonNull).distinct().toList();
     }
 }

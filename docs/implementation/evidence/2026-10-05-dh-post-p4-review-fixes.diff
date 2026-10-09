@@ -1,0 +1,1977 @@
+--- baseline/common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java
++++ current/common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java
+@@ -147,9 +147,9 @@
+             return decoder.decode(data, profile, position, world, budget);
+         }
+         /** Persist the already validated source bytes without escaping their bounded ownership. */
+-        public void cache(DhTerrainCache cache, long timestamp) throws java.io.IOException {
++        public boolean cache(DhTerrainCache cache, long timestamp) throws java.io.IOException {
+             if (data == null) throw new IllegalStateException("DH result released");
+-            cache.write(position, timestamp, data);
++            return cache.write(position, timestamp, data);
+         }
+         @Override public void close() { data = null; lease.close(); }
+     }
+--- baseline/common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java
++++ current/common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java
+@@ -9,7 +9,7 @@
+     private final Set<Long> vanilla = new HashSet<>();
+     private final LinkedHashMap<DhPosition, Receipt> receipts = new LinkedHashMap<>();
+     private long appliedRefresh = -1;
+-    private record Receipt(long timestamp, long acceptedAt, long due, boolean generate, boolean snapshot, boolean held, int failures, boolean unreachable) {}
++    private record Receipt(long timestamp, long acceptedAt, long due, boolean generate, boolean snapshot, boolean held, int failures, boolean unreachable, boolean revalidate) {}
+     public void vanilla(int x, int z) {
+         if (vanilla.size() >= 262_144 && !vanilla.contains(column(x,z)))
+             throw new IllegalStateException("DH vanilla authority limit reached; reconnect to resume");
+@@ -43,7 +43,7 @@
+     public void revalidate(DhPosition p,long now) {
+         var r=receipts.get(p);
+         if(r!=null && refreshTimestamp(p)>0)
+-            put(p,new Receipt(r.timestamp,r.acceptedAt,now,false,true,false,0,false));
++            put(p,new Receipt(r.timestamp,r.acceptedAt,now,false,true,false,0,false,true));
+     }
+     /** Reconcile hot settings without restarting failed work or delaying incomplete acquisition. */
+     public void configureRefresh(long refresh, long now) {
+@@ -53,11 +53,11 @@
+         if(refresh==appliedRefresh) return;
+         appliedRefresh=refresh;
+         receipts.replaceAll((position, receipt) -> {
+-            if(!receipt.snapshot || receipt.generate || receipt.failures!=0) return receipt;
++            if(receipt.revalidate || !receipt.snapshot || receipt.generate || receipt.failures!=0) return receipt;
+             // Enabling a held snapshot starts a new timer. Active snapshots retain
+             // their last successful acceptance time, including already overdue ones.
+             long at=receipt.held && refresh>0 ? now : receipt.acceptedAt;
+-            return new Receipt(receipt.timestamp,at,at+refresh,false,true,refresh==0,0,false);
++            return new Receipt(receipt.timestamp,at,at+refresh,false,true,refresh==0,0,false,false);
+         });
+     }
+     /** A held snapshot may be checked only through the server's synchronization service. */
+@@ -69,13 +69,13 @@
+     /** One missing sync is enough when generation cannot resolve it. Movement may restore reachability. */
+     public void absent(DhPosition p, long now, boolean generationAllowed) {
+         put(p, new Receipt(timestamp(p),acceptedAt(p), generationAllowed ? now+2_000_000_000L : Long.MAX_VALUE,
+-                generationAllowed,snapshot(p),held(p) || !generationAllowed,failures(p),!generationAllowed));
++                generationAllowed,snapshot(p),held(p) || !generationAllowed,failures(p),!generationAllowed,false));
+     }
+     /** Unpark only missing, reachable generation work, never a rejected or successful held snapshot. */
+     public void reconcileGeneration(DhPosition p, boolean reachable, long now) {
+         var r=receipts.get(p);
+         if(r!=null && r.unreachable && reachable && r.failures<MAX_REJECTED_ATTEMPTS && (!r.snapshot || r.failures>0))
+-            put(p,new Receipt(r.timestamp,r.acceptedAt,now,true,r.snapshot,false,r.failures,false));
++            put(p,new Receipt(r.timestamp,r.acceptedAt,now,true,r.snapshot,false,r.failures,false,false));
+     }
+     /** Bound repeated rejection, cancellation or timeout without inventing a successful receipt. */
+     public void cooldown(DhPosition p, long now) {
+@@ -83,13 +83,13 @@
+         long delay=30_000_000_000L << (failures-1);
+         var previous=receipts.get(p);
+         put(p,new Receipt(timestamp(p),acceptedAt(p),now+delay,previous!=null && previous.generate,snapshot(p),
+-                held(p) || failures>=MAX_REJECTED_ATTEMPTS,failures,false));
++                held(p) || failures>=MAX_REJECTED_ATTEMPTS,failures,false,false));
+     }
+     /** Every eligible MC column must have been accepted. Zero refresh holds the snapshot until reset. */
+     public boolean accepted(DhPosition p, int eligibleMask, int acceptedMask, long timestamp, long now, long refresh) {
+         if(refresh<0) throw new IllegalArgumentException("DH refresh cannot be negative");
+         if (eligibleMask==0 || (acceptedMask & eligibleMask)!=eligibleMask) { cooldown(p,now); return false; }
+-        put(p,new Receipt(timestamp,now,now+refresh,false,true,refresh==0,0,false)); return true;
++        put(p,new Receipt(timestamp,now,now+refresh,false,true,refresh==0,0,false,false)); return true;
+     }
+     public void clearReceipts() { receipts.clear(); }
+     /** DH Support advertises its Bukkit border in blocks; official DH uses chunks. */
+--- baseline/common/src/main/java/dev/vox/lss/common/dh/DhTerrainCache.java
++++ current/common/src/main/java/dev/vox/lss/common/dh/DhTerrainCache.java
+@@ -8,12 +8,21 @@
+ 
+ /** Rebuildable cache of verified source DTOs, never a claim that Voxy persisted an ingest. Worker-only IO. */
+ public final class DhTerrainCache {
+-    public static final String DIRECTORY = "dh-terrain-v1";
+-    public static final int MAX_FILES = 4096;
++    public static final String DIRECTORY = "!dh-terrain-v1";
++    public static final String LEGACY_DIRECTORY = "dh-terrain-v1";
++    public static final int MAX_FILES = 8192;
+     public static final long MAX_BYTES = 256L << 20;
++    // Bump VERSION when either storage shape or incompatible decoder semantics changes.
+     private static final int MAGIC = 0x44485443, VERSION = 1, HEADER = 92;
+     private static final Object IO_LOCK = new Object();
+     private static final LinkOption NOFOLLOW = LinkOption.NOFOLLOW_LINKS;
++    private static final Map<Path, Index> INDEXES = new WeakHashMap<>();
++    private final Set<Path> protectedFiles = new HashSet<>();
++    private static final long PENDING_MAX_AGE = 3_600_000L;
++    private static final class Index {
++        final Map<Path, Meta> files = new HashMap<>();
++    }
++    private record Meta(long bytes, long usedAt) {}
+     private final Path root, directory;
+     private final byte[] identity;
+     private final int maxFiles;
+@@ -50,6 +59,7 @@
+     public Set<DhPosition> positions() throws IOException {
+         synchronized (IO_LOCK) {
+             checkDirectories(false);
++            trim(index());
+             if (!Files.isDirectory(directory, NOFOLLOW)) return Set.of();
+             var result = new HashSet<DhPosition>();
+             try (var files = Files.newDirectoryStream(directory)) {
+@@ -68,7 +78,7 @@
+             Path file = file(position);
+             if (!Files.isRegularFile(file, NOFOLLOW)) return null;
+             long size = Files.size(file);
+-            if (size < HEADER || size > HEADER + DhLimits.DEFAULT.tileBytes()) { Files.delete(file); return null; }
++            if (size < HEADER || size > HEADER + DhLimits.DEFAULT.tileBytes()) { remove(position); return null; }
+             var lease = budget.reserve(size + 64);
+             try (var in = new DataInputStream(new BufferedInputStream(Files.newInputStream(file, NOFOLLOW)))) {
+                 if (in.readInt() != MAGIC || in.readInt() != VERSION
+@@ -79,20 +89,25 @@
+                 byte[] data = in.readNBytes(length);
+                 if (data.length != length || in.read() != -1 || !MessageDigest.isEqual(hash(data), checksum))
+                     throw new IOException("Invalid DH cache checksum");
++                try {touch(position);}catch(IOException ignored) { /* a read-only valid file is still usable */ }
+                 return new Entry(position, timestamp, data, budget, lease);
+             } catch (IOException e) {
+                 lease.close();
+-                try { Files.deleteIfExists(file); } catch (IOException ignored) { e.addSuppressed(ignored); }
++                try { remove(position); } catch (IOException ignored) { e.addSuppressed(ignored); }
+                 return null; // Corrupt or lost cache data must cause a full request, never an unchanged receipt.
+             } catch (RuntimeException | Error e) { lease.close(); throw e; }
+         }
+     }
+     /** Caller has decoded and verified this DTO. Only complete source tiles are eligible. */
+-    public void write(DhPosition position, long timestamp, byte[] data) throws IOException {
+-        if (timestamp < 0 || data.length < 1 || data.length > DhLimits.DEFAULT.tileBytes()
+-                || (long) data.length + HEADER > maxBytes) return;
+-        synchronized (IO_LOCK) {
++    public boolean write(DhPosition position, long timestamp, byte[] data) throws IOException {
++        synchronized (IO_LOCK) {
++            // Invalidate the previous version BEFORE replacement or delivery. A failed
++            // write must never leave an older source available for the next connection.
++            remove(position);
++            if (timestamp < 0 || data.length < 1 || data.length > DhLimits.DEFAULT.tileBytes()
++                    || (long) data.length + HEADER > maxBytes) return false;
+             checkDirectories(true);
++            var index = index();
+             Path temporary = Files.createTempFile(directory, ".pending-", ".tmp");
+             try {
+                 try (var out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(temporary)))) {
+@@ -101,56 +116,131 @@
+                 }
+                 try (var channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) { channel.force(true); }
+                 Files.move(temporary, file(position), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+-                trim();
++                index.files.put(file(position), new Meta(Files.size(file(position)), System.currentTimeMillis()));
++                trim(index);
++                return Files.isRegularFile(file(position), NOFOLLOW);
+             } finally { Files.deleteIfExists(temporary); }
+         }
+     }
+     public void remove(DhPosition position) throws IOException {
+-        synchronized (IO_LOCK) { checkDirectories(false); Files.deleteIfExists(file(position)); }
++        synchronized (IO_LOCK) {
++            checkDirectories(false); Files.deleteIfExists(file(position));protectedFiles.remove(file(position));
++            var index = INDEXES.get(root); if (index != null) index.files.remove(file(position));
++        }
+     }
+     /** Explicit reset clears every dimension/profile/seed bucket for this address. Null clears all DH buckets. */
+     public static void clear(Path cacheRoot, String address) throws IOException {
+         synchronized (IO_LOCK) {
+-            Path root = cacheRoot.resolve(DIRECTORY);
+-            if (Files.notExists(root, NOFOLLOW)) return;
+-            requireDirectory(root);
+-            try (var directories = Files.newDirectoryStream(root)) {
+-                for (Path directory : directories) {
+-                    if (!ownedDirectory(directory) || address != null && !directory.getFileName().toString().startsWith(addressHash(address) + ".")) continue;
++            if(Files.exists(cacheRoot,NOFOLLOW))requireDirectory(cacheRoot);
++            IOException failure=null;
++            for(String name:List.of(DIRECTORY,LEGACY_DIRECTORY)) {
++                Path root=cacheRoot.resolve(name);
++                if(Files.notExists(root,NOFOLLOW))continue;
++                try {clearRoot(root,address);}catch(IOException e) {failure=e;}
++            }
++            if(failure!=null)throw failure;
++        }
++    }
++    private static void clearRoot(Path root,String address) throws IOException {
++        requireDirectory(root); INDEXES.remove(root);
++        IOException failure=null;
++        try(var directories=Files.newDirectoryStream(root)) {
++            for(Path directory:directories) {
++                if(!ownedDirectory(directory) || address!=null && !directory.getFileName().toString().startsWith(addressHash(address)+"."))continue;
++                try {
+                     requireDirectory(directory);
+-                    try (var files = Files.newDirectoryStream(directory)) {
+-                        for (Path file : files) {
+-                            String name = file.getFileName().toString();
+-                            if (position(file) != null || name.startsWith(".pending-") && name.endsWith(".tmp")) Files.delete(file);
+-                        }
++                    try(var files=Files.newDirectoryStream(directory)) {
++                        for(Path file:files)if(position(file)!=null || pending(file))Files.delete(file);
+                     }
+-                    try { Files.delete(directory); } catch (DirectoryNotEmptyException ignored) { /* foreign contents are not ours */ }
+-                }
+-            }
+-        }
+-    }
+-    private void trim() throws IOException {
+-        var files = new ArrayList<Path>();
+-        try (var directories = Files.newDirectoryStream(root)) {
++                    try {Files.delete(directory);}catch(DirectoryNotEmptyException ignored) { /* preserve foreign contents */ }
++                } catch(IOException e) {failure=e;}
++            }
++        }
++        if(failure!=null)throw failure;
++    }
++    /** Keep this connection's not-yet-validated working set from eviction cascades. */
++    public void protect(Collection<DhPosition> positions) {
++        synchronized (IO_LOCK) {
++            protectedFiles.clear();
++            for (var position : positions) protectedFiles.add(file(position));
++        }
++    }
++    /** A validated/accepted tile no longer needs to pin its source while waiting for a response. */
++    public void unprotect(DhPosition position) {
++        synchronized (IO_LOCK) {protectedFiles.remove(file(position));}
++    }
++    public void touch(DhPosition position) throws IOException {
++        synchronized (IO_LOCK) {
++            checkDirectories(false); var file = file(position);
++            if (!Files.isRegularFile(file, NOFOLLOW)) return;
++            long now = System.currentTimeMillis();
++            Files.setLastModifiedTime(file, java.nio.file.attribute.FileTime.fromMillis(now));
++            index().files.put(file, new Meta(Files.size(file), now));
++        }
++    }
++    /** Build one shared quota index per root, rather than enumerate every bucket per write. */
++    private Index index() throws IOException {
++        var existing = INDEXES.get(root); if (existing != null) return existing;
++        var result = new Index();
++        if (Files.isDirectory(root, NOFOLLOW)) try (var directories = Files.newDirectoryStream(root)) {
+             for (Path dir : directories) {
+                 if (!ownedDirectory(dir) || !Files.isDirectory(dir, NOFOLLOW)) continue;
++                requireDirectory(dir);
+                 try (var entries = Files.newDirectoryStream(dir)) {
+-                    for (Path entry : entries) if (position(entry) != null && Files.isRegularFile(entry, NOFOLLOW)) files.add(entry);
+-                }
+-            }
+-        }
+-        var ages = new HashMap<Path, Long>(); long size = 0;
+-        for (Path file : files) { size += Files.size(file); ages.put(file, Files.getLastModifiedTime(file, NOFOLLOW).toMillis()); }
+-        files.sort(Comparator.comparingLong(ages::get));
+-        int count = files.size();
++                    for (Path entry : entries) {
++                        if (!Files.isRegularFile(entry, NOFOLLOW)) continue;
++                        boolean pending = pending(entry);
++                        if (position(entry) == null && !pending) continue;
++                        long age = Files.getLastModifiedTime(entry, NOFOLLOW).toMillis();
++                        if (pending && System.currentTimeMillis() - age > PENDING_MAX_AGE) {
++                            Files.delete(entry); continue;
++                        }
++                        result.files.put(entry, new Meta(Files.size(entry), age));
++                    }
++                }
++            }
++        }
++        INDEXES.put(root, result); return result;
++    }
++    private static boolean pending(Path file) {
++        String name = file.getFileName().toString();
++        return name.startsWith(".pending-") && name.endsWith(".tmp");
++    }
++    private void trim(Index index) throws IOException {
++        long size = index.files.values().stream().mapToLong(Meta::bytes).sum();
++        int count = index.files.size();
++        if (count <= maxFiles && size <= maxBytes) return;
++        var files = new ArrayList<>(index.files.keySet());
++        // Other worlds first; pending restores in this world stay pinned. If the
++        // whole working set fills the quota, decline new admission instead of
++        // evicting the very next file the scanner will need.
++        files.sort(Comparator.<Path>comparingInt(p -> p.getParent().equals(directory) ? 1 : 0)
++                .thenComparingLong(p -> index.files.get(p).usedAt()));
+         for (Path file : files) {
+             if (count <= maxFiles && size <= maxBytes) break;
+-            size -= Files.size(file); Files.delete(file); count--;
++            if (protectedFiles.contains(file)) continue;
++            var meta = index.files.get(file);
++            Files.deleteIfExists(file); index.files.remove(file); size -= meta.bytes(); count--;
+         }
+     }
+     private void checkDirectories(boolean create) throws IOException {
+         // Refuse symlinked roots/buckets. The cache only owns its named child of the adopted cache root.
+         Path parent = root.getParent();
++        Path legacy=parent.resolve(LEGACY_DIRECTORY);
++        if(Files.isDirectory(legacy,NOFOLLOW)) {
++            requireDirectory(legacy);
++            if(Files.exists(parent,NOFOLLOW))requireDirectory(parent);
++            try(var buckets=Files.newDirectoryStream(legacy)) {
++                for(Path bucket:buckets) {
++                    if(!ownedDirectory(bucket) || !Files.isDirectory(bucket,NOFOLLOW))continue;
++                    requireDirectory(bucket);
++                    if(Files.notExists(root,NOFOLLOW))Files.createDirectory(root);
++                    requireDirectory(root);
++                    Path target=root.resolve(bucket.getFileName());
++                    if(Files.notExists(target,NOFOLLOW))Files.move(bucket,target,StandardCopyOption.ATOMIC_MOVE);
++                }
++            }
++        }
+         if (create) Files.createDirectories(parent);
+         if (Files.exists(parent, NOFOLLOW)) requireDirectory(parent);
+         if (create && Files.notExists(root, NOFOLLOW)) Files.createDirectory(root);
+@@ -159,7 +249,11 @@
+         if (Files.exists(directory, NOFOLLOW)) requireDirectory(directory);
+     }
+     private static void requireDirectory(Path path) throws IOException {
+-        if (!Files.isDirectory(path, NOFOLLOW)) throw new IOException("DH cache directory is not a real directory");
++        var attributes=Files.readAttributes(path,java.nio.file.attribute.BasicFileAttributes.class,NOFOLLOW);
++        // Windows junctions are directories AND "other" reparse points, not
++        // symbolic links. Refuse them in every root, adoption and quota walk.
++        if (!attributes.isDirectory() || attributes.isSymbolicLink() || attributes.isOther())
++            throw new IOException("DH cache directory is not a real directory");
+     }
+     private static boolean ownedDirectory(Path path) { return path.getFileName().toString().matches("[0-9a-f]{64}\\.[0-9a-f]{64}"); }
+     private Path file(DhPosition p) { return directory.resolve(String.format(Locale.ROOT, "%016x.dht", p.packed())); }
+--- baseline/common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java
++++ current/common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java
+@@ -214,4 +214,13 @@
+         p.cooldown(tile,4_000_000_000L); assertEquals(18,p.timestamp(tile));
+         assertFalse(p.generationNeeded(tile));
+     }
++    @Test void hotIntervalChangesCannotCancelOrPostponeAReconnectCheck() {
++        for(long initial:new long[]{0,600_000_000_000L}) {
++            var policy=new DhSessionPolicy();var p=new DhPosition(6,0,0);
++            policy.configureRefresh(initial,0);policy.accepted(p,1,1,123,10,initial);
++            policy.revalidate(p,20);policy.configureRefresh(initial==0?600_000_000_000L:0,30);
++            assertTrue(policy.due(p,30));assertEquals(123,policy.refreshTimestamp(p));
++            assertTrue(policy.unchanged(p,123,40,0));assertFalse(policy.due(p,Long.MAX_VALUE));
++        }
++    }
+ }
+--- baseline/common/src/test/java/dev/vox/lss/common/dh/DhTerrainCacheTest.java
++++ current/common/src/test/java/dev/vox/lss/common/dh/DhTerrainCacheTest.java
+@@ -89,4 +89,57 @@
+         assertNull(cache.read(POSITION,new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes())));
+         DhTerrainCache.clear(root,"one");assertEquals("keep",Files.readString(foreign));
+     }
++    @Test void pinnedWorkingSetSurvivesOneTileOverflowAndOtherDimensionWrites() throws Exception {
++        var cache=new DhTerrainCache(root,key("one"),120,1<<20);
++        var ordered=new ArrayList<DhPosition>();
++        for(int x=0;x<121;x++){var p=new DhPosition(6,x,0);ordered.add(p);cache.write(p,1,new byte[]{1});}
++        var budget=new DhMemoryBudget(1<<20);cache.protect(cache.positions());int restored=0;
++        for(var p:ordered)try(var entry=cache.read(p,budget)) {
++            if(entry==null)cache.write(p,1,new byte[]{1});else restored++;
++        }
++        assertEquals(120,restored,"One miss must not evict every subsequent restore");
++        var k=key("one");
++        var other=new DhTerrainCache(root,new DhTerrainCache.Key(k.address(),k.server(),k.world(),"minecraft:the_nether",k.seed(),k.profile(),SHAPE),150,1<<20);
++        for(int x=0;x<49;x++)other.write(new DhPosition(6,x,0),1,new byte[]{2});
++        cache=new DhTerrainCache(root,key("one"),150,1<<20);cache.protect(cache.positions());restored=0;
++        for(var p:ordered)try(var entry=cache.read(p,budget)) {if(entry==null)cache.write(p,1,new byte[]{1});else restored++;}
++        assertTrue(restored>=100,"Other buckets must be evicted before the active protected world");
++        assertEquals(0,budget.used());
++    }
++    @Test void failedReplacementCannotLeaveSupersededSource() throws Exception {
++        var cache=new DhTerrainCache(root,key("one"),5,300);cache.write(POSITION,5,new byte[]{1});
++        assertFalse(cache.write(POSITION,6,new byte[400]));assertTrue(cache.positions().isEmpty());
++        cache.write(POSITION,7,new byte[]{1});assertFalse(cache.write(POSITION,-1,new byte[]{2}));assertTrue(cache.positions().isEmpty());
++    }
++    @Test void successfulReadRenewsLruAndStalePendingFilesAreSwept() throws Exception {
++        var cache=new DhTerrainCache(root,key("one"),2,1024);cache.write(POSITION,1,new byte[]{1});
++        var p=file();Files.setLastModifiedTime(p,java.nio.file.attribute.FileTime.fromMillis(1));
++        try(var entry=cache.read(POSITION,new DhMemoryBudget(1024))) {assertNotNull(entry);}
++        assertTrue(Files.getLastModifiedTime(p).toMillis()>1);
++        var pending=p.getParent().resolve(".pending-abandoned.tmp");Files.write(pending,new byte[500]);
++        Files.setLastModifiedTime(pending,java.nio.file.attribute.FileTime.fromMillis(1));
++        // Clear the rebuildable quota index to emulate opening after a process crash.
++        var indexes=DhTerrainCache.class.getDeclaredField("INDEXES");indexes.setAccessible(true);((Map<?,?>)indexes.get(null)).clear();
++        cache.positions();assertFalse(Files.exists(pending));assertEquals(Set.of(POSITION),cache.positions());
++    }
++    @Test void acceptedWorkingSetReleasesPinsForNewTerrainAdmission() throws Exception {
++        var cache=new DhTerrainCache(root,key("one"),2,1024);
++        var first=new DhPosition(6,0,0);var next=new DhPosition(6,1,0);var fresh=new DhPosition(6,2,0);
++        cache.write(first,1,new byte[]{1});cache.write(next,1,new byte[]{1});cache.protect(Set.of(first,next));
++        cache.unprotect(first);assertTrue(cache.write(fresh,2,new byte[]{2}));
++        assertEquals(Set.of(next,fresh),cache.positions(),"Pending restore survives while already accepted source can evict");
++    }
++    @Test void budgetPressureDoesNotDeleteAValidFile() throws Exception {
++        var cache=new DhTerrainCache(root,key("one"));cache.write(POSITION,1,new byte[100]);
++        assertThrows(DhCodecException.class,()->cache.read(POSITION,new DhMemoryBudget(1)));
++        assertEquals(Set.of(POSITION),cache.positions());
++    }
++    @Test void legacyOwnedBucketsAreAdoptedWithoutMovingForeignNativeFiles() throws Exception {
++        var cache=new DhTerrainCache(root,key("one"));cache.write(POSITION,1,new byte[]{1});
++        Files.move(root.resolve(DhTerrainCache.DIRECTORY),root.resolve(DhTerrainCache.LEGACY_DIRECTORY));
++        var nativeFile=root.resolve(DhTerrainCache.LEGACY_DIRECTORY).resolve("minecraft_overworld.bin");Files.writeString(nativeFile,"keep");
++        assertEquals(Set.of(POSITION),new DhTerrainCache(root,key("one")).positions());
++        assertTrue(Files.isDirectory(root.resolve(DhTerrainCache.DIRECTORY)));assertEquals("keep",Files.readString(nativeFile));
++        DhTerrainCache.clear(root,null);assertEquals("keep",Files.readString(nativeFile));
++    }
+ }
+--- baseline/docs/implementation/2026-10-05-dh-manual-test-guide.md
++++ current/docs/implementation/2026-10-05-dh-manual-test-guide.md
+@@ -8,12 +8,25 @@
+ Existing terrain synchronization remains enabled. The server uses
+ `SURFACE_THEN_CHUNKS`; unsolicited updates remain disabled.
+ 
+-Setup status: **ready**. The tested dev jar is installed, the server is running,
+-Windows IPv6 connectivity passes, and the course is built, saved and checked.
+-The final setup receipt is in
+-`build/dh-neoforge/2026-10-05/rejoin-cache/test-setup-completed.json` in the outer checkout.
+-The previous client jar is backed up and your client preferences were preserved.
+-The server stays at clear noon for consistent visual comparisons.
++Setup status: **ready**. The tested `0.16.0-dh-postp4fix.dev20261005` NeoForge jar
++is installed and hash-verified, with the previous jar backed up and preferences
++preserved. The same server world is running; Windows IPv6 connectivity and Minecraft
++protocol 767 pass. The server remains alive after its detached launcher exits.
++The current setup receipt is in the outer checkout's
++`build/dh-neoforge/2026-10-05/post-p4-review-fixes/test-setup-completed.json`.
++Historical ready receipts describe their timestamps; use the command below for
++present liveness. The earlier sandbox restriction has been lifted.
++
++Check actual liveness from the outer checkout:
++
++```bash
++python3 build/dh-neoforge/2026-10-01/stop-server.py --status-json
++```
++
++`bash build/dh-neoforge/2026-10-01/start-server.sh` uses a
++detached supervisor and a console FIFO; it does not depend on an open terminal.
++Use `server-console.py 'save-all flush'` in that directory for commands and
++`stop-server.py --stop` for graceful shutdown. The actual detached restart, FIFO console commands and saved world have been checked.
+ 
+ ## Ocean lighting retest
+ 
+@@ -21,7 +34,7 @@
+ that the overall appearance looks good. The ocean lighting visual retest passes
+ by user observation; the other numbered checks below still need their own results.
+ 
+-The current `0.16.0-dh-rejoin.dev20261005` build retains the fix that reduces skylight with water
++The current `0.16.0-dh-postp4fix.dev20261005` build retains the fix that reduces skylight with water
+ depth. Private Fabric and NeoForge clients passed actual Voxy water-light
+ readback at deep and shallow floors. Look at an ocean floor **before approaching
+ it through vanilla range**, then compare it nearby and after retreating. Deep
+@@ -36,17 +49,28 @@
+ 
+ ## Reconnect cache check
+ 
+-The current build retains validated DH source terrain. Its first connection
+-fills this new cache, even if Voxy already has terrain from the previous build.
+-Let distant terrain settle, disconnect, then rejoin at the same position.
+-`/lss dhstatus` should report cached tiles being restored. The client checks
+-their server timestamps and downloads full terrain only when changed or missing.
+-This rejoin check works with refresh **Off**. A Minecraft restart also retains
+-the source cache. `/lss reset` explicitly clears it and reacquires full data.
++The current build retains complete validated DH terrain. Let distant
++terrain settle, disconnect, and rejoin at the same position. With server sync
++available, timestamp validation should precede cached destination restoration,
++even with refresh Off. Matching Voxy columns need no conversion/ingest; different
++existing columns are preserved, including terrain visited with vanilla in the
++previous connection. Only fully default destination columns rebuild from unchanged
++source. A partial hole may therefore remain until a changed server reply or reset.
+ 
+-Private Fabric and NeoForge clients already passed unchanged rejoin, offline
+-edits, Voxy cache loss, process restart, reset and missing-source recovery.
+-This manual check assesses appearance and responsiveness in Windows.
++`/lss dhstatus` reports matched/preserved columns and cache availability. Inspect
++an area you visited before disconnecting: it should retain its refined appearance.
++Partial upstream tiles and missing source tiles still download again. Zero target
++payloads in the old private run was never a zero-download claim for the session.
++`/lss reset` explicitly discards retained data and reacquires it.
++
++The current packaged Fabric/NeoForge clients pass unchanged target reuse, offline
++edits, Voxy loss and a JVM restart, each with 2400 independent block-state checks.
++Both also visit the target with vanilla, retreat, reconnect and preserve its raw
++destination digest with zero target conversion. Production full-content comparison
++remains a premise, not an independent light/biome or completion oracle. The older
++damaged-column repair is replaced by preservation. Both loaders additionally pass
++900 independent ocean light samples; NeoForge lifecycle/source toggles pass. See the
++[review disposition](2026-10-05-dh-post-p4-review-disposition.md).
+ 
+ ## Start with untouched distant terrain
+ 
+--- baseline/docs/implementation/2026-10-05-dh-ocean-lighting.md
++++ current/docs/implementation/2026-10-05-dh-ocean-lighting.md
+@@ -8,6 +8,15 @@
+ zero failed columns and 1619 columns enqueued. The apparent acquisition stall was
+ idle operation on an existing-terrain-only server; the user requested generation
+ within 32 chunks.
++
++**Post-review update:** attenuation now includes resolved nonempty fluid states,
++including kelp and seagrass. The expanded frozen-tile regression checks over 7000
++adjacent fluid/floor pairs, with explicit kelp/seagrass premises. Packaged tests
++below are historical water-only qualification; new live plant checks are pending.
++The corrected post-review client is installed and the same server has resumed. The audited
++`ocean-lighting/verification-corrected.json` binds each loader to its actual jar:
++Fabric `01bce007…`, NeoForge `885e22e5…`. The original verification's top-level
++NeoForge hash must not be applied to its Fabric row.
+ 
+ ## Verified cause and correction
+ 
+--- baseline/docs/implementation/2026-10-05-dh-p2-p4-continuation.md
++++ current/docs/implementation/2026-10-05-dh-p2-p4-continuation.md
+@@ -123,6 +123,10 @@
+ and verifies the lower terrain also changed; native reconnect delivers 16 columns,
+ compares 300 source-specific samples and retires the DH budget to zero.
+ 
++The final `live-matrix.json` also retains a failed first `fabric-support` attempt:
++"Insufficient solid readback: 0 columns". It is excluded from the eleven passing
++cells; its log and run directory remain evidence, not a production success.
++
+ Several early fixture failures were diagnosed and preserved: incomplete compile
+ classpath, an oversized remapper input, use of NeoForge classes for Fabric remapping,
+ a stale Fabric Loader version, Support's valid zero timestamp, air-state
+@@ -147,6 +151,10 @@
+ a matched-area comparison with an official DH client or Windows GPU frame times.
+ 
+ ## Manual setup and remaining gates
++
++**Historical setup below.** Later builds/configuration superseded this receipt;
++the corrected post-review client is now installed and the same server has resumed.
++Use the [manual guide](2026-10-05-dh-manual-test-guide.md) for current status.
+ 
+ The selected Windows Prism instance is
+ **LSS dev — 1.21.1 NeoForge - Copy For Far Testing**. The manual server remains
+--- baseline/docs/implementation/2026-10-05-dh-post-p4-review-disposition.md
++++ current/docs/implementation/2026-10-05-dh-post-p4-review-disposition.md
+@@ -0,0 +1,166 @@
++# DH post-P4 review disposition
++
++Date: 2026-10-05. Source checkout: `.worktrees/dh-client-p1`, branch
++`feat/dh-codec-p1-mc1.21.1`. This addresses the
++[Claude review](2026-10-05-dh-post-p4-claude-review.md) against the last packaged
++candidate, `/tmp/lss-dh-voxy-cache-20261005`. The changes are shared by Fabric and
++NeoForge 1.21.1. Work remains local; outreach is pending.
++
++The corrected candidate is now built, tested and **installed for manual play**.
++The normal Java-21 gauntlet passes **3308 tests** (four opt-in Fabric skips), all
++78 Fabric/eight NeoForge server gametests, six LSS/VSS packaging checks, 126
++packaging selftests and nine SQLite helper tests. Five fresh packaged live cells
++pass: both reconnect sequences, NeoForge lifecycle, and ocean light on both loaders.
++The earlier 204-case standalone run remains historical preliminary evidence.
++
++The new Windows check demonstrated that junctions pass `isDirectory(NOFOLLOW)`
++and are not symbolic links, but report `BasicFileAttributes.isOther()`. The source
++cache now refuses those reparse directories in roots, adoption and quota walks,
++including cache-root clearing. The first normal candidate and failed junction
++premise are preserved under `before-ntfs-junction-fix/`; they are not the installed
++candidate. The replacement passes the full gauntlet and native Windows regular IO,
++atomic replacement, foreign-file preservation, the 121/120 quota control, junction
++refusal and a 428-character cache path.
++
++The installed NeoForge jar SHA256 is
++`d0acf45774c9d61291cc2f0ff9b123dc9e2787cf0bd80a480bc1423d80be41dd`.
++The selected Prism instance's previous jar is backed up at
++`minecraft/lss-dh-backups/20261005T221212.874377Z`; its configurations and instance
++preferences are byte-identical. The same manual world is running at `[::1]:25585`,
++with OP preserved, generation bounded to 32 chunks and synchronization enabled.
++Windows IPv6 TCP, protocol 767, FIFO console/save and survival after launcher exit
++pass. No foreground Minecraft client was launched. Strict release/I1 gates remain open.
++
++## Verified findings
++
++| Review item | Correction and evidence |
++| --- | --- |
++| H-1 | Picked the review's preserve-on-mismatch option. Unchanged/offline cached restores reuse matches, preserve differing nondefault columns and reconstruct only fully default columns. Unavailable/failed readers defer, with status, rather than overwrite unknown content. `unchangedRestorePreservesPreviouslyVanillaRefinedDestinationAcrossDisconnect` performs vanilla ownership in connection 1, disconnects and asserts zero ingests against a different destination. Default-loss and unavailable-reader tests pass. Both fresh packaged loaders pass a real vanilla-visit/digest-preservation stage with zero target conversions. Changed/full network replies still have the separate I1 limitation below. |
++| H-2 | 8192-file count headroom (256-MiB byte cap unchanged), shared quota index, LRU touches, other-bucket-first eviction, and protection of pending working-set files. Successful restores release their pins for further admissions. The 121/120 single-bucket cascade keeps 120 restores instead of zero; the same-address second-dimension pressure test retains at least 100 restores. A full protected quota may decline the new admission; it cannot evict the next pending restore. Tests also pin admission after protection is released. Real range-128/NTFS performance remains unmeasured. |
++| M-1 | Remove the older source before every newer complete/partial response, absent full reply, and replacement admission. Failed replacement cannot retain its predecessor; successful-write accounting uses a boolean result. If old-file invalidation itself fails, stop DH before delivering newer data, keeping ordinary Minecraft connected. Forced AccessDenied replacement, partial response, absence and rejected-admission regressions pass. Real antivirus/disk-full behavior awaits Windows tests. |
++| M-2 | Validate cached source timestamps before any Voxy conversion/ingest. Empty owned replies restore/compare; changed replies deliver only new content. The actual scanner with 100 cached candidates sends the first check before any restore, without waiting for a sweep. Request admission rechecks synchronization rate/permits after worker preparation; one cache read in flight does not block scanning other work. Per-column main-thread checks remain to guard vanilla authority; a fused whole-tile reader/handoff and full-range cost benchmark are deferred. No 35-minute or zero-IO claim is made. |
++| M-3 | Accepted the review's minimum correction: partial tiles remain uncached and re-download. Documentation and corrected historical receipts explicitly limit zero payload/conversion claims to the complete target. The historical final run downloaded thirteen other full tiles per rejoin. Partial caching is not implemented or claimed. |
++| M-4 | A receipt marked for one-shot revalidation retains that obligation across refresh interval changes, including Off. The interval-flip regression passes. New reconnect validation is scheduled before acceptance, avoiding the separate accepted/revalidate callback race. |
++| M-5 | Verified pid 100350 is gone. Replaced terminal-dependent launch with a detached supervisor, disabled JLine/ANSI, retained FIFO console input and recorded exact owner identity. Liveness is checked at read time with `stop-server.py --status-json`, including cwd/argfile and TCP. The stale source-only ready claim was corrected first; the latest guide/receipt now bind an actually resumed server. Bash/Python syntax, detached FIFO mechanism and the actual resumed server/console/save check pass; the server survives launcher exit. |
++| L-1 | Apply fluid-depth attenuation to resolved nonempty fluid states, including kelp/seagrass and flowing water. The expanded frozen producer regression checks over 7000 adjacent fluid/floor pairs, with explicit kelp/seagrass premises. Existing block-light/no-sky tests pass. New packaged live plant-light validation remains pending. |
++| L-2 | Memory pressure and client-thread timeout retain valid files and reschedule bounded local tile retries. The sixty-second cache deadline cancels only the cache task, keeps the position and cools that tile, even when Voxy is not ready. Index timeout leaves network acquisition available. Budget-pressure and deadline regressions pass; no session-wide cache-timeout failure remains. |
++| L-3 | Disable source reuse for unavailable or zero seed identity. Account fresh pending temporary files in quota; sweep old pending files on index rebuild. Identity and file-hygiene regressions pass. |
++| L-4 | Count matches/preserved columns only after the second authority check succeeds. A test introduces vanilla ownership between checks and verifies one skip, fifteen preserved columns and no ingest; the skipped column is not counted as reuse. |
++
++## Suspected risks checked and addressed
++
++- **Checksum-valid undecodable sources:** invalidate/remove and fall back to full
++  acquisition without stopping the session. Resource-limit errors remain transient.
++  File/identity VERSION binds decoder compatibility; its comment requires a bump
++  for incompatible decoder semantics. The undecodable-source test passes.
++- **Clearing composition:** remote DH clearcache clears only the current address.
++  Global clear continues native buckets despite a source-root symlink or one failed
++  bucket, skips both source namespaces, and preserves foreign source contents.
++  Actual command/current-address and composite-clearing regressions pass.
++- **Single-player/reset and late workers:** absence of remote identity is a no-op
++  for remote cache invalidation. Reset refuses to proceed until every previously
++  retired worker really terminates, including an interrupt-ignoring worker. It
++  aborts before touching the replacement session. The tests pass; real IO hangs
++  remain subject to the bounded refusal rather than pretending reset succeeded.
++- **Timestamp zero / write counters:** a valid zero-time source is rechecked with a
++  full request, not treated as an unchanged receipt; absent reply removes it.
++  Negative/oversized source admission invalidates the old entry and returns false.
++  LRU metadata failure on an otherwise accepted unchanged reply reports cache
++  unavailability without stopping DH; its forced-access-denial regression passes.
++- **Identity privacy/namespace:** SHA hashes are guessable, not anonymization.
++  `!dh-terrain-v1` cannot collide with the native sanitizer's server bucket names.
++  Adoption moves only owned legacy hash buckets, preserving foreign/native files.
++  Failed symlink access is visible in cache status. A native Windows junction bypass was demonstrated and fixed using reparse
++  attributes. Root refusal and regular/long-path IO pass on the selected Java runtime;
++  antivirus locks and arbitrary junction race scenarios remain untested.
++- **Voxy references/ABI:** mapper snapshot/open and each worker column read use
++  short references; references do not span client-thread waits. Cleanup is
++  nonthrowing. Destination identity is rechecked before comparison acceptance or
++  restore handoff so a replaced engine cannot create a receipt for another one.
++  Unavailable readers/mapping caps and disabled server sync are reported. Tests
++  cover references, replacement, timeout/interruption and safety fallback.
++
++Optional destination reads can still initialize missing Voxy sections in Voxy's
++own LRU; LSS accounts retained copies, not Voxy's internal allocations. Storage
++load errors may appear as defaults in that upstream API. Mapper snapshot cost,
++repeated section copying, derived mips and large-cache frame/worker cost require
++measurement. These are qualification/performance risks, not a proved fix here.
++
++## Evidence corrections and validation boundary
++
++Evidence lives under the outer checkout's
++`build/dh-neoforge/2026-10-05/post-p4-review-fixes/`.
++The [checkpoint](evidence/2026-10-05-dh-post-p4-review-fixes-checkpoint.json) binds
++production/test manifests, changed source and the selected-run evidence. The
++scoped diff compares this fix increment against the last packaged source snapshot,
++not the broad staged Git feature diff.
++
++The first sandboxed run selected all `common.dh` suites plus session, converter,
++destination-reader and native-cache suites: 204 passed. Its source-only checkpoint
++and exact bound inputs are preserved in `source-only-checkpoint-before-unrestricted/`.
++The broad standalone attempt's seven failures and the original wrapper/socket
++failures remain archived as described below; they do not describe the current
++normal build or environment.
++
++The normal build used Java 21 and the intended version in the frozen source copy,
++with the fixture test source set kept outside production. XML recount: Common
++1012, Fabric 1737 passed/four skipped (includes four fixture tests), Paper 536,
++NeoForge 23. Both gametest sets and all packaging/selftests pass. After the NTFS
++finding, the replacement normal gauntlet passed again; counts are per final suite,
++not an addition of repeated attempts. Old candidate/observer/source/XML inputs are
++retained under `before-ntfs-junction-fix/`.
++
++Each fresh packaged reconnect cell makes 2400 independent known-block comparisons
++and passes the real vanilla-visit digest preservation, unchanged rejoin, offline
++edit, Voxy loss, new JVM, reset and source loss stages with refresh Off. Voxy loss
++reconstructs sixteen target columns; unchanged rejoin/JVM/vanilla-visit stages
++convert zero. These payload claims remain target-scoped. Both ocean cells read 450
++deep and 450 shallow light samples using the independent floor-run oracle. The
++NeoForge lifecycle cell passes movement, reset, refresh/receive toggles, Nether/End,
++portal return, source switch and ordinary connection survival. Every cell binds its
++actual installed candidate and observer SHA256. Software rendering does not measure
++Windows GPU frame time. Full-content comparison remains a production premise.
++
++Native Windows filesystem results are in `ntfs-probe.json`; its owned temporary
++controls test structural source IO, not terrain content. First-run `refused:false`
++on a junction is retained beside the failing candidate. Final `refused:true`,
++atomic replacement/readback, foreign preservation, 120 retained entries at a
++120/121 count boundary and long-path IO pass. No antivirus concurrency claim is made.
++
++Historical original receipts are preserved; separately named
++`ocean-lighting/verification-corrected.json`, `voxy-cache-reuse/verification-corrected.json`
++and `voxy-cache-reuse/fabric/verification-corrected.json` carry these audit corrections:
++
++- Each ocean row binds its actual candidate **and installed run mod**: Fabric
++  `01bce007…`, NeoForge `885e22e5…`. The original top-level hash was NeoForge-only.
++- `full_destination_content_verified` is labelled `production_comparison_premise`.
++  Only 300 known-block samples per stage were independent, with no full biome/light
++  or completion oracle. Counts and original failing evidence are preserved.
++- Partial/missing neighbor downloads are disclosed. The failed first Fabric Support
++  cell (`Insufficient solid readback: 0 columns`) is now disclosed in the continuation
++  prose and remains excluded from its passing cells.
++- Historical ready receipts are timestamps, not current liveness. The new setup
++  receipt and manual guide bind the current running server.
++
++## Manual setup and remaining qualification
++
++`verification.json`, `fabric/verification.json`, `live-matrix.json`,
++`prism-installation.json` and `test-setup-completed.json` bind the installed
++candidate, passing cases and resumed manual setup. `resume-deployment.md` preserves
++the earlier prepared sequence; deployment is now complete. Read-time liveness is
++available from `stop-server.py --status-json`. The source copy remains
++`/tmp/lss-dh-postp4-fixes-20261005`, version `0.16.0-dh-postp4fix.dev20261005`.
++
++Range-128 real-client quota/load benchmarking, multi-dimension cache pressure,
++real antivirus/disk-full replacement, sync-disabled offline edits and new packaged
++kelp/seagrass readback remain qualification work. The fixed quota/failed-write/
++fluid cases have permanent source/unit controls, but no live result is substituted
++for those remaining cells. Derived mips, official-client matched load, Windows GPU
++frame times, other support lines and upstream outreach remain open.
++
++Strict P2 completion and I1 remain open: Voxy's raw ingest acknowledges enqueue,
++not completion, and already queued DH writes can overwrite newer vanilla data.
++Unchanged-cache preservation fixes the added reconnect regression; it is not a
++persistent vanilla ledger or a fix for newer/full network payloads. The plan and
++manual docs warn about those remaining overwrite paths. The current candidate is
++ready for supervised local manual testing, not a completed release milestone.
+--- baseline/docs/implementation/2026-10-05-dh-rejoin-cache.md
++++ current/docs/implementation/2026-10-05-dh-rejoin-cache.md
+@@ -1,6 +1,15 @@
+ # DH rejoin source cache
+ 
+ Date: 2026-10-05. User-authorized local MC1.21.1 development on Fabric and NeoForge.
++
++The later [Voxy cache reuse correction](2026-10-05-dh-voxy-cache-reuse.md)
++supersedes unconditional replay below. Matching destination columns now reuse
++Voxy's stored content; this record preserves the original source-cache checkpoint.
++
++**Historical record:** behavior, limits, installation and test results below describe
++the first source-cache candidate. The [post-review disposition](2026-10-05-dh-post-p4-review-disposition.md)
++supersedes restore-before-validation, the old quota/namespace, mismatch rebuilding
++and setup status. Raw address hashing is not anonymization; the same manual server has now resumed with the corrected client installed. Do not use this historical installation receipt as liveness evidence.
+ 
+ Official DH retains local terrain and checks its timestamp when loading it on a
+ new connection. Missing terrain uses a separate retrieval path. Changed terrain
+--- baseline/docs/implementation/2026-10-05-dh-voxy-cache-reuse.md
++++ current/docs/implementation/2026-10-05-dh-voxy-cache-reuse.md
+@@ -1,46 +1,100 @@
+ # Reconnect using Voxy's existing terrain
+ 
+-Date: 2026-10-05. Local follow-up to the user's observation that Voxy already
+-owns a terrain cache. This supersedes unconditional source replay in the
+-[earlier reconnect checkpoint](2026-10-05-dh-rejoin-cache.md).
++Date: 2026-10-05. Updated after the [independent review](2026-10-05-dh-post-p4-claude-review.md).
++The [review disposition](2026-10-05-dh-post-p4-review-disposition.md) is the latest
++source and validation checkpoint. The corrected candidate is now built, tested
++and installed in Prism, and the same manual server is running. Earlier blocked
++source-only receipts remain historical.
+ 
+-A cached DH tile is still decoded and validated locally. The client opens the
+-current Voxy destination and reads copies of its level-zero sections on the DH
+-worker. For each eligible Minecraft column, it compares every block state,
+-quart-center biome and sky/block light value with the current DH conversion
+-semantics. Water depth attenuation, negative coordinates, custom heights, air
+-and default values remain consistent with the converter. A matching column
+-gets a session-local content receipt without constructing Minecraft sections,
+-converting Voxy mips or submitting an ingest. Missing or different columns are
+-reconstructed individually from the retained source DTO. Section presence alone
+-is insufficient. Voxy's ordinary `acquire` initializes absent sections, and
+-the reader compares those actual defaults too. The pinned port initializes
+-missing sections to fully skylit air; this cannot stand in for dark air or terrain.
++## Current source behavior
+ 
+-The server timestamp check still runs once after reconnect with continuous
+-refresh Off. Unchanged replies carry no terrain payload. Offline changes fetch
+-and deliver new source data. Full Voxy cache loss rebuilds from the source cache;
+-source loss requires a timestamp-zero full request. Explicit reset clears both
+-destinations as before. `/lss dhstatus` adds `Voxy reused columns`; conversion,
+-enqueue and tile counters continue describing actual work rather than counting
+-reads as imports.
++When server synchronization is enabled with a positive rate, a cached complete
++DH source tile is decoded and validated, then used to send a conditional timestamp
++request **before any destination restore**. An unchanged response reads and
++compares Voxy's level-zero block states, quart-center biomes and sky/block light.
++A matching column needs no conversion or ingest. A different, nondefault column
++is preserved: it might contain better terrain from an earlier vanilla visit.
++Only an entirely default column (air with default skylight throughout the world
++height) is reconstructed from unchanged source data. This also recovers a complete
++Voxy cache wipe. A partially populated or damaged column is preserved, rather
++than treating a difference as permission to downgrade explored terrain.
+ 
+-This is a bounded read/compare optimization, not a zero-IO reconnect. It does
+-not persist a Voxy completion receipt. The reader holds the destination engine
+-alive and releases every section after copying. Owned snapshots and mapping
+-copies have budget reservations. Interrupted/timed-out client callbacks release
+-a cache reader whose caller never received it, including completion/cancellation
+-races. Optional read ABI failures fall back to the existing ingest path without
+-disabling it. The installed port's classfile API was checked locally; other
+-Voxy builds can use that fallback.
++Changed server replies follow the normal network conversion/ingest path. Every
++newer response invalidates the prior source file before replacement, including
++partial coverage, absence on a full request and failed writes. Partial tiles
++remain uncached and are downloaded again on later connections. Thus zero payloads
++for a complete test target never implies zero downloads for the entire session.
++The historical final run downloaded thirteen other full tiles per rejoin.
+ 
+-The comparison covers level-zero content, not a new guarantee about every
+-derived mip or future asynchronous write. A Voxy column refined by earlier
+-vanilla visits may differ from the DH approximation and be conservatively
+-rebuilt; the adapter has no persistent proof of that column's ownership.
+-The [strict Voxy commit and vanilla-authority gap](2026-10-05-dh-voxy-commit-gap.md)
+-therefore remains open. No upstream contact or Voxy production patch occurred.
++Refresh Off disables periodic checks; it does not disable sync-on-load when the
++server permits that service. With synchronization disabled, source restoration
++uses the same preserve/default rules without a server check. Diagnostics state
++that synchronization is disabled. Timestamp-zero sources receive full requests
++when synchronization is available. Missing, corrupt or incompatible source files
++require full data. An unavailable destination reader defers cached restores and
++reports the reason; it cannot fall through to overwrite unverified Voxy content.
++Ordinary network acquisition remains available for other tiles.
+ 
+-Validation and installation receipts are recorded under the outer checkout's
+-`build/dh-neoforge/2026-10-05/voxy-cache-reuse/`. The final exact artifact binding
+-and resumed manual setup will be linked here after the packaged live tests.
++The cache lives in `!dh-terrain-v1` under the adopted LSS/VSS cache root. Owned
++hash-named buckets from the previous `dh-terrain-v1` directory are adopted while
++foreign/native files stay in place. Identity includes address, DH server/world
++keys, dimension, nonzero biome-zoom seed, profile and height/skylight shape.
++SHA-256 filenames avoid raw identifiers but are **not anonymization or encryption**;
++likely addresses can be guessed. The global quota is 8192 files / 256 MiB. A shared
++index avoids directory enumeration on each write; successful reads/unchanged
++responses touch LRU age, other buckets are evicted first, and this connection's
++pending cached working set stays protected. If the protected set fills the
++quota, new admissions can be declined. Both file and byte limits still apply.
++Abandoned temporary files are counted and old ones are swept on index rebuild.
++
++Resource pressure and client-thread timeouts retain valid source files and use
++bounded per-tile retries. A sixty-second cache operation cancels its task, rather
++than stopping the entire source. Reset refuses to clear beneath an unretired older
++worker. Remote DH clearcache clears the current address; single-player reset no
++longer requires a remote server. Global clearing tries native buckets even when
++the source clear fails, and preserves foreign source files.
++
++The destination reader holds an engine reference only while copying on the worker,
++never across client-thread waits. It releases section references and rechecks the
++current destination before accepting a comparison or handing off reconstructed
++content. `/lss dhstatus` distinguishes matched and preserved columns, counts actual
++conversion/enqueue work, and exposes unavailable comparison/synchronization.
++Mapping copies and column snapshots have reservations. Per-column main-thread
++checks remain for vanilla authority; whole-tile fusion and a full-range benchmark
++have not been qualified.
++
++**Remaining overwrite limitation:** new server payloads can replace older vanilla
++refinements, and an already queued DH write can commit after newer vanilla terrain
++inside Voxy. Preserving unchanged cached mismatches addresses the new reconnect
++regression, not the [strict commit/I1 gap](2026-10-05-dh-voxy-commit-gap.md).
++No durable completion receipt, derived-mip proof or upstream production patch is claimed.
++
++## Historical packaged checkpoint
++
++The preceding `0.16.0-dh-voxycache.dev20261005` candidate passed 3279 normal unit
++tests (four opt-in skips), 78 Fabric/eight NeoForge gametests, six packaging checks,
++126 packaging selftests and nine SQLite helper tests. Those results belong to that
++older candidate, not these fixes. Its NeoForge SHA256 is
++`b69426d30887f91fbc4e4d390345126df4a8c8b489c831a5a0995947d6d62609`.
++It was installed with preferences preserved and a backup at
++`minecraft/lss-dh-backups/20261005T192405.784270Z`; the corrected candidate now supersedes that installation.
++
++Both older packaged clients passed eight stages with 2400 independent **block-state**
++comparisons each. Unchanged rejoin/new-JVM stages had zero **target** payloads,
++conversions and ingests. The older damaged-column stage reconstructed one column;
++that behavior is intentionally replaced by preservation. Complete Voxy loss rebuilt
++sixteen target columns. Offline edits, reset and source loss also passed.
++The full-content wait used production `matchesCache`/`VoxyTerrainCache` as a
++**premise**, not an independent block/biome/light oracle. Neither it nor backlog
++zero proves asynchronous completion. Both fresh packaged loaders now pass the real-vanilla-visit reconnect stage,
++preserving the raw destination digest with no target conversion.
++
++Initial warm runs exposed real initialized-default semantics: `acquireIfExists`
++returned null while retaining skylit air. Ordinary `acquire` corrected that mismatch.
++An observer split-package/compiler failure and all pre-fix runs remain preserved;
++none is relabelled as a pass. Historical evidence is under the outer checkout's
++`build/dh-neoforge/2026-10-05/voxy-cache-reuse/`, with audit corrections in
++`verification-corrected.json` and `fabric/verification-corrected.json`. The original
++[checkpoint](evidence/2026-10-05-dh-voxy-cache-reuse-checkpoint.json) binds its original
++historical receipts. Use the [manual guide](2026-10-05-dh-manual-test-guide.md) and
++read-time liveness command for present setup status.
+--- baseline/docs/planning/2026-09-29-dh-client-compatibility-plan.md
++++ current/docs/planning/2026-09-29-dh-client-compatibility-plan.md
+@@ -107,6 +107,30 @@
+ This retains source data independently of Voxy, not persistent Voxy acceptance
+ claims; the strict P2/P4 commit and vanilla-authority gates remain open.
+ [Implementation and evidence](../implementation/2026-10-05-dh-rejoin-cache.md).
++
++**Voxy cache reuse follow-up (2026-10-05):** reconnect now compares retained DH
++source data with Voxy's existing level-zero blocks, biomes and lighting before
++delivery. Matching columns get session-local receipts with zero conversion or
++ingest; missing/different columns rebuild individually. Both packaged Fabric
++and NeoForge clients pass 2400 independent block comparisons each, including
++zero target reimports on unchanged rejoin and a full JVM restart, exactly one
++repaired column after deliberate damage, offline edits, complete Voxy cache loss,
++explicit reset and source loss. The normal build passes 3279 unit tests, 86 server
++gametests and all six packaging checks. This supersedes unconditional replay in
++the preceding checkpoint and keeps the strict P2/P4 gates open.
++[Implementation, limits and evidence](../implementation/2026-10-05-dh-voxy-cache-reuse.md).
++
++**Post-P4 review corrections (2026-10-05):** source-cache timestamp validation now
++precedes destination restoration. Unchanged cached mismatches preserve existing
++terrain; only entirely default columns rebuild. Quota/LRU, superseded-file
++invalidation, cache retries/reset ownership and fluid-plant lighting are corrected.
++The lifted sandbox enabled the final normal gauntlet: 3308 tests, 86 server
++gametests, all six packaging checks and five fresh packaged live cells pass.
++A native Windows junction bypass was verified and fixed; final atomic/long-path
++cache IO and junction refusal pass. The corrected NeoForge jar is installed and
++the same manual server world is running, with preferences and OP retained.
++[Disposition, regression evidence and pending deployment](../implementation/2026-10-05-dh-post-p4-review-disposition.md).
++This checkpoint supersedes the reconnect behavior and setup status above.
+ 
+ ## 1. Recommendation and scope
+ 
+@@ -556,18 +580,27 @@
+ out of scope (review fold): it depends on proving Voxy's durable destination
+ identity, which LSS cannot choose (§4.3 step 5).
+ 
+-**2026-10-05 user-authorized extension:** match official DH's rejoin behavior by
+-retaining independently validated, complete **source DTOs**, rather than Voxy
+-acceptance claims. Restore those DTOs through the current converter and vanilla
+-authority guards, then validate their server timestamps once through the server's
+-sync-on-load service. Unchanged replies need no terrain payload; missing, corrupt
+-or identity-mismatched cache entries require full data. Offline changes still
+-download. The cache survives Voxy cache loss because it owns the source data
+-needed for reconstruction. Explicit LSS reset/clear commands erase it. This
+-supersedes the unconditional fresh-connection re-fetch below and the P3 deferral
+-for source retention; it does not authorize persistent Voxy receipts or close
+-the asynchronous Voxy commit/vanilla-authority gap. Implementation and evidence:
+-[rejoin cache](../implementation/2026-10-05-dh-rejoin-cache.md).
++**2026-10-05 user-authorized extension, corrected after review:** retain independently
++validated complete **source DTOs**, without persisting Voxy acceptance claims.
++When synchronization is available, request a timestamp check before restoring any
++cached destination content. On unchanged, compare current Voxy blocks/biomes/light:
++reuse matching columns, preserve differing nondefault terrain, and reconstruct only
++fully default columns. On changed, deliver new network content and invalidate the
++older source even if the new DTO is partial or its write fails. Missing/corrupt
++source data and timestamp-zero sources require full data. Partial tiles remain
++uncached and re-download on later connections; zero-payload claims are target-scoped.
++With server synchronization disabled, local restoration has the same preservation
++rules and diagnostics disclose the missing check. An unavailable reader defers
++cached restoration instead of overwriting unknown destination content.
++
++The reserved source namespace is `!dh-terrain-v1`; owned legacy buckets are adopted.
++Nonzero seed/profile/world/dimension/height identity, integrity checks, global
++8192-file/256-MiB quotas, LRU touches and pending-working-set protection bound reuse.
++Explicit remote reset/clear erases the current address; native stamp invalidation
++preserves source DTOs. Address hashes are guessable identifiers, not anonymization.
++This supersedes unconditional re-fetch/replay and mismatch rebuilding; it still
++leaves the asynchronous commit/I1 boundary open. See the
++[post-review disposition](../implementation/2026-10-05-dh-post-p4-review-disposition.md).
+ 
+ A later persistent index would be small, independently versioned, and separate
+ from native LSS column stamps. Key it by source/profile, effective server identity, DH world key,
+@@ -592,8 +625,8 @@
+ identity and persistence evidence needed for cross-session reuse can be established.
+ 
+ On rejoin, use timestamp-based sync only when reliable local content exists:
+-the source DTO extension above reconstructs terrain before requesting conditional
+-validation. An unchanged response supplies no terrain. Reset commands and
++the source DTO extension above validates the retained source timestamp before
++restoring or comparing destination content. An unchanged response supplies no terrain. Reset commands and
+ ambiguous source identity invalidate retained DTOs; conversion changes are handled
+ by re-decoding and re-converting raw source data. Keep acceptance session-local.
+ 
+@@ -811,6 +844,14 @@
+ already handles the supported Voxy/Roxy variants.
+ 
+ ## 7. Settings and user-visible behavior
++
++**Experimental overwrite limitation:** unchanged cache restoration preserves
++existing different terrain, but newly downloaded DH approximations can replace
++terrain refined by vanilla on an earlier connection. A DH ingest already queued
++inside Voxy can also commit after newer vanilla data. Current loaded-column guards
++do not establish a completed-write guarantee. Reset/re-fetch may likewise replace
++older refinements. The strict P2/P4/I1 gates remain open; communicate this limitation
++when enabling the DH source.
+ 
+ Proposed additions to the existing client YAML, shown with surrounding settings:
+ 
+--- baseline/fabric/src/test/java/dev/vox/lss/compat/VoxyTerrainCacheTest.java
++++ current/fabric/src/test/java/dev/vox/lss/compat/VoxyTerrainCacheTest.java
+@@ -23,7 +23,7 @@
+         var engine=Identifier.engine;int x=15,y=-1,z=14;
+         engine.section.data[((y&31)<<10)|(30<<5)|31]=15L<<56|1L<<27;
+         try(var cache=DhVoxyBridge.openCache(null)) {
+-            assertNotNull(cache);assertEquals(1,engine.refs);
++            assertNotNull(cache);assertEquals(0,engine.refs);
+             var column=cache.readColumn(-1,-1,-32,32);
+             assertEquals(-1,engine.x);assertEquals(-1,engine.y);assertEquals(-1,engine.z);
+             assertEquals(1,engine.section.released);
+@@ -38,6 +38,7 @@
+         Identifier.engine.section=null;
+         try(var cache=DhVoxyBridge.openCache(null)) {
+             var column=cache.readColumn(0,0,0,32);
++            assertTrue(column.isDefault());
+             assertTrue(column.matches(0,0,0,Blocks.AIR.defaultBlockState(),"minecraft:desert",15));
+             assertFalse(column.matches(0,0,0,Blocks.AIR.defaultBlockState(),"minecraft:plains",0));
+             assertFalse(column.matches(0,0,0,Blocks.STONE.defaultBlockState(),"minecraft:plains",0));
+@@ -53,6 +54,19 @@
+         var resolver=VoxyCompat.classResolver;
+         VoxyCompat.classResolver=name->name.endsWith(".Mapper")?String.class:resolver.resolve(name);
+         assertNull(DhVoxyBridge.openCache(null));assertEquals(0,Identifier.engine.refs);
++    }
++    @Test void existingDifferentContentMustBePreservedRatherThanTreatedAsMissing() throws Exception {
++        Identifier.engine.section.data[0]=1L<<27;
++        try(var cache=DhVoxyBridge.openCache(null)) {
++            assertFalse(cache.readColumn(0,0,0,32).isDefault());
++        }
++        assertEquals(0,Identifier.engine.refs);
++    }
++    @Test void destinationReplacementCannotReuseTheRetiredEngineSnapshot() throws Exception {
++        try(var cache=DhVoxyBridge.openCache(null)) {
++            var old=Identifier.engine;assertTrue(cache.isCurrent(null));cache.readColumn(0,0,0,32);
++            Identifier.engine=new Engine();assertFalse(cache.isCurrent(null));assertEquals(0,old.refs);
++        }
+     }
+     public static final class Identifier {
+         static Engine engine;
+--- baseline/fabric/src/test/java/dev/vox/lss/networking/client/ColumnCacheStoreTest.java
++++ current/fabric/src/test/java/dev/vox/lss/networking/client/ColumnCacheStoreTest.java
+@@ -529,6 +529,34 @@
+ 
+         assertTrue(ColumnCacheStore.load("test-clear-all-1", dimA).isEmpty());
+         assertTrue(ColumnCacheStore.load("test-clear-all-2", dimB).isEmpty());
++    }
++
++    @Test
++    void clearAllPreservesForeignSourceFilesAndContinuesAfterBucketFailure() throws IOException {
++        Path source=ColumnCacheStore.cacheRoot().resolve(dev.vox.lss.common.dh.DhTerrainCache.DIRECTORY);
++        Files.createDirectories(source);Path foreign=source.resolve("keep.txt");Files.writeString(foreign,"foreign");
++        Path obstacle=ColumnCacheStore.cacheRoot().resolve("test-clear-all-obstacle").resolve("foreign-subdir");
++        Files.createDirectories(obstacle);Path retained=obstacle.resolve("keep.txt");Files.writeString(retained,"foreign");
++        var dim=testDimension("composite_clear");ColumnCacheStore.save("test-composite-good",dim,mapOf(1L,2L));
++        try {
++            ColumnCacheStore.clearAll();
++            assertEquals("foreign",Files.readString(foreign));assertEquals("foreign",Files.readString(retained));
++            assertTrue(ColumnCacheStore.load("test-composite-good",dim).isEmpty());
++        } finally {Files.delete(foreign);Files.delete(retained);Files.delete(obstacle);Files.delete(obstacle.getParent());}
++    }
++    @Test
++    void symlinkedSourceRootDoesNotPreventClearingNativeBuckets() throws IOException {
++        Path source=ColumnCacheStore.cacheRoot().resolve(dev.vox.lss.common.dh.DhTerrainCache.DIRECTORY);
++        ColumnCacheStore.clearAll();Path staging=Files.createTempDirectory("test-source-root-backup-");Path saved=staging.resolve("saved");
++        boolean existed=Files.exists(source);if(existed)Files.move(source,saved);
++        Path outside=Files.createTempDirectory("test-external-source-");
++        Path foreign=outside.resolve("keep.txt");Files.writeString(foreign,"foreign");
++        Files.createSymbolicLink(source,outside);
++        var dim=testDimension("symlink_clear");ColumnCacheStore.save("test-symlink-good",dim,mapOf(1L,2L));
++        try {
++            ColumnCacheStore.clearAll();assertEquals("foreign",Files.readString(foreign));
++            assertTrue(Files.isSymbolicLink(source));assertTrue(ColumnCacheStore.load("test-symlink-good",dim).isEmpty());
++        } finally {Files.delete(source);Files.delete(foreign);Files.delete(outside);if(existed)Files.move(saved,source);Files.delete(staging);}
+     }
+ 
+     // ---- merge-on-save (F2): the persisted cache is history, not a sliding disc ----
+--- baseline/fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java
++++ current/fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java
+@@ -39,6 +39,7 @@
+ import java.lang.invoke.MethodHandles;
+ import java.lang.invoke.MethodType;
+ import java.nio.file.Path;
++import java.nio.file.Files;
+ import java.util.*;
+ import java.util.concurrent.*;
+ import java.util.function.BooleanSupplier;
+@@ -191,14 +192,20 @@
+ 
+     @Test void resetSweepFailureRetiresTheSessionAndReportsStoppedWithoutClearingReceipts() throws Exception {
+         var s=session();policy(s).accepted(POSITION,1,1,123,System.nanoTime(),0);
+-        minecraft.server=null;
+-        assertThrows(IllegalStateException.class,DhClientSession::drainForReset);
++        var blocked=Files.createDirectories(ColumnCacheStore.cacheRoot().resolve(cacheComponent).resolve("foreign-child"));
++        try {assertThrows(IllegalStateException.class,DhClientSession::drainForReset);}
++        finally {Files.delete(blocked);Files.deleteIfExists(blocked.getParent());}
+         assertFalse(active(s));assertNull(read(null,DhClientSession.class,"session"));
+         assertEquals(123,policy(s).timestamp(POSITION));assertEquals(0,budget(s).used());
+         assertTrue(DhClientSession.status().startsWith("DH reset failed:"));
+         assertEquals(dev.vox.lss.common.diagnostics.DhStatusSnapshot.State.STOPPED,DhClientSession.diagnostics().state());
+     }
+ 
++    @Test void singlePlayerResetDoesNotRequireARemoteServerAddress() throws Exception {
++        var s=session();minecraft.server=null;
++        assertDoesNotThrow(DhClientSession::drainForReset);assertFalse(active(s));
++        DhClientSession.resumeAfterReset();assertNull(read(null,DhClientSession.class,"session"));
++    }
+     @Test void threeIncompleteRetriesGiveADueRefreshTheNextOpportunity() throws Exception {
+         var s=session();long now=System.nanoTime();var player=new ChunkPos(2,2);
+         minecraft.player=mcMock(LocalPlayer.class);write(minecraft.player,LocalPlayer.class,"connection",connection);
+@@ -694,7 +701,7 @@
+         assertFalse(client.isAlive());assertEquals(1,closes.get());
+     }
+     @Test void warmSourceReplaySurvivesDisconnectAndUsesAConditionalRequestWithoutVoxyStorage() throws Exception {
+-        try(var voxy=new DeliveryBridge()) {
++        try(var voxy=new DeliveryBridge();var destination=new DestinationBridge(true)) {
+             var shape=new DhTerrainTile.WorldShape(-64,384,true);var position=new DhPosition(6,4,-3);
+             byte[] dto=resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto");long stamp;
+             var tempBudget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
+@@ -706,30 +713,31 @@
+             write(s,SESSION,"refreshNanos",0L);
+             write(s,SESSION,"terrainCache",new DhTerrainCache(dir.resolve("dh-cache"),key));
+             invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},position,System.nanoTime());
+-            pumpUntil(()->counter(s,"cacheHits")==1&&read(s,SESSION,"cacheLoading")==null,"cached replay did not settle");
+-            assertEquals(16,counter(s,"columns"));assertTrue(sent.isEmpty(),"local replay must not download terrain");
+-            assertEquals(stamp,policy(s).refreshTimestamp(position));
+-            assertTrue(((Set<?>)read(s,SESSION,"rejoinChecks")).contains(position));
+-            invoke(s,"request",new Class<?>[]{DhPosition.class,int.class,boolean.class,long.class},position,1,false,System.nanoTime());
+-            pumpUntil(()->!sent.isEmpty(),"conditional request not sent");
++            pumpUntil(()->!sent.isEmpty(),"cache validation request not sent");
++            assertEquals(0,counter(s,"columns"),"Source must not be enqueued before validation");
++            assertEquals(0,policy(s).refreshTimestamp(position),"Source proof is not a Voxy acceptance receipt");
+             var request=(DhMessage.Request)codec(s).decode(sent.getLast());assertEquals(stamp,request.timestamp());
+             capture(codec(s).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
+-            pumpUntil(()->pendingMap(s).isEmpty()&&frameCount(s)==0,"unchanged cached response did not settle");
++            pumpUntil(()->pendingMap(s).isEmpty()&&frameCount(s)==0&&counter(s,"cacheHits")==1,"unchanged cached response did not settle");
+             assertEquals(16,counter(s,"columns"));assertFalse(policy(s).due(position,Long.MAX_VALUE));assertEquals(0,budget(s).used());
+         }
+     }
+ 
+     @Test void networkResponseCachesValidatedSourceAndASecondConnectionRestoresIt() throws Exception {
+-        try(var voxy=new DeliveryBridge()) {
++        try(var voxy=new DeliveryBridge();var destination=new DestinationBridge(true)) {
+             var shape=new DhTerrainTile.WorldShape(-128,512,true);
+             var key=new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape);
+             var cache=new DhTerrainCache(dir.resolve("dh-cache"),key);var s=deliverySession(-128,512);
+             write(s,SESSION,"terrainCache",cache);replayContent(s,1,false);
+             assertEquals(1,counter(s,"cacheWrites"));assertEquals(Set.of(CONTENT_POSITION),cache.positions());
+-            long stamp=policy(s).refreshTimestamp(CONTENT_POSITION);DhClientSession.disconnect();
++            long stamp=policy(s).refreshTimestamp(CONTENT_POSITION);DhClientSession.disconnect();sent.clear();
+             var replacement=deliverySession(-128,512);write(replacement,SESSION,"terrainCache",new DhTerrainCache(dir.resolve("dh-cache"),key));
+             invoke(replacement,"restoreCache",new Class<?>[]{DhPosition.class,long.class},CONTENT_POSITION,System.nanoTime());
+-            pumpUntil(()->counter(replacement,"cacheHits")==1&&read(replacement,SESSION,"cacheLoading")==null,"network cache not replayed");
++            pumpUntil(()->!sent.isEmpty(),"network cache validation not sent");
++            var request=(DhMessage.Request)codec(replacement).decode(sent.getLast());
++            assertEquals(stamp,request.timestamp());assertEquals(0,counter(replacement,"columns"));
++            capture(codec(replacement).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
++            pumpUntil(()->counter(replacement,"cacheHits")==1&&frameCount(replacement)==0,"network cache not replayed");
+             assertEquals(stamp,policy(replacement).refreshTimestamp(CONTENT_POSITION));assertEquals(16,counter(replacement,"columns"));
+         }
+     }
+@@ -774,12 +782,223 @@
+             var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,
+                     DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true)));
+             var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);var p=new DhPosition(6,-1,1);
++            cache.write(p,1,new byte[]{1});
+             pendingAt(s,2,p,0);
+             for(int frame=4;frame<=6;frame++)capture(resource("dh-official-3.3.3-neoforge-partial",String.format("received-%04d.bin",frame)),System.nanoTime()).receive();
+             settleDelivery(s);assertEquals(0,counter(s,"cacheWrites"));assertTrue(cache.positions().isEmpty());assertEquals(0,budget(s).used());
+         }
+     }
+ 
++    @Test void failedSourceReplacementInvalidatesOldDataBeforeDeliveringTheNewTile() throws Exception {
++        try(var bridge=new DeliveryBridge()) {
++            var real=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-128,512,true)));
++            real.write(CONTENT_POSITION,5,new byte[]{1});var cache=spy(real);
++            doThrow(new java.nio.file.AccessDeniedException("test replacement denied")).when(cache).write(any(DhPosition.class),anyLong(),any(byte[].class));
++            var s=deliverySession(-128,512);write(s,SESSION,"terrainCache",cache);replayContent(s,1,false);
++            assertTrue(real.positions().isEmpty());assertEquals(0,counter(s,"cacheWrites"));assertEquals(16,counter(s,"columns"));assertTrue(active(s));
++        }
++    }
++    @Test void slowRetiredWorkerPreventsResetFromClearingUnderItsLateWork() throws Exception {
++        var old=session();var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
++        worker(old).submit(()-> {entered.countDown();while(release.getCount()>0)try {release.await();}catch(InterruptedException ignored) {}});
++        assertTrue(entered.await(5,TimeUnit.SECONDS));
++        try {
++            assertEquals(false,invoke(old,"retire"));var replacement=session();
++            assertThrows(IllegalStateException.class,DhClientSession::drainForReset);
++            assertTrue(active(replacement),"Reset must abort before touching the new owner");
++        } finally {release.countDown();assertTrue(worker(old).awaitTermination(5,TimeUnit.SECONDS));invoke(old,"retire");}
++    }
++    @Test void cacheDeadlineCoolsOnlyItsTileAndRetainsTheLocalRetry() throws Exception {
++        try(var bridge=new DeliveryBridge()) {
++            var s=deliverySession(-64,384);write(s,SESSION,"cacheInvalidated",true);
++            write(s,SESSION,"cacheLoading",POSITION);write(s,SESSION,"cacheWorkStarted",System.nanoTime()-61_000_000_000L);
++            assertFalse(DhVoxyBridge.ready(level),"Housekeeping must run even when Voxy is not ready");
++            invoke(s,"tick");
++            assertTrue(active(s));assertNull(read(s,SESSION,"cacheLoading"));
++            assertTrue(((Set<?>)read(s,SESSION,"cachedPositions")).contains(POSITION));assertEquals(0,policy(s).refreshTimestamp(POSITION));
++        }
++    }
++    @Test void actualScannerValidatesFirstCachedTileWithoutWaitingForTheRestoreSweep() throws Exception {
++        try(var bridge=new DeliveryBridge()) {
++            var shape=new DhTerrainTile.WorldShape(-128,512,true);
++            var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
++            var s=deliverySession(-128,512);write(s,SESSION,"terrainCache",cache);
++            var temp=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());long stamp;
++            byte[] dto=resource("dh-official-3.3.3-neoforge-content","target-0002-split.bin");
++            // Use a real complete captured tile at (-3,0).
++            var producer=new DhAssembly(DhLimits.DEFAULT,temp);producer.expect(100,CONTENT_POSITION);
++            producer.accept((DhMessage.Split)codec(s).decode(dto));
++            var original=(DhMessage.Response)codec(s).decode(resource("dh-official-3.3.3-neoforge-content","target-0003-response.bin"));
++            try(var complete=producer.response(new DhMessage.Response(100,original.bufferId(),original.beacons()));var tile=complete.decode(new DhTerrainDecoder(DhLimits.DEFAULT),DhProfile.OFFICIAL_16,shape)) {
++                stamp=tile.modifiedTimestamp();complete.cache(cache,stamp);
++            } finally {producer.close();}
++            ((Set<DhPosition>)read(s,SESSION,"cachedPositions")).add(CONTENT_POSITION);
++            for(int x=1;x<100;x++)((Set<DhPosition>)read(s,SESSION,"cachedPositions")).add(new DhPosition(6,x,0));
++            invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},System.nanoTime(),new ChunkPos(-12,0));
++            pumpUntil(()->!sent.isEmpty(),"scanner did not send first validation");
++            assertEquals(0,counter(s,"columns"));assertEquals(0,counter(s,"cacheHits"));
++            var request=(DhMessage.Request)codec(s).decode(sent.getFirst());assertEquals(CONTENT_POSITION,request.position());assertEquals(stamp,request.timestamp());
++            assertTrue(((Set<?>)read(s,SESSION,"cachedPositions")).size()>=99);
++        }
++    }
++    @Test void checksumValidButUndecodableSourceIsRemovedWithoutStoppingTheSession() throws Exception {
++        var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true)));
++        cache.write(POSITION,123,new byte[]{1,2,3});var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);
++        invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},POSITION,System.nanoTime());
++        pumpUntil(()->worker(s).getCompletedTaskCount()>0&&read(s,SESSION,"cacheLoading")==null,"bad DTO not resolved");
++        assertTrue(active(s));assertTrue(cache.positions().isEmpty());assertEquals(0,budget(s).used());
++    }
++    @Test void restoringUnderBudgetPressureKeepsTheFileAndSchedulesALocalRetry() throws Exception {
++        var shape=new DhTerrainTile.WorldShape(-64,384,true);var position=new DhPosition(6,4,-3);
++        var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
++        byte[] dto=resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto");var temp=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());long stamp;
++        try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(dto,DhProfile.OFFICIAL_16,position,shape,temp)) {stamp=tile.modifiedTimestamp();}
++        cache.write(position,stamp,dto);var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);
++        try(var pressure=budget(s).reserve(DhLimits.DEFAULT.ownedBytes()-1)) {
++            invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},position,System.nanoTime());
++            pumpUntil(()->read(s,SESSION,"cacheLoading")==null&&worker(s).getCompletedTaskCount()>0,"pressure retry did not settle");
++            assertTrue(active(s));assertEquals(Set.of(position),cache.positions());
++            assertTrue(((Set<?>)read(s,SESSION,"cachedPositions")).contains(position));assertEquals(0,policy(s).refreshTimestamp(position));
++        }
++        assertEquals(0,budget(s).used());
++    }
++    @Test void unchangedRestorePreservesPreviouslyVanillaRefinedDestinationAcrossDisconnect() throws Exception {
++        verifyDestinationRestore(false);
++    }
++    @Test void unchangedRestoreRebuildsActualDefaultDestinationAfterVoxyLoss() throws Exception {
++        verifyDestinationRestore(true);
++    }
++    private void verifyDestinationRestore(boolean defaults) throws Exception {
++        try(var bridge=new DeliveryBridge()) {
++            var old=deliverySession(-64,384);DhClientSession.vanillaLoaded(level,16,-12);
++            assertFalse(policy(old).eligible(16,-12));DhClientSession.disconnect();
++            var s=deliverySession(-64,384);assertTrue(policy(s).eligible(16,-12));
++            var compat=Class.forName("dev.vox.lss.compat.VoxyCompat");
++            var resolver=read(null,compat,"classResolver");
++            var resolverType=compat.getDeclaredField("classResolver").getType();
++            DestinationEngine.defaults=defaults;
++            write(null,compat,"classResolver",java.lang.reflect.Proxy.newProxyInstance(resolverType.getClassLoader(),new Class<?>[]{resolverType},(proxy,method,args)->switch(((String)args[0]).substring(((String)args[0]).lastIndexOf('.')+1)) {
++                case "WorldIdentifier"->DestinationIdentifier.class;case "WorldEngine"->DestinationEngine.class;
++                case "WorldSection"->DestinationSection.class;case "Mapper"->DestinationMapper.class;default->throw new ClassNotFoundException((String)args[0]);
++            }));
++            try(var reader=DhVoxyBridge.openCache(level)) {
++                assertNotNull(reader);
++                var temp=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());var p=new DhPosition(6,4,-3);
++                try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto"),DhProfile.OFFICIAL_16,p,new DhTerrainTile.WorldShape(-64,384,true),temp)) {
++                    var job=worker(s).submit(()->invoke(s,"deliver",new Class<?>[]{DhTerrainTile.class,DhPosition.class,boolean.class,dev.vox.lss.compat.VoxyTerrainCache.class},tile,p,false,reader));
++                    pumpUntil(job::isDone,"destination reuse did not finish");assertEquals(true,job.get());
++                    assertEquals(defaults?16:0,counter(s,"converted"));assertEquals(defaults?16:0,counter(s,"columns"));
++                    assertEquals(defaults?0:16,counter(s,"cachePreservedColumns"));assertEquals(0,counter(s,"cacheReusedColumns"));
++                }
++                assertEquals(0,DestinationIdentifier.engine.refs);
++            } finally {write(null,compat,"classResolver",resolver);}
++        }
++    }
++    private final class DestinationBridge implements AutoCloseable {
++        final Class<?> compat=Class.forName("dev.vox.lss.compat.VoxyCompat");
++        final Object previous=read(null,compat,"classResolver");
++        DestinationBridge(boolean defaults) throws Exception {
++            var resolverType=compat.getDeclaredField("classResolver").getType();DestinationEngine.defaults=defaults;
++            write(null,compat,"classResolver",java.lang.reflect.Proxy.newProxyInstance(resolverType.getClassLoader(),new Class<?>[]{resolverType},(proxy,method,args)->switch(((String)args[0]).substring(((String)args[0]).lastIndexOf('.')+1)) {
++                case "WorldIdentifier"->DestinationIdentifier.class;case "WorldEngine"->DestinationEngine.class;
++                case "WorldSection"->DestinationSection.class;case "Mapper"->DestinationMapper.class;default->throw new ClassNotFoundException((String)args[0]);
++            }));
++        }
++        public void close(){write(null,compat,"classResolver",previous);}
++    }
++    @Test void unavailableDestinationComparisonDefersCachedSourceWithoutOverwritingTerrain() throws Exception {
++        try(var bridge=new DeliveryBridge()) {
++            var shape=new DhTerrainTile.WorldShape(-64,384,true);var p=new DhPosition(6,4,-3);
++            var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
++            var dto=resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto");long stamp;
++            try(var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(dto,DhProfile.OFFICIAL_16,p,shape,new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes()))) {stamp=tile.modifiedTimestamp();}
++            cache.write(p,stamp,dto);var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);
++            assertNull(DhVoxyBridge.openCache(level),"This ABI has ingest but no destination reader");
++            invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},p,System.nanoTime());
++            pumpUntil(()->!sent.isEmpty(),"validation not sent");var request=(DhMessage.Request)codec(s).decode(sent.getLast());
++            capture(codec(s).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
++            settleDelivery(s);
++            assertTrue(active(s));assertEquals(0,counter(s,"columns"));assertEquals(0,counter(s,"converted"));
++            assertEquals(0,counter(s,"cacheHits"));assertEquals(0,policy(s).refreshTimestamp(p));
++            assertTrue(((Set<?>)read(s,SESSION,"cachedPositions")).contains(p));assertEquals(Set.of(p),cache.positions());
++            assertTrue(((String)read(s,SESSION,"cacheStatus")).contains("destination verification unavailable"));
++        }
++    }
++    @Test void vanillaArrivalAtSecondCacheCheckDoesNotCountThatColumnAsReuse() throws Exception {
++        try(var bridge=new DeliveryBridge();var destination=new DestinationBridge(false)) {
++            var s=deliverySession(-64,384);var p=new DhPosition(6,4,-3);
++            try(var reader=DhVoxyBridge.openCache(level);var tile=new DhTerrainDecoder(DhLimits.DEFAULT).decode(
++                    resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto"),DhProfile.OFFICIAL_16,p,
++                    new DhTerrainTile.WorldShape(-64,384,true),new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes()))) {
++                assertNotNull(reader);
++                var job=worker(s).submit(()->invoke(s,"deliver",new Class<?>[]{DhTerrainTile.class,DhPosition.class,boolean.class,dev.vox.lss.compat.VoxyTerrainCache.class},tile,p,false,reader));
++                takeMain().run(); // first eligibility check permits a comparison
++                var authority=takeMain();DhClientSession.vanillaLoaded(level,16,-12);authority.run();
++                pumpUntil(job::isDone,"second authority check did not finish");assertEquals(true,job.get());
++                assertEquals(15,counter(s,"cachePreservedColumns"));assertEquals(0,counter(s,"cacheReusedColumns"));
++                assertEquals(1,counter(s,"skipped"));assertEquals(0,counter(s,"columns"));assertEquals(0,counter(s,"converted"));
++            }
++        }
++    }
++    @Test void failedLruTouchDoesNotStopAnOtherwiseValidUnchangedReply() throws Exception {
++        var cache=spy(new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-64,384,true))));
++        cache.write(POSITION,123,new byte[]{1});doThrow(new java.nio.file.AccessDeniedException("busy metadata")).when(cache).touch(POSITION);
++        var s=session();write(s,SESSION,"terrainCache",cache);write(s,SESSION,"refreshNanos",0L);
++        policy(s).accepted(POSITION,0xffff,0xffff,123,System.nanoTime(),0);pendingAt(s,1,POSITION,123);
++        capture(codec(s).encode(new DhMessage.Response(1,null,List.of())),System.nanoTime()).receive();settleDelivery(s);
++        assertTrue(active(s));assertEquals(123,policy(s).refreshTimestamp(POSITION));assertFalse(policy(s).due(POSITION,Long.MAX_VALUE));
++        assertEquals(Set.of(POSITION),cache.positions());assertTrue(((String)read(s,SESSION,"cacheStatus")).contains("unavailable"));
++    }
++    @Test void timestampZeroCachedSourceRequestsFullDataAndAnAbsentReplyInvalidatesIt() throws Exception {
++        var p=new DhPosition(6,4,-3);var shape=new DhTerrainTile.WorldShape(-64,384,true);
++        var dto=resource("dh-official-3.3.3-neoforge-ocean","database-tile.dto");
++        // Official envelope's first final timestamp is modified time, independent
++        // of compressed terrain. Model a valid producer reporting timestamp zero.
++        java.nio.ByteBuffer.wrap(dto).putLong(dto.length-16,0L);
++        var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
++        cache.write(p,0,dto);var s=deliverySession(-64,384);write(s,SESSION,"terrainCache",cache);
++        invoke(s,"restoreCache",new Class<?>[]{DhPosition.class,long.class},p,System.nanoTime());
++        pumpUntil(()->!sent.isEmpty(),"timestamp-zero source was not checked");
++        var request=(DhMessage.Request)codec(s).decode(sent.getLast());assertEquals(0,request.timestamp());assertEquals(0,counter(s,"columns"));
++        capture(codec(s).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();settleDelivery(s);
++        assertTrue(cache.positions().isEmpty());assertEquals(0,counter(s,"cacheHits"));assertTrue(active(s));
++    }
++    @Test void clearCacheInDhModeClearsOnlyTheCurrentRemoteAddress() throws Exception {
++        var shape=new DhTerrainTile.WorldShape(-64,384,true);String other="other-dh-"+UUID.randomUUID();
++        var current=new DhTerrainCache(ColumnCacheStore.cacheRoot(),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
++        var retained=new DhTerrainCache(ColumnCacheStore.cacheRoot(),new DhTerrainCache.Key(other,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape));
++        current.write(POSITION,123,new byte[]{1});retained.write(POSITION,123,new byte[]{1});var s=session();
++        var feedback=new ArrayList<net.minecraft.network.chat.Component>();
++        try {
++            ClientCommandActions.clearCache(feedback::add);
++            assertFalse(active(s));assertTrue(current.positions().isEmpty());assertEquals(Set.of(POSITION),retained.positions());
++            assertEquals(1,feedback.size());assertTrue(feedback.getFirst().getString().contains("current server"));
++        } finally {ColumnCacheStore.clearDhTerrain(other);}
++    }
++    public static final class DestinationIdentifier {
++        static final DestinationEngine engine=new DestinationEngine();
++        public static DestinationIdentifier of(Level level){return new DestinationIdentifier();}
++        public DestinationEngine getOrCreateEngine(){return engine;}
++    }
++    public static final class DestinationEngine {
++        static boolean defaults;int refs;
++        public void acquireRef(){refs++;}public void releaseRef(){refs--;}
++        public DestinationMapper getMapper(){return new DestinationMapper();}
++        public DestinationSection acquire(int l,int x,int y,int z){return new DestinationSection();}
++    }
++    public static final class DestinationSection {
++        public long[] copyData(){var data=new long[32768];Arrays.fill(data,DestinationEngine.defaults?15L<<56:1L<<27);return data;}
++        public int release(){return 0;}
++    }
++    public static final class DestinationMapper {
++        public DestinationState[] getStateEntries(){return new DestinationState[]{new DestinationState(net.minecraft.world.level.block.Blocks.AIR.defaultBlockState()),new DestinationState(net.minecraft.world.level.block.Blocks.STONE.defaultBlockState())};}
++        public DestinationBiome[] getBiomeEntries(){return new DestinationBiome[]{new DestinationBiome()};}
++        public static int getBlockId(long value){return (int)(value>>>27&0xfffff);}
++        public static int getBiomeId(long value){return (int)(value>>>47&511);}
++        public static int getLightId(long value){return (int)(value>>>56&255);}
++    }
++    public static final class DestinationState {public final net.minecraft.world.level.block.state.BlockState state;DestinationState(net.minecraft.world.level.block.state.BlockState state){this.state=state;}}
++    public static final class DestinationBiome {public final String biome="minecraft:plains";}
+     private static final DhPosition CONTENT_POSITION=new DhPosition(6,-3,0);
+     private Object deliverySession(int minY,int height) throws Exception {
+         // Other suites may already have instrumented ClientLevel's final
+--- baseline/fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java
++++ current/fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java
+@@ -54,13 +54,15 @@
+                         int index=(column/4*16+x)*64+column%4*16+z;
+                         for(int i=0;i<tile.spanCount(index);i++) {
+                             var water=tile.span(index,i);
+-                            if(!tile.materials().get(water.material()).block().equals("minecraft:water") || water.height()<5)continue;
++                            int bottom=water.bottom();
++                            var bottomSection=data.sections()[bottom/16];
++                            if(bottomSection.section().getBlockState(x,bottom&15,z).getFluidState().isEmpty())continue;
+                             for(int j=0;j<tile.spanCount(index);j++) {
+                                 var floor=tile.span(index,j);var material=tile.materials().get(floor.material());
+                                 if(floor.bottom()+floor.height()!=water.bottom() || material.air()
+                                         || material.block().equals("minecraft:water"))continue;
+                                 int y=water.bottom();var section=data.sections()[y/16];
+-                                assertEquals(net.minecraft.world.level.block.Blocks.WATER,section.section().getBlockState(x,y&15,z).getBlock());
++                                assertFalse(section.section().getBlockState(x,y&15,z).getFluidState().isEmpty());
+                                 // DH samples the floor's light at y+1; Voxy uses that same neighboring water voxel.
+                                 assertEquals(floor.skyLight(),section.skyLight().get(x,y&15,z),"Ocean floor's neighboring water light");
+                                 assertEquals(water.blockLight(),section.blockLight().get(x,y&15,z));
+@@ -69,7 +71,7 @@
+                         }
+                     }
+                 }
+-                assertTrue(floors>=1000,"Real upstream ocean floor observations");
++                assertTrue(floors>=7000,"Water, kelp and seagrass must all follow the upstream floor oracle");
+                 assertTrue(darkFloors>=100,"Deep floors must be dark despite skylit surface water");
+             }
+         }
+--- baseline/test-fixtures/dh-live/README.md
++++ current/test-fixtures/dh-live/README.md
+@@ -154,3 +154,21 @@
+ actual Voxy storage. Both depths cross section boundaries; block light and
+ surface water light are also checked. `dh-ocean-light.json` records the samples.
+ The fixture changes only its disposable server world.
++
++
++## Reconnect regression prepared after the 2026-10-05 review
++
++`RejoinProbe` now visits the target with real vanilla chunks, waits for a stable
++raw destination digest, retreats, disconnects and rejoins. The unchanged target
++must retain that digest and submit no conversions. This replaces deliberate
++one-voxel damage/repair, because unchanged cached differences may be refined
++vanilla terrain. The fixture has compiled on both named loader classpaths. The source-only
++checkpoint preceded live qualification; fresh packaged clients on **both loaders
++now pass** this stage. Its stable baseline tests per-run preservation, not a
++general asynchronous completion acknowledgement.
++
++`production_comparison_premise` records the production full-content wait before
++warm reuse. Only the 300 known-block samples per stage are an independent oracle;
++they do not validate all biomes or lighting. Zero target payloads/conversions are
++target-scoped; partial/missing neighboring tiles can still download. Preserve the
++historical original evidence and use its audit correction receipts for labelling.
+--- baseline/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/RejoinProbe.java
++++ current/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/RejoinProbe.java
+@@ -24,7 +24,8 @@
+     static boolean voxyWasCleared;
+     static boolean checkedRestart;
+     static java.util.concurrent.CompletableFuture<Boolean> completeCache;
+-    static long lastCompleteCheck;
++    static long lastCompleteCheck,lastNativeRead,nativeStableSince;
++    static String nativeDigest;
+     static boolean fullyStored(Object s,long now) throws Exception {
+         if(completeCache!=null) {
+             if(!completeCache.isDone())return false;
+@@ -70,22 +71,23 @@
+     static void evidence(String name,String details) throws Exception {
+         blockComparisons+=300;Probe.write(name,"{\"pass\":true,\"block_comparisons\":300,"+details+"}");
+     }
+-    static void damageOneCachedColumn() throws Exception {
+-        // This private rig owns its store. Keep the section present but give one voxel
+-        // the wrong material: section presence alone must never bypass source recovery.
++    static String nativeColumnDigest() throws Exception {
+         var mc=Minecraft.getInstance();Class<?> id=Class.forName("me.cortex.voxy.commonImpl.WorldIdentifier");
+         Object engine=id.getMethod("getNullable").invoke(id.getMethod("of",net.minecraft.world.level.Level.class).invoke(null,mc.level));
+-        Class<?> ec=engine.getClass();Object mapper=ec.getMethod("getMapper").invoke(engine);
+-        var p=ContentProbe.SAMPLES.getFirst();Object section=ec.getMethod("acquireIfExists",int.class,int.class,int.class,int.class)
+-                .invoke(engine,0,p.getX()>>5,p.getY()>>5,p.getZ()>>5);
+-        if(section==null)throw new IllegalStateException("Missing section in warm-cache premise");
++        var hash=java.security.MessageDigest.getInstance("SHA-256");Class<?> ec=engine.getClass();
++        ec.getMethod("acquireRef").invoke(engine);
+         try {
+-            long value=(long)mapper.getClass().getMethod("getBaseId",byte.class,net.minecraft.world.level.block.state.BlockState.class,net.minecraft.core.Holder.class)
+-                    .invoke(mapper,(byte)0,net.minecraft.world.level.block.Blocks.SAND.defaultBlockState(),mc.level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.BIOME)
+-                            .getHolderOrThrow(net.minecraft.world.level.biome.Biomes.PLAINS));
+-            section.getClass().getMethod("set",int.class,int.class,int.class,long.class).invoke(section,p.getX()&31,p.getY()&31,p.getZ()&31,value);
+-            ec.getMethod("markDirty",section.getClass()).invoke(engine,section);
+-        } finally {section.getClass().getMethod("release").invoke(section);}
++            for(int y=mc.level.getMinBuildHeight()>>5;y<(mc.level.getMaxBuildHeight()+31)>>5;y++) {
++                Object section=ec.getMethod("acquire",int.class,int.class,int.class,int.class).invoke(engine,0,-6,y,0);
++                try {
++                    long[] data=(long[])section.getClass().getMethod("copyData").invoke(section);
++                    var words=java.nio.ByteBuffer.allocate(16*16*32*8);
++                    for(int vy=0;vy<32;vy++)for(int z=0;z<16;z++)for(int x=0;x<16;x++)words.putLong(data[(vy<<10)|(z<<5)|x]);
++                    hash.update(words.array());
++                } finally {section.getClass().getMethod("release").invoke(section);}
++            }
++        } finally {ec.getMethod("releaseRef").invoke(engine);}
++        return java.util.HexFormat.of().formatHex(hash.digest());
+     }
+     public static void tick(long now) throws Exception {
+         var mc=Minecraft.getInstance();
+@@ -124,15 +126,26 @@
+                 && ContentProbe.knownBlocks(0,now) && fullyStored(s,now)) {
+             stamp=policy(s).timestamp(ContentProbe.TILE);
+             if(!cache(s).positions().contains(ContentProbe.TILE))return;
+-            evidence("dh-rejoin-cold.json","\"server_timestamp\":"+stamp+",\"cached_source\":true,\"full_destination_content_verified\":true");
++            evidence("dh-rejoin-cold.json","\"server_timestamp\":"+stamp+",\"cached_source\":true,\"production_comparison_premise\":true");
+             disconnect(s,2,now,"unchanged-rejoin",List.of());
+         } else if(phase==3 && unchanged(s,stamp,0,now)) {
+             if(conversions(s)!=0)throw new IllegalStateException("Warm target was reconverted instead of using Voxy cache");
+             evidence("dh-rejoin-unchanged.json","\"conditional_timestamp\":"+stamp+",\"target_payloads\":0,\"target_converted_columns\":0,\"target_ingested_columns\":0,\"voxy_reused_columns\":"+count(s,"cacheReusedColumns"));
+-            damageOneCachedColumn();disconnect(s,13,now,"partial-voxy-cache",List.of());
++            advance(15,now);mc.getConnection().sendCommand("execute in lssfixture:tall run tp @s -184 355 8");
++        } else if(phase==15 && !policy(s).eligible(-12,0)) {
++            if(now-lastNativeRead<1_000_000_000L)return;lastNativeRead=now;
++            String observed=nativeColumnDigest();
++            if(!observed.equals(nativeDigest)){nativeDigest=observed;nativeStableSince=now;return;}
++            if(now-nativeStableSince<5_000_000_000L)return;
++            // Observe actual vanilla ownership and preserve a stable destination
++            // baseline. This is a per-run preservation oracle, not completion API.
++            mc.getConnection().sendCommand("execute in lssfixture:tall run tp @s 0 100 0");advance(16,now);
++        } else if(phase==16 && mc.player.chunkPosition().x>=-2) {
++            disconnect(s,13,now,"vanilla-refined-rejoin",List.of());
+         } else if(phase==14 && unchanged(s,stamp,0,now)) {
+-            if(conversions(s)!=1)throw new IllegalStateException("Partial cache repair must convert exactly one target column, got "+conversions(s));
+-            evidence("dh-rejoin-partial-cache.json","\"existing_section_with_wrong_voxel\":true,\"target_payloads\":0,\"target_converted_columns\":1");
++            if(conversions(s)!=0)throw new IllegalStateException("Unchanged rejoin overwrote existing destination terrain");
++            if(!nativeDigest.equals(nativeColumnDigest()))throw new IllegalStateException("Previously vanilla-held destination changed on rejoin");
++            evidence("dh-rejoin-partial-cache.json","\"previous_session_vanilla_held\":true,\"destination_digest_preserved\":true,\"target_payloads\":0,\"target_converted_columns\":0");
+             disconnect(s,4,now,"offline-edit",List.of("execute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:lime_concrete","execute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:cyan_concrete"));
+         } else if(phase==5 && reply(s,stamp,true) && policy(s).timestamp(ContentProbe.TILE)>stamp && ContentProbe.knownBlocks(1,now)) {
+             editedStamp=policy(s).timestamp(ContentProbe.TILE);
+--- baseline/xplat/src/main/java/dev/vox/lss/compat/VoxyTerrainCache.java
++++ current/xplat/src/main/java/dev/vox/lss/compat/VoxyTerrainCache.java
+@@ -9,12 +9,12 @@
+ /** Optional, read-only destination verification. No persisted enqueue receipts or Voxy writes. */
+ public final class VoxyTerrainCache implements AutoCloseable {
+     private final Object engine;
+-    private final Method acquire, copy, release, releaseRef;
++    private final Method acquire, copy, release, acquireRef, releaseRef;
+     private final MethodHandle blockId,biomeId,lightId;
+     private final BlockState[] states;
+     private final String[] biomes;
+ 
+-    /** Call on the client thread. Hold the engine alive until the worker finishes its bounded reads. */
++    /** Snapshot the mapper on the client thread; hold engine references only during worker reads. */
+     static VoxyTerrainCache open(ClientLevel level) {
+         Object engine=null; Method releaseRef=null;boolean held=false;
+         try {
+@@ -28,7 +28,7 @@
+             releaseRef=ec.getMethod("releaseRef");
+             ec.getMethod("acquireRef").invoke(engine);
+             held=true;
+-            var cache=new VoxyTerrainCache(engine,ec,resolver);held=false;return cache;
++            return new VoxyTerrainCache(engine,ec,resolver);
+         } catch(ReflectiveOperationException | RuntimeException | LinkageError e) {
+             return null; // Optional ABI failure must never disable the ordinary ingest bridge.
+         } finally {
+@@ -42,7 +42,8 @@
+         // section in Voxy's secondary cache. Read acquire's actual defaults instead:
+         // the pinned port initializes missing sections to skylit air, not zero-lit air.
+         acquire=ec.getMethod("acquire",int.class,int.class,int.class,int.class);
+-        copy=section.getMethod("copyData");release=section.getMethod("release");releaseRef=ec.getMethod("releaseRef");
++        copy=section.getMethod("copyData");release=section.getMethod("release");
++        acquireRef=ec.getMethod("acquireRef");releaseRef=ec.getMethod("releaseRef");
+         var lookup=MethodHandles.publicLookup();
+         blockId=lookup.unreflect(mapper.getMethod("getBlockId",long.class));
+         biomeId=lookup.unreflect(mapper.getMethod("getBiomeId",long.class));lightId=lookup.unreflect(mapper.getMethod("getLightId",long.class));
+@@ -54,11 +55,21 @@
+         for(int i=0;i<blocks.length;i++)states[i]=(BlockState)blocks[i].getClass().getField("state").get(blocks[i]);
+         for(int i=0;i<entries.length;i++)biomes[i]=(String)entries[i].getClass().getField("biome").get(entries[i]);
+     }
++    /** Recheck on the client thread after reads; an external Voxy reset may replace the engine. */
++    public boolean isCurrent(ClientLevel level) {
++        try {
++            Class<?> identifier=VoxyCompat.classResolver.resolve("me.cortex.voxy.commonImpl.WorldIdentifier");
++            Object id=identifier.getMethod("of",Level.class).invoke(null,level);
++            if(id==null)return false;
++            return identifier.getMethod("getOrCreateEngine").invoke(id)==engine;
++        } catch(ReflectiveOperationException | RuntimeException | LinkageError e) {return false;}
++    }
+     /** At most one column's vertical section copies are retained; caller reserves their bytes first. */
+     public Column readColumn(int chunkX,int chunkZ,int minY,int height) throws ReflectiveOperationException {
+         int bottom=minY>>5,top=(minY+height-1)>>5;
+         long[][] data=new long[top-bottom+1][];
+-        for(int y=bottom;y<=top;y++) {
++        acquireRef.invoke(engine);
++        try { for(int y=bottom;y<=top;y++) {
+             if(Thread.currentThread().isInterrupted())throw new IllegalStateException("Voxy cache read cancelled");
+             Object section=acquire.invoke(engine,0,chunkX>>1,y,chunkZ>>1);
+             if(section==null)throw new IllegalStateException("Voxy did not initialize a section");
+@@ -68,13 +79,23 @@
+                 data[y-bottom]=values;
+             } finally {release.invoke(section);}
+         }
+-        return new Column(data,bottom,(chunkX&1)*16,(chunkZ&1)*16);
++        } finally { releaseEngine(); }
++        return new Column(data,bottom,(chunkX&1)*16,(chunkZ&1)*16,minY,height);
+     }
+     public final class Column {
+         private final long[][] data;
+-        private final int bottom,offsetX,offsetZ;
+-        private Column(long[][] data,int bottom,int offsetX,int offsetZ) {
+-            this.data=data;this.bottom=bottom;this.offsetX=offsetX;this.offsetZ=offsetZ;
++        private final int bottom,offsetX,offsetZ,minY,height;
++        private Column(long[][] data,int bottom,int offsetX,int offsetZ,int minY,int height) {
++            this.data=data;this.bottom=bottom;this.offsetX=offsetX;this.offsetZ=offsetZ;this.minY=minY;this.height=height;
++        }
++        /** Only fully initialized default content is safe to replace on unchanged restore.
++         * A difference may be higher-quality vanilla terrain from an earlier connection. */
++        public boolean isDefault() throws ReflectiveOperationException {
++            for(int y=minY;y<minY+height;y++)for(int z=0;z<16;z++)for(int x=0;x<16;x++) {
++                long value=data[(y>>5)-bottom][((y&31)<<10)|((offsetZ+z)<<5)|(offsetX+x)];
++                if(decode(blockId,value)!=0 || decode(lightId,value)!=15)return false;
++            }
++            return true;
+         }
+         public boolean matches(int x,int y,int z,BlockState state,String biome,int light) throws ReflectiveOperationException {
+             var section=data[(y>>5)-bottom];
+@@ -92,7 +113,11 @@
+         catch(RuntimeException | Error e) {throw e;}
+         catch(Throwable e) {throw new ReflectiveOperationException(e);}
+     }
+-    @Override public void close() {
+-        try {releaseRef.invoke(engine);}catch(ReflectiveOperationException e) {throw new IllegalStateException("Voxy cache read release failed",e);}
++    private void releaseEngine() {
++        try {releaseRef.invoke(engine);}catch(ReflectiveOperationException | RuntimeException | LinkageError ignored) {
++            // Optional reads must not stop acquisition during a destination shutdown.
++        }
+     }
++    /** References span worker reads only, never a wait for the client thread. */
++    @Override public void close() {}
+ }
+--- baseline/xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java
++++ current/xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java
+@@ -42,6 +42,8 @@
+             manager.flushCache();
+             feedback.accept(Component.literal(
+                     Brand.shortName() + " column cache cleared for current server. Chunks will be re-requested."));
++        } else if(dhActive && net.minecraft.client.Minecraft.getInstance().getCurrentServer()!=null) {
++            feedback.accept(Component.literal(Brand.shortName() + " column cache cleared for current server. Chunks will be re-requested."));
+         } else {
+             ColumnCacheStore.clearAll();
+             feedback.accept(Component.literal(
+--- baseline/xplat/src/main/java/dev/vox/lss/networking/client/ColumnCacheStore.java
++++ current/xplat/src/main/java/dev/vox/lss/networking/client/ColumnCacheStore.java
+@@ -583,22 +583,22 @@
+     }
+ 
+     public static void clearAll() {
+-        // Run on the IO thread (serialized FIFO with in-flight saves/loads) and wait, to preserve
+-        // the synchronous clear contract.
+         runIoAndWait(() -> {
+-            if (!Files.exists(cacheDir())) return;
+-
++            if (!Files.exists(cacheDir(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return;
++            IOException failure=null;
++            try {dev.vox.lss.common.dh.DhTerrainCache.clear(cacheDir(), null);}
++            catch(IOException e) {failure=e;}
+             try (DirectoryStream<Path> servers = Files.newDirectoryStream(cacheDir())) {
+-                dev.vox.lss.common.dh.DhTerrainCache.clear(cacheDir(), null);
+                 for (Path serverDir : servers) {
++                    // The source-cache owns this namespace and preserves foreign children.
++                    if(java.util.Set.of(dev.vox.lss.common.dh.DhTerrainCache.DIRECTORY,dev.vox.lss.common.dh.DhTerrainCache.LEGACY_DIRECTORY).contains(serverDir.getFileName().toString()))continue;
+                     if (!Files.isDirectory(serverDir, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                             && !Files.isSymbolicLink(serverDir)) continue;
+-                    deleteBucketDir(serverDir);
++                    try {deleteBucketDir(serverDir);}catch(IOException e) {failure=e;}
+                 }
+-                LSSLogger.info("Cleared all column caches");
+-            } catch (IOException e) {
+-                LSSLogger.warn("Failed to clear all column caches", e);
+-            }
++            } catch(IOException e) {failure=e;}
++            if(failure!=null) LSSLogger.warn("Failed to clear some column caches",failure);
++            else LSSLogger.info("Cleared all column caches");
+         });
+     }
+ 
+--- baseline/xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java
++++ current/xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java
+@@ -23,6 +23,7 @@
+     private static volatile Session session;
+     private static final DhConnectionState connectionState=new DhConnectionState();
+     private static final AtomicInteger IDS=new AtomicInteger();
++    private static final Set<Session> retiring=ConcurrentHashMap.newKeySet();
+     private static String status="DH source idle";
+     private static boolean resetFailed;
+     private DhClientSession() {}
+@@ -58,6 +59,7 @@
+         connectionState.disconnect(); resetFailed=false; status="DH source disconnected";
+     }
+     public static void tick() {
++        for(var old:List.copyOf(retiring))if(old.worker.isTerminated()){old.assembly.close();retiring.remove(old);}
+         var mc=Minecraft.getInstance();
+         if(!selected() || !LSSClientConfig.CONFIG.receiveServerLods() || mc.level==null || mc.getConnection()==null) {
+             var old=session; session=null; if(old!=null) old.retire();
+@@ -141,11 +143,13 @@
+     /** Reset must abort its wipe if the conversion worker cannot retire. */
+     public static void drainForReset() {
+         var s=session;
++        for(var old:List.copyOf(retiring)) if(!old.retire())
++            throw new IllegalStateException("Previous DH conversion did not stop; reset aborted");
+         if(s!=null && !s.retire()) { s.problem="DH conversion did not stop; reset aborted"; throw new IllegalStateException(s.problem); }
+         try {
+             invalidateCurrentNativeCache();
+             var server=Minecraft.getInstance().getCurrentServer();
+-            ColumnCacheStore.clearDhTerrain(server.ip);
++            if(server!=null && server.ip!=null)ColumnCacheStore.clearDhTerrain(server.ip);
+         }
+         catch(RuntimeException e) {
+             if(s!=null) s.problem="DH reset failed: "+sanitizeReason(e.getMessage());
+@@ -163,7 +167,7 @@
+     }
+     private static void invalidateCurrentNativeCache() {
+         var server=Minecraft.getInstance().getCurrentServer();
+-        if(server==null || server.ip==null) throw new IllegalStateException("DH requires a remote server identity");
++        if(server==null || server.ip==null) return; // No remote cache exists in single-player.
+         ColumnCacheStore.clearForServersStrict(ClientNetGlue.dhCacheSweep(server.ip));
+     }
+ 
+@@ -184,11 +188,14 @@
+         volatile String levelKey,serverKey;
+         volatile DhTerrainCache terrainCache;
+         final Set<DhPosition> cachedPositions=new HashSet<>(),rejoinChecks=new HashSet<>();
++        final ConcurrentHashMap<DhPosition,Long> cacheChecks=new ConcurrentHashMap<>();
+         volatile boolean cacheReady=true;
++        volatile String cacheStatus="waiting for world identity";
+         volatile DhPosition cacheLoading;
+-        long cacheWorkStarted;
++        long cacheWorkStarted,cacheJob;
++        Future<?> cacheTask;
+         final AtomicLong cacheHits=new AtomicLong(),cacheWrites=new AtomicLong();
+-        final AtomicLong cacheReusedColumns=new AtomicLong();
++        final AtomicLong cacheReusedColumns=new AtomicLong(),cachePreservedColumns=new AtomicLong();
+         final AtomicBoolean cacheWarned=new AtomicBoolean();
+         volatile String problem="waiting for DH config";
+         final long started=System.nanoTime();
+@@ -214,7 +221,7 @@
+             });
+         }
+         String describe() { return "DH "+profile+": "+problem+"; enqueued tiles="+tiles+", columns="+columns
+-                +", cached tiles="+cacheHits+", Voxy reused columns="+cacheReusedColumns+", wire="+wireBytes+" bytes, owned="+budget.used()+", requests="+pending.size(); }
++                +", cached tiles="+cacheHits+", Voxy reused columns="+cacheReusedColumns+", preserved columns="+cachePreservedColumns+", wire="+wireBytes+" bytes, owned="+budget.used()+", requests="+pending.size()+", cache="+cacheStatus; }
+         int effectiveRange() {
+             var cfg=config;
+             if(cfg==null) return 0;
+@@ -240,55 +247,89 @@
+         void openCache() {
+             if(terrainCache!=null || !cacheReady) return;
+             var mc=Minecraft.getInstance();var server=mc.getCurrentServer();
+-            if(mc.gameDirectory==null || server==null || server.ip==null) return;
++            if(mc.gameDirectory==null || server==null || server.ip==null) {cacheStatus="disabled: no remote identity";return;}
+             var seed=dev.vox.lss.seed.ClientWorldSeed.context(true);
+-            if(!seed.seedAvailable()) return; // Never reuse a source cache under an ambiguous world identity.
++            if(!seed.seedAvailable() || seed.seed()==0L) {cacheStatus="disabled: ambiguous seed";return;} // Never reuse a source cache under an ambiguous world identity.
+             var shape=new DhTerrainTile.WorldShape(level.getMinBuildHeight(),level.getHeight(),level.dimensionType().hasSkyLight());
+             terrainCache=new DhTerrainCache(ColumnCacheStore.cacheRoot(),new DhTerrainCache.Key(server.ip,serverKey,levelKey,
+                     level.dimension().location().toString(),seed.seed(),profile,shape));
+-            cacheReady=false;cacheWorkStarted=System.nanoTime();
+-            try { worker.execute(() -> {
++            cacheReady=false;cacheWorkStarted=System.nanoTime();cacheStatus=config.synchronize() && config.syncRate()>0?"validate on load":"server synchronization disabled";
++            long job=++cacheJob;
++            try { cacheTask=worker.submit(() -> {
+                 Set<DhPosition> positions;
+                 try { positions=terrainCache.positions(); }
+                 catch(java.io.IOException e) { cacheWarning(e); positions=Set.of(); }
++                terrainCache.protect(positions);
+                 var found=positions;
+-                main(() -> { cachedPositions.addAll(found);cacheReady=true; });
++                main(() -> {if(job==cacheJob){cachedPositions.addAll(found);cacheReady=true;}});
+             }); } catch(RejectedExecutionException e) { fail("DH worker queue full"); }
+         }
+         void restoreCache(DhPosition position,long now) {
+             cachedPositions.remove(position);cacheLoading=position;cacheWorkStarted=now;
+-            try { worker.execute(() -> {
++            long job=++cacheJob;
++            try { cacheTask=worker.submit(() -> {
+                 try(var entry=terrainCache.read(position,budget)) {
+                     if(entry!=null) {
+                         var shape=new DhTerrainTile.WorldShape(level.getMinBuildHeight(),level.getHeight(),level.dimensionType().hasSkyLight());
+                         try(var tile=entry.decode(new DhTerrainDecoder(DhLimits.DEFAULT),profile,shape)) {
+                             if(!completeTile(tile) || tile.modifiedTimestamp()!=entry.timestamp()) terrainCache.remove(position);
+-                            else if(deliver(tile,position,false,true)) {
+-                                cacheHits.incrementAndGet();
++                            else if(config.synchronize() && config.syncRate()>0) {
++                                // An owned validated SOURCE is sufficient for this request.
++                                // It is not a destination acceptance receipt. Do not enqueue
++                                // old terrain before the server decides changed vs unchanged.
++                                long stamp=entry.timestamp();
+                                 main(() -> {
+-                                    if(config.synchronize() && config.syncRate()>0 && policy.refreshTimestamp(position)>0) {
+-                                        policy.revalidate(position,System.nanoTime());
+-                                        rejoinChecks.add(position);
++                                    if(job!=cacheJob)return;
++                                    long at=System.nanoTime();
++                                    if(pending.size()>=Math.min(2,config.syncRate())
++                                            || at-lastRequest<1_000_000_000L/Math.max(1,config.syncRate())) {
++                                        cachedPositions.add(position);return;
+                                     }
++                                    cacheChecks.put(position,stamp);
++                                    request(position,0,false,at);
+                                 });
+-                            }
++                            } else if(deliver(tile,position,false,true)) {terrainCache.unprotect(position);cacheHits.incrementAndGet();}
+                         }
+                     }
++                } catch(DhCodecException e) {
++                    if(e.kind()==DhCodecException.Kind.RESOURCE_LIMIT)retryCache(position,"cached terrain memory pressure");
++                    else invalidateCache(position,e);
+                 } catch(TimeoutException e) {
+-                    main(() -> { policy.cooldown(position,System.nanoTime());problem="client thread was busy; cached terrain retry scheduled"; });
+-                } catch(java.io.IOException e) {
+-                    cacheWarning(e);
+-                    try { terrainCache.remove(position); } catch(java.io.IOException ignored) { /* a future read remains untrusted */ }
+-                } catch(Exception | LinkageError e) {
+-                    if(active) fail("DH cached terrain delivery failed: "+e.getClass().getSimpleName());
+-                } finally { main(() -> cacheLoading=null); }
++                    retryCache(position,"client thread was busy; cached terrain retry scheduled");
++                } catch(java.io.IOException e) { invalidateCache(position,e); }
++                catch(InterruptedException | CancellationException e) { /* retired owner */ }
++                catch(Exception | LinkageError e) { if(active)fail("DH cached terrain delivery failed: "+e.getClass().getSimpleName()); }
++                finally { main(() -> {if(job==cacheJob)cacheLoading=null;}); }
+             }); } catch(RejectedExecutionException e) { fail("DH worker queue full"); }
++        }
++        void retryCache(DhPosition position,String reason) {
++            main(() -> {cacheChecks.remove(position);cachedPositions.add(position);policy.cooldown(position,System.nanoTime());problem=reason;});
++        }
++        void invalidateCache(DhPosition position,Exception error) {
++            cacheWarning(error);
++            try {terrainCache.remove(position);}catch(java.io.IOException e) {fail("Unable to invalidate superseded DH cache");}
++            main(() -> {cacheChecks.remove(position);cachedPositions.remove(position);});
++        }
++        void restoreUnchanged(DhPosition position,long stamp) throws Exception {
++            try(var entry=terrainCache.read(position,budget)) {
++                if(entry==null || entry.timestamp()!=stamp) {retryCache(position,"cached source disappeared; retry scheduled");return;}
++                var shape=new DhTerrainTile.WorldShape(level.getMinBuildHeight(),level.getHeight(),level.dimensionType().hasSkyLight());
++                try(var tile=entry.decode(new DhTerrainDecoder(DhLimits.DEFAULT),profile,shape)) {
++                    if(!completeTile(tile) || tile.modifiedTimestamp()!=stamp) {invalidateCache(position,new java.io.IOException("Invalid cached DTO"));return;}
++                    if(deliver(tile,position,false,true)) {terrainCache.unprotect(position);cacheHits.incrementAndGet();}
++                }
++            } catch(DhCodecException e) {
++                if(e.kind()==DhCodecException.Kind.RESOURCE_LIMIT)retryCache(position,"cached terrain memory pressure");
++                else invalidateCache(position,e);
++            } catch(TimeoutException e) {retryCache(position,"client thread was busy; cached terrain retry scheduled");}
++            catch(java.io.IOException e) {invalidateCache(position,e);}
+         }
+         static boolean completeTile(DhTerrainTile tile) {
+             for(int c=0;c<4096;c++) if(tile.coverage(c)!=DhTerrainTile.Coverage.COMPLETE) return false;
+             return true;
+         }
+         void cacheWarning(Exception e) {
++            cacheStatus="unavailable: "+e.getClass().getSimpleName();
+             if(cacheWarned.compareAndSet(false,true))
+                 LSSLogger.warn("DH local terrain cache unavailable ("+e.getClass().getSimpleName()+"); full terrain requests remain available");
+         }
+@@ -310,8 +351,9 @@
+             worker.shutdownNow();
+             synchronized(frames) { for(var f:List.copyOf(frames)) if(!f.processing) f.close(); }
+             try {
+-                if(worker.awaitTermination(2,TimeUnit.SECONDS)) { assembly.close(); return true; }
++                if(worker.awaitTermination(2,TimeUnit.SECONDS)) { assembly.close(); retiring.remove(this); return true; }
+             } catch(InterruptedException e) { Thread.currentThread().interrupt(); }
++            retiring.add(this);
+             return false;
+         }
+         void send(DhMessage message) {
+@@ -359,13 +401,18 @@
+                 }); }
+                 catch(RejectedExecutionException e) { fail("DH worker queue full"); }
+             }
++            if((!cacheReady || cacheLoading!=null) && now-cacheWorkStarted>60_000_000_000L) {
++                var timedOut=cacheLoading;++cacheJob;
++                if(cacheTask!=null)cacheTask.cancel(true);
++                cacheLoading=null;cacheReady=true;
++                if(timedOut!=null) {cachedPositions.add(timedOut);cacheChecks.remove(timedOut);policy.cooldown(timedOut,now);}
++                else {cacheStatus="index timed out; network acquisition remains available";}
++                problem="cached terrain operation timed out; local retry scheduled";
++            }
+             if(DhVoxyBridge.failed()) { fail("Voxy DH bridge is incompatible; restart with a compatible Voxy build"); return; }
+             if(!DhVoxyBridge.ready(level)) { problem="waiting for Voxy world/ingest service"; return; }
+             if(!cacheInvalidated) {
+                 try { invalidateNativeCache(); } catch(RuntimeException e) { fail(e.getMessage()); return; }
+-            }
+-            if((!cacheReady || cacheLoading!=null) && now-cacheWorkStarted>60_000_000_000L) {
+-                fail("Local DH terrain cache timed out; reconnect before retrying"); return;
+             }
+             if(!cacheReady) return;
+             int backlog=DhVoxyBridge.backlog();
+@@ -405,9 +452,11 @@
+                     boolean any=false;
+                     for(int ox=0;ox<4;ox++) for(int oz=0;oz<4;oz++) any|=policy.eligible(x+ox,z+oz);
+                     if(!any) continue;
+-                    if(priority==0 && cachedPositions.contains(p)) {
+-                        if(cacheLoading==null) restoreCache(p,now);
+-                        return;
++                    if(priority!=2 && cachedPositions.contains(p)) {
++                        if(cacheLoading!=null) continue;
++                        if(config.synchronize() && config.syncRate()>0
++                                && now-lastRequest<1_000_000_000L/config.syncRate())continue;
++                        restoreCache(p,now);return;
+                     }
+                     if(!policy.refreshAllowed(p,config.synchronize(),config.syncRate())) continue;
+                     boolean gen=profile.support() || !config.synchronize() || policy.generationNeeded(p);
+@@ -439,7 +488,7 @@
+         void request(DhPosition p,int priority,boolean gen,long now) {
+             int id=IDS.incrementAndGet();
+             if(id<=0) { fail("DH request ID space exhausted; restart client"); return; }
+-            long stamp=priority==2 || rejoinChecks.contains(p)?policy.refreshTimestamp(p):0;
++            long stamp=cacheChecks.containsKey(p)?cacheChecks.get(p):priority==2 || rejoinChecks.contains(p)?policy.refreshTimestamp(p):0;
+             rejoinChecks.remove(p); // The owned request now carries the conditional timestamp and normal retry policy.
+             pending.put(id,new Pending(p,gen,now,stamp)); lastRequest=now; if(priority==2) lastRefresh=now;
+             if(priority==1) retryBurst=Math.min(3,retryBurst+1); else retryBurst=0;
+@@ -487,6 +536,14 @@
+                     main(() -> { unanswered=0; nextScanAt=0; problem="acquiring terrain"; });
+                     lastSync=System.nanoTime();
+                     if(completed==null) {
++                        Long cached=cacheChecks.remove(request.position);
++                        if(cached!=null && cached>0 && cached==request.timestamp) {
++                            restoreUnchanged(request.position,cached);
++                            main(() -> pending.remove(response.requestId())); return;
++                        }
++                        if(terrainCache!=null && request.timestamp==0)terrainCache.remove(request.position);
++                        else if(terrainCache!=null)try {terrainCache.touch(request.position);}
++                        catch(java.io.IOException e) {cacheWarning(e);} // LRU metadata failure does not invalidate acceptance.
+                         main(() -> {
+                             long now=System.nanoTime();
+                             if(!policy.unchanged(request.position,request.timestamp,now,refreshNanos)) {
+@@ -502,9 +559,19 @@
+                     }
+                     var shape=new DhTerrainTile.WorldShape(level.getMinBuildHeight(),level.getHeight(),level.dimensionType().hasSkyLight());
+                     try(var tile=completed.decode(new DhTerrainDecoder(DhLimits.DEFAULT),profile,shape)) {
+-                        if(terrainCache!=null && active && completeTile(tile)) {
+-                            try { completed.cache(terrainCache,tile.modifiedTimestamp()); cacheWrites.incrementAndGet(); }
+-                            catch(java.io.IOException e) { cacheWarning(e); }
++                        cacheChecks.remove(request.position);
++                        if(terrainCache!=null && active) {
++                            try {
++                                terrainCache.remove(request.position);
++                                if(completeTile(tile) && completed.cache(terrainCache,tile.modifiedTimestamp()))cacheWrites.incrementAndGet();
++                            } catch(java.io.IOException e) {
++                                // If invalidation itself fails, do not deliver newer terrain
++                                // over a still-restorable stale source. Keep ordinary MC alive.
++                                try {terrainCache.remove(request.position);}catch(java.io.IOException blocked) {
++                                    fail("Unable to invalidate superseded DH cache");return;
++                                }
++                                cacheWarning(e);
++                            }
+                         }
+                         deliver(tile,request.position,request.generation);
+                         main(() -> { rejoinChecks.remove(request.position); pending.remove(response.requestId()); });
+@@ -537,6 +604,11 @@
+         boolean deliver(DhTerrainTile tile,DhPosition position,boolean generation,boolean reuseCache) throws Exception {
+             try(var mappings=reuseCache?budget.reserve(8L<<20):null;
+                 var cached=reuseCache?onMain(() -> DhVoxyBridge.openCache(level)):null) {
++                if(reuseCache && cached==null) {
++                    cacheStatus="destination verification unavailable; cached terrain deferred";
++                    retryCache(position,"Voxy comparison unavailable; existing terrain preserved");
++                    return false;
++                }
+                 return deliver(tile,position,generation,cached);
+             }
+         }
+@@ -556,17 +628,23 @@
+                 if(!allowed) { skipped.incrementAndGet(); continue; }
+                 eligible|=1<<c;
+                 if(cached!=null) {
+-                    boolean matches=false;
++                    boolean matches=false,preserve=false;
+                     try(var verification=budget.reserve(((long)shape.height()+31)/32*262_144+262_144
+                             +(long)tile.materials().size()*128+1_048_576)) {
+                         var snapshot=cached.readColumn(x,z,shape.minY(),shape.height());
+                         matches=converter.matchesCache(tile,column,snapshot::matches);
++                        preserve=!matches && !snapshot.isDefault();
+                     } catch(ReflectiveOperationException | RuntimeException | LinkageError e) {
+-                        // Unavailable/corrupt destination reads fall back to source delivery.
+-                    }
+-                    if(matches) {
+-                        if(!onMain(() -> policy.eligible(x,z) && !loaded(level,x,z)))skipped.incrementAndGet();
+-                        cacheReusedColumns.incrementAndGet();
++                        cacheStatus="destination verification unavailable; cached terrain deferred";
++                        retryCache(position,"Voxy comparison failed; existing terrain preserved");
++                        return false;
++                    }
++                    if(matches || preserve) {
++                        int authority=onMain(() -> !cached.isCurrent(level)?-1:policy.eligible(x,z) && !loaded(level,x,z)?1:0);
++                        if(authority<0){retryCache(position,"Voxy destination changed; cached retry scheduled");return false;}
++                        if(authority==0) {skipped.incrementAndGet();accepted|=1<<c;attempted|=1<<c;continue;}
++                        if(matches)cacheReusedColumns.incrementAndGet();
++                        else cachePreservedColumns.incrementAndGet();
+                         accepted|=1<<c;attempted|=1<<c;reused|=1<<c;
+                         continue;
+                     }
+@@ -576,7 +654,13 @@
+                     if(data==null) continue;
+                     converted.incrementAndGet();
+                     attempted|=1<<c;
++                    var destinationChanged=new AtomicBoolean();
+                     boolean ok=onMain(() -> {
++                        if(cached!=null && !cached.isCurrent(level)) {
++                            destinationChanged.set(true);
++                            retryCache(position,"Voxy destination changed; cached retry scheduled");
++                            return false;
++                        }
+                         if(!policy.eligible(x,z) || loaded(level,x,z)) { skipped.incrementAndGet(); return true; } // vanilla now resolves this column
+                         invalidateNativeCache();
+                         var rejected=new AtomicBoolean();
+@@ -591,12 +675,16 @@
+                         else failedColumns.incrementAndGet();
+                         return !rejected.get();
+                     });
++                    if(destinationChanged.get())return false;
+                     if(ok) accepted|=1<<c;
+                 }
+             }
+             int eligibleMask=eligible,acceptedMask=accepted,attemptedMask=attempted,reusedMask=reused;
+             long stamp=tile.modifiedTimestamp();
+             return onMain(() -> {
++                if(cached!=null && !cached.isCurrent(level)) {
++                    cachedPositions.add(position);policy.cooldown(position,System.nanoTime());return false;
++                }
+                 boolean success=policy.accepted(position,eligibleMask,acceptedMask,stamp,System.nanoTime(),
+                         LSSClientConfig.CONFIG.snapshot().lod().dh().refreshSeconds()*1_000_000_000L);
+                 if(success) {
+--- baseline/xplat/src/main/java/dev/vox/lss/networking/client/DhColumnConverter.java
++++ current/xplat/src/main/java/dev/vox/lss/networking/client/DhColumnConverter.java
+@@ -61,7 +61,7 @@
+         var materials=new ArrayList<Material>();
+         for(var m:tile.materials()) {
+             var state=Block.BLOCK_STATE_REGISTRY.byId(resolver.blockIdForDh(m));
+-            int waterSkyLoss=state.getBlock()==Blocks.WATER
++            int waterSkyLoss=!state.getFluidState().isEmpty()
+                     ?Math.max(1,state.getLightBlock(EmptyBlockGetter.INSTANCE,BlockPos.ZERO)):0;
+             materials.add(new Material(state,
+                     biomes.asHolderIdMap().byId(resolver.biomeIdFor(m.biome())),waterSkyLoss));

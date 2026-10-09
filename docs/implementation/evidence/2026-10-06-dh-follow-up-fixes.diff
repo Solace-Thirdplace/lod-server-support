@@ -1,0 +1,2272 @@
+--- a/common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java
++++ b/common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java
+@@ -144,7 +144,9 @@
+     public long assembledBytes() { return buffers.values().stream().mapToLong(b -> b.size).sum(); }
+     private void open() { if (closed) throw new IllegalStateException("DH assembly retired"); }
+     private static DhCodecException unowned(String message) { return new DhCodecException(DhCodecException.Kind.UNOWNED, message); }
+-    @Override public void close() { closed = true; buffers.values().forEach(Buffer::close); buffers.clear(); requests.clear(); }
++    /** Drop incomplete transfers under pressure while retaining the session. */
++    public void discardAll() {open();buffers.values().forEach(Buffer::close);buffers.clear();requests.clear();}
++    @Override public void close() {if(!closed){discardAll();closed=true;}}
+ 
+     /** Ownership survives assembler retirement until this result is closed. No raw array escapes. */
+     public final class Completed implements AutoCloseable {
+--- a/common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java
++++ b/common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java
+@@ -80,6 +80,7 @@
+     }
+     /** A partial server edit invalidates the retained whole-source acceptance. */
+     public void invalidate(DhPosition position) { receipts.remove(position); }
++    public void invalidateAll() { receipts.clear(); }
+     public void clearReceipts() { receipts.clear(); }
+     /** DH Support advertises its Bukkit border in blocks; official DH uses chunks. */
+     public static boolean inBorder(DhProfile profile,DhPosition tile,int centerX,int centerZ,int radius) {
+--- a/common/src/main/java/dev/vox/lss/common/dh/DhTerrainCache.java
++++ b/common/src/main/java/dev/vox/lss/common/dh/DhTerrainCache.java
+@@ -12,8 +12,10 @@
+     public static final String LEGACY_DIRECTORY = "dh-terrain-v1";
+     public static final int MAX_FILES = 8192;
+     public static final long MAX_BYTES = 256L << 20;
+-    // Bump VERSION when either storage shape or incompatible decoder semantics changes.
+-    private static final int MAGIC = 0x44485443, VERSION = 1, HEADER = 92;
++    // VERSION covers storage/decoder layout. Bump CONVERSION_VERSION whenever
++    // DhColumnConverter changes output; old identities then require fresh source.
++    public static final int CONVERSION_VERSION = 2;
++    private static final int MAGIC = 0x44485443, VERSION = 2, HEADER = 96;
+     private static final Object IO_LOCK = new Object();
+     private static final LinkOption NOFOLLOW = LinkOption.NOFOLLOW_LINKS;
+     private static final Map<Path, Index> INDEXES = new WeakHashMap<>();
+@@ -39,7 +41,7 @@
+             try {
+                 var bytes = new ByteArrayOutputStream();
+                 try (var out = new DataOutputStream(bytes)) {
+-                    out.writeInt(VERSION);
++                    out.writeInt(VERSION);out.writeInt(CONVERSION_VERSION);
+                     for (String value : List.of(address, server, world, dimension, profile.name())) out.writeUTF(value);
+                     out.writeLong(seed); out.writeInt(shape.minY()); out.writeInt(shape.height()); out.writeBoolean(shape.sky());
+                 }
+@@ -85,6 +87,7 @@
+                         || !MessageDigest.isEqual(in.readNBytes(32), identity) || in.readLong() != position.packed())
+                     throw new IOException("Invalid DH cache identity");
+                 long timestamp = in.readLong(); int length = in.readInt(); byte[] checksum = in.readNBytes(32);
++                if(in.readInt()!=CONVERSION_VERSION)throw new IOException("Obsolete DH conversion semantics");
+                 if (timestamp < 0 || length < 1 || length != size - HEADER) throw new IOException("Invalid DH cache length/timestamp");
+                 byte[] data = in.readNBytes(length);
+                 if (data.length != length || in.read() != -1 || !MessageDigest.isEqual(hash(data), checksum))
+@@ -112,7 +115,7 @@
+             try {
+                 try (var out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(temporary)))) {
+                     out.writeInt(MAGIC); out.writeInt(VERSION); out.write(identity); out.writeLong(position.packed());
+-                    out.writeLong(timestamp); out.writeInt(data.length); out.write(hash(data)); out.write(data);
++                    out.writeLong(timestamp); out.writeInt(data.length); out.write(hash(data)); out.writeInt(CONVERSION_VERSION);out.write(data);
+                 }
+                 try (var channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) { channel.force(true); }
+                 Files.move(temporary, file(position), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+@@ -169,6 +172,18 @@
+     public void unprotect(DhPosition position) {
+         synchronized (IO_LOCK) {protectedFiles.remove(file(position));}
+     }
++    public void invalidateAll() throws IOException {
++        synchronized(IO_LOCK) {
++            checkDirectories(false);
++            if(!Files.isDirectory(directory,NOFOLLOW))return;
++            try(var files=Files.newDirectoryStream(directory)) {
++                for(var file:files)if(position(file)!=null) {
++                    Files.delete(file);var index=INDEXES.get(root);if(index!=null)index.files.remove(file);
++                }
++            }
++            protectedFiles.clear();
++        }
++    }
+     public void touch(DhPosition position) throws IOException {
+         synchronized (IO_LOCK) {
+             checkDirectories(false); var file = file(position);
+@@ -185,7 +200,7 @@
+         if (Files.isDirectory(root, NOFOLLOW)) try (var directories = Files.newDirectoryStream(root)) {
+             for (Path dir : directories) {
+                 if (!ownedDirectory(dir) || !Files.isDirectory(dir, NOFOLLOW)) continue;
+-                requireDirectory(dir);
++                try {requireDirectory(dir);}catch(IOException unsafe) {continue;}
+                 try (var entries = Files.newDirectoryStream(dir)) {
+                     for (Path entry : entries) {
+                         if (!Files.isRegularFile(entry, NOFOLLOW)) continue;
+--- a/common/src/main/java/dev/vox/lss/common/diagnostics/DhStatusSnapshot.java
++++ b/common/src/main/java/dev/vox/lss/common/diagnostics/DhStatusSnapshot.java
+@@ -10,7 +10,7 @@
+         int decodeQueue, int inFlight, int ingestBacklog, int effectiveRange, int generationRate,
+         int syncRate, int bandwidthKiB, boolean syncOnLoad, boolean syncAvailable,
+         boolean liveUpdates, boolean liveAvailable, long receivedUpdates, long enqueuedUpdates, long lastSyncAgeMillis,
+-        long completeColumns, long partialColumns, long unknownColumns) {
++        long completeColumns, long partialColumns, long unknownColumns, long cacheDeclinedAdmissions, long pressureDroppedTerrainFrames) {
+     public enum State { PAUSED, NEED_TRANSPORT, NEED_VOXY, WAIT_CONFIG, WAIT_WORLD, READY, BLOCKED, STOPPED }
+     public List<String> lines() {
+         return List.of("Source: Distant Horizons, " + profile + ", " + state,
+@@ -22,6 +22,7 @@
+                         +" bytes; decode="+decodeQueue+", requests="+inFlight+", Voxy backlog="+ingestBacklog,
+                 "Limits: range="+effectiveRange+" chunks, generation="+generationRate+", sync="+syncRate
+                         +" requests/s, bandwidth="+bandwidthKiB+" KiB/s",
++                "Source cache: declined admissions="+cacheDeclinedAdmissions+", pressure-dropped terrain frames="+pressureDroppedTerrainFrames,
+                 "Freshness: session-only enqueue acceptance; sync on load="+syncOnLoad+", available="+syncAvailable
+                         +"; live updates="+liveUpdates+", available="+liveAvailable+", received/enqueued="+receivedUpdates+"/"+enqueuedUpdates
+                         +", last sync age="+lastSyncAgeMillis+" ms; completed ingestion/persistence unacknowledged");
+--- a/common/src/test/java/dev/vox/lss/common/dh/DhProtocolDiscoveryTest.java
++++ b/common/src/test/java/dev/vox/lss/common/dh/DhProtocolDiscoveryTest.java
+@@ -18,7 +18,7 @@
+         }
+         return bytes.toByteArray();
+     }
+-    @Test void realFamilyStringPrefixesDistinguishBothVersion15Servers() throws Exception {
++    @Test void defensiveEncoderControlsAndSupportPrefixDistinguishTheFamilies() throws Exception {
+         assertEquals(DhProfile.OFFICIAL_15,DhProtocolDiscovery.advertised(official(DhProfile.OFFICIAL_15)));
+         assertEquals(DhProfile.SUPPORT_15,DhProtocolDiscovery.advertised(support()));
+         assertEquals(DhProfile.OFFICIAL_16,DhProtocolDiscovery.advertised(official(DhProfile.OFFICIAL_16)));
+--- a/common/src/test/java/dev/vox/lss/common/dh/DhTerrainCacheTest.java
++++ b/common/src/test/java/dev/vox/lss/common/dh/DhTerrainCacheTest.java
+@@ -47,6 +47,25 @@
+                 new DhTerrainCache.Key("one","server","world",k.dimension(),9,k.profile(),new DhTerrainTile.WorldShape(-64,384,false)));
+         for(var changed:variants)assertTrue(new DhTerrainCache(root,changed).positions().isEmpty(),changed.toString());
+     }
++    @Test void oldConversionMetadataCannotBeUsedAsAnUnchangedSource() throws Exception {
++        var cache=new DhTerrainCache(root,key("one"));cache.write(POSITION,1,new byte[]{1});
++        byte[] bytes=Files.readAllBytes(file());java.nio.ByteBuffer.wrap(bytes).putInt(92,DhTerrainCache.CONVERSION_VERSION-1);
++        Files.write(file(),bytes);var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
++        assertNull(cache.read(POSITION,budget));assertEquals(0,budget.used());assertTrue(cache.positions().isEmpty());
++    }
++    @Test void fullFlightBucketEvictsUnvisitedTerrainAndKeepsSubsequentHomeJoins() throws Exception {
++        var cache=new DhTerrainCache(root,key("flight"));var home=new HashSet<DhPosition>();
++        for(int i=0;i<121;i++){var p=new DhPosition(6,i,0);home.add(p);cache.write(p,1,new byte[]{1});}
++        for(int i=0;i<8192;i++) {
++            var p=new DhPosition(6,1000+i,0);cache.protect(Set.of(p));assertTrue(cache.write(p,2,new byte[]{2}));
++        }
++        for(int session=2;session<=4;session++) {
++            cache=new DhTerrainCache(root,key("flight"));cache.protect(home);
++            var positions=cache.positions();long retained=home.stream().filter(positions::contains).count();
++            if(session>=3)assertTrue(retained>=120,"home area was declined again: "+retained);
++            for(var p:home)if(!positions.contains(p))assertTrue(cache.write(p,3,new byte[]{3}));
++        }
++    }
+     @Test void corruptionIsAMissAndReleasesItsMemoryRatherThanClaimingUnchanged() throws Exception {
+         var cache=new DhTerrainCache(root,key("one"));cache.write(POSITION,1,dto());var file=file();
+         byte[] contents=Files.readAllBytes(file);contents[contents.length-1]^=1;Files.write(file,contents);
+@@ -56,7 +75,7 @@
+     @Test void truncatedOrWrongVersionFilesAreMisses() throws Exception {
+         var cache=new DhTerrainCache(root,key("one"));cache.write(POSITION,1,dto());var file=file();
+         Files.write(file,new byte[3]);assertNull(cache.read(POSITION,new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes())));
+-        cache.write(POSITION,1,dto());byte[] contents=Files.readAllBytes(file);contents[7]=2;Files.write(file,contents);
++        cache.write(POSITION,1,dto());byte[] contents=Files.readAllBytes(file);contents[7]=3;Files.write(file,contents);
+         assertNull(cache.read(POSITION,new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes())));
+     }
+     @Test void quotaCoversOtherServerBucketsAndEvictedDataBecomesMissing() throws Exception {
+--- a/common/src/test/java/dev/vox/lss/common/diagnostics/ClientStatusTextTest.java
++++ b/common/src/test/java/dev/vox/lss/common/diagnostics/ClientStatusTextTest.java
+@@ -31,7 +31,7 @@
+                 "lss.status.reason."+reason.name().toLowerCase(Locale.ROOT),List.of())),languages);
+         for(var state:DhStatusSnapshot.State.values()) for(var profile:dev.vox.lss.common.dh.DhProfile.values())
+             for(boolean sync:new boolean[]{false,true}) for(boolean live:new boolean[]{false,true}) {
+-                var dh=new DhStatusSnapshot(profile,state,10,5,2,1,50,45,3,2,1000,100,200,1,2,3,32,1,2,500,true,sync,live,sync,0,0,100,4096,0,0);
++                var dh=new DhStatusSnapshot(profile,state,10,5,2,1,50,45,3,2,1000,100,200,1,2,3,32,1,2,500,true,sync,live,sync,0,0,100,4096,0,0,0,0);
+                 var snapshot=new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION,1,100,true,false,true,false,true,false,
+                         0,0,0,0,0,0,-1,0,0,0,0,ClientStatusSnapshot.Discovery.DORMANT,
+                         ClientStatusSnapshot.Availability.DISABLED,null,DiagnosticVersions.unknown(),settings,dh);
+--- a/common/src/test/java/dev/vox/lss/common/diagnostics/DiagnosticPrivacyTest.java
++++ b/common/src/test/java/dev/vox/lss/common/diagnostics/DiagnosticPrivacyTest.java
+@@ -10,7 +10,7 @@
+             assertTrue(field.getType().isPrimitive() || field.getType().isEnum(),
+                     "DH export must not acquire an opaque string/identity field: "+field.getName());
+         var dh=new DhStatusSnapshot(dev.vox.lss.common.dh.DhProfile.OFFICIAL_16,DhStatusSnapshot.State.BLOCKED,
+-                10,5,2,1,50,45,3,2,1000,100,200,1,2,3,32,1,2,500,true,true,true,true,0,0,100,4096,0,0);
++                10,5,2,1,50,45,3,2,1000,100,200,1,2,3,32,1,2,500,true,true,true,true,0,0,100,4096,0,0,0,0);
+         var snapshot=new ClientStatusSnapshot(3,1,100,true,false,true,false,true,false,0,0,0,0,0,0,-1,0,0,0,0,
+                 ClientStatusSnapshot.Discovery.DORMANT,ClientStatusSnapshot.Availability.DISABLED,null,
+                 new DiagnosticVersions(Map.of(DiagnosticVersions.Component.LSS,"/home/alice/token")),null,dh);
+--- a/docs/implementation/2026-10-05-dh-manual-test-guide.md
++++ b/docs/implementation/2026-10-05-dh-manual-test-guide.md
+@@ -8,13 +8,12 @@
+ Existing terrain synchronization remains enabled. The server uses
+ `SURFACE_THEN_CHUNKS`; the new setup enables server real-time updates.
+ 
+-Setup status (2026-10-06): **ready**. The
+-`0.16.0-dh-auto.dev20261006` jar is installed and hash-verified, with the
+-previous jar backed up and preferences preserved. The existing world and OP are
+-retained; Windows IPv6 TCP, Minecraft protocol 767 and fresh console list/save
+-acknowledgements pass. Setup and installation receipts are in the outer checkout's
+-`build/dh-neoforge/2026-10-06/automatic-selection/`. Historical ready receipts describe
+-their timestamps; use the command below for present liveness.
++The last deployment receipt is dated evidence, not a present liveness claim.
++The verified `0.16.0-dh-reviewfix.dev20261006` candidate and installation receipt
++are recorded in the outer checkout's
++`build/dh-neoforge/2026-10-06/follow-up-fixes/`. Previous jars have dated backups; preferences, the test
++world and OP are retained. Read current status before connecting. The source/conversion cache version bump
++requires fresh DH source downloads for old cached areas; leave Voxy storage intact.
+ 
+ Check actual liveness from the outer checkout:
+ 
+--- a/docs/implementation/2026-10-06-dh-automatic-selection.md
++++ b/docs/implementation/2026-10-06-dh-automatic-selection.md
+@@ -36,12 +36,14 @@
+ and [was released September 17, 2026](https://modrinth.com/mod/distanthorizons/version/Sa0ttGJr).
+ The official client checks one exact version rather than negotiating backwards:
+ [packet decoder](https://gitlab.com/distant-horizons-team/distant-horizons/-/raw/3.3.3/common/src/main/java/com/seibel/distanthorizons/common/AbstractPluginPacketSender.java).
+-The official server replies to a mismatch with a CloseReason in its own version,
+-then closes the player's DH session:
+-[ServerPlayerState](https://gitlab.com/distant-horizons-team/distant-horizons-core/-/raw/3.3.3/core/src/main/java/com/seibel/distanthorizons/core/multiplayer/server/ServerPlayerState.java).
+-It sends config and level identity in response to requests, so waiting passively
+-cannot discover a normal official server's version. This behavior was also checked
+-against the installed stock 3.3.3 jar with `javap`.
++The official server's source registers a mismatch CloseReason handler and closes
++DH state after rejection. That source-level path is **not reached by the stock
++3.2.0-b or 3.3.3 jars on MC 1.21.1**: their Log4j 2.22.1 mismatch logging throws
++before the handler, and the error logging throws again before `close(e)`. The
++retained stock 3.3.3 mismatch log and both jars' `javap` output confirm this.
++Our strict official CloseReason decoder remains a defensive control for peers
++with corrected logging; its tests are self-encoder controls, not captured
++stock producer replies. Config and level identity still require active requests.
+ 
+ DH Support 0.14.0 uses protocol 15 with different encodings, including a four-byte
+ CloseReason string prefix instead of official DH's two-byte prefix. Its pinned
+@@ -57,29 +59,31 @@
+ protocol-15 config/level frames never guess a family; unknown versions, truncated
+ controls and terrain fragments never authorize reconnecting.
+ 
+-The stock 3.2.0-b NeoForge jar additionally throws while logging its mismatch
+-before its registered rejection handler can run. This was demonstrated by the
+-first packaged private attempt, including the `IncompatibleMessageInternalEvent{}`
+-Log4j placeholder stack. After five seconds without config, the client retires
+-its empty protocol-16 probe and uses its one reconnect allowance for a fresh
+-connection with official-15 controls. The attempted same-connection recovery also
+-failed in the retained second private run: the server's DH state no longer replied.
+-A valid config/world handshake is still required; silence never authorizes terrain
+-acceptance. If the fresh legacy trial gets no config, DH stops after its fifteen-
+-second response window. A different supported rejection on that trial updates the
+-hint/status but cannot request another automatic reconnect.
++Both loaders check the remotely advertised DH channel before sending and again
++before any legacy trial. Missing or withdrawn channels stop only the adapter;
++ordinary Minecraft stays connected. A quiet official-16 probe waits fifteen seconds
++and three idle client ticks, with no captured, queued or decoding frame and no
++recent arrival. Any DH-channel response disables this silence trial. Slow valid
++configuration therefore does not trigger a reconnect at the former five-second
++boundary. A registered but disabled official service can still consume the one
++bounded trial; silence is not proof that the service implements protocol 15.
+ 
+-A supported different family schedules at most one automatic reconnect to the
+-same ServerData and address, provided the exact Minecraft connection and level
+-still own the probe, receiving is enabled and native LSS has not taken priority.
+-The retry expires after sixty seconds. The retry join uses the detected family;
+-a second mismatch stops DH and asks for a rejoin. Reconfiguration on the same
+-physical connection keeps the consumed retry allowance. Protocol hints are bounded
+-in memory and never authorize an unverified fresh connection: each fresh join
+-probes again, so replacing server software cannot reuse a stale protocol-15 family.
+-DH Support and the tested stock official-15 producer need one reconnect per
+-fresh physical join; the latter uses the bounded quiet recovery. Each new epoch's
+-codec remains immutable.
++DH Support's uniquely decoded wide-string rejection changes the immutable session
++codec **on the same physical Minecraft connection**. The pinned 0.14.0 producer
++does not close its DH state on mismatch. No reconnect or proxy login throttle is
++needed for this family. Stock official 3.2.0-b remains silent on mismatch and needs
++one fresh connection to try official 15. Terrain requires a valid config and world
++identity on that trial. A silent trial stops the adapter without a second reconnect;
++an answered-but-unconfigured service is labelled separately from a missing channel.
++
++The family is confirmed per physical `Connection`, including dimension replacement,
++respawn and a temporary null world. Once config has been accepted, discovery never
++initiates a reconnect on that connection. Reconfiguration keeps the family and the
++consumed reconnect allowance. A slow automatic join still consumes that allowance;
++it has no sixty-second expiry that re-arms another retry. Automatic retries require
++the original connection/level/server identity, initial play, receiving, the advertised
++DH channel and no native offer. Memory hints are bounded and do not skip protocol-16
++validation on a fresh user join. Each epoch's codec remains immutable.
+ 
+ Detection parses only bounded control frames, charges temporary parsing to the DH
+ memory budget, and uses the current epoch's main-thread callback guard. The rejected or unanswered
+@@ -89,5 +93,5 @@
+ negotiation reconnect; normal sync-on-load/missing-terrain behavior then applies.
+ 
+ Validation and exact artifact receipts are recorded in
+-`build/dh-neoforge/2026-10-06/automatic-selection/` in the outer checkout. The new
+-Claude briefing records the final results and separates them from historical runs.
++`build/dh-neoforge/2026-10-06/follow-up-fixes/` in the outer checkout. The [review disposition](2026-10-06-dh-follow-up-review-disposition.md) records
++qualification and separates it from historical runs.
+--- a/docs/implementation/2026-10-06-dh-follow-up-claude-review-briefing.md
++++ b/docs/implementation/2026-10-06-dh-follow-up-claude-review-briefing.md
+@@ -55,7 +55,7 @@
+ | Area | Resulting behavior and review focus |
+ | --- | --- |
+ | Native/DH selection | Use DH permits fallback. A remote native handshake channel or a native session-config offer wins, including a disabled/unsupported native offer. Both loader transports install remote capability checks. Native discovery always starts on eligible joins; a late native offer retires DH and cancels a pending reconnect. Review lifecycle/source races and native protocol compatibility. |
+-| Automatic DH protocol | No manual protocol option. Fresh joins probe official 16; strict rejection decoding distinguishes official 15 and Support 15. Ambiguous ASCII controls never independently choose a family. Stock 3.2.0-b's logger can suppress its rejection, so after five seconds an empty probe retires and tries official-15 controls once on the same connection. A different supported advertisement can request one guarded reconnect; malformed/unsupported input and silence alone cannot. Check leases, epoch guards, slow responses, retry continuation/reconfiguration and same-address software changes. |
++| Automatic DH protocol | No manual protocol option. Fresh joins probe official 16; strict rejection decoding distinguishes official 15 and Support 15. Ambiguous ASCII controls never independently choose a family. Stock 3.2.0-b's logger can suppress its rejection, so after five seconds an empty probe retires and spends its one guarded reconnect on a fresh official-15 trial. A valid advertisement also permits that one retry; malformed/unsupported input cannot, and no trial accepts terrain without a successful handshake. Check leases, epoch guards, slow responses, retry continuation/reconfiguration and same-address software changes. |
+ | Settings/UI | Separate DH tab between General and Far Players. Three checkboxes: Use DH, Sync on load, Live updates. The final catalog has 13 controls; both Sodium generations share Apply and the cross-page receive gate. Source permission is reconnect-scoped; sync/live are hot. Retired timer/profile YAML is preserved but inactive. Enum support/stubs from the earlier UI increment remain generic, with no active protocol selector; compile-only Sodium stubs must not ship. English and both Chinese translations use short labels. |
+ | Source cache | Preserve differing nondefault Voxy columns when restoring unchanged/offline sources; reconstruct only fully default columns and defer unknown readers. New/partial/absent replies invalidate older retained source before conversion or replacement. Quota is 8192 files/256 MiB with shared indexing/LRU and protected working sets. Review timestamp-zero behavior, transient retry, clearing, reparse/symlink handling and limits. |
+ | Sync on load | Optional conditional checks on load/re-entry, with the upstream twenty-minute load debounce. Retained source is validated before restoration when sync is enabled; validation is not starved behind a restore sweep. No periodic refresh timer or stationary polling. Explicit enable/config changes create a load observation. |
+@@ -99,7 +99,7 @@
+ scenario is retired because native now wins on dual-service servers; its old
+ receipts are historical, not rerun claims.
+ 
+-Final qualification and installation receipts will be appended below. The local
++Final qualification and installation receipts are summarized below. The local
+ root is `build/dh-neoforge/2026-10-06/automatic-selection/` in the outer checkout.
+ First failures and their inputs/artifacts are retained; a later pass does not erase
+ them. The private display rig uses software OpenGL and owned disposable worlds.
+@@ -108,6 +108,9 @@
+ For independent full verification, use Java 21 and the repository harness wrapper:
+ 
+ ```sh
++review_root=$(mktemp -d /tmp/lss-dh-followup-review.XXXXXX)
++rsync -a --exclude=.git --exclude=build --exclude=.gradle ./ "$review_root"/
++cd "$review_root"
+ JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 CI=true bash tools/verify/run-gradle.sh \
+   --no-parallel -Pmod_version=0.16.0-dh-followup.review \
+   -I test-fixtures/dh-live/classpath.gradle \
+@@ -140,3 +143,52 @@
+ performance; all other Minecraft lines and all loader/Sodium runtime cells.
+ Earlier functional evidence is referenced for its actual boundary, not silently
+ promoted to a fresh test of this automatic-selection candidate.
++
++## Final qualification and handoff
++
++Version: `0.16.0-dh-auto.dev20261006`. Installed NeoForge SHA256:
++`c0713646df836d14a76eaddf59ea7a2139312eb7c9802f9653f2cf8e507a5893`.
++
++The normal Java-21 gauntlet passes **3326 unit tests** (four opt-in Fabric skips):
++common 1012, Fabric 1755, Paper 536, NeoForge 23. All 78 Fabric and eight NeoForge
++server gametests pass, as do six LSS/VSS packaging checks, 126 release selftests
++and nine SQLite helper tests. The generated settings inventory/reference checks
++and whitespace/Python syntax checks pass. The final correction reran affected
++loader units, builds and both server suites; unchanged common/Paper tasks reused
++their prior green results. There is no Tier 3/Folia task on this line.
++
++| Fresh exact-candidate NeoForge case | Evidence |
++| --- | --- |
++| Official 15, `attempt-1gq67clh` | Automatically selected OFFICIAL_15 after one quiet-recovery reconnect; 12 accepted tiles, 18,432 storage samples, 13,271 solid samples across 17 columns. |
++| DH Support 15, `attempt-2n_p4_ep` | Automatically selected SUPPORT_15 from the strict rejection; one reconnect, 14 tiles, 63,744 samples, 23,213 solid samples across 32 columns. |
++| Dual native/DH, `attempt-kbc_g5to` | Use DH enabled; native v20, zero DH terrain requests; 71 actual vanilla chunks outside drawing, zero missing Voxy columns, 639 independent stone comparisons. |
++| Official 16 updates/menu, `attempt-mgsa8p9u` | Direct protocol-16 acquisition; controlled warm rejoins with zero target payloads/conversions; hot sync/live negotiation, push-only edits and air removal, live-Off preservation, 1200 block comparisons; actual Sodium 0.8.12 Auto scale 3 with 13 controls/three DH checkboxes. |
++
++See the copied [verification receipt](evidence/2026-10-06-dh-auto-verification.json),
++[private results](evidence/2026-10-06-dh-auto-private-summary.json) and
++[manual setup receipt](evidence/2026-10-06-dh-auto-manual-setup.json). Full logs,
++XML, captures and fixture provenance remain under the outer runtime root above.
++The initial stale schema-count assertion, direct Python import invocation failure,
++and both failing official-15 discovery approaches are retained. The logger failure
++was checked against stock jar bytecode; the unsuccessful same-connection trial
++reached its explicit observer deadline. None is presented as a benign test flake.
++All 24 recorded private process/display identities are retired.
++
++The selected Windows Prism instance is **LSS dev — 1.21.1 NeoForge - Copy For Far
++Testing**. Its prior jar is backed up under
++`minecraft/lss-dh-backups/20261006T175512.262600Z`; preferences and other mods are
++byte-identical. No foreground client was launched. The original
++`dh-neoforge-playable` world is resumed at **[::1]:25585**, with stock DH 3.3.3,
++no LSS server, OP retained, generation 32/SURFACE_THEN_CHUNKS, load sync and live
++updates enabled. Fresh owner/TCP/protocol-767, Windows IPv6 TCP, FIFO list/save and
++storage checks pass. At handoff the server owner is pid 215509, start 12826827;
++check current liveness rather than treating that historical tuple as a ready signal.
++The [manual guide](2026-10-05-dh-manual-test-guide.md) now describes automatic
++selection and distinguishes the earlier two-mode border proof from this candidate.
++
++The final scope contains **86 files**: 35 production inputs (including compile-only
++Sodium stubs), 21 unit-test files, ten fixture inputs, thirteen documentation files
++and seven evidence/report files. The new scoped manifest is authoritative. It covers
++all compiled changes since the exact previous review, plus the new account/guide,
++generated reference and retained historical/current evidence; no binary producer
++corpus changed. It is a review aid, not a release-ready or strict-P2/P4 verdict.
+--- /dev/null
++++ b/docs/implementation/2026-10-06-dh-follow-up-review-disposition.md
+@@ -0,0 +1,113 @@
++# DH follow-up review disposition
++
++Date: 2026-10-06. Addresses the independent
++[follow-up review](2026-10-06-dh-follow-up-claude-review.md) in the local
++MC1.21.1 Fabric/NeoForge development clone. No release, merge or outreach.
++Evidence is retained in the outer checkout's
++`build/dh-neoforge/2026-10-06/follow-up-fixes/`.
++
++| Finding | Verified correction | Regression / qualification |
++| --- | --- | --- |
++| D-1 | Both transports check the remote DH channel; initial discovery, trial deadline and retry execution recheck it. An absent channel never schedules reconnect. | Missing/withdrawn channel unit controls; packaged Fabric no-service cell. |
++| D-2 | Cache opening protects current interest and in-flight validation, not every historical file. Movement updates protection; unvisited history remains evictable. Diagnostics count declined admissions. | Real 8192-file flight/home quota test: home joins 3+ retain at least 120/121. |
++| D-3 | Documentation now distinguishes registered source handlers from stock runtime reachability. Both stock versions' logging failures are recorded. Official rejection tests are labelled defensive self-encoder controls. | Retained stock 3.3.3 mismatch log and both jars' bytecode; real official-15 quiet recovery. |
++| D-4 | Quiet discovery requires fifteen seconds and three idle ticks, no captured/queued/decoding work and no recent arrival. An answered-but-unconfigured peer is not labelled a missing channel. | Captured-config/hitch unit; packaged real official config delayed 6.5 seconds. |
++| D-5 | Confirmed/discovered family is retained per physical Minecraft Connection. Config acceptance and same-connection replacement prevent mid-play discovery reconnects. | Null-world tick plus same-connection reconfiguration unit; no second retry after confirmation. |
++| D-6 | Changed source is invalidated before handoff and admitted only after accepted delivery and matching actual Voxy readback. Rejected, timed-out or still queued data cannot publish a newer unchanged source snapshot. | Captured DTO with rejected changed column and reconnect; accepted-but-uncommitted queue with reconnect; real unchanged reuse. |
++| D-7 | Storage layout and conversion semantics are versioned separately; conversion version 2 participates in the entry and identity. Old source cannot authorize conditional reuse. Voxy storage is retained and fresh source is acquired. | Obsolete conversion header rejection and full budget release. |
++| D-8 | Push handoff timeouts invalidate the affected tile, retain its ordering fence and schedule acquisition instead of stopping DH. | Five-second blocked-client push test; only the bounded 512-byte fence remains after terrain release. |
++| D-9 | Push delivery checks Voxy/worker backlog. Known-tile drops remove source/receipt, cancel competing requests and retain the required timestamp. Raw fragment pressure keeps control headroom and triggers current-bucket/receipt recovery. | Backlog257 push with competing full request; 40-frame burst retains 24/drops 16 and resumes with reusable assembly and released budget. |
++| D-10 | Border retries accept chunk-load events and retain the sweep in absolute world coordinates. A token budget allows 128 submissions/s and at most 8/tick, with 64 actual chunk lookups and 256 geometric candidates/tick. Accepted chunk identities do not repeat. | Continuously exposed moving-border bound at RD12/RD32 sprint and RD12 30-block/s flight; packaged moving native-priority cell. |
++| D-11 | Supervisor accepts an explicit bounded termination grace. The owned manual server selects 90 seconds; the default for other commands remains unchanged. | Owned worker handles SIGTERM, saves after 3.4 seconds and exits before its 5-second grace. Invalid NaN never launches a child. |
++| D-12 | Transient border exceptions defer; only ABI linkage errors latch. Native-offer retirement is asynchronous. Slow retry joins keep their consumed allowance. Native suppression status includes disabled/incompatible offers. Obsolete selector strings are removed, all locales carry the overwrite caveat, and docs reflect automatic selection. | Status/null-world/slow-retry tests; lazy legacy enum resolution test; locale parity and packaged UI; corrected evidence labels below. |
++
++DH Support 0.14 switches codec on the existing Minecraft connection after its
++uniquely decoded rejection. Inspection of the producer confirms that mismatch
++closes no Support player state. This removes the reviewed Paper/Velocity retry
++throttle hazard for Support. Fresh user joins still validate protocol16 first;
++address hints alone do not select a version15 terrain decoder. An official quiet
++legacy trial remains limited to initial play and one connection retry.
++
++Additional straightforward guards reject pushes older than an accepted whole-tile
++stamp and prevent cancelled requests from being transmitted later. Legacy Sodium
++resolves its optional CyclingControl constructor only when an enum actually needs
++it. A foreign unsafe cache bucket is skipped during indexing rather than disabling
++all otherwise safe server buckets; current-owned cache paths still fail closed.
++
++Source admission uses actual **current readback**, not a Voxy completion or
++persistence acknowledgement. A later queued write or a crash losing destination
++persistence can still cross that observation. General I1 ordering/persistence,
++partial-light acceptance, complete biome/light/resource matrices and official
++client load comparison remain open P2/P4 gates. Source-less/partial/pushed/no-cache
++terrain can still replace previous unloaded vanilla refinement. The translated
++UI caveat is qualified accordingly. With sync off, cached offline edits are never
++checked merely because time passes.
++
++The border pump also operates on current loaded vanilla fringe in single-player
++and on servers without LSS; it does not request or generate chunks. Its bounded
++work is intentional. The lazy legacy-page regression is not a live Sodium 0.6
++three-tab qualification. Quiet advertised-but-disabled official networking can
++still consume the one bounded trial; there is no passive stock version discovery.
++
++Historical evidence corrections: the previous Fabric 1755 passes include four
++fixture observer tests. The old "1200 independent comparisons" label was the
++`samples × 12` formula. The current observer increments a real comparison counter,
++including settling retries. Native-priority zero DH counts cover **terrain Request**
++frames, not every control packet. Readiness receipts describe their timestamps;
++current identity/TCP status and fresh save/list acknowledgements are checked at
++handoff. Earlier logs, artefacts and review reports remain unchanged.
++
++## Validation and deployment
++
++The final normal build passes 3,340 unit/observer tests: common 1,014, Fabric 1,767,
++Paper 536 and NeoForge 23, with four unrelated Fabric skips. Four Fabric passes are
++fixture observer tests; 3,336 passes belong to the production suites. Fabric 78 and
++NeoForge 8 server tests pass. All six LSS/VSS packaging checks, 126 release self-tests,
++nine SQLite helper tests, two supervisor-grace tests and the generated settings
++reference check pass. Common is legitimately reused from the preceding full
++attempt because no common source changed; the platform builds and server suites
++execute for the final candidate.
++
++The first compile failure (a nonexistent assembly collection), moving-border
++failures (relative scan coordinates), asynchronous lease-close assertion and the
++backlog test handle-signature error are retained. The initial settings-reference
++invocation used the wrong classpath path; the harness refused its attempted nested
++build. The final check uses the exported matching classpath and passes.
++
++NeoForge version `0.16.0-dh-reviewfix.dev20261006` has SHA256
++`e3600f00489e7d1d237a8c9c514115cd317219d8733e87fd49868aa48b1445c4`.
++The matching Fabric jar has SHA256
++`7ab633bcccf1f96eb0b6d9cedb5017af95e38786d95e5bb89a03064594bb68e1`.
++Source/test manifests bind 434 and 557 files respectively to the build copy and the
++checkout. Six packaged private cells pass against the exact candidate:
++
++| Cell | Observed result |
++| --- | --- |
++| Fabric / no DH or LSS server | Ordinary Minecraft remains connected; zero reconnect asserted; no further terrain requests for30 seconds after adapter stop. |
++| NeoForge / official16 config delayed 6.5 seconds | Both server delay markers present, zero reconnect, 12 accepted tiles and matching Voxy storage. |
++| NeoForge / official15 stock 3.2.0-b | Exactly one reconnect, correct detected family, matching Voxy storage. |
++| NeoForge / DH Support 0.14 | Zero reconnect, correct family, 13 accepted tiles and 32 sampled Voxy columns. |
++| NeoForge / native LSS + DH, moving | Native 20 throughout, zero DH terrain Request frames, 172.2 blocks over 30.75 seconds of motion, 73 sampled border columns present and 657 final stone comparisons. Two-second sampling checks observed missing-column persistence; this is not a frame-by-frame visual guarantee. |
++| NeoForge / official16 unchanged rejoin, edits and menu | Zero target payloads/conversions on unchanged rejoin; one edit and one air-removal push, zero new terrain requests during pushes; 30 seconds of local update-off preservation;11332 actual independent block comparisons including settling reads; actual Sodium 0.8.12 Auto scale 3 controls pass. |
++
++The moving-border and longest-menu screenshots were inspected. All 24 recorded
++private supervisor/server/client/display identities are retired, with no process
++left in their run directories. The tested NeoForge jar is installed in Windows
++**LSS dev — 1.21.1 NeoForge - Copy For Far Testing**. Its previous jar is backed up;
++client preferences and all other mods are byte-for-byte unchanged. No foreground
++client was launched. The unchanged **dh-neoforge-playable** world resumes at
++**[::1]:25585**, with OP, stock DH 3.3.3, generation 32/SURFACE_THEN_CHUNKS,
++sync and live updates retained. The server still has no native LSS mod.
++
++Fresh current-owner list/save acknowledgements, Minecraft protocol 767, Windows
++IPv6 TCP, original world/OP, storage admission and the installed artifact hash
++pass. Read-time server liveness is authoritative; this dated receipt is not a
++promise of future uptime. The new source/conversion cache identity requires fresh
++DH source acquisition for previously cached areas; no Voxy reset is performed.
++Release readiness and the remaining plan gates stay open.
++
++The incremental changes are available as a [scoped diff](evidence/2026-10-06-dh-follow-up-fixes.diff)
++and [hash manifest](evidence/2026-10-06-dh-follow-up-fixes-manifest.json). The exact
++reviewed baseline hashes are verified; five noncompiled documentation snapshot
++files were reconstructed from the retained review diff/receipts without changing
++the baseline's production sources or compiled artifacts.
+--- a/docs/implementation/2026-10-06-dh-sync-live-updates.md
++++ b/docs/implementation/2026-10-06-dh-sync-live-updates.md
+@@ -6,11 +6,12 @@
+ 
+ ## Behavior
+ 
+-The Distant Horizons Sodium page contains Use DH, DH server, Sync on load and
+-Live updates. The latter two are checkboxes, default on, and apply immediately
++The Distant Horizons Sodium page contains three checkboxes: Use DH, Sync on load
++and Live updates. Sync/live default on and apply immediately
+ through the existing save/reload transaction. Changes renegotiate the session;
+-server permissions and distances remain authoritative. Source/profile still
+-require reconnecting. Retired `lod.dh.refresh_seconds` YAML has no runtime effect;
++server permissions and distances remain authoritative. Use DH is permission for
++fallback on the next physical connection; native LSS wins. Protocol selection is
++automatic and has no menu control. Retired `lod.dh.refresh_seconds` YAML has no runtime effect;
+ its value is no longer in the active settings inventory.
+ 
+ Sync on load checks retained source timestamps before restoration. Unchanged
+@@ -34,7 +35,11 @@
+ an older/equal database snapshot from replacing newly pushed columns or being
+ cached as their complete source. Unknown update timestamps remain protected until
+ ordering can be established. History leases are released on retirement/reset.
+-Queue, fragment, decoder and memory limits remain in force. Diagnostics report
++A busy Voxy sink or timed-out client handoff now invalidates the affected tile
++and schedules acquisition without stopping DH. Raw-fragment pressure purges the
++current source bucket and receipts because a dropped fragment has no trusted tile
++identity; it reacquires terrain when server permissions permit. Queue, fragment,
++decoder and memory limits remain in force. Diagnostics report
+ requested/available settings and received/enqueued updates, not acknowledged
+ completion or persistence. The existing asynchronous Voxy commit limitation remains.
+ 
+@@ -66,7 +71,9 @@
+ combined case passes **unchanged target reuse with zero payloads/conversions**,
+ push-only edits and air removal with sync off and **zero new terrain requests**,
+ 30 seconds of local update-off preservation, and hot re-enabling on the same
+-connection/session. It reports **1,200 independent block comparisons**. Actual
++connection/session. The historical observer reports **1,200 derived comparisons** (`samples × 12`),
++not an instrumented read count. The follow-up observer counts actual comparison
++operations, including repeated settling reads. Actual
+ Sodium controls pass at Auto scale 3, including the separate DH page, shared Apply,
+ reception dependency and diagnostics export.
+ 
+@@ -102,3 +109,12 @@
+ two obsolete NeoForge client-cache jars unused by installed profiles. No personal
+ worlds, profiles, preferences, other mods or historical test evidence was deleted.
+ Reclamation receipts and compressed backups are retained in the evidence directory.
++
++Follow-up source admission waits for accepted delivery and matching actual Voxy
++readback. Queued/unobserved data is not published as an unchanged source snapshot.
++Cache identity and entries include conversion semantics version 2; older source
++buckets are not reused for conditional validation. This causes fresh source
++acquisition once per affected area, without deleting Voxy storage. General Voxy
++completion/persistence and late-write ordering remain the separate I1 gate.
++Current build/setup results supersede this historical checkpoint in the
++[follow-up disposition](2026-10-06-dh-follow-up-review-disposition.md).
+--- a/docs/implementation/2026-10-06-vanilla-lod-border-gap.md
++++ b/docs/implementation/2026-10-06-vanilla-lod-border-gap.md
+@@ -35,8 +35,11 @@
+ band. This repairs received/unrendered corners without changing the native scan
+ shape, renderer clipping, DH authority, remote timestamps or wire protocol.
+ 
+-The pump checks at most 64 grid positions per tick, submits at most eight columns
+-per second, pauses above 128 ingest jobs, and retries declined nonempty chunks after
++The initial pump checked at most 64 grid positions per tick and used a 125 ms
++cooldown (6.67 submissions/s at 20 TPS). That historical bound did not keep up
++with movement. The follow-up checks at most 256 geometric candidates and 64 actual
++chunk lookups per tick, has 128 submissions/s credit with at most eight submissions
++per tick, pauses above 128 ingest jobs, and retries declined nonempty chunks after
+ one second. It only calls cached `getChunk(..., FULL, false)`; it never loads or
+ generates terrain. Weak references avoid retaining unloaded chunks. Maps are bounded
+ and pruned on movement/range changes, with retirement on world/engine replacement,
+@@ -75,7 +78,7 @@
+ 
+ The same final jar also passes the supplemental packaged NeoForge unchanged-rejoin,
+ push-only edit/removal, live-update Off/On and actual Sodium Auto-scale case, with
+-1,200 independent block comparisons. That fixture's earlier failed premises and
++1,200 derived block comparisons (the historical `samples × 12` formula). That fixture's earlier failed premises and
+ test-only corrections are retained separately; they did not change the production
+ jar or the already completed boundary results. Before/after boundary screenshots
+ and the final Sodium screenshot were inspected.
+@@ -92,3 +95,16 @@
+ Evidence is in the outer checkout's
+ `build/dh-neoforge/2026-10-06/vanilla-boundary/`. No Windows foreground automation,
+ personal world reset, other-mod replacement or automatic evidence upload occurs.
++
++The follow-up retains its sweep in absolute world coordinates across recentering,
++queues client chunk-load events and avoids resubmitting accepted chunk identities.
++A relative cursor, even without resetting it, skipped rows as the camera moved;
++the moving regression caught that before deployment. Unit cases cover sprint at
++RD12/RD32 and 30-block/s flight at RD12, with a three-second continuously exposed
++border bound after cold fill. Transient Voxy exceptions defer the pump; only ABI
++linkage errors disable this optional bridge for the launch. The pump also covers
++loaded vanilla fringe on single-player and servers without LSS. All its content
++comes from current vanilla chunks. Partial-light and late queued remote-write
++authority remain unqualified beyond the separate I1 boundary. See the
++[follow-up disposition](2026-10-06-dh-follow-up-review-disposition.md) for the actual
++packaged moving-client results and current manual setup.
+--- a/docs/planning/2026-09-29-dh-client-compatibility-plan.md
++++ b/docs/planning/2026-09-29-dh-client-compatibility-plan.md
+@@ -1297,3 +1297,19 @@
+ for the exact upstream constraint and bounded reconnect behavior. Earlier explicit
+ source/profile instructions are historical. This follow-up does not close the
+ remaining Voxy I1 completion/ordering gate or establish all P2/P4 load/coverage gates.
++
++**2026-10-06 follow-up review corrections:** remote-channel gating now prevents
++Fabric no-service reconnects; protocol confirmation survives null-world and
++same-connection replacement. DH Support switches codec without reconnecting
++Minecraft; official legacy silence gets at most one initial-play trial after an
++idle 15-second window. Cache protection follows current interest, conversion
++semantics are versioned, and new source admission observes matching destination
++readback after acceptance. Push timeouts/backpressure schedule acquisition; raw
++fragment loss triggers bounded source/receipt recovery. The moving border keeps
++an absolute-world sweep and uses chunk-load events with a bounded token budget.
++The owned manual supervisor uses 90-second termination grace. Normal builds pass
++3,340 unit/observer tests (four observer passes included), 86 server tests and
++packaging gates; exact-candidate private qualification/setup is recorded in the
++[follow-up disposition](../implementation/2026-10-06-dh-follow-up-review-disposition.md).
++General I1 completion/persistence, remaining P2/P4 stress/coverage comparisons and
++outreach stay open. This review-fix checkpoint is not a release claim.
+--- a/fabric/src/main/java/dev/vox/lss/LSSClient.java
++++ b/fabric/src/main/java/dev/vox/lss/LSSClient.java
+@@ -19,6 +19,7 @@
+         LSSClientCommands.init();
+         dev.vox.lss.networking.client.FarPlayerRenderer.initRenderer();
+         ModCompat.init();
++        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents.CHUNK_LOAD.register(ModCompat::vanillaChunkLoaded);
+         BenchmarkBridge.initClient();
+     }
+ }
+--- a/fabric/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java
++++ b/fabric/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java
+@@ -100,7 +100,6 @@
+             new Member(OPTION_PAGE, MemberKind.CONSTRUCTOR, "<init>", 2),
+             new Member(TICK_BOX_CONTROL, MemberKind.CONSTRUCTOR, "<init>", 1),
+             new Member(SLIDER_CONTROL, MemberKind.CONSTRUCTOR, "<init>", 5),
+-            new Member(CYCLING_CONTROL, MemberKind.CONSTRUCTOR, "<init>", 3),
+             new Member(OPTION_IMPACT, MemberKind.ENUM, "valueOf", 1),
+             new Member(OPTION_STORAGE, MemberKind.INTERFACE_METHOD, "getData", 0),
+             new Member(OPTION_STORAGE, MemberKind.INTERFACE_METHOD, "save", 0),
+@@ -187,7 +186,6 @@
+         Class<?> tickBox = cls(loader, prefix + TICK_BOX_CONTROL);
+         Class<?> slider = cls(loader, prefix + SLIDER_CONTROL);
+         Class<?> formatter = cls(loader, prefix + VALUE_FORMATTER);
+-        Class<?> cycling = cls(loader, prefix + CYCLING_CONTROL);
+         if (!storage.isInterface() || !formatter.isInterface() || !impact.isEnum()) {
+             throw new NoSuchMethodException("OptionStorage/ControlValueFormatter must be interfaces"
+                     + " and OptionImpact an enum under " + prefix);
+@@ -211,7 +209,7 @@
+                 lookup.unreflectConstructor(ctor(page, 2)),
+                 lookup.unreflectConstructor(ctor(tickBox, 1)),
+                 lookup.unreflectConstructor(ctor(slider, 5)),
+-                lookup.unreflectConstructor(cycling.getConstructor(cls(loader,prefix+".client.gui.options.Option"),Class.class,Component[].class)),
++                null, // Resolve enum-only constructors only if an enum control is requested.
+                 lookup.unreflect(method(impact, "valueOf", 1, true, String.class)),
+                 storage, formatter);
+     }
+@@ -315,7 +313,11 @@
+         Component[] labels=java.util.Arrays.stream(spec.type().getEnumConstants())
+                 .map(value -> {var label=spec.label().apply(value);return label.isKey()
+                         ?Component.translatable(label.key()):Component.literal(label.literal());}).toArray(Component[]::new);
+-        h.setControl().invoke(builder,(Function<Object,Object>) option -> invoke(h.cyclingCtor(),option,spec.type(),labels));
++        var loader=h.storageClass().getClassLoader();
++        var cycling=cls(loader,h.prefix()+CYCLING_CONTROL);
++        var ctor=MethodHandles.publicLookup().unreflectConstructor(cycling.getConstructor(
++                cls(loader,h.prefix()+".client.gui.options.Option"),Class.class,Component[].class));
++        h.setControl().invoke(builder,(Function<Object,Object>) option -> invoke(ctor,option,spec.type(),labels));
+     }
+ 
+     // The two proxies are the boundaries where SODIUM calls INTO us — from its Apply loop
+--- a/fabric/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java
++++ b/fabric/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java
+@@ -22,6 +22,7 @@
+     public static void init() {
+         DhClientSession.installNativeAvailability(()->ClientPlayNetworking.canSend(
+                 dev.vox.lss.networking.payloads.HandshakeC2SPayload.TYPE));
++        DhClientSession.installChannelAvailability(()->ClientPlayNetworking.canSend(Payload.TYPE));
+         if(FabricLoader.getInstance().isModLoaded("distanthorizons")) {
+             DhClientSession.installTransport(null,"Remove Distant Horizons from the client to use LSS's DH source");
+             return;
+@@ -38,7 +39,10 @@
+         });
+         ClientChunkEvents.CHUNK_LOAD.register((level,chunk)->
+                 DhClientSession.vanillaLoaded(level,chunk.getPos().x,chunk.getPos().z));
+-        DhClientSession.installTransport(bytes->ClientPlayNetworking.send(new Payload(bytes,null)),null);
++        DhClientSession.installTransport(bytes->{
++            if(!ClientPlayNetworking.canSend(Payload.TYPE))throw new IllegalStateException("DH server channel is unavailable");
++            ClientPlayNetworking.send(new Payload(bytes,null));
++        },null);
+         } catch(RuntimeException failure) {
+             DhClientSession.installTransport(null,"DH channel registration failed: "+failure.getMessage());
+             dev.vox.lss.common.LSSLogger.warn("DH channel registration failed; native LSS remains available: "+failure.getMessage());
+--- a/fabric/src/main/resources/assets/lss/lang/en_us.json
++++ b/fabric/src/main/resources/assets/lss/lang/en_us.json
+@@ -110,22 +110,13 @@
+   "lss.status.export_failed": "Diagnostics export failed; check directory permissions and free space.",
+   "lss.settings.error_logged": "Technical details are recorded in the game log.",
+   "lss.settings.lod.source": "Allow DH fallback (reconnect required)",
+-  "lss.settings.lod.dh.profile": "Distant Horizons protocol profile (reconnect required)",
+-  "lss.settings.lod.dh.refresh_seconds": "Distant Horizons refresh interval in seconds",
+   "lss.config.dh.page": "Distant Horizons",
+   "lss.config.dh_sync_on_load": "Sync on load",
+   "lss.config.dh_sync_on_load.tooltip": "Check saved DH terrain when loading it or rejoining. Unchanged terrain stays cached; changed terrain downloads again. Requires server synchronization. Apply takes effect immediately.",
+   "lss.config.dh_real_time_updates": "Live updates",
+   "lss.config.dh_real_time_updates.tooltip": "Receive terrain edits pushed by the DH server while connected. Requires server real-time updates. No periodic polling. Loaded vanilla terrain remains authoritative. Apply takes effect immediately.",
+   "lss.config.lod_source": "Use DH",
+-  "lss.config.lod_source.tooltip": "Allow Distant Horizons when the server has no native LSS service. Native LSS always takes priority. Apply, then reconnect. DH protocol is detected automatically; an older server may need one automatic reconnect. Requires Voxy and no DH client mod. DH approximations can replace saved vanilla terrain.",
+-  "lss.config.lod_source.lss": "Native LSS",
+-  "lss.config.lod_source.distant_horizons": "Distant Horizons (Experimental)",
+-  "lss.config.dh_profile": "DH server",
+-  "lss.config.dh_profile.tooltip": "Match the server: DH Support uses protocol 15; official DH 3.2 uses 15; DH 3.3 uses 16. Used only with Use DH enabled. Apply, then reconnect.",
+-  "lss.config.dh_profile.dh_support_15": "DH Support",
+-  "lss.config.dh_profile.official_15": "DH 3.2",
+-  "lss.config.dh_profile.official_16": "DH 3.3",
++  "lss.config.lod_source.tooltip": "Allow DH fallback when the server has no native LSS. The server type and protocol are detected automatically; some official servers need one automatic reconnect. Requires Voxy without the DH client mod. DH approximations can replace saved vanilla terrain. Currently loaded vanilla columns are excluded, but earlier queued writes may arrive later.",
+   "lss.status.dh.source": "Source: Distant Horizons, %s — %s",
+   "lss.status.dh.terrain": "Terrain: DH approximation at block resolution; observed complete/partial/unknown columns: %s/%s/%s",
+   "lss.status.dh.tiles": "Tiles: requested %s, enqueued %s, incomplete %s, refused %s",
+--- a/fabric/src/main/resources/assets/lss/lang/zh_cn.json
++++ b/fabric/src/main/resources/assets/lss/lang/zh_cn.json
+@@ -110,22 +110,13 @@
+   "lss.status.export_failed": "诊断信息导出失败；请检查目录权限和剩余磁盘空间。",
+   "lss.settings.error_logged": "技术细节已记录到游戏日志。",
+   "lss.settings.lod.source": "地形来源（重新连接后生效）",
+-  "lss.settings.lod.dh.profile": "Distant Horizons 协议配置（重新连接后生效）",
+-  "lss.settings.lod.dh.refresh_seconds": "Distant Horizons 刷新间隔（秒）",
+   "lss.config.dh.page": "Distant Horizons",
+   "lss.config.dh_sync_on_load": "加载时同步",
+   "lss.config.dh_sync_on_load.tooltip": "加载已保存的 DH 地形或重连时检查更新。未改变的地形保留缓存，已改变的地形重新下载。需要服务器允许同步，应用后立即生效。",
+   "lss.config.dh_real_time_updates": "实时更新",
+   "lss.config.dh_real_time_updates.tooltip": "接收 DH 服务器推送的地形变化。需要服务器允许实时更新，无定时轮询。已加载的原版地形优先，应用后立即生效。",
+   "lss.config.lod_source": "启用 DH",
+-  "lss.config.lod_source.tooltip": "服务器没有原生 LSS 时允许使用 DH；原生 LSS 始终优先。应用后重新连接。自动检测 DH 协议，旧服务器可能需要一次自动重新连接。需要 Voxy，不能同时安装 DH 客户端模组。",
+-  "lss.config.lod_source.lss": "原生 LSS",
+-  "lss.config.lod_source.distant_horizons": "Distant Horizons（实验性）",
+-  "lss.config.dh_profile": "DH 服务器",
+-  "lss.config.dh_profile.tooltip": "匹配服务器：DH Support 和官方 DH 3.2 使用协议 15，DH 3.3 使用协议 16。仅在启用 DH 时生效。应用后重新连接。",
+-  "lss.config.dh_profile.dh_support_15": "DH Support",
+-  "lss.config.dh_profile.official_15": "DH 3.2",
+-  "lss.config.dh_profile.official_16": "DH 3.3",
++  "lss.config.lod_source.tooltip": "仅在服务器没有原生 LSS 时允许使用 DH。自动检测服务器类型和协议；部分官方 DH 服务器需要自动重连一次。需要 Voxy，且不能安装 DH 客户端模组。DH 近似地形可能覆盖已保存的原版地形。当前加载的原版区块会被排除，但先前排队的写入仍可能稍后到达。",
+   "lss.status.dh.source": "来源：Distant Horizons，%s — %s",
+   "lss.status.dh.terrain": "地形：方块分辨率的 DH 近似地形；已观察的完整/部分/未知列：%s/%s/%s",
+   "lss.status.dh.tiles": "区域：请求 %s，已排队 %s，不完整 %s，拒绝 %s",
+--- a/fabric/src/main/resources/assets/lss/lang/zh_tw.json
++++ b/fabric/src/main/resources/assets/lss/lang/zh_tw.json
+@@ -110,22 +110,13 @@
+   "lss.status.export_failed": "診斷資訊匯出失敗；請檢查目錄權限與剩餘磁碟空間。",
+   "lss.settings.error_logged": "技術細節已記錄到遊戲日誌。",
+   "lss.settings.lod.source": "地形來源（重新連線後生效）",
+-  "lss.settings.lod.dh.profile": "Distant Horizons 協定設定（重新連線後生效）",
+-  "lss.settings.lod.dh.refresh_seconds": "Distant Horizons 更新間隔（秒）",
+   "lss.config.dh.page": "Distant Horizons",
+   "lss.config.dh_sync_on_load": "載入時同步",
+   "lss.config.dh_sync_on_load.tooltip": "載入已儲存的 DH 地形或重新連線時檢查更新。未變更的地形保留快取，已變更的地形重新下載。需要伺服器允許同步，套用後立即生效。",
+   "lss.config.dh_real_time_updates": "即時更新",
+   "lss.config.dh_real_time_updates.tooltip": "接收 DH 伺服器推送的地形變更。需要伺服器允許即時更新，無定時輪詢。已載入的原版地形優先，套用後立即生效。",
+   "lss.config.lod_source": "啟用 DH",
+-  "lss.config.lod_source.tooltip": "伺服器沒有原生 LSS 時允許使用 DH；原生 LSS 始終優先。套用後重新連線。自動偵測 DH 協定，舊伺服器可能需要一次自動重新連線。需要 Voxy，不能同時安裝 DH 用戶端模組。",
+-  "lss.config.lod_source.lss": "原生 LSS",
+-  "lss.config.lod_source.distant_horizons": "Distant Horizons（實驗性）",
+-  "lss.config.dh_profile": "DH 伺服器",
+-  "lss.config.dh_profile.tooltip": "符合伺服器：DH Support 和官方 DH 3.2 使用通訊協定 15，DH 3.3 使用 16。僅在啟用 DH 時生效。套用後重新連線。",
+-  "lss.config.dh_profile.dh_support_15": "DH Support",
+-  "lss.config.dh_profile.official_15": "DH 3.2",
+-  "lss.config.dh_profile.official_16": "DH 3.3",
++  "lss.config.lod_source.tooltip": "僅在伺服器沒有原生 LSS 時允許使用 DH。自動偵測伺服器類型和協定；部分官方 DH 伺服器需要自動重連一次。需要 Voxy，且不能安裝 DH 用戶端模組。DH 近似地形可能覆蓋已儲存的原版地形。目前載入的原版區塊會被排除，但先前排隊的寫入仍可能稍後到達。",
+   "lss.status.dh.source": "來源：Distant Horizons，%s — %s",
+   "lss.status.dh.terrain": "地形：方塊解析度的 DH 近似地形；已觀察的完整/部分/未知列：%s/%s/%s",
+   "lss.status.dh.tiles": "區域：請求 %s，已排入佇列 %s，不完整 %s，拒絕 %s",
+--- a/fabric/src/test/java/dev/vox/lss/compat/VoxyVanillaCoverageTest.java
++++ b/fabric/src/test/java/dev/vox/lss/compat/VoxyVanillaCoverageTest.java
+@@ -35,7 +35,7 @@
+             when(chunks.getChunk(anyInt(),anyInt(),eq(ChunkStatus.FULL),eq(false)))
+                     .thenAnswer(call->data.get(ChunkPos.asLong(call.getArgument(0),call.getArgument(1))));
+         }
+-        LevelChunk add(int x,int z) {var chunk=mock(LevelChunk.class);data.put(ChunkPos.asLong(x,z),chunk);return chunk;}
++        LevelChunk add(int x,int z) {var chunk=mock(LevelChunk.class);when(chunk.getPos()).thenReturn(new ChunkPos(x,z));data.put(ChunkPos.asLong(x,z),chunk);return chunk;}
+     }
+     static void sweep(VoxyVanillaCoverage coverage,World world,long start,int ticks) {
+         for(int n=0;n<ticks;n++)coverage.tick(world.level,.5,.5,8,start+n*50_000_000L);
+@@ -96,6 +96,36 @@
+         sweep(coverage,world,0,100);assertEquals(1,backend.calls.size());assertEquals(0,coverage.tracked());
+         sweep(coverage,world,5_000_000_000L,100);assertEquals(1,backend.calls.size());
+     }
++    @Test void transientDestinationFailureDoesNotDisableTheNextWorldOrReset() {
++        var backend=new Backend();var coverage=new VoxyVanillaCoverage(backend);var world=new World();world.add(9,0);
++        backend.behavior=c->{throw new IllegalStateException("WorldEngine that was not alive");};
++        sweep(coverage,world,0,10);backend.behavior=c->true;coverage.clear();
++        sweep(coverage,world,1_000_000_000L,100);assertTrue(coverage.tracked()>0);
++    }
++    @Test void theMovingFrontierIsBoundedOnAllFourSides() {
++        for(int distance:new int[]{12,32})for(double speed:distance==12?new double[]{5.6,30}:new double[]{5.6}) {
++            var backend=new Backend();var coverage=new VoxyVanillaCoverage(backend);var world=new World();
++            var admitted=java.util.Collections.newSetFromMap(new IdentityHashMap<LevelChunk,Boolean>());
++            backend.behavior=chunk->{admitted.add(chunk);return true;};
++            var firstSeen=new IdentityHashMap<LevelChunk,Integer>();
++            for(int tick=0;tick<400;tick++) {
++                double x=speed*tick*.05;int cx=(int)Math.floor(x/16);
++                for(int dx=-distance;dx<=distance;dx++)for(int dz=-distance;dz<=distance;dz++) {
++                    long position=ChunkPos.asLong(cx+dx,dz);
++                    if(!world.data.containsKey(position))coverage.loaded(world.level,world.add(cx+dx,dz));
++                }
++                int before=backend.calls.size();coverage.tick(world.level,x,.5,distance,tick*50_000_000L);
++                assertTrue(backend.calls.size()-before<=VoxyVanillaCoverage.SUBMISSIONS_PER_TICK);
++                for(var entry:world.data.entrySet()) {
++                    int bx=(int)(long)entry.getKey(),bz=(int)(entry.getKey()>>32);
++                    if(Math.abs(bx-cx)>distance || Math.abs(bz)>distance || !VoxyVanillaCoverage.atBorder(bx,bz,x,.5,distance)) {firstSeen.remove(entry.getValue());continue;}
++                    int seen=firstSeen.getOrDefault(entry.getValue(),tick);firstSeen.putIfAbsent(entry.getValue(),tick);
++                    if(tick>240 && tick-seen>60)assertTrue(admitted.contains(entry.getValue()),"moving border starved at "+bx+","+bz+" RD="+distance+" speed="+speed);
++                }
++            }
++            verify(world.chunks,never()).getChunk(anyInt(),anyInt(),any(),eq(true));
++        }
++    }
+     @Test void unresolvedOptionalSurfaceLeavesTheOrdinaryBridgeAvailable() {
+         assertNull(VoxyVanillaCoverage.resolve(name->{throw new ClassNotFoundException(name);}));
+         assertNull(VoxyVanillaCoverage.resolve(Class::forName),"older ingest-only test stub has no optional whole-chunk API");
+--- a/fabric/src/test/java/dev/vox/lss/config/menu/LegacySodiumPageTest.java
++++ b/fabric/src/test/java/dev/vox/lss/config/menu/LegacySodiumPageTest.java
+@@ -116,6 +116,17 @@
+     void anUnknownPrefixFailsAtResolveNotAtBuild() {
+         assertThrows(ClassNotFoundException.class,
+                 () -> LegacySodiumPage.resolve("me.nobody.mods.sodium", getClass().getClassLoader()));
++    }
++
++    @Test
++    void aMissingEnumControlDoesNotDisableTheBooleanAndSliderPage() throws Exception {
++        var isolated=new ClassLoader(getClass().getClassLoader()) {
++            @Override protected Class<?> loadClass(String name,boolean resolve) throws ClassNotFoundException {
++                if(name.endsWith(".CyclingControl"))throw new ClassNotFoundException(name);
++                return super.loadClass(name,resolve);
++            }
++        };
++        assertNotNull(LegacySodiumPage.resolve("net.caffeinemc.mods.sodium",isolated));
+     }
+ 
+     @Test
+--- a/fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java
++++ b/fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java
+@@ -58,7 +58,7 @@
+     private TestMinecraft minecraft;
+     private ClientLevel level;
+     private ClientPacketListener connection;
+-    private Object previousMinecraft,previousHandle,previousSender,previousUnavailable,previousNativeAvailability;
++    private Object previousMinecraft,previousHandle,previousSender,previousUnavailable,previousNativeAvailability,previousChannelAvailability;
+     private ClassLoader previousContextLoader;
+     private SettingsHandle<ClientSettings> settings;
+     private final LinkedBlockingQueue<Runnable> mainTasks=new LinkedBlockingQueue<>();
+@@ -85,6 +85,12 @@
+         previousSender=read(null,DhClientSession.class,"sender");
+         previousUnavailable=read(null,DhClientSession.class,"unavailable");
+         previousNativeAvailability=read(null,DhClientSession.class,"nativeAvailable");
++        previousChannelAvailability=read(null,DhClientSession.class,"channelAvailable");
++        DhClientSession.installChannelAvailability(()->true);
++        ((Map<?,?>)read(null,DhClientSession.class,"confirmedProfiles")).clear();
++        ((Map<?,?>)read(null,DhClientSession.class,"discoveredProfiles")).clear();
++        write(null,DhClientSession.class,"initialPlay",true);
++        write(null,DhClientSession.class,"joinConnection",null);
+         DhClientSession.installNativeAvailability(()->false);
+         write(null,DhClientSession.class,"retryJoinPending",false);
+         write(null,DhClientSession.class,"retryUsed",false);
+@@ -94,6 +100,7 @@
+         minecraft=new ObjenesisStd().newInstance(TestMinecraft.class);
+         minecraft.mainTasks=mainTasks;
+         level=mcMock(ClientLevel.class);connection=mcMock(ClientPacketListener.class);
++        doReturn(mcMock(net.minecraft.network.Connection.class)).when(connection).getConnection();
+         minecraft.level=level;
+         minecraft.player=new ObjenesisStd().newInstance(LocalPlayer.class);
+         write(minecraft.player,LocalPlayer.class,"connection",connection);
+@@ -104,7 +111,7 @@
+         minecraft.server=server;
+         cacheComponent=CacheKeyAliases.addressComponent(address);
+         write(null,Minecraft.class,"instance",minecraft);
+-        DhClientSession.disconnect();mainTasks.clear();
++        DhClientSession.disconnect();DestinationEngine.observedIngest=false;mainTasks.clear();
+         var store=new SettingsStore<>(dir,"lss",SettingsSchema.client());
+         settings=new SettingsHandle<>(store);
+         store.saveDraft(store.read().hash(),Map.of("lod.source","distant_horizons"));
+@@ -125,6 +132,9 @@
+             write(null,DhClientSession.class,"sender",previousSender);
+             write(null,DhClientSession.class,"unavailable",previousUnavailable);
+             write(null,DhClientSession.class,"nativeAvailable",previousNativeAvailability);
++            write(null,DhClientSession.class,"channelAvailable",previousChannelAvailability);
++            ((Map<?,?>)read(null,DhClientSession.class,"confirmedProfiles")).clear();
++            ((Map<?,?>)read(null,DhClientSession.class,"discoveredProfiles")).clear();
+             write(null,DhClientSession.class,"retryJoinPending",false);
+             write(null,DhClientSession.class,"retryUsed",false);
+             write(null,Minecraft.class,"instance",previousMinecraft);
+@@ -144,7 +154,8 @@
+         assertNull(read(null,DhClientSession.class,"pendingRetry"));
+         assertEquals(0,budget(owner).used());assertTrue(sent.isEmpty());
+         // A disabled or unsupported native offer must not be bypassed via DH.
+-        assertFalse(DhClientSession.selected());
++        assertFalse(DhClientSession.selected());DhClientSession.tick();
++        assertTrue(DhClientSession.status().contains("including disabled or incompatible"));
+         DhClientSession.onJoin();assertTrue(DhClientSession.selected());
+     }
+     @Test void disablingDhPermissionLeavesOnlyNativeDiscovery() throws Exception {
+@@ -163,7 +174,7 @@
+         out.writeShort(15);out.writeShort(1);byte[] text="Incompatible protocol version".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+         out.writeInt(text.length);out.write(text);return bytes.toByteArray();
+     }
+-    @Test void aSupportedRejectionLearnsBothOlderFamiliesButNeverAcceptsTerrainOnTheProbeEpoch() throws Exception {
++    @Test void defensiveOfficialRejectionAndActualSupportPrefixNeverAcceptTerrainOnTheProbeEpoch() throws Exception {
+         for(var profile:List.of(DhProfile.OFFICIAL_15,DhProfile.SUPPORT_15)) {
+             DhClientSession.disconnect();
+             @SuppressWarnings("unchecked") var hints=(Map<String,DhProfile>)read(null,DhClientSession.class,"protocolHints");
+@@ -172,22 +183,28 @@
+             capture(rejection(profile),System.nanoTime()).receive();
+             pumpUntil(()->!active(probe),"supported advertisement did not retire probe");
+             assertNull(read(probe,SESSION,"config"));assertNull(read(probe,SESSION,"terrainCache"));
+-            assertEquals(0,counter(probe,"columns"));assertNotNull(read(null,DhClientSession.class,"pendingRetry"));
+-            assertEquals(profile,hints.get(minecraft.server.ip));
++            assertEquals(0,counter(probe,"columns"));
++            if(profile==DhProfile.SUPPORT_15) {
++                assertNull(read(null,DhClientSession.class,"pendingRetry"));
++                var same=session();assertEquals(profile,read(same,SESSION,"profile"));invoke(same,"retire");
++                ((Map<?,?>)read(null,DhClientSession.class,"discoveredProfiles")).clear();
++            } else {assertNotNull(read(null,DhClientSession.class,"pendingRetry"));assertEquals(profile,hints.get(minecraft.server.ip));}
+             DhClientSession.nativeOffer();assertNull(read(null,DhClientSession.class,"pendingRetry"));
+             DhClientSession.disconnect();
++            hints.put(minecraft.server.ip,profile);
+             write(null,DhClientSession.class,"retryJoinPending",true);
+             write(null,DhClientSession.class,"retryServer",minecraft.server);
+             write(null,DhClientSession.class,"retryJoinDeadline",System.nanoTime()+60_000_000_000L);
+             DhClientSession.onJoin();var next=session();assertEquals(profile,read(next,SESSION,"profile"));
+             invoke(next,"retire");
++            doReturn(mcMock(net.minecraft.network.Connection.class)).when(connection).getConnection();
+             DhClientSession.onJoin();var fresh=session();assertEquals(DhProfile.OFFICIAL_16,read(fresh,SESSION,"profile"));
+             invoke(fresh,"retire");
+         }
+     }
+     @Test void aSilentVersion16ProbeAllowsOneFreshLegacyTrialWithoutTerrain() throws Exception {
+-        var first=session();write(first,SESSION,"announced",true);write(first,SESSION,"sentAt",System.nanoTime()-6_000_000_000L);
+-        invoke(first,"tick");assertFalse(active(first));
++        var first=session();write(first,SESSION,"announced",true);write(first,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
++        invoke(first,"tick");invoke(first,"tick");invoke(first,"tick");assertFalse(active(first));
+         assertNotNull(read(null,DhClientSession.class,"pendingRetry"));assertTrue(sent.isEmpty());
+         assertEquals(0,budget(first).used());
+         write(null,DhClientSession.class,"retryJoinPending",true);
+@@ -195,13 +212,45 @@
+         write(null,DhClientSession.class,"retryJoinDeadline",System.nanoTime()+60_000_000_000L);
+         DhClientSession.onJoin();var legacy=session();assertEquals(DhProfile.OFFICIAL_15,read(legacy,SESSION,"profile"));
+         write(legacy,SESSION,"announced",true);write(legacy,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
+-        invoke(legacy,"tick");assertFalse(active(legacy));assertNull(read(null,DhClientSession.class,"pendingRetry"));
++        invoke(legacy,"tick");invoke(legacy,"tick");invoke(legacy,"tick");assertFalse(active(legacy));assertNull(read(null,DhClientSession.class,"pendingRetry"));
+         assertEquals(0,counter(legacy,"columns"));assertEquals(0,budget(legacy).used());
++    }
++    @Test void missingOrWithdrawnDhChannelCannotScheduleAnAutomaticReconnect() throws Exception {
++        var s=session();write(s,SESSION,"announced",true);write(s,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
++        DhClientSession.installChannelAvailability(()->false);
++        invoke(s,"tick");invoke(s,"tick");invoke(s,"tick");
++        assertFalse(active(s));assertNull(read(null,DhClientSession.class,"pendingRetry"));
++        assertTrue(DhClientSession.status().contains("channel is unavailable"));assertTrue(sent.isEmpty());
++    }
++    @Test void capturedAndQueuedConfigurationSurvivesALateClientTick() throws Exception {
++        var s=session();write(s,SESSION,"announced",true);write(s,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
++        var cfg=new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,true,32,false,0,0,500);
++        var inbound=capture(codec(s).encode(cfg),System.nanoTime());
++        invoke(s,"tick");invoke(s,"tick");invoke(s,"tick");
++        assertTrue(active(s));assertNull(read(null,DhClientSession.class,"pendingRetry"));
++        inbound.receive();pumpUntil(()->read(s,SESSION,"config")!=null && frameCount(s)==0,"queued config not applied");
++        assertTrue(active(s));assertNull(read(null,DhClientSession.class,"pendingRetry"));
++    }
++    @Test void aConfirmedProtocolSurvivesNullWorldAndSamePhysicalReconfiguration() throws Exception {
++        var first=session();
++        var cfg=new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,true,32,false,0,0,500);
++        capture(codec(first).encode(cfg),System.nanoTime()).receive();pumpUntil(()->frameCount(first)==0,"config did not settle");
++        minecraft.level=null;DhClientSession.tick();assertFalse(active(first));
++        minecraft.level=level;DhClientSession.onJoin();
++        var next=session();write(next,SESSION,"announced",true);write(next,SESSION,"sentAt",System.nanoTime()-16_000_000_000L);
++        invoke(next,"tick");invoke(next,"tick");invoke(next,"tick");
++        assertNull(read(null,DhClientSession.class,"pendingRetry"));
++        assertEquals(DhProfile.OFFICIAL_16,read(next,SESSION,"profile"));
++    }
++    @Test void anAutomaticJoinPastSixtySecondsStillConsumesItsOneAllowance() throws Exception {
++        write(null,DhClientSession.class,"retryJoinPending",true);write(null,DhClientSession.class,"retryServer",minecraft.server);
++        write(null,DhClientSession.class,"retryJoinDeadline",System.nanoTime()-1_000_000_000L);
++        DhClientSession.onJoin();assertTrue((boolean)read(null,DhClientSession.class,"retryUsed"));
+     }
+     @Test void malformedOrUnsupportedAdvertisementsCannotScheduleReconnects() throws Exception {
+         for(byte[] frame:List.of(new byte[]{0,17,0,1},new byte[]{0,15,0,1,0,5,'x'})) {
+             DhClientSession.disconnect();var s=session();capture(frame,System.nanoTime()).receive();
+-            pumpUntil(()->!active(s),"invalid advertisement did not stop");
++            pumpUntil(()->!active(s) && budget(s).used()==0,"invalid advertisement did not stop/release ownership");
+             assertNull(read(null,DhClientSession.class,"pendingRetry"));assertEquals(0,budget(s).used());
+         }
+     }
+@@ -213,6 +262,7 @@
+         var s=session();capture(rejection(DhProfile.OFFICIAL_15),System.nanoTime()).receive();
+         pumpUntil(()->!active(s),"second mismatch did not stop");
+         assertNull(read(null,DhClientSession.class,"pendingRetry"));
++        doReturn(mcMock(net.minecraft.network.Connection.class)).when(connection).getConnection();
+         DhClientSession.onJoin();assertFalse((boolean)read(null,DhClientSession.class,"retryUsed"));
+     }
+ 
+@@ -710,12 +760,14 @@
+ 
+     @Test void networkResponseCachesValidatedSourceAndASecondConnectionRestoresIt() throws Exception {
+         try(var voxy=new DeliveryBridge();var destination=new DestinationBridge(true)) {
++            DestinationEngine.observedIngest=true;
+             var shape=new DhTerrainTile.WorldShape(-128,512,true);
+             var key=new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,shape);
+             var cache=new DhTerrainCache(dir.resolve("dh-cache"),key);var s=deliverySession(-128,512);
+             write(s,SESSION,"terrainCache",cache);replayContent(s,1,false);
+             assertEquals(1,counter(s,"cacheWrites"));assertEquals(Set.of(CONTENT_POSITION),cache.positions());
+             long stamp=policy(s).syncTimestamp(CONTENT_POSITION);DhClientSession.disconnect();sent.clear();
++            me.cortex.voxy.common.world.service.VoxelIngestService.committed.clear();
+             var replacement=deliverySession(-128,512);write(replacement,SESSION,"terrainCache",new DhTerrainCache(dir.resolve("dh-cache"),key));
+             invoke(replacement,"restoreCache",new Class<?>[]{DhPosition.class,long.class},CONTENT_POSITION,System.nanoTime());
+             pumpUntil(()->!sent.isEmpty(),"network cache validation not sent");
+@@ -762,6 +814,35 @@
+         } finally {ColumnCacheStore.clearDhTerrain(minecraft.server.ip);}
+     }
+ 
++    @Test void queuedButUncommittedDeliveryNeverPublishesASourceSnapshotAndReconnectFetchesItAgain() throws Exception {
++        try(var bridge=new DeliveryBridge();var destination=new DestinationBridge(true)) {
++            DestinationEngine.observedIngest=true;
++            var key=new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-128,512,true));
++            var cache=new DhTerrainCache(dir.resolve("queued-cache"),key);
++            var first=deliverySession(-128,512);write(first,SESSION,"terrainCache",cache);
++            me.cortex.voxy.common.world.service.VoxelIngestService.commitImmediately=false;
++            replayContent(first,1,false);
++            assertTrue(active(first));assertEquals(16,counter(first,"columns"));
++            assertEquals(0,counter(first,"cacheWrites"));assertTrue(cache.positions().isEmpty());
++            assertEquals(1,counter(first,"cacheDeclined"));DhClientSession.disconnect();
++            var next=deliverySession(-128,512);write(next,SESSION,"terrainCache",cache);
++            me.cortex.voxy.common.world.service.VoxelIngestService.commitImmediately=true;
++            replayContent(next,2,false);assertEquals(16,counter(next,"columns"));assertEquals(1,counter(next,"cacheWrites"));
++        }
++    }
++    @Test void aRejectedChangedColumnInvalidatesTheOldSourceAndCannotFreezeItOnRejoin() throws Exception {
++        try(var bridge=new DeliveryBridge();var destination=new DestinationBridge(true)) {
++            DestinationEngine.observedIngest=true;
++            var cache=new DhTerrainCache(dir.resolve("rejected-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-128,512,true)));
++            var first=deliverySession(-128,512);write(first,SESSION,"terrainCache",cache);replayContent(first,1,false);
++            assertEquals(1,counter(first,"cacheWrites"));
++            me.cortex.voxy.common.world.service.VoxelIngestService.behavior=call->call.chunkX()!=-12 || call.chunkZ()!=0;
++            replayContent(first,2,true);assertTrue(cache.positions().isEmpty());DhClientSession.disconnect();
++            var next=deliverySession(-128,512);write(next,SESSION,"terrainCache",cache);
++            me.cortex.voxy.common.world.service.VoxelIngestService.behavior=call->true;
++            replayContent(next,3,true);assertEquals(16,counter(next,"columns"));assertEquals(1,counter(next,"cacheWrites"));
++        }
++    }
+     @Test void partialTerrainCannotBePersistedAsACompleteSourceSnapshot() throws Exception {
+         try(var voxy=new DeliveryBridge()) {
+             var cache=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,
+@@ -777,6 +858,7 @@
+     @Test void failedSourceReplacementInvalidatesOldDataBeforeDeliveringTheNewTile() throws Exception {
+         try(var bridge=new DeliveryBridge()) {
+             var real=new DhTerrainCache(dir.resolve("dh-cache"),new DhTerrainCache.Key(minecraft.server.ip,"server","world",DIMENSION,8,DhProfile.OFFICIAL_16,new DhTerrainTile.WorldShape(-128,512,true)));
++            DestinationEngine.observedIngest=true;
+             real.write(CONTENT_POSITION,5,new byte[]{1});var cache=spy(real);
+             doThrow(new java.nio.file.AccessDeniedException("test replacement denied")).when(cache).write(any(DhPosition.class),anyLong(),any(byte[].class));
+             var s=deliverySession(-128,512);write(s,SESSION,"terrainCache",cache);replayContent(s,1,false);
+@@ -966,24 +1048,54 @@
+         public DestinationEngine getOrCreateEngine(){return engine;}
+     }
+     public static final class DestinationEngine {
+-        static boolean defaults;int refs;
++        static boolean defaults,observedIngest;int refs;
+         public void acquireRef(){refs++;}public void releaseRef(){refs--;}
+         public DestinationMapper getMapper(){return new DestinationMapper();}
+-        public DestinationSection acquire(int l,int x,int y,int z){return new DestinationSection();}
++        public DestinationSection acquire(int l,int x,int y,int z){return new DestinationSection(x,y,z);}
+     }
+     public static final class DestinationSection {
+-        public long[] copyData(){var data=new long[32768];Arrays.fill(data,DestinationEngine.defaults?15L<<56:1L<<27);return data;}
++        final int sx,sy,sz;
++        DestinationSection(int x,int y,int z){sx=x;sy=y;sz=z;}
++        public long[] copyData(){
++            var data=new long[32768];Arrays.fill(data,DestinationEngine.defaults?15L<<56:1L<<27);
++            if(DestinationEngine.observedIngest) {
++                synchronized(me.cortex.voxy.common.world.service.VoxelIngestService.committed) {
++                    for(var call:me.cortex.voxy.common.world.service.VoxelIngestService.committed) {
++                        if((call.chunkX()>>1)!=sx || (call.sectionY()>>1)!=sy || (call.chunkZ()>>1)!=sz)continue;
++                        for(int x=0;x<16;x++)for(int z=0;z<16;z++)for(int y=0;y<16;y++) {
++                            var state=call.section().getBlockState(x,y,z);
++                            int block=state.isAir()?0:net.minecraft.world.level.block.Block.BLOCK_STATE_REGISTRY.getId(state);
++                            int biome=biomes.getId(call.section().getNoiseBiome(x>>2,y>>2,z>>2).value());
++                            int light=call.skyLight().get(x,y,z)|(call.blockLight().get(x,y,z)<<4);
++                            data[(((call.sectionY()&1)*16+y)<<10)|(((call.chunkZ()&1)*16+z)<<5)|((call.chunkX()&1)*16+x)]
++                                    =((long)block<<27)|((long)biome<<47)|((long)light<<56);
++                        }
++                    }
++                }
++            }
++            return data;
++        }
+         public int release(){return 0;}
+     }
+     public static final class DestinationMapper {
+-        public DestinationState[] getStateEntries(){return new DestinationState[]{new DestinationState(net.minecraft.world.level.block.Blocks.AIR.defaultBlockState()),new DestinationState(net.minecraft.world.level.block.Blocks.STONE.defaultBlockState())};}
+-        public DestinationBiome[] getBiomeEntries(){return new DestinationBiome[]{new DestinationBiome()};}
++        public DestinationState[] getStateEntries(){
++            if(DestinationEngine.observedIngest)return java.util.stream.StreamSupport.stream(net.minecraft.world.level.block.Block.BLOCK_STATE_REGISTRY.spliterator(),false).map(DestinationState::new).toArray(DestinationState[]::new);
++            return new DestinationState[]{new DestinationState(net.minecraft.world.level.block.Blocks.AIR.defaultBlockState()),new DestinationState(net.minecraft.world.level.block.Blocks.STONE.defaultBlockState())};
++        }
++        public DestinationBiome[] getBiomeEntries(){
++            if(DestinationEngine.observedIngest) {
++                var entries=new DestinationBiome[biomes.size()];
++                for(int i=0;i<entries.length;i++)entries[i]=new DestinationBiome(biomes.getKey(biomes.byId(i)).toString());
++                return entries;
++            }
++            return new DestinationBiome[]{new DestinationBiome("minecraft:plains")};
++        }
+         public static int getBlockId(long value){return (int)(value>>>27&0xfffff);}
+         public static int getBiomeId(long value){return (int)(value>>>47&511);}
+         public static int getLightId(long value){return (int)(value>>>56&255);}
+     }
+     public static final class DestinationState {public final net.minecraft.world.level.block.state.BlockState state;DestinationState(net.minecraft.world.level.block.state.BlockState state){this.state=state;}}
+-    public static final class DestinationBiome {public final String biome="minecraft:plains";}
++    public static final class DestinationBiome {public final String biome;DestinationBiome(String biome){this.biome=biome;}}
+     private static final DhPosition CONTENT_POSITION=new DhPosition(6,-3,0);
+     private Object deliverySession(int minY,int height) throws Exception {
+         // Other suites may already have instrumented ClientLevel's final
+@@ -1071,6 +1183,60 @@
+         assertFalse(preference.synchronize());assertFalse(preference.updates());
+         assertSame(s,read(null,DhClientSession.class,"session"));assertTrue(active(s));
+     }
++    @Test void aClientThreadTimeoutDuringAPushLeavesDhActiveAndSchedulesAcquisition() throws Exception {
++        try(var bridge=new DeliveryBridge()) {
++            var s=updateSession(-128,512);policy(s).accepted(CONTENT_POSITION,1,1,123,System.nanoTime());
++            capture(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"),System.nanoTime()).receive();
++            var update=contentResponse(s,1,true);
++            capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",update.bufferId(),List.of())),System.nanoTime()).receive();
++            // Deliberately leave the first client action queued past its five-second deadline.
++            long deadline=System.nanoTime()+7_000_000_000L;
++            while(frameCount(s)>0 && System.nanoTime()<deadline)Thread.sleep(25);
++            pumpUntil(()->frameCount(s)==0,"push timeout did not settle");
++            assertTrue(active(s));assertTrue(policy(s).due(CONTENT_POSITION,System.nanoTime()));
++            assertEquals(0,policy(s).timestamp(CONTENT_POSITION));
++            assertEquals(512,budget(s).used(),"Only the small timestamp fence remains; captured/decoded terrain is released");
++        }
++    }
++    @Test void voxyBackpressureDefersAPushAndCancelsItsCompetingFullRequest() throws Exception {
++        try(var bridge=new DeliveryBridge()) {
++            var before=new LinkedHashMap<String,Object>();
++            for(String field:List.of("voxyGetInstance","getIngestService","getTaskCount"))before.put(field,read(null,bridge.bridge,field));
++            var oldInstance=VoxyCommon.instance;
++            try {
++                var lookup=MethodHandles.lookup();
++                write(null,bridge.bridge,"voxyGetInstance",lookup.findStatic(VoxyCommon.class,"getInstance",MethodType.methodType(VoxyInstance.class)).asType(MethodType.methodType(Object.class)));
++                write(null,bridge.bridge,"getIngestService",lookup.findVirtual(VoxyInstance.class,"getIngestService",MethodType.methodType(me.cortex.voxy.common.world.service.VoxelIngestService.class)).asType(MethodType.methodType(Object.class,Object.class)));
++                write(null,bridge.bridge,"getTaskCount",lookup.findVirtual(me.cortex.voxy.common.world.service.VoxelIngestService.class,"getTaskCount",MethodType.methodType(int.class)).asType(MethodType.methodType(int.class,Object.class)));
++                VoxyCommon.instance=new VoxyInstance();me.cortex.voxy.common.world.service.VoxelIngestService.taskCount=257;
++                assertEquals(257,DhVoxyBridge.backlog());
++                var owner=updateSession(-128,512);policy(owner).accepted(CONTENT_POSITION,1,1,123,System.nanoTime());
++                pendingAt(owner,31,CONTENT_POSITION,123);
++                capture(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"),System.nanoTime()).receive();
++                var response=contentResponse(owner,1,true);
++                capture(codec(owner).encode(new DhMessage.PartialUpdate("test-world",response.bufferId(),List.of())),System.nanoTime()).receive();
++                pumpUntil(()->frameCount(owner)==0 && pendingMap(owner).isEmpty(),"deferred push did not release its competing request");
++                assertTrue(active(owner));assertEquals(0,counter(owner,"columns"));assertEquals(1,counter(owner,"droppedUpdateFrames"));
++                assertEquals(0,policy(owner).timestamp(CONTENT_POSITION));assertTrue(policy(owner).due(CONTENT_POSITION,System.nanoTime()));
++            } finally {
++                before.forEach((key,value)->write(null,bridge.bridge,key,value));VoxyCommon.instance=oldInstance;
++            }
++        }
++    }
++    @Test void aTerrainBurstIsDroppedWithinTheBudgetAndCanRecoverWithoutStoppingTheSession() throws Exception {
++        var s=updateSession();var owned=new ArrayList<DhClientSession.Inbound>();
++        policy(s).accepted(POSITION,1,1,123,System.nanoTime());
++        for(int i=0;i<40;i++) {
++            var frame=capture(codec(s).encode(new DhMessage.Split(1000+i,new byte[8],true)),System.nanoTime());
++            if(frame!=null)owned.add(frame);
++        }
++        assertTrue(active(s));assertEquals(24,owned.size());assertEquals(16,counter(s,"droppedUpdateFrames"));
++        owned.forEach(DhClientSession.Inbound::close);
++        var recovery=worker(s).submit(()->{try{invoke(s,"recoverPushPressure");}catch(Exception e){throw new RuntimeException(e);}});
++        pumpUntil(()->recovery.isDone() && !(boolean)((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).get(),"pressure recovery did not finish");
++        recovery.get();assertTrue(active(s));assertEquals(0,budget(s).used());assertEquals(0,policy(s).timestamp(POSITION));
++        assembly(s).expect(99,POSITION);assertEquals(0,assembly(s).incompleteBuffers());
++    }
+     @Test void unsolicitedPartialTerrainAppliesOnlyCompletelyDescribedColumnsWithoutAnOutstandingRequest() throws Exception {
+         try(var bridge=new DeliveryBridge()) {
+             var s=updateSession();
+--- a/fabric/src/test/java/me/cortex/voxy/common/world/service/VoxelIngestService.java
++++ b/fabric/src/test/java/me/cortex/voxy/common/world/service/VoxelIngestService.java
+@@ -31,6 +31,8 @@
+ 
+     public static final List<IngestCall> calls = Collections.synchronizedList(new ArrayList<>());
+ 
++    public static final List<IngestCall> committed = Collections.synchronizedList(new ArrayList<>());
++    public static volatile boolean commitImmediately=true;
+     public static volatile IngestBehavior behavior = call -> true;
+ 
+     public static boolean rawIngest(WorldIdentifier worldId, LevelChunkSection section,
+@@ -38,7 +40,9 @@
+                                     DataLayer blockLight, DataLayer skyLight) {
+         var call = new IngestCall(worldId, section, chunkX, sectionY, chunkZ, blockLight, skyLight);
+         calls.add(call);
+-        return behavior.ingest(call);
++        boolean accepted=behavior.ingest(call);
++        if(accepted && commitImmediately)committed.add(call);
++        return accepted;
+     }
+ 
+     /** Value returned by the instance {@link #getTaskCount()} (the backlog-probe terminal). */
+@@ -55,7 +59,7 @@
+     }
+ 
+     public static void reset() {
+-        calls.clear();
++        calls.clear();committed.clear();commitImmediately=true;
+         behavior = call -> true;
+         taskCount = 0;
+         taskCountThrow = null;
+--- a/neoforge/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java
++++ b/neoforge/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java
+@@ -100,7 +100,6 @@
+             new Member(OPTION_PAGE, MemberKind.CONSTRUCTOR, "<init>", 2),
+             new Member(TICK_BOX_CONTROL, MemberKind.CONSTRUCTOR, "<init>", 1),
+             new Member(SLIDER_CONTROL, MemberKind.CONSTRUCTOR, "<init>", 5),
+-            new Member(CYCLING_CONTROL, MemberKind.CONSTRUCTOR, "<init>", 3),
+             new Member(OPTION_IMPACT, MemberKind.ENUM, "valueOf", 1),
+             new Member(OPTION_STORAGE, MemberKind.INTERFACE_METHOD, "getData", 0),
+             new Member(OPTION_STORAGE, MemberKind.INTERFACE_METHOD, "save", 0),
+@@ -187,7 +186,6 @@
+         Class<?> tickBox = cls(loader, prefix + TICK_BOX_CONTROL);
+         Class<?> slider = cls(loader, prefix + SLIDER_CONTROL);
+         Class<?> formatter = cls(loader, prefix + VALUE_FORMATTER);
+-        Class<?> cycling = cls(loader, prefix + CYCLING_CONTROL);
+         if (!storage.isInterface() || !formatter.isInterface() || !impact.isEnum()) {
+             throw new NoSuchMethodException("OptionStorage/ControlValueFormatter must be interfaces"
+                     + " and OptionImpact an enum under " + prefix);
+@@ -211,7 +209,7 @@
+                 lookup.unreflectConstructor(ctor(page, 2)),
+                 lookup.unreflectConstructor(ctor(tickBox, 1)),
+                 lookup.unreflectConstructor(ctor(slider, 5)),
+-                lookup.unreflectConstructor(cycling.getConstructor(cls(loader,prefix+".client.gui.options.Option"),Class.class,Component[].class)),
++                null, // Resolve enum-only constructors only if an enum control is requested.
+                 lookup.unreflect(method(impact, "valueOf", 1, true, String.class)),
+                 storage, formatter);
+     }
+@@ -315,7 +313,11 @@
+         Component[] labels=java.util.Arrays.stream(spec.type().getEnumConstants())
+                 .map(value -> {var label=spec.label().apply(value);return label.isKey()
+                         ?Component.translatable(label.key()):Component.literal(label.literal());}).toArray(Component[]::new);
+-        h.setControl().invoke(builder,(Function<Object,Object>) option -> invoke(h.cyclingCtor(),option,spec.type(),labels));
++        var loader=h.storageClass().getClassLoader();
++        var cycling=cls(loader,h.prefix()+CYCLING_CONTROL);
++        var ctor=MethodHandles.publicLookup().unreflectConstructor(cycling.getConstructor(
++                cls(loader,h.prefix()+".client.gui.options.Option"),Class.class,Component[].class));
++        h.setControl().invoke(builder,(Function<Object,Object>) option -> invoke(ctor,option,spec.type(),labels));
+     }
+ 
+     // The two proxies are the boundaries where SODIUM calls INTO us — from its Apply loop
+--- a/neoforge/src/main/java/dev/vox/lss/neoforge/LSSNeoClientBootstrap.java
++++ b/neoforge/src/main/java/dev/vox/lss/neoforge/LSSNeoClientBootstrap.java
+@@ -59,6 +59,10 @@
+                 LSSNeoClientBootstrap::registerClientCommands);
+ 
+         ModCompat.init();
++        NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.ChunkEvent.Load.class,e -> {
++            if(e.getLevel() instanceof net.minecraft.client.multiplayer.ClientLevel level
++                    && e.getChunk() instanceof net.minecraft.world.level.chunk.LevelChunk chunk)ModCompat.vanillaChunkLoaded(level,chunk);
++        });
+ 
+         // Far players: the render path is LIVE on NeoForge as of v0.14.0 (the twin of
+         // Fabric's LSSClient.initRenderer() call). Registers the AFTER_ENTITIES render pass
+--- a/neoforge/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java
++++ b/neoforge/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java
+@@ -85,6 +85,10 @@
+             var connection=Minecraft.getInstance().getConnection();
+             return connection!=null && connection.hasChannel(dev.vox.lss.networking.payloads.HandshakeC2SPayload.TYPE);
+         });
++        DhClientSession.installChannelAvailability(()-> {
++            var connection=Minecraft.getInstance().getConnection();
++            return connection!=null && connection.hasChannel(Payload.TYPE);
++        });
+         NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingOut.class,e-> {
+             synchronized(frames) { for(var frame:frames.toArray(Payload[]::new)) frame.close(); }
+         });
+--- a/scripts/lib/owned-process.py
++++ b/scripts/lib/owned-process.py
+@@ -70,6 +70,13 @@
+     inherit = args[:1] == ["--inherit-lock"]
+     if inherit:
+         args = args[1:]
++    termination_grace=3.0
++    if args[:1]==['--termination-grace']:
++        if len(args)<2:return 2
++        try:termination_grace=float(args[1])
++        except ValueError:return 2
++        if not 3<=termination_grace<=120:return 2
++        args=args[2:]
+     rig_root = None
+     if args[:1] == ['--rig-run-root']:
+         rig_root, args = Path(args[1]).resolve(), args[2:]
+@@ -149,7 +156,7 @@
+         sent = {}
+         group_signal = None
+         while True:
+-            sig = signal.SIGKILL if time.monotonic() - started >= 3 else signal.SIGTERM
++            sig = signal.SIGKILL if time.monotonic() - started >= termination_grace else signal.SIGTERM
+             if group_signal != sig:
+                 signal_group(proc, sig)
+                 group_signal = sig
+--- a/test-fixtures/dh-live/README.md
++++ b/test-fixtures/dh-live/README.md
+@@ -220,3 +220,21 @@
+ negotiation reconnect before checking the detected profile and Voxy storage.
+ The prior forced native→DH→native `content` source-cycle scenario is retired;
+ its old receipts remain historical. No production profile override is written.
++
++## Follow-up review qualification
++
++`--scenario service --loader fabric --server-family vanilla --expect no-service`
++checks missing remote-channel handling with no Minecraft reconnect. `--slow-config`
++stages a server-only test mixin that delays the real official config by 6.5 seconds;
++require both slow-config log markers and zero negotiation reconnects. It never
++enters a shipping or manual-server jar. Support-15 now requires zero negotiation
++reconnects; official-15 uses one quiet-probe reconnect.
++
++`--scenario boundary --terrain-source native --allow-dh --moving-border` exercises
++actual movement after a cold fill. Require more than 100 blocks of movement and
++30 seconds of motion, no continuously missing border column for over five seconds,
++native protocol20 and zero DH **terrain Request** frames. The observer does not
++claim zero control packets. Updates comparisons use an actual AtomicLong read
++comparison counter, including settling retries; earlier 1,200 labels were formulae.
++Full Fabric JUnit counts with `fixture-tests.gradle` include four observer tests,
++which should be identified separately from production suite counts.
+--- a/test-fixtures/dh-live/exercise.py
++++ b/test-fixtures/dh-live/exercise.py
+@@ -13,6 +13,8 @@
+ p.add_argument('--profile',choices=['dh_support_15','official_15','official_16'],default='official_16')
+ p.add_argument('--expect',choices=['ready','no-service','conflict','ocean'],default='ready')
+ p.add_argument('--terrain-source',choices=['dh','native'],default='dh')
++p.add_argument('--moving-border',action='store_true')
++p.add_argument('--slow-config',action='store_true')
+ p.add_argument('--allow-dh',action='store_true')
+ p.add_argument('--boundary-expect',choices=['report','covered'],default='covered')
+ p.add_argument('--builder',choices=['FullBuilder','FastOverworldBuilder'],default='FullBuilder')
+@@ -43,6 +45,8 @@
+ cmd=['python3',str(root/'test-fixtures/dh-live/prepare.py'),'--artifact',str(a.artifact),'--fixture',str(a.fixture),'--dh',str(a.dh),'--base',str(a.base),'--scenario',a.scenario]
+ cmd+=['--server-family',a.server_family,'--profile',a.profile,'--expect',a.expect,'--builder',a.builder]
+ cmd+=['--loader',a.loader,'--terrain-source',a.terrain_source,'--boundary-expect',a.boundary_expect]
++if a.moving_border:cmd.append('--moving-border')
++if a.slow_config:cmd.append('--slow-config')
+ if a.allow_dh:cmd.append('--allow-dh')
+ p=subprocess.run(cmd,env=env,text=True,capture_output=True)
+ if p.returncode:
+--- a/test-fixtures/dh-live/prepare.py
++++ b/test-fixtures/dh-live/prepare.py
+@@ -12,6 +12,8 @@
+ p.add_argument('--profile',choices=['dh_support_15','official_15','official_16'],default='official_16')
+ p.add_argument('--expect',choices=['ready','no-service','conflict','ocean'],default='ready')
+ p.add_argument('--terrain-source',choices=['dh','native'],default='dh')
++p.add_argument('--moving-border',action='store_true')
++p.add_argument('--slow-config',action='store_true')
+ p.add_argument('--allow-dh',action='store_true',help='Enable DH fallback even in the native boundary case')
+ p.add_argument('--boundary-expect',choices=['report','covered'],default='covered')
+ p.add_argument('--builder',choices=['FullBuilder','FastOverworldBuilder'],default='FullBuilder')
+@@ -34,6 +36,7 @@
+   if hashlib.sha256(file.read_bytes()).hexdigest()!=digest:raise ValueError('Pinned Paper/Support artifact changed')
+  inputs=[(paper/'paper.jar','server/paper.jar'),(plugin,'server/plugins/'+plugin.name)]
+  for directory in ['cache','libraries','versions']:inputs.extend((file,'server/'+directory+'/'+str(file.relative_to(paper/directory))) for file in (paper/directory).rglob('*') if file.is_file())
++if a.slow_config:inputs.append((a.fixture,'server/mods/'+a.fixture.name))
+ if a.server_family=='official':inputs.append((a.dh,'server/mods/'+a.dh.name))
+ inputs+=[(a.artifact,'instances/dh-neoforge/minecraft/mods/lod-server-support-neoforge.jar'),(a.fixture,'instances/dh-neoforge/minecraft/mods/'+a.fixture.name)]
+ if a.expect=='conflict':inputs.append((a.dh,'instances/dh-neoforge/minecraft/mods/'+a.dh.name))
+@@ -58,14 +61,14 @@
+  dest=run/t;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(f,dest)
+ profile={'components':[{'uid':'org.lwjgl3','version':'3.3.3'},{'uid':'net.minecraft','version':'1.21.1'},{'uid':'net.neoforged','version':'21.1.248'}]}
+ if a.loader=='fabric':profile={'components':[{'uid':'org.lwjgl3','version':'3.3.3'},{'uid':'net.minecraft','version':'1.21.1'},{'uid':'net.fabricmc.intermediary','version':'1.21.1'},{'uid':'net.fabricmc.fabric-loader','version':'0.18.4'}]}
+-(runtime:={"scenario":a.scenario,"terrain_source":a.terrain_source,"boundary_expect":a.boundary_expect,"loader":a.loader,"server_family":a.server_family,"profile":a.profile,"expectation":a.expect,"builder":a.builder,"launcher_inputs":launcher_inputs(context,profile),"source_inputs":[{'target':t,'sha256':hashlib.file_digest(f.open('rb'),'sha256').hexdigest()} for f,t in inputs]})
++(runtime:={"scenario":a.scenario,"slow_config":a.slow_config,"moving_border":a.moving_border,"terrain_source":a.terrain_source,"boundary_expect":a.boundary_expect,"loader":a.loader,"server_family":a.server_family,"profile":a.profile,"expectation":a.expect,"builder":a.builder,"launcher_inputs":launcher_inputs(context,profile),"source_inputs":[{'target':t,'sha256':hashlib.file_digest(f.open('rb'),'sha256').hexdigest()} for f,t in inputs]})
+ if a.scenario=='content':
+  hashes={item['target']:item['sha256'] for item in runtime['source_inputs']}
+  if hashes['server/mods/lod-server-support-neoforge.jar']!=hashes['instances/dh-neoforge/minecraft/mods/lod-server-support-neoforge.jar']:raise ValueError('Client/server candidate hash mismatch')
+ (run/'runtime.json').write_text(json.dumps(runtime,indent=2))
+ instance=run/'instances/dh-neoforge';game=instance/'minecraft';(game/'config').mkdir(parents=True,exist_ok=True)
+ (instance/'mmc-pack.json').write_text(json.dumps({'formatVersion':1,'components':profile['components']}))
+-(instance/'instance.cfg').write_text('[General]\nInstanceType=OneSix\nname=DH NeoForge private verification\nOverrideJavaLocation=true\nJavaPath=/usr/lib/jvm/java-21-openjdk-amd64/bin/java\nOverrideJavaArgs=true\nJvmArgs=-XX:ActiveProcessorCount=4 -Dlss.rig.runId='+run.name+' -Dlss.rig.scenario='+a.scenario+' -Dlss.rig.expect='+a.expect+' -Dlss.rig.profile='+{'dh_support_15':'SUPPORT_15','official_15':'OFFICIAL_15','official_16':'OFFICIAL_16'}[a.profile]+' -Dlss.rig.boundaryExpect='+a.boundary_expect+' -Dlss.rig.nativePreferred='+str(a.scenario=='boundary' and a.terrain_source=='native').lower()+' -Dlss.rig.initialEndpoint=[::1]:25586 -Dlss.rig.captureDir='+str(run/'captures')+'\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc=3072\nOverrideWindow=true\nMinecraftWinWidth='+str(1280 if a.scenario in ['menu','updates'] else 960)+'\nMinecraftWinHeight='+str(720 if a.scenario in ['menu','updates'] else 540)+'\nLaunchMaximized=false\nOverrideCommands=true\nPreLaunchCommand=\nPostExitCommand=\nWrapperCommand=\n')
++(instance/'instance.cfg').write_text('[General]\nInstanceType=OneSix\nname=DH NeoForge private verification\nOverrideJavaLocation=true\nJavaPath=/usr/lib/jvm/java-21-openjdk-amd64/bin/java\nOverrideJavaArgs=true\nJvmArgs=-XX:ActiveProcessorCount=4 -Dlss.rig.runId='+run.name+' -Dlss.rig.scenario='+a.scenario+' -Dlss.rig.expect='+a.expect+' -Dlss.rig.profile='+{'dh_support_15':'SUPPORT_15','official_15':'OFFICIAL_15','official_16':'OFFICIAL_16'}[a.profile]+' -Dlss.rig.boundaryExpect='+a.boundary_expect+' -Dlss.rig.movingBorder='+str(a.moving_border).lower()+' -Dlss.rig.slowConfig='+str(a.slow_config).lower()+' -Dlss.rig.nativePreferred='+str(a.scenario=='boundary' and a.terrain_source=='native').lower()+' -Dlss.rig.initialEndpoint=[::1]:25586 -Dlss.rig.captureDir='+str(run/'captures')+'\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc=3072\nOverrideWindow=true\nMinecraftWinWidth='+str(1280 if a.scenario in ['menu','updates'] else 960)+'\nMinecraftWinHeight='+str(720 if a.scenario in ['menu','updates'] else 540)+'\nLaunchMaximized=false\nOverrideCommands=true\nPreLaunchCommand=\nPostExitCommand=\nWrapperCommand=\n')
+ (game/'options.txt').write_text('maxFps:30\nrenderDistance:'+str(12 if a.scenario=='boundary' else 4)+'\nsimulationDistance:5\npauseOnLostFocus:false\nenableVsync:false\nguiScale:'+str(0 if a.scenario in ['menu','updates'] else 2)+'\nonboardAccessibility:false\n')
+ (game/'config/lss-client-config.yaml').write_text(render({'lod.source':'lss' if a.scenario=='content' or a.scenario=='boundary' and a.terrain_source=='native' and not a.allow_dh else 'distant_horizons','lod.receive':True,'lod.dh.sync_on_load':True,'lod.dh.real_time_updates':a.scenario in ['menu','updates'],'lod.distance_chunks':40 if a.scenario=='absence' else 12 if a.scenario in ['content','service','race','rejoin','updates','boundary'] else 32,'integrations.xaero_map.enabled':False},side='client'))
+ (run/'server/eula.txt').write_text('eula=true\n')
+--- a/test-fixtures/dh-live/resources/lss-dh-fixture.mixins.json
++++ b/test-fixtures/dh-live/resources/lss-dh-fixture.mixins.json
+@@ -13,5 +13,8 @@
+   ],
+   "injectors": {
+     "defaultRequire": 1
+-  }
++  },
++  "mixins": [
++    "SlowConfigMixin"
++  ]
+ }
+--- a/test-fixtures/dh-live/run.py
++++ b/test-fixtures/dh-live/run.py
+@@ -36,6 +36,7 @@
+  serverlog=(run/'server.log').open('w')
+  runtime=json.loads((run/'runtime.json').read_text())
+  args=['/usr/lib/jvm/java-21-openjdk-amd64/bin/java','-Xms512M','-Xmx3G','-XX:ActiveProcessorCount=4']
++ if runtime.get('slow_config'):args+=['-Dlss.rig.slowConfig=true']
+  args+=['-jar','paper.jar','--nogui'] if runtime.get('server_family')=='support' else ['@libraries/net/neoforged/neoforge/21.1.248/unix_args.txt','nogui']
+  server=subprocess.Popen(args,cwd=run/'server',stdin=subprocess.PIPE,stdout=serverlog,stderr=subprocess.STDOUT,text=True);children.append(server)
+  (run/'evidence/server-owner.json').write_text(json.dumps(identity(server.pid)))
+--- a/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/BoundaryProbe.java
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/BoundaryProbe.java
+@@ -17,6 +17,10 @@
+     static long started,teleported,lastRead,stableSince;
+     static Set<Long> lastColumns=Set.of();
+     static int reads;
++    static final Map<Long,Long> missingSince=new HashMap<>();
++    static double movementStartX;
++    static long movingAt;
++    static boolean moving(){return Boolean.getBoolean("lss.rig.movingBorder");}
+     static double nearest(int low,int high) {return low>0?low:high<0?high:0;}
+     static boolean outsideDrawing(int cx,int cz,double x,double z,int radius) {
+         // Actual Sodium 0.8.12 OcclusionCuller and installed Voxy outline shader:
+@@ -37,13 +41,17 @@
+         if(started==0)started=now;
+         if(now-started>180_000_000_000L)throw new IllegalStateException("Boundary acquisition/readback timed out");
+         mc.player.getAbilities().flying=true;mc.player.onUpdateAbilities();
+-        mc.player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);mc.player.setYRot(-45);mc.player.setXRot(12);mc.options.hideGui=true;
++        if(moving() && now-started>40_000_000_000L) {
++            if(movingAt==0){movingAt=now;movementStartX=mc.player.getX();}
++            mc.player.setDeltaMovement(new net.minecraft.world.phys.Vec3(.28,0,0));
++        } else mc.player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);mc.player.setYRot(-45);mc.player.setXRot(12);mc.options.hideGui=true;
+         if(mc.options.getEffectiveRenderDistance()!=8 || mc.options.renderDistance().get()!=12)return;
+         if(DhClientSession.selected()? !DhClientSession.running(): !ClientNetGlue.hasReceivedSessionConfig())return;
+         if(now-lastRead<2_000_000_000L)return;lastRead=now;reads++;
+         int radius=8;var camera=mc.gameRenderer.getMainCamera().getPosition();
+         var candidates=new TreeSet<Long>();int lit=0;
+-        for(int x=-radius-3;x<=radius+3;x++)for(int z=-radius-3;z<=radius+3;z++) {
++        int centerX=(int)Math.floor(camera.x/16),centerZ=(int)Math.floor(camera.z/16);
++        for(int x=centerX-radius-3;x<=centerX+radius+3;x++)for(int z=centerZ-radius-3;z<=centerZ+radius+3;z++) {
+             var chunk=mc.level.getChunkSource().getChunk(x,z,ChunkStatus.FULL,false);
+             if(chunk==null || !outsideDrawing(x,z,camera.x,camera.z,radius))continue;
+             if(chunk.getBlockState(new BlockPos(x*16+8,-121,z*16+8))!=Blocks.STONE.defaultBlockState())
+@@ -75,7 +83,9 @@
+             }
+             if(!matched)missing.add(cx+","+cz);
+         }
+-        var row=new com.google.gson.JsonObject();row.addProperty("source",DhClientSession.selected()?"dh":"native");row.addProperty("stationary",true);
++        var row=new com.google.gson.JsonObject();row.addProperty("source",DhClientSession.selected()?"dh":"native");row.addProperty("stationary",!moving());
++        row.addProperty("moving_seconds",movingAt==0?0:(now-movingAt)/1e9);
++        row.addProperty("movement_blocks",movingAt==0?0:mc.player.getX()-movementStartX);
+         boolean nativeCase=System.getProperty("lss.rig.nativePreferred","false").equals("true");
+         if(nativeCase && (DhClientSession.selected() || ClientNetGlue.getSessionVersion()!=20 || Probe.requests.get()!=0))throw new IllegalStateException("Dual-service server did not prefer native LSS");
+         row.addProperty("dh_fallback_enabled",dev.vox.lss.config.LSSClientConfig.CONFIG.snapshot().lod().source().equals("distant_horizons"));
+@@ -83,8 +93,18 @@
+         row.addProperty("requested_vanilla_radius",12);row.addProperty("effective_vanilla_radius",8);row.addProperty("loaded_outside_drawing",candidates.size());row.addProperty("sky_light_present",lit);
+         row.addProperty("missing_voxy_columns",missing.size());row.addProperty("independent_stone_comparisons",comparisons);row.addProperty("elapsed_seconds",(now-started)/1e9);
+         row.add("missing_columns",new com.google.gson.Gson().toJsonTree(missing));Probe.write("dh-boundary-status.json",row.toString());
++        if(moving()) {
++            var positions=new HashSet<Long>();
++            for(String coordinate:missing) {
++                var parts=coordinate.split(",");long position=ChunkPos.asLong(Integer.parseInt(parts[0]),Integer.parseInt(parts[1]));positions.add(position);
++                long since=missingSince.computeIfAbsent(position,p->now);
++                if(movingAt!=0 && now-since>5_000_000_000L)throw new IllegalStateException("Moving vanilla border stayed missing for more than five seconds: "+coordinate);
++            }
++            missingSince.keySet().retainAll(positions);
++            if(movingAt==0 || now-movingAt<30_000_000_000L || mc.player.getX()-movementStartX<100)return;
++        }
+         boolean report=System.getProperty("lss.rig.boundaryExpect","covered").equals("report");
+-        if(now-started<35_000_000_000L || now-stableSince<10_000_000_000L || !report && !missing.isEmpty())return;
++        if(now-started<35_000_000_000L || !moving() && now-stableSince<10_000_000_000L || !report && !missing.isEmpty())return;
+         row.addProperty("correctness_gate_passed",missing.isEmpty());row.addProperty("pass",report || missing.isEmpty());row.addProperty("report_only",report);
+         Probe.write("dh-boundary.json",row.toString());Probe.write("dh-result.json",row.toString());
+         Screenshot.grab(mc.gameDirectory,"dh-boundary.png",mc.getMainRenderTarget(),ignored->{});
+--- a/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java
+@@ -161,6 +161,7 @@
+             mc.getConnection().sendCommand("execute in lssfixture:tall run tp @s 0 100 0");lastTeleport=now;
+         }
+     }
++    static final java.util.concurrent.atomic.AtomicLong blockComparisons=new java.util.concurrent.atomic.AtomicLong();
+     static boolean knownBlocks(int stage,long now) throws Exception {
+         if(now-lastRead<1_000_000_000L)return false;lastRead=now;
+         var mc=Minecraft.getInstance();if(!mc.level.dimension().equals(DIM))return false;
+@@ -185,6 +186,7 @@
+                 try {values=(long[])copy.invoke(section);}finally {release.invoke(section);}snapshots.put(key,values);
+             }
+             long value=values[((y&31)<<10)|((p.getZ()&31)<<5)|(p.getX()&31)];
++            blockComparisons.incrementAndGet();
+             if(getState.invoke(mapper,(int)getId.invoke(null,value))!=expected(stage,y))return false;
+         }
+         return true;
+--- a/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/FixtureMixinPlugin.java
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/FixtureMixinPlugin.java
+@@ -7,6 +7,7 @@
+ /** Keep the intrusive queue-order counterexample out of every other private test. */
+ public final class FixtureMixinPlugin implements IMixinConfigPlugin {
+     public boolean shouldApplyMixin(String target,String mixin) {
++        if(mixin.endsWith("SlowConfigMixin"))return Boolean.getBoolean("lss.rig.slowConfig");
+         return !mixin.endsWith("VoxyIngestRaceMixin")||System.getProperty("lss.rig.scenario","").equals("race");
+     }
+     public void onLoad(String mixinPackage) {}
+--- a/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ServiceProbe.java
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ServiceProbe.java
+@@ -27,6 +27,8 @@
+             if(session==null||now-joined<45_000_000_000L||Probe.count(session,"tiles")<3||DhVoxyBridge.backlog()!=0)return;
+             if(now-lastRead<1_000_000_000L)return;lastRead=now;
+             var profile=DhProfile.valueOf(System.getProperty("lss.rig.profile","OFFICIAL_16"));
++            if(Boolean.getBoolean("lss.rig.slowConfig") && reconnects!=0)throw new IllegalStateException("Slow protocol-16 response triggered reconnect");
++            if(profile==DhProfile.SUPPORT_15 && reconnects!=0)throw new IllegalStateException("DH Support replaced the Minecraft connection");
+             if(DhClientSession.diagnostics().profile()!=profile)throw new IllegalStateException("Wrong production profile");
+             int[] stored=Probe.readback(session);
+             if(expectation.equals("ocean")&&!OceanLightProbe.readback(session))return;
+@@ -46,6 +48,7 @@
+             }
+             if(Probe.requests.get()!=requestsAtStop)throw new IllegalStateException("Stopped adapter emitted more requests");
+             if(now-stopped<30_000_000_000L)return;
++            if(expectation.equals("no-service") && reconnects!=0)throw new IllegalStateException("No-service server triggered reconnect");
+             if(expectation.equals("conflict")&&requestsAtStop!=0)throw new IllegalStateException("LSS requested terrain with real DH installed");
+             Probe.write("dh-service.json","{\"pass\":true,\"expectation\":\""+expectation+"\",\"ordinary_connected\":true,"
+                     +"\"requests_after_stop\":0,\"requests_before_stop\":"+requestsAtStop+",\"observation_ms\":"+(now-stopped)/1_000_000L+"}");
+--- a/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/UpdatesProbe.java
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/UpdatesProbe.java
+@@ -130,7 +130,8 @@
+         } else if(phase==7 && cfg.synchronize() && cfg.updates()) {
+             var result=new com.google.gson.JsonObject();result.addProperty("pass",true);result.addProperty("source","stock-official-DH-3.3.3");
+             result.addProperty("push_only_edits",true);result.addProperty("live_disabled_retained_destination",true);result.addProperty("air_removal_with_same_section_sentinel",true);
+-            result.addProperty("same_connection_and_session",true);result.addProperty("sync_hot_negotiation",true);result.addProperty("independent_block_comparisons",ContentProbe.SAMPLES.size()*12);
++            result.addProperty("same_connection_and_session",true);result.addProperty("sync_hot_negotiation",true);result.addProperty("independent_block_comparisons",ContentProbe.blockComparisons.get());
++            result.addProperty("comparison_counter_includes_settle_retries",true);
+             result.addProperty("unchanged_rejoin",true);result.addProperty("rejoin_target_payloads",rejoinPayloads.get());result.addProperty("rejoin_target_conversions",rejoinConversions.get());
+             result.addProperty("edit_updates",firstUpdates);result.addProperty("removal_updates",secondUpdates);result.addProperty("terrain_requests_during_push_only",0);
+             Probe.resourceEvidence();Probe.write("dh-updates.json",result.toString());
+--- /dev/null
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/SlowConfigMixin.java
+@@ -0,0 +1,22 @@
++package dev.vox.lssfixture.dh.mixin;
++
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.Pseudo;
++import org.spongepowered.asm.mixin.injection.At;
++import org.spongepowered.asm.mixin.injection.Inject;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
++import java.util.concurrent.atomic.AtomicBoolean;
++
++/** Server-only qualification: a real config response after the old five-second deadline. */
++@Pseudo
++@Mixin(targets="com.seibel.distanthorizons.core.multiplayer.server.ServerPlayerState",remap=false)
++public final class SlowConfigMixin {
++    private static final AtomicBoolean delayed=new AtomicBoolean();
++    @Inject(method="sendConfigMessage",at=@At("HEAD"),remap=false)
++    private void delay(CallbackInfo ci) throws InterruptedException {
++        if(delayed.compareAndSet(false,true)) {
++            System.out.println("LSS_FIXTURE_SLOW_CONFIG_BEGIN");Thread.sleep(6500);
++            System.out.println("LSS_FIXTURE_SLOW_CONFIG_END");
++        }
++    }
++}
+--- /dev/null
++++ b/tools/tests/test_owned_process_grace.py
+@@ -0,0 +1,21 @@
++"""A slow owned save must survive the manual supervisor's explicit grace."""
++import os,signal,subprocess,sys,tempfile,time,unittest
++from pathlib import Path
++ROOT=Path(__file__).resolve().parents[2]
++class OwnedGraceTest(unittest.TestCase):
++    def test_slow_sigterm_save_exceeds_three_seconds_and_finishes(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root=Path(directory);worker=root/'worker.py'
++            worker.write_text('import signal,time\nfrom pathlib import Path\ndef stop(*a):\n time.sleep(3.4)\n Path("saved").write_text("done")\n raise SystemExit(0)\nsignal.signal(signal.SIGTERM,stop)\nPath("ready").touch()\nwhile True:time.sleep(.02)\n')
++            env=os.environ.copy();env.pop('LSS_HARNESS_OWNER_PID',None);env.pop('LSS_HARNESS_LOCK_FD',None)
++            proc=subprocess.Popen([sys.executable,str(ROOT/'scripts/lib/owned-process.py'),'--termination-grace','5','--cwd',str(root),'--',sys.executable,str(worker)],env=env)
++            try:
++                deadline=time.monotonic()+5
++                while not (root/'ready').exists() and time.monotonic()<deadline:time.sleep(.02)
++                self.assertTrue((root/'ready').exists());proc.terminate();self.assertEqual(143,proc.wait(timeout=8));self.assertEqual('done',(root/'saved').read_text())
++            finally:
++                if proc.poll() is None:proc.terminate();proc.wait(timeout=8)
++    def test_invalid_grace_does_not_launch_a_child(self):
++        result=subprocess.run([sys.executable,str(ROOT/'scripts/lib/owned-process.py'),'--termination-grace','nan','--',sys.executable,'-c','raise SystemExit(99)'])
++        self.assertEqual(2,result.returncode)
++if __name__=='__main__':unittest.main()
+--- a/xplat/src/main/java/dev/vox/lss/compat/ModCompat.java
++++ b/xplat/src/main/java/dev/vox/lss/compat/ModCompat.java
+@@ -28,6 +28,10 @@
+     public static void clientTick() {
+         if(voxyLoaded)VoxyCompat.vanillaBorderTick();
+         XaeroMapCompat.clientTick();
++    }
++
++    public static void vanillaChunkLoaded(net.minecraft.client.multiplayer.ClientLevel level,net.minecraft.world.level.chunk.LevelChunk chunk) {
++        if(voxyLoaded)VoxyCompat.vanillaChunkLoaded(level,chunk);
+     }
+ 
+     /** Per-frame forwarder (render thread) — the Xaero bridge's texture-rebuild
+--- a/xplat/src/main/java/dev/vox/lss/compat/VoxyCompat.java
++++ b/xplat/src/main/java/dev/vox/lss/compat/VoxyCompat.java
+@@ -154,6 +154,9 @@
+         }
+     }
+     public static boolean dhFailed() { return dhBridgeDead.get(); }
++    static void vanillaChunkLoaded(net.minecraft.client.multiplayer.ClientLevel level,net.minecraft.world.level.chunk.LevelChunk chunk) {
++        if(vanillaCoverage!=null)vanillaCoverage.loaded(level,chunk);
++    }
+     static void vanillaBorderTick() {if(vanillaCoverage!=null)vanillaCoverage.clientTick();}
+     static void retireVanillaBorder() {if(vanillaCoverage!=null)vanillaCoverage.clear();}
+     /** Direct Voxy-only sink; caller binds a DH failure handle and validates its epoch. */
+--- a/xplat/src/main/java/dev/vox/lss/compat/VoxyVanillaCoverage.java
++++ b/xplat/src/main/java/dev/vox/lss/compat/VoxyVanillaCoverage.java
+@@ -17,7 +17,8 @@
+ /** Fill the loaded vanilla border from vanilla itself, independently of the remote source. */
+ final class VoxyVanillaCoverage {
+     static final int LOOKUPS_PER_TICK=64,MAX_TRACKED=32_768;
+-    static final long SUBMIT_INTERVAL=125_000_000L,RETRY_INTERVAL=1_000_000_000L;
++    static final int SUBMISSIONS_PER_TICK=8,SUBMISSIONS_PER_SECOND=128;
++    static final long RETRY_INTERVAL=1_000_000_000L;
+     interface Access {
+         Object destination(ClientLevel level) throws Throwable;
+         boolean ingest(LevelChunk chunk) throws Throwable;
+@@ -29,8 +30,11 @@
+     private final Map<Long,Retry> retries=new LinkedHashMap<>();
+     private ClientLevel level;
+     private Object destination;
+-    private int centerX,centerZ,radius=-1,cursor;
+-    private long nextSubmission;
++    private int centerX,centerZ,radius=-1,sweepX,sweepZ;
++    private long creditAt;
++    private double credit=SUBMISSIONS_PER_TICK;
++    private ClientLevel arrivalLevel;
++    private final Map<Long,WeakReference<LevelChunk>> arrivals=new LinkedHashMap<>();
+     private boolean disabled;
+ 
+     VoxyVanillaCoverage(Access access) {this.access=access;}
+@@ -73,58 +77,83 @@
+         tick(mc.level,camera.x,camera.z,mc.options.getEffectiveRenderDistance(),System.nanoTime());
+     }
+ 
++    /** Load events cover the moving frontier without repeatedly restarting a scan.
++     * Whole vanilla chunks are also prepared inside the draw radius for later exit. */
++    void loaded(ClientLevel world,LevelChunk chunk) {
++        if(arrivalLevel!=world){arrivals.clear();arrivalLevel=world;}
++        arrivals.put(chunk.getPos().toLong(),new WeakReference<>(chunk));trim(arrivals);
++    }
+     /** Main client thread only; lookups never load/generate a chunk. */
+     void tick(ClientLevel current,double cameraX,double cameraZ,int distance,long now) {
+         if(current==null){clear();return;}
+         if(disabled)return;
+         try {
+             Object engine=access.destination(current);
+-            if(engine==null){clear();return;}
++            if(engine==null){accepted.clear();retries.clear();level=null;destination=null;return;}
+             if(current!=level || engine!=destination) {
+-                clear();level=current;destination=engine;
++                accepted.clear();retries.clear();radius=-1;credit=SUBMISSIONS_PER_TICK;creditAt=now;
++                if(arrivalLevel!=current)arrivals.clear();
++                level=current;destination=engine;arrivalLevel=current;
+             }
+             int r=Math.max(2,Math.min(64,distance))+3;
+             int cx=(int)Math.floor(cameraX/16),cz=(int)Math.floor(cameraZ/16);
+             if(radius!=r || cx!=centerX || cz!=centerZ) {
+-                radius=r;centerX=cx;centerZ=cz;cursor=0;
+-                accepted.keySet().removeIf(p->!inSquare(p));
+-                retries.keySet().removeIf(p->!inSquare(p));
++                boolean first=radius<0;
++                radius=r;centerX=cx;centerZ=cz;
++                // Keep the cursor in world coordinates: a relative index skips rows on recenter.
++                sweepX=first?cx-r:Math.max(cx-r,Math.min(cx+r,sweepX));
++                sweepZ=first?cz-r:Math.max(cz-r,Math.min(cz+r,sweepZ));
++                accepted.keySet().removeIf(p->!inSquare(p));retries.keySet().removeIf(p->!inSquare(p));
++                arrivals.keySet().removeIf(p->!inSquare(p));
+             }
+-            if(now<nextSubmission || access.backlog()>128)return;
+-            int side=2*radius+1,count=side*side;
++            credit=Math.min(SUBMISSIONS_PER_TICK,credit+Math.max(0,now-creditAt)*SUBMISSIONS_PER_SECOND/1e9);creditAt=now;
++            if(access.backlog()>128)return;
++            int submitted=0,lookups=0;
++            int events=Math.min(32,arrivals.size());
++            for(int i=0;i<events && credit>=1 && submitted<SUBMISSIONS_PER_TICK;i++) {
++                var iterator=arrivals.entrySet().iterator();var entry=iterator.next();
++                long position=entry.getKey();var reference=entry.getValue();iterator.remove();
++                var chunk=reference.get();if(chunk==null)continue;
++                int x=(int)position,z=(int)(position>>32);
++                if(!atBorder(x,z,cameraX,cameraZ,Math.max(2,Math.min(64,distance))))continue;
++                if(!ready(position,chunk,now)){if(!accepted.containsKey(position))arrivals.put(position,reference);continue;}
++                if(access.backlog()>128) {arrivals.put(position,reference);break;}
++                submit(position,chunk,now);submitted++;
++                if(!accepted.containsKey(position))arrivals.put(position,reference);
++            }
+             var chunks=current.getChunkSource();
+-            for(int n=0;n<LOOKUPS_PER_TICK;n++) {
+-                int index=cursor;cursor=(cursor+1)%count;
+-                int x=centerX+index/side-radius,z=centerZ+index%side-radius;
++            for(int examined=0;examined<256 && lookups<LOOKUPS_PER_TICK;examined++) {
++                int x=sweepX,z=sweepZ;
++                if(++sweepZ>centerZ+radius) {
++                    sweepZ=centerZ-radius;
++                    if(++sweepX>centerX+radius)sweepX=centerX-radius;
++                }
+                 if(!atBorder(x,z,cameraX,cameraZ,Math.max(2,Math.min(64,distance))))continue;
+                 long position=ChunkPos.asLong(x,z);
++                lookups++;
+                 LevelChunk chunk=chunks.getChunk(x,z,ChunkStatus.FULL,false);
+-                if(chunk==null){accepted.remove(position);retries.remove(position);continue;}
+-                var held=accepted.get(position);
+-                if(held!=null && held.get()==chunk)continue;
+-                var retry=retries.get(position);
+-                if(retry!=null && retry.chunk.get()==chunk && now<retry.due)continue;
+-                nextSubmission=now+SUBMIT_INTERVAL;
+-                if(access.ingest(chunk) || entirelyEmpty(chunk)) {
+-                    // The supported Voxy producer queues all-air/no-light clears but
+-                    // returns false afterward. Attempt these once per chunk/destination,
+-                    // rather than repeatedly clearing the same empty border. The world
+-                    // and ingest-enabled gates were checked before entering this path.
+-                    retries.remove(position);accepted.put(position,new WeakReference<>(chunk));
+-                    trim(accepted);
+-                } else {
+-                    // Voxy rejects an early chunk before its lighting/world is ready.
+-                    // Advance the sweep and retry it later; it must not stall other columns.
+-                    retries.put(position,new Retry(new WeakReference<>(chunk),now+RETRY_INTERVAL));
+-                    trim(retries);
++                if(chunk==null){accepted.remove(position);retries.remove(position);arrivals.remove(position);continue;}
++                if(!ready(position,chunk,now))continue;
++                if(credit<1 || submitted>=SUBMISSIONS_PER_TICK || access.backlog()>128) {
++                    arrivals.put(position,new WeakReference<>(chunk));trim(arrivals);continue;
+                 }
+-                return;
++                submit(position,chunk,now);submitted++;
+             }
+         } catch(Throwable failure) {
+             if(failure instanceof Error error && !(error instanceof LinkageError) && !(error instanceof AssertionError))throw error;
+-            clear();disabled=true;
+-            LSSLogger.warn("Voxy vanilla border retry is unavailable; ordinary LOD ingestion remains active",failure);
++            clear();disabled=failure instanceof LinkageError;
++            LSSLogger.warn("Voxy vanilla border retry deferred; ordinary LOD ingestion remains active",failure);
+         }
++    }
++    private boolean ready(long position,LevelChunk chunk,long now) {
++        var held=accepted.get(position);if(held!=null && held.get()==chunk)return false;
++        var retry=retries.get(position);return retry==null || retry.chunk.get()!=chunk || now>=retry.due;
++    }
++    private void submit(long position,LevelChunk chunk,long now) throws Throwable {
++        credit-=1;
++        if(access.ingest(chunk) || entirelyEmpty(chunk)) {
++            retries.remove(position);accepted.put(position,new WeakReference<>(chunk));trim(accepted);
++        } else {retries.put(position,new Retry(new WeakReference<>(chunk),now+RETRY_INTERVAL));trim(retries);}
+     }
+ 
+     /** Closest point on a block-space chunk box, with one chunk of inward overlap. */
+@@ -144,6 +173,6 @@
+         for(var section:sections)if(section!=null && !section.hasOnlyAir())return false;
+         return true;
+     }
+-    void clear() {level=null;destination=null;radius=-1;cursor=0;nextSubmission=0;accepted.clear();retries.clear();}
+-    int tracked() {return accepted.size()+retries.size();}
++    void clear() {level=null;arrivalLevel=null;destination=null;radius=-1;sweepX=0;sweepZ=0;creditAt=0;credit=SUBMISSIONS_PER_TICK;accepted.clear();retries.clear();arrivals.clear();}
++    int tracked() {return accepted.size()+retries.size()+arrivals.size();}
+ }
+--- a/xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java
++++ b/xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java
+@@ -27,17 +27,18 @@
+     private static final Set<Session> retiring=ConcurrentHashMap.newKeySet();
+     private static String status="DH source idle";
+     private static boolean resetFailed;
+-    private static volatile BooleanSupplier nativeAvailable=()->false;
++    private static volatile BooleanSupplier nativeAvailable=()->false,channelAvailable=()->false;
+     private static volatile boolean nativeOffered;
+     private static boolean retryJoinPending,retryUsed;
+     private static long retryJoinDeadline;
+     private static net.minecraft.client.multiplayer.ServerData retryServer;
+     private static Retry pendingRetry;
+     private static Object joinConnection;
+-    private static Probe fallbackProbe;
+-    private record Probe(Object connection,DhProfile profile) {}
++    private static final Map<Object,DhProfile> confirmedProfiles=Collections.synchronizedMap(new WeakHashMap<>());
++    private static final Map<Object,DhProfile> discoveredProfiles=Collections.synchronizedMap(new WeakHashMap<>());
++    private static boolean initialPlay=true;
+     private record Retry(Session owner, Object connection, net.minecraft.client.multiplayer.ServerData server) {}
+-    // Hints are bounded and only authorize the immediately verified reconnect.
++    // Bounded hints choose only a single fresh legacy trial, never a terrain receipt.
+     // Fresh physical joins probe version 16 again; version-15 ASCII configs
+     // cannot prove family identity after the server software changes.
+     private static final Map<String,DhProfile> protocolHints=new LinkedHashMap<>();
+@@ -46,6 +47,11 @@
+         sender=transport; unavailable=reason;
+     }
+     public static void installNativeAvailability(BooleanSupplier available) {nativeAvailable=available;}
++    public static void installChannelAvailability(BooleanSupplier available) {channelAvailable=available;}
++    private static boolean hasDhChannel() {
++        try {return channelAvailable.getAsBoolean();}
++        catch(RuntimeException | LinkageError unavailable) {return false;}
++    }
+     public static boolean fallbackEnabled() {return LSSClientConfig.CONFIG.snapshot().lod().source().equals("distant_horizons");}
+     public static boolean selected() {
+         if(!fallbackEnabled() || nativeOffered)return false;
+@@ -54,26 +60,30 @@
+     }
+     /** A native offer wins even when it disables service; DH must not bypass it. */
+     public static void nativeOffer() {
+-        nativeOffered=true;pendingRetry=null;fallbackProbe=null;
+-        var old=session;session=null;if(old!=null)old.retire();
+-        connectionState.disconnect();resetFailed=false;status="Native LSS available; DH fallback idle";
++        nativeOffered=true;pendingRetry=null;
++        var old=session;session=null;if(old!=null)old.beginRetire();
++        connectionState.disconnect();resetFailed=false;status="Native LSS offer received; DH fallback suppressed (including disabled or incompatible native service)";
+     }
+     public static void onJoin() {
+         var mc=Minecraft.getInstance();
+         Object connection=mc.getConnection()==null?null:mc.getConnection().getConnection();
+-        boolean retry=retryJoinPending && mc.getCurrentServer()==retryServer && System.nanoTime()<retryJoinDeadline;
++        // A slow automatic join consumes the same allowance; elapsed time is not
++        // permission for a second reconnect. Same-connection reconfiguration keeps
++        // confirmed protocol and disables discovery reconnects during play.
++        boolean retry=retryJoinPending && mc.getCurrentServer()==retryServer;
+         boolean same=connection!=null && connection==joinConnection;
+-        var established=same && session!=null && session.config!=null?session.profile:null;
+         disconnect();retryUsed=retry || same && retryUsed;retryJoinPending=false;
+-        joinConnection=connection;
+-        if(established!=null)fallbackProbe=new Probe(mc.getConnection(),established);
++        initialPlay=!same && !retry;joinConnection=connection;
+         retryServer=null;
+     }
+     public static boolean running() { return session!=null && session.active; }
+     public static String status() { var s=session; return s==null ? status : s.describe(); }
+     private static DhProfile probeProfile() {
+         var mc=Minecraft.getInstance();
+-        if(fallbackProbe!=null && mc!=null && mc.getConnection()==fallbackProbe.connection)return fallbackProbe.profile;
++        Object physical=mc==null || mc.getConnection()==null?null:mc.getConnection().getConnection();
++        var known=confirmedProfiles.get(physical);
++        if(known==null)known=discoveredProfiles.get(physical);
++        if(known!=null)return known;
+         if(!retryUsed)return DhProfile.OFFICIAL_16;
+         var server=mc==null?null:mc.getCurrentServer();
+         synchronized(protocolHints) {return server==null?DhProfile.OFFICIAL_16:protocolHints.getOrDefault(server.ip,DhProfile.OFFICIAL_16);}
+@@ -97,24 +107,24 @@
+                 : DhStatusSnapshot.State.NEED_VOXY;
+         return new DhStatusSnapshot(probeProfile(),state,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,0,0,0,0,
+                 LSSClientConfig.CONFIG.snapshot().lod().dh().syncOnLoad(),false,
+-                LSSClientConfig.CONFIG.snapshot().lod().dh().realTimeUpdates(),false,0,0,-1,0,0,0);
++                LSSClientConfig.CONFIG.snapshot().lod().dh().realTimeUpdates(),false,0,0,-1,0,0,0,0,0);
+     }
+     public static void disconnect() {
+         var old=session; session=null;
+-        if(old!=null) old.retire();
++        if(old!=null) old.beginRetire();
+         connectionState.disconnect(); resetFailed=false; status="DH source disconnected";
+-        nativeOffered=false;pendingRetry=null;fallbackProbe=null;
+-    }
+-    /** Stock 3.2.0-b can throw in its logger before emitting a mismatch reply.
++        nativeOffered=false;pendingRetry=null;
++    }
++    /** Stock 3.2.0-b and 3.3.3 on MC 1.21.1 throw in their logger before a mismatch reply.
+      * One fresh connection may try legacy controls after a silent version-16
+-     * handshake. Both known version-15 producers can retire their DH state on
+-     * mismatch. Silence never authorizes terrain acceptance. */
++     * handshake. Official DH can retire its DH state on mismatch; Support replies without closing it. Silence never authorizes terrain acceptance. */
+     private static boolean probeLegacy(Session owner) {
+         var mc=Minecraft.getInstance();
+         if(session!=owner || !owner.active || owner.config!=null || owner.profile!=DhProfile.OFFICIAL_16
+-                || retryUsed || fallbackProbe!=null || pendingRetry!=null || !selected()
++                || retryUsed || !initialPlay || confirmedProfiles.containsKey(owner.physicalConnection) || pendingRetry!=null || !selected()
+                 || !LSSClientConfig.CONFIG.receiveServerLods() || mc.getConnection()!=owner.connection
+                 || mc.level!=owner.level)return false;
++        if(!hasDhChannel()) {owner.fail("DH server channel is unavailable; automatic reconnect cancelled");return false;}
+         var server=mc.getCurrentServer();
+         if(server==null || server!=owner.remote)return false;
+         rememberProfile(server.ip,DhProfile.OFFICIAL_15);
+@@ -125,10 +135,14 @@
+     public static void tick() {
+         for(var old:List.copyOf(retiring))if(old.worker.isTerminated()){old.closeResources();retiring.remove(old);}
+         var mc=Minecraft.getInstance();
++        if(retryJoinPending && mc.getConnection()==null && mc.level==null
++                && !(mc.screen instanceof net.minecraft.client.gui.screens.ConnectScreen)) {
++            retryJoinPending=false;retryServer=null;
++        }
+         var retry=pendingRetry;
+         if(retry!=null) {
+             pendingRetry=null;
+-            if(!retryUsed && selected() && LSSClientConfig.CONFIG.receiveServerLods()
++            if(!retryUsed && initialPlay && hasDhChannel() && selected() && LSSClientConfig.CONFIG.receiveServerLods()
+                     && mc.getConnection()!=null && mc.getConnection().getConnection()==retry.connection
+                     && mc.getCurrentServer()==retry.server && mc.level==retry.owner.level) {
+                 retryUsed=true;retryJoinPending=true;retryServer=retry.server;
+@@ -142,14 +156,16 @@
+             }
+         }
+         if(!selected() || !LSSClientConfig.CONFIG.receiveServerLods() || mc.level==null || mc.getConnection()==null) {
+-            var old=session; session=null; if(old!=null) old.retire();
++            var old=session; session=null;
++            if(old!=null) {if(mc.getConnection()!=null)initialPlay=false;old.beginRetire();}
+             resetFailed=false;
+-            status=selected()?"DH source paused (receiving disabled or no world)":"DH fallback idle (native LSS preferred)"; return;
++            status=nativeOffered?"Native LSS offer received; DH fallback suppressed (including disabled or incompatible native service)"
++                    :selected()?"DH source paused (receiving disabled or no world)":"DH fallback idle (native LSS preferred)"; return;
+         }
+         if(sender==null) { status=unavailable; return; }
+         if(resetFailed) return; // Another explicit reset or a new session boundary may retry the failed sweep.
+-        if(!DhVoxyBridge.available()) { var old=session; session=null; if(old!=null) old.retire(); status="DH source requires an initialized Voxy bridge"; return; }
+-        if(session!=null && session.level!=mc.level) { var old=session; session=null; old.retire(); }
++        if(!DhVoxyBridge.available()) { var old=session; session=null; if(old!=null) old.beginRetire(); status="DH source requires an initialized Voxy bridge"; return; }
++        if(session!=null && session.level!=mc.level) {initialPlay=false;var old=session;session=null;old.beginRetire();}
+         if(connectionState.blocked(mc.level.dimension().location().toString())) { status="DH vanilla authority limit reached; reconnect to resume"; return; }
+         if(session==null) {
+             try { session=new Session(mc.level); }
+@@ -183,15 +199,24 @@
+         int size=buffer.readableBytes(); var s=session;
+         if(size>DhLimits.DEFAULT.frameBytes()) { buffer.skipBytes(size); if(s!=null) s.fail("Oversized DH frame"); return null; }
+         if(s==null || !s.active) { buffer.skipBytes(size); return null; }
++        boolean terrain=size>=4 && (buffer.getUnsignedShort(buffer.readerIndex()+2)==9 || buffer.getUnsignedShort(buffer.readerIndex()+2)==10);
+         synchronized(s.frames) {
++            if(s.active && terrain && s.frames.size()>=24) {
++                buffer.skipBytes(size);s.pushRecovery.set(true);s.droppedUpdateFrames.incrementAndGet();return null;
++            }
+             if(!s.active || s.frames.size()>=32) { buffer.skipBytes(size); s.fail("DH inbound queue limit reached"); return null; }
+             try {
+                 var lease=s.budget.reserve(size+256L);
+                 try {
+                     byte[] bytes=new byte[size]; buffer.readBytes(bytes);
+-                    var frame=new Inbound(s,bytes,lease,arrivalNanos); s.frames.add(frame); return frame;
++                    var frame=new Inbound(s,bytes,lease,arrivalNanos); s.frames.add(frame); s.lastInboundArrival=arrivalNanos; return frame;
+                 } catch(RuntimeException|Error e) { lease.close(); throw e; }
+-            } catch(DhCodecException e) { buffer.skipBytes(buffer.readableBytes()); s.fail(e.getMessage()); return null; }
++            } catch(DhCodecException e) {
++                buffer.skipBytes(buffer.readableBytes());
++                if(terrain) {s.pushRecovery.set(true);s.droppedUpdateFrames.incrementAndGet();}
++                else s.fail(e.getMessage());
++                return null;
++            }
+         }
+     }
+     /** Payload ownership is bounded even while it waits for the loader callback. */
+@@ -254,6 +279,7 @@
+     private static final class Session {
+         final ClientLevel level;
+         final Object connection=Minecraft.getInstance().getConnection();
++        final Object physicalConnection=Minecraft.getInstance().getConnection().getConnection();
+         final net.minecraft.client.multiplayer.ServerData remote=Minecraft.getInstance().getCurrentServer();
+         final DhProfile profile;
+         final DhProtocolCodec codec;
+@@ -275,14 +301,18 @@
+         volatile DhPosition cacheLoading;
+         long cacheWorkStarted,cacheJob;
+         Future<?> cacheTask;
+-        final AtomicLong cacheHits=new AtomicLong(),cacheWrites=new AtomicLong();
++        final AtomicLong cacheHits=new AtomicLong(),cacheWrites=new AtomicLong(),cacheDeclined=new AtomicLong();
++        volatile Set<DhPosition> protectedPositions=Set.of();
+         final AtomicLong cacheReusedColumns=new AtomicLong(),cachePreservedColumns=new AtomicLong();
+         final AtomicBoolean cacheWarned=new AtomicBoolean();
+         volatile String problem="waiting for DH config";
+         final long started=System.nanoTime();
+         long sentAt,lastRequest,maintenanceAt,nextScanAt;
++        volatile long lastInboundArrival;
++        int handshakeIdleTicks;
+         boolean sentSync=true,sentUpdates=true;
+-        final AtomicLong receivedUpdates=new AtomicLong(),enqueuedUpdates=new AtomicLong();
++        final AtomicLong receivedUpdates=new AtomicLong(),enqueuedUpdates=new AtomicLong(),droppedUpdateFrames=new AtomicLong();
++        final AtomicBoolean pushRecovery=new AtomicBoolean(),recoveryQueued=new AtomicBoolean();
+         final Map<DhPosition,Long> loadedAt=new java.util.LinkedHashMap<>();
+         Set<DhPosition> visible=Set.of();
+         ChunkPos visibleCenter;
+@@ -341,7 +371,7 @@
+             });
+         }
+         String describe() { return "DH "+profile+": "+problem+"; enqueued tiles="+tiles+", columns="+columns
+-                +", cached tiles="+cacheHits+", Voxy reused columns="+cacheReusedColumns+", preserved columns="+cachePreservedColumns+", wire="+wireBytes+" bytes, owned="+budget.used()+", requests="+pending.size()+", cache="+cacheStatus; }
++                +", cache admissions declined="+cacheDeclined+", cached tiles="+cacheHits+", Voxy reused columns="+cacheReusedColumns+", preserved columns="+cachePreservedColumns+", wire="+wireBytes+" bytes, owned="+budget.used()+", requests="+pending.size()+", cache="+cacheStatus; }
+         int effectiveRange() {
+             var cfg=config;
+             if(cfg==null) return 0;
+@@ -364,7 +394,7 @@
+                     LSSClientConfig.CONFIG.snapshot().lod().dh().syncOnLoad(),syncAvailable(),
+                     LSSClientConfig.CONFIG.snapshot().lod().dh().realTimeUpdates(),updatesAllowed(),receivedUpdates.get(),enqueuedUpdates.get(),
+                     lastSync==0?-1:Math.max(0,(System.nanoTime()-lastSync)/1_000_000L),
+-                    completeCoverage.get(),partialCoverage.get(),unknownCoverage.get());
++                    completeCoverage.get(),partialCoverage.get(),unknownCoverage.get(),cacheDeclined.get(),droppedUpdateFrames.get());
+         }
+         void openCache() {
+             if(terrainCache!=null || !cacheReady) return;
+@@ -376,12 +406,14 @@
+             terrainCache=new DhTerrainCache(ColumnCacheStore.cacheRoot(),new DhTerrainCache.Key(server.ip,serverKey,levelKey,
+                     level.dimension().location().toString(),seed.seed(),profile,shape));
+             cacheReady=false;cacheWorkStarted=System.nanoTime();cacheStatus=syncAvailable()?"validate on load":"server synchronization disabled";
++            var player=Minecraft.getInstance().player;
++            if(player!=null && player.chunkPosition()!=null)observeLoaded(System.nanoTime(),player.chunkPosition());
+             long job=++cacheJob;
+             try { cacheTask=worker.submit(() -> {
+                 Set<DhPosition> positions;
++                terrainCache.protect(protectedPositions);
+                 try { positions=terrainCache.positions(); }
+                 catch(java.io.IOException e) { cacheWarning(e); positions=Set.of(); }
+-                terrainCache.protect(positions);
+                 var found=positions;
+                 main(() -> {if(job==cacheJob){cachedPositions.addAll(found);cacheReady=true;}});
+             }); } catch(RejectedExecutionException e) { fail("DH worker queue full"); }
+@@ -390,6 +422,7 @@
+             cachedPositions.remove(position);cacheLoading=position;cacheWorkStarted=now;
+             long job=++cacheJob;
+             try { cacheTask=worker.submit(() -> {
++                terrainCache.protect(protectedPositions);
+                 try(var entry=terrainCache.read(position,budget)) {
+                     if(entry!=null) {
+                         var shape=new DhTerrainTile.WorldShape(level.getMinBuildHeight(),level.getHeight(),level.dimensionType().hasSkyLight());
+@@ -462,7 +495,7 @@
+             // Drain even on terminal failures; an inactive tick cannot expire its buffers.
+             Minecraft.getInstance().execute(this::retire);
+         }
+-        boolean retire() {
++        void beginRetire() {
+             if(!profile.support() && Minecraft.getInstance().getConnection()==connection)
+                 for(var entry:pending.entrySet()) if(entry.getValue().generation) {
+                     try { sender.accept(codec.encode(new DhMessage.Cancel(entry.getKey()))); }
+@@ -472,6 +505,10 @@
+             active=false;
+             worker.shutdownNow();
+             synchronized(frames) { for(var f:List.copyOf(frames)) if(!f.processing) f.close(); }
++            retiring.add(this);
++        }
++        boolean retire() {
++            beginRetire();
+             try {
+                 if(worker.awaitTermination(2,TimeUnit.SECONDS)) { closeResources(); retiring.remove(this); return true; }
+             } catch(InterruptedException e) { Thread.currentThread().interrupt(); }
+@@ -488,6 +525,11 @@
+             long now=System.nanoTime();
+             if(!announced && now-started>=1_000_000_000L) {
+                 // Paper must receive Fabric's minecraft:register announcement first.
++                if(!hasDhChannel()) {
++                    problem="waiting for advertised DH server channel";
++                    if(now-started>15_000_000_000L)fail("DH server channel is unavailable");
++                    return;
++                }
+                 announced=true; sentAt=now;
+                 sendPreferences();
+                 send(new DhMessage.RequestLevelInit(level.dimension().location().toString()));
+@@ -498,8 +540,16 @@
+                 visibleCenter=null;visible=Set.of();loadedAt.clear(); // Explicit setting change is a new load observation.
+             }
+             if(config==null) {
+-                if(announced && now-sentAt>5_000_000_000L && probeLegacy(this))return;
+-                if(announced && now-sentAt>15_000_000_000L) fail("No DH service replied to automatic discovery");
++                boolean idle;
++                synchronized(frames){idle=frames.isEmpty();}
++                idle &= worker.getActiveCount()==0 && worker.getQueue().isEmpty();
++                if(!idle || now-Math.max(sentAt,lastInboundArrival)<=15_000_000_000L)handshakeIdleTicks=0;
++                else if(announced && ++handshakeIdleTicks>=3) {
++                    if(wireBytes.get()==0 && probeLegacy(this))return;
++                    fail(wireBytes.get()>0?"DH replied but did not establish a session config":retryUsed
++                            ?"Advertised DH channel did not reply to the legacy trial; networking may be disabled or incompatible"
++                            :"Advertised DH channel did not establish a session config");
++                }
+                 return;
+             }
+             if(levelKey==null && now-sentAt>=15_000_000_000L) { fail("No DH world initialization reply after automatic discovery"); return; }
+@@ -517,7 +567,10 @@
+             if(now-maintenanceAt>1_000_000_000L && maintenanceQueued.compareAndSet(false,true)) {
+                 maintenanceAt=now;
+                 try { worker.execute(() -> {
+-                    try { synchronized(frames) { if(frames.isEmpty()) assembly.expire(); } }
++                    try {
++                        if(pushRecovery.get())recoverPushPressure();
++                        synchronized(frames) { if(frames.isEmpty()) assembly.expire(); }
++                    } catch(Exception error) {if(active)fail("Unable to recover DH push pressure: "+error.getClass().getSimpleName());}
+                     finally { maintenanceQueued.set(false); }
+                 }); }
+                 catch(RejectedExecutionException e) { fail("DH worker queue full"); }
+@@ -535,7 +588,9 @@
+             if(!cacheInvalidated) {
+                 try { invalidateNativeCache(); } catch(RuntimeException e) { fail(e.getMessage()); return; }
+             }
+-            if(!cacheReady) return;
++            var player=Minecraft.getInstance().player;
++            if(player!=null && player.chunkPosition()!=null)observeLoaded(now,player.chunkPosition());
++            if(!cacheReady || pushRecovery.get()) return;
+             int backlog=DhVoxyBridge.backlog();
+             if(backlog>256 || worker.getQueue().size()>4 || pending.size()>=2 || Minecraft.getInstance().player==null) return;
+             int manual=LSSClientConfig.CONFIG.lodColumnsPerSecondLimit();
+@@ -544,9 +599,8 @@
+             if(backlog<0) interval=Math.max(interval,2_000_000_000L);
+             if(now-lastRequest<interval || now<nextScanAt) return;
+             nextScanAt=now+500_000_000L;
+-            var player=Minecraft.getInstance().player.chunkPosition();
+-            observeLoaded(now,player);
+-            requestNext(now,player);
++            var center=Minecraft.getInstance().player.chunkPosition();
++            requestNext(now,center);
+         }
+         boolean syncAvailable() {
+             return config!=null && config.synchronize() && config.syncRate()>0
+@@ -580,6 +634,11 @@
+                 }
+             }
+             visible=Set.copyOf(next);visibleCenter=player;visibleRange=range;
++            // Protect interest, not every historical file. Pending validation remains
++            // protected even if the camera just left its tile.
++            next.addAll(cacheChecks.keySet());pending.values().forEach(p->next.add(p.position));
++            if(cacheLoading!=null)next.add(cacheLoading);
++            protectedPositions=Set.copyOf(next);
+         }
+         static boolean completeColumn(DhTerrainTile tile,int column) {
+             int x=column/4*16,z=column%4*16;
+@@ -587,13 +646,45 @@
+                 if(tile.coverage((x+dx)*64+z+dz)!=DhTerrainTile.Coverage.COMPLETE)return false;
+             return true;
+         }
++        void recoverPushPressure() throws Exception {
++            if(!pushRecovery.get() || !recoveryQueued.compareAndSet(false,true))return;
++            long loss=droppedUpdateFrames.get();
++            // A dropped raw fragment has no trustworthy tile identity. Purge this
++            // source bucket before any unchanged restore; defer the policy clear to
++            // its owner without turning a client-thread hitch into a session failure.
++            assembly.discardAll();updateFences.values().forEach(UpdateFence::close);updateFences.clear();
++            if(terrainCache!=null)terrainCache.invalidateAll();
++            main(()-> {
++                ++cacheJob;if(cacheTask!=null)cacheTask.cancel(false);
++                cacheLoading=null;cacheReady=true;cacheChecks.clear();cachedPositions.clear();rejoinChecks.clear();
++                pending.forEach((id,p)->{if(p.generation && !profile.support())send(new DhMessage.Cancel(id));});
++                pending.clear();policy.invalidateAll();visibleCenter=null;nextScanAt=0;
++                problem="DH terrain burst deferred; missing data will be reacquired when permitted";
++                pushRecovery.set(droppedUpdateFrames.get()!=loss);recoveryQueued.set(false);
++            });
++        }
++        void deferUpdate(DhPosition position,long stamp,String reason) throws Exception {
++            if(terrainCache!=null)terrainCache.remove(position);
++            updateFence(position).requiredTimestamp=Math.max(updateFence(position).requiredTimestamp,stamp);
++            main(()-> {
++                cachedPositions.remove(position);cacheChecks.remove(position);policy.invalidate(position);nextScanAt=0;
++                var cancelled=new ArrayList<Integer>();
++                pending.forEach((id,p)->{if(p.position.equals(position) && pending.remove(id,p)) {
++                    cancelled.add(id);if(p.generation && !profile.support())send(new DhMessage.Cancel(id));
++                }});
++                try {worker.execute(()->cancelled.forEach(assembly::cancel));}
++                catch(RejectedExecutionException full) {pushRecovery.set(true);droppedUpdateFrames.incrementAndGet();}
++                problem=reason;
++            });
++        }
+         void receiveUpdate(DhMessage.PartialUpdate update,long arrival) throws Exception {
+             if(!updatesAllowed() || levelKey==null || !levelKey.equals(update.level())) {assembly.discard(update.bufferId());return;}
+             assembly.allowPush(true);
++            DhPosition affected=null;long affectedStamp=0;
+             try(var completed=assembly.push(update,arrival)) {
+                 var shape=new DhTerrainTile.WorldShape(level.getMinBuildHeight(),level.getHeight(),level.dimensionType().hasSkyLight());
+                 try(var tile=completed.decode(new DhTerrainDecoder(DhLimits.DEFAULT),profile,shape)) {
+-                    var p=tile.position();
++                    var p=tile.position();affected=p;affectedStamp=tile.modifiedTimestamp();
+                     boolean allowed=onMain(() -> {
+                         var player=Minecraft.getInstance().player;
+                         return updatesAllowed() && player!=null && DhSessionPolicy.inBorder(profile,p,config.centerX(),config.centerZ(),config.borderRadius())
+@@ -601,6 +692,11 @@
+                                 <=Math.min(effectiveRange(),config.updateDistance());
+                     });
+                     if(!allowed)return;
++                    long stamp=onMain(()->policy.timestamp(p));
++                    if(stamp>0 && tile.modifiedTimestamp()>0 && tile.modifiedTimestamp()<stamp)return;
++                    if(DhVoxyBridge.backlog()>256 || worker.getQueue().size()>4) {
++                        droppedUpdateFrames.incrementAndGet();deferUpdate(p,tile.modifiedTimestamp(),"Voxy backlog; live update deferred for acquisition");return;
++                    }
+                     receivedUpdates.incrementAndGet();lastSync=System.nanoTime();
+                     // A partial DTO cannot replace the whole cached source snapshot.
+                     if(terrainCache!=null)terrainCache.remove(p);
+@@ -638,6 +734,11 @@
+                         else policy.invalidate(p); // Incomplete source is filled by ordinary acquisition, never a periodic timer.
+                         return null;
+                     });
++                }
++            } catch(TimeoutException busy) {
++                assembly.discard(update.bufferId());
++                if(affected!=null) {
++                    deferUpdate(affected,affectedStamp,"client thread was busy; live update acquisition scheduled");
+                 }
+             } catch(DhCodecException e) {
+                 assembly.discard(update.bufferId());
+@@ -713,12 +814,13 @@
+             try { worker.execute(() -> {
+                 try {
+                     if(!active) return; assembly.expect(id,p);
+-                    main(() -> send(new DhMessage.Request(id,levelKey,p,gen && stamp==0?null:stamp)));
++                    main(() -> {if(pending.containsKey(id))send(new DhMessage.Request(id,levelKey,p,gen && stamp==0?null:stamp));});
+                 } catch(Exception e) { fail(e.getMessage()); }
+             }); } catch(RejectedExecutionException e) { fail("DH worker queue full"); }
+         }
+         void main(Runnable task) { Minecraft.getInstance().execute(() -> { if(active && session==this && Minecraft.getInstance().level==level) task.run(); }); }
+         void receive(byte[] bytes,long arrivalNanos) throws Exception {
++            if(pushRecovery.get())recoverPushPressure();
+             wireBytes.addAndGet(bytes.length);
+             if(config==null) {
+                 DhProfile advertised;
+@@ -729,8 +831,15 @@
+                     main(() -> {
+                         var mc=Minecraft.getInstance();var server=mc.getCurrentServer();
+                         if(server!=remote || mc.getConnection()!=connection)return;
++                        if(advertised==DhProfile.SUPPORT_15) {
++                            discoveredProfiles.put(physicalConnection,advertised);
++                            initialPlay=false;session=null;beginRetire();
++                            status="Detected DH Support; negotiating on the existing Minecraft connection";
++                            return;
++                        }
+                         if(server!=null)rememberProfile(server.ip,advertised);
+-                        if(!retryUsed && server!=null && mc.getConnection()==connection)
++                        if(!retryUsed && initialPlay && !confirmedProfiles.containsKey(physicalConnection)
++                                && server!=null && mc.getConnection()==connection)
+                             pendingRetry=new Retry(this,mc.getConnection().getConnection(),server);
+                         fail("Detected "+advertised+"; "+(pendingRetry!=null?"reconnecting once to finish DH negotiation":"rejoin to finish DH negotiation"));
+                     });
+@@ -745,6 +854,7 @@
+                 var message=owned.message();
+                 if(message instanceof DhMessage.CloseReason close) { fail(close.reason()); return; }
+                 if(message instanceof DhMessage.SessionConfig cfg) {
++                    if(active && session==this)confirmedProfiles.put(physicalConnection,profile);
+                     if(remote!=null)rememberProfile(remote.ip,profile);
+                     boolean priorSync=syncAvailable();config=cfg;assembly.allowPush(updatesAllowed());
+                     if(!priorSync && syncAvailable())main(() -> {visibleCenter=null;visible=Set.of();loadedAt.clear();});
+@@ -815,7 +925,7 @@
+                         if(terrainCache!=null && active) {
+                             try {
+                                 terrainCache.remove(request.position);
+-                                if(completeTile(tile) && (fence==null || fence.supersededBy(tile.modifiedTimestamp())) && completed.cache(terrainCache,tile.modifiedTimestamp()))cacheWrites.incrementAndGet();
++
+                             } catch(java.io.IOException e) {
+                                 // If invalidation itself fails, do not deliver newer terrain
+                                 // over a still-restorable stale source. Keep ordinary MC alive.
+@@ -826,6 +936,16 @@
+                             }
+                         }
+                         boolean accepted=deliver(tile,request.position,request.generation);
++                        if(accepted && terrainCache!=null && completeTile(tile)
++                                && (fence==null || fence.supersededBy(tile.modifiedTimestamp()))) {
++                            try {
++                                if(verifyCacheDestination(tile) && active) {
++                                    terrainCache.protect(protectedPositions);
++                                    if(completed.cache(terrainCache,tile.modifiedTimestamp()))cacheWrites.incrementAndGet();
++                                    else {cacheDeclined.incrementAndGet();cacheStatus="quota admission declined; network acquisition remains available";}
++                                } else {cacheDeclined.incrementAndGet();cacheStatus="destination readback not confirmed; source admission deferred";}
++                            } catch(java.io.IOException e) {cacheDeclined.incrementAndGet();cacheWarning(e);}
++                        }
+                         if(accepted && fence!=null && completeTile(tile) && fence.supersededBy(tile.modifiedTimestamp())) {
+                             updateFences.remove(request.position);fence.close();
+                         }
+@@ -853,6 +973,31 @@
+             }
+         }
+ 
++        /** Cache admission observes actual destination data, never an enqueue or
++         * persistence acknowledgement. An unfinished/rejected handoff stays uncached
++         * and is fetched again after reconnect, preserving the known I1 boundary. */
++        boolean verifyCacheDestination(DhTerrainTile tile) throws Exception {
++            long deadline=System.nanoTime()+2_000_000_000L;
++            var shape=tile.world();
++            do {
++                if(!active || pushRecovery.get() || Thread.currentThread().isInterrupted())return false;
++                try(var mapping=budget.reserve(8L<<20);var reader=onMain(()->DhVoxyBridge.openCache(level))) {
++                    if(reader==null)return false;
++                    boolean matches=true;
++                    for(int c=0;c<16 && matches;c++) {
++                        int column=c,x=tile.position().x()*4+c/4,z=tile.position().z()*4+c%4;
++                        if(!onMain(()->policy.eligible(x,z) && !loaded(level,x,z)))continue;
++                        try(var copy=budget.reserve(((long)shape.height()+31)/32*262_144+262_144
++                                +(long)tile.materials().size()*128+1_048_576)) {
++                            matches=converter.matchesCache(tile,column,reader.readColumn(x,z,shape.minY(),shape.height())::matches);
++                        }
++                    }
++                    if(matches && onMain(()->reader.isCurrent(level)))return true;
++                } catch(ReflectiveOperationException | RuntimeException | LinkageError unavailable) {return false;}
++                Thread.sleep(25);
++            } while(System.nanoTime()<deadline);
++            return false;
++        }
+         boolean deliver(DhTerrainTile tile,DhPosition position,boolean generation) throws Exception {
+             return deliver(tile,position,generation,false);
+         }
+@@ -869,6 +1014,7 @@
+         }
+         boolean deliver(DhTerrainTile tile,DhPosition position,boolean generation,
+                         dev.vox.lss.compat.VoxyTerrainCache cached, boolean partial) throws Exception {
++            if(pushRecovery.get())return false;
+             var shape=tile.world();
+             for(int c=0;c<4096;c++) switch(tile.coverage(c)) {
+                 case COMPLETE -> completeCoverage.incrementAndGet();
+@@ -882,7 +1028,7 @@
+                 if(partial && (!completeColumn(tile,c) || fence!=null && (fence.mask&(1<<c))!=0
+                         && tile.modifiedTimestamp()>0 && tile.modifiedTimestamp()<fence.timestamp[c]))continue;
+                 // Main-thread authority check before expansion and again at handoff.
+-                boolean allowed=onMain(() -> (!partial || updatesAllowed()) && policy.eligible(x,z) && !loaded(level,x,z));
++                boolean allowed=onMain(() -> !pushRecovery.get() && (!partial || updatesAllowed()) && policy.eligible(x,z) && !loaded(level,x,z));
+                 if(!allowed) { skipped.incrementAndGet(); continue; }
+                 eligible|=1<<c;
+                 if(!partial && fence!=null && fence.protects(c,tile.modifiedTimestamp())) {
+@@ -944,6 +1090,7 @@
+             int eligibleMask=eligible,acceptedMask=accepted,attemptedMask=attempted,reusedMask=reused;
+             long stamp=fence==null?tile.modifiedTimestamp():Math.max(tile.modifiedTimestamp(),fence.latest());
+             return onMain(() -> {
++                if(pushRecovery.get())return false;
+                 if(cached!=null && !cached.isCurrent(level)) {
+                     cachedPositions.add(position);policy.cooldown(position,System.nanoTime());return false;
+                 }
