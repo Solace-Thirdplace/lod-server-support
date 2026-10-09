@@ -163,6 +163,13 @@ public final class LSSClientConfig {
     // Read-only compatibility methods keep cross-line consumers small. Capture snapshot()
     // once where correlated values are needed; there are no mutable runtime fields.
     public boolean enableRegionScan() { return snapshot().scan().regionOrder(); }
+    // Experimental DH adapter settings. Callers use these accessors only, so the
+    // backing file (downgrade-safe sidecar) can change without touching consumers.
+    public boolean dhSourceAllowed() { return "distant_horizons".equals(snapshot().lod().source()); }
+    public boolean dhSyncOnLoad() { return snapshot().lod().dh().syncOnLoad(); }
+    public boolean dhRealTimeUpdates() { return snapshot().lod().dh().realTimeUpdates(); }
+    /** Vanilla-border fill into Voxy; runs only while a native or DH terrain session is active. */
+    public boolean voxyBorderFill() { return true; }
     public boolean receiveServerLods() { return snapshot().lod().receive(); }
     public boolean useWorldSubBuckets() { return snapshot().cache().splitByWorld(); }
     public java.util.List<java.util.List<String>> cacheAddressAliases() { return snapshot().cache().addressAliases(); }
