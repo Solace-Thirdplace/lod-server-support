@@ -93,3 +93,20 @@ Fixture and documentation adaptation follow in later commits on the branch.
   sequence covers the push case, a later load check covers the rest.
 - Edits missed while out of range appear at the next load check (debounced 20 min
   per dimension and connection), on reset, or on rejoin.
+
+## Verification (2026-10-09, commit `236bbba4`)
+
+Run from an isolated clone outside the parent repository (the source-path contract
+tests walk up five directories and see the parent repo's trees from a nested clone),
+under the harness lock, with the manual DH server stopped through its console and
+resumed afterwards:
+
+- `:common:test` 1046/0, `:fabric:test` 1799/0 (4 skipped), `:paper:test` 536/0
+- Fabric server gametests 78/78; NeoForge gametest smoke 8/8
+- `:neoforge:build`, `:paper:shadowJar`, `vssJars`; `release_check.py` OK
+  (LSS + VSS × Fabric/Paper/NeoForge); `--selftest` 162; `check_artifacts.py`;
+  catalog validate + render check; `tools/tests` 30/30
+
+Not run: any live rig. The adapted dh-live (`rejoin`, `updates`, `service`) and
+dh-p4 (`benchmark`, `configuration`) cases compile but have not been executed
+against the remediated client.
