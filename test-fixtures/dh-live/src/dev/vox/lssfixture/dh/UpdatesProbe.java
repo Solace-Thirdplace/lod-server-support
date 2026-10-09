@@ -25,7 +25,7 @@ public final class UpdatesProbe {
     static String edit;
     static void sent(Object owner,DhMessage message) {
         if(phase==9 && message instanceof DhMessage.Request request && request.position().equals(ContentProbe.TILE)) {
-            if(request.timestamp()==null || request.timestamp()!=originalStamp)throw new IllegalStateException("Warm load did not request the retained source timestamp");
+            if(request.timestamp()==null || request.timestamp()!=originalStamp)throw new IllegalStateException("Warm load did not request the persisted receipt timestamp");
             targetId=request.requestId();
         }
     }
@@ -110,7 +110,7 @@ public final class UpdatesProbe {
         } else if(phase==12 && !cfg.updates() && cfg.synchronize()) {
             // The first asynchronous DH export can precede console seeding.
             // Seed again after the dimension's DH service is live, with push
-            // subscription disabled while establishing a complete cache baseline.
+            // subscription disabled while establishing a complete receipt baseline.
             dev.vox.lss.networking.client.ClientCommandActions.runReset(ignored->{},true,false);
             ContentProbe.disconnectAndEdit("updates-cold-source-prime",List.of(
                     "execute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:lime_concrete",
@@ -120,19 +120,19 @@ public final class UpdatesProbe {
             advance(-2,now);return;
         } else if(phase==11 && !cfg.updates() && cfg.synchronize()
                 && ContentProbe.knownBlocks(0,now) && quiet(session,now) && RejoinProbe.fullyStored(session,now)) {
-            var cache=(DhTerrainCache)Probe.field(session,"terrainCache");if(!cache.positions().contains(ContentProbe.TILE))return;
             firstEpoch=session;originalStamp=((DhSessionPolicy)Probe.field(session,"policy")).timestamp(ContentProbe.TILE);
             mc.level.disconnect();mc.disconnect();mc.setScreen(new TitleScreen());advance(8,now);
         } else if(phase==9 && unchangedReply && ContentProbe.knownBlocks(0,now) && quiet(session,now)) {
             if(session==firstEpoch || rejoinPayloads.get()!=0 || rejoinConversions.get()!=0)throw new IllegalStateException("Unchanged rejoin replaced existing destination terrain");
-            if(((DhSessionPolicy)Probe.field(session,"policy")).timestamp(ContentProbe.TILE)!=originalStamp)throw new IllegalStateException("Unchanged rejoin lost its retained timestamp");
+            if(((DhSessionPolicy)Probe.field(session,"policy")).timestamp(ContentProbe.TILE)!=originalStamp)throw new IllegalStateException("Unchanged rejoin lost its persisted receipt");
+            if(((AtomicLong)Probe.field(session,"restored")).get()==0)throw new IllegalStateException("Unchanged rejoin restored no receipt");
             epoch=session;connection=mc.getConnection();
             Probe.settings(Map.of("lod.dh.sync_on_load",false,"lod.dh.real_time_updates",true));advance(1,now);
         } else if(phase==1 && !cfg.synchronize() && cfg.updates() && quiet(session,now)) {
-            baselineRequests=Probe.requests.get();baselineUpdates=DhClientSession.diagnostics().enqueuedUpdates();
+            baselineRequests=Probe.requests.get();baselineUpdates=DhClientSession.diagnostics().receivedUpdates();
             edit("live-edit","lime_concrete","cyan_concrete");advance(2,now);
-        } else if(phase==2 && acknowledged() && ContentProbe.knownBlocks(1,now) && DhClientSession.diagnostics().enqueuedUpdates()>baselineUpdates && quiet(session,now)) {
-            noRequests();firstUpdates=DhClientSession.diagnostics().enqueuedUpdates()-baselineUpdates;
+        } else if(phase==2 && acknowledged() && ContentProbe.knownBlocks(1,now) && DhClientSession.diagnostics().receivedUpdates()>baselineUpdates && quiet(session,now)) {
+            noRequests();firstUpdates=DhClientSession.diagnostics().receivedUpdates()-baselineUpdates;
             Probe.settings(Map.of("lod.dh.real_time_updates",false));advance(3,now);
         } else if(phase==3 && !cfg.updates() && !cfg.synchronize() && quiet(session,now)) {
             baselineUpdates=DhClientSession.diagnostics().receivedUpdates();edit("disabled-edit","diamond_block","emerald_block");advance(4,now);
@@ -142,9 +142,9 @@ public final class UpdatesProbe {
                 throw new IllegalStateException("Disabled live updates changed the retained terrain");
             Probe.settings(Map.of("lod.dh.real_time_updates",true));advance(5,now);
         } else if(phase==5 && cfg.updates() && !cfg.synchronize() && quiet(session,now)) {
-            baselineUpdates=DhClientSession.diagnostics().enqueuedUpdates();edit("live-removal","air","purple_concrete");advance(6,now);
-        } else if(phase==6 && acknowledged() && ContentProbe.knownBlocks(2,now) && DhClientSession.diagnostics().enqueuedUpdates()>baselineUpdates && quiet(session,now)) {
-            noRequests();secondUpdates=DhClientSession.diagnostics().enqueuedUpdates()-baselineUpdates;
+            baselineUpdates=DhClientSession.diagnostics().receivedUpdates();edit("live-removal","air","purple_concrete");advance(6,now);
+        } else if(phase==6 && acknowledged() && ContentProbe.knownBlocks(2,now) && DhClientSession.diagnostics().receivedUpdates()>baselineUpdates && quiet(session,now)) {
+            noRequests();secondUpdates=DhClientSession.diagnostics().receivedUpdates()-baselineUpdates;
             Probe.settings(Map.of("lod.dh.sync_on_load",true));advance(7,now);
         } else if(phase==7 && cfg.synchronize() && cfg.updates()) {
             pauseRequestedAtRequests=Probe.requests.get();Probe.settings(Map.of("lod.receive",false));advance(13,now);

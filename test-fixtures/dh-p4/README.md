@@ -8,27 +8,25 @@ process identities. Failed attempts remain evidence.
 
 `content` expands a complete raw 64×64 source tile and compares every stored voxel
 at Voxy levels0–4, including block state, biome and light. Expected L0 never reads
-converted `SectionData` or calls the production `matchesCache`. Higher levels use
+converted `SectionData` or production conversion helpers. Higher levels use
 the pinned Voxy reducer on that independent L0; this checks stored propagation,
 not independent correctness of Voxy's reducer. The scene covers four biomes,
 vertical material/light planes, water and water plants, custom height and no-sky.
 The Support arm uses the ordinary 384-height world and its actual producer output.
 
-`cache-pressure` combines real 128-chunk-range acquisition and actual dimension
-changes with explicitly injected representative records across three owned disk
-buckets. It checks global quotas, progress, old-session memory release and warm
-return. Injected records are not thousands of real server downloads; a bounded
-progress run is not full-radius saturation.
-
 `legacy-menu` opens actual Sodium0.6.13, checks General’s Allow DH Server Terrain checkbox, dependency,
 shared Apply/save preserving config-only sync/live preferences, Auto scale and actual tab/text bounds. Inspect its screenshot
-separately. `NtfsCacheBenchmark` runs headless on Windows with current production
-cache code, a verified complete real-source DTO, actual force/rename/index/read
-operations and an owned Windows sharing lock. Synthetic positions are labeled.
+separately.
+
+The October 9 remediation replaced the persisted DH terrain (DTO) cache with
+timestamp receipts and a Voxy presence probe. The `cache-pressure` and
+`cache-rejoin-range` cases and `NtfsCacheBenchmark` existed only for that cache
+and are removed; their historical receipts stay as evidence. Receipt persistence,
+Voxy-loss detection, reset and receipt loss are qualified by `dh-live --scenario rejoin`.
 
 `benchmark` filters only the desired acquisition area; the normal LSS request,
-rate-limit, decoder and ingest pipeline still runs. It requires complete source
-and Voxy readback plus actual render geometry before measuring. The real official
+rate-limit, decoder and ingest pipeline still runs. It requires a complete-tile
+receipt per target, Voxy presence in every target column, and actual render geometry before measuring. The real official
 DH arm and server hooks are private linked validation code under the ignored run
 root, not part of this MIT fixture or shipping build. Both arms request the same
 nine registered tiles in generation mode, use independent identical server
@@ -66,12 +64,7 @@ Use `scripts/lib/harness-lock.sh` and `harness_run_script` for builds, preparati
 clients and real-server runs. The preparer accepts explicit candidate/build roots;
 its dated defaults name this local experiment, not a reusable release recipe.
 
-The full-review follow-up adds `--case cache-rejoin-range --range 128`: it records
-genuine sources after the dimension-pressure course, disconnects, requires a new
-physical connection, and requires source-cache hits plus current Voxy readback reuse.
-It remains bounded progress, not a full-radius fill or a performance measurement.
-The r6 follow-up passed this cell, including a new physical connection and16 reused
-readback columns; it still does not claim full-radius coverage. `--case legacy-menu` starts sync/live enabled and verifies that Apply preserves
+`--case legacy-menu` starts sync/live enabled and verifies that Apply preserves
 them while disabling DH fallback; it audits every page’s widgets,
 selected tab and pagination. Use `--window-width 1024 --window-height 768` for the
 342×256 Auto-scale layout, `1023`/`768` for exactly341×256, and `1280`/`1024` for

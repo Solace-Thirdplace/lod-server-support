@@ -17,7 +17,6 @@ import net.minecraft.client.Minecraft;
 final class ServiceProbe {
     private static long joined,stopped,requestsAtStop,lastRead;
     private static Object connection;
-    private static int reconnects;
     private static int firstBandwidth,maxBandwidth;
     private static final java.util.List<Long> supportRequests=new java.util.ArrayList<>();
     private static long supportFirstDispatchDelay;
@@ -38,8 +37,8 @@ final class ServiceProbe {
         if(mc.level==null||mc.player==null||mc.getConnection()==null)return;
         if(joined==0) {joined=now;connection=mc.getConnection();}
         if(mc.getConnection()!=connection) {
-            if(++reconnects>1 || Probe.requests.get()!=0)throw new IllegalStateException("Unexpected Minecraft reconnect");
-            connection=mc.getConnection();
+            // Discovery never reconnects or transfers: any replaced connection is a regression.
+            throw new IllegalStateException("Unexpected Minecraft reconnect");
         }
         String expectation=System.getProperty("lss.rig.expect","ready");
         if(trace==null && expectation.equals("ready") && DhClientSession.diagnostics().state()==dev.vox.lss.common.diagnostics.DhStatusSnapshot.State.READY
@@ -59,8 +58,6 @@ final class ServiceProbe {
             if(session==null||now-joined<45_000_000_000L||Probe.count(session,"tiles")<3||DhVoxyBridge.backlog()!=0)return;
             if(now-lastRead<1_000_000_000L)return;lastRead=now;
             var profile=DhProfile.valueOf(System.getProperty("lss.rig.profile","OFFICIAL_16"));
-            if(Boolean.getBoolean("lss.rig.slowConfig") && reconnects!=0)throw new IllegalStateException("Slow protocol-16 response triggered reconnect");
-            if(profile==DhProfile.SUPPORT_15 && reconnects!=0)throw new IllegalStateException("DH Support replaced the Minecraft connection");
             if(DhClientSession.diagnostics().profile()!=profile)throw new IllegalStateException("Wrong production profile");
             int[] stored=Probe.readback(session);
             if(expectation.equals("ocean")&&!OceanLightProbe.readback(session))return;
@@ -71,7 +68,7 @@ final class ServiceProbe {
                     throw new IllegalStateException("Support startup emitted requests at the normal rate");
             }
             Probe.write("dh-service.json","{\"pass\":true,\"profile\":\""+profile+"\",\"ordinary_connected\":true,"
-                    +"\"negotiation_reconnects\":"+reconnects+",\"requests\":"+Probe.requests.get()+",\"tiles\":"+Probe.count(session,"tiles")
+                    +"\"negotiation_reconnects\":0,\"requests\":"+Probe.requests.get()+",\"tiles\":"+Probe.count(session,"tiles")
                     +",\"support_local_startup_gate\":"+localStart+",\"support_first_request_gap_ms\":"+(supportRequests.size()<2?-1:(supportRequests.get(1)-supportRequests.getFirst())/1_000_000L)+",\"first_bandwidth_kb\":"+firstBandwidth+",\"max_bandwidth_kb\":"+maxBandwidth+",\"storage_samples\":"+stored[0]+",\"solid_samples\":"+stored[1]+",\"columns\":"+stored[2]+"}");
             if(LSSClientConfig.CONFIG.enableAdaptiveTransferRate() && LSSClientConfig.CONFIG.enableJoinSlowStart() && firstBandwidth!=50)
                 throw new IllegalStateException("Packaged client did not advertise slow start");
@@ -99,7 +96,6 @@ final class ServiceProbe {
             }
             if(Probe.requests.get()!=requestsAtStop)throw new IllegalStateException("Stopped adapter emitted more requests");
             if(now-stopped<30_000_000_000L)return;
-            if(expectation.equals("no-service") && reconnects!=0)throw new IllegalStateException("No-service server triggered reconnect");
             if(expectation.equals("conflict")&&requestsAtStop!=0)throw new IllegalStateException("LSS requested terrain with real DH installed");
             Probe.write("dh-service.json","{\"pass\":true,\"expectation\":\""+expectation+"\",\"ordinary_connected\":true,"
                     +"\"requests_after_stop\":0,\"requests_before_stop\":"+requestsAtStop+",\"observation_ms\":"+(now-stopped)/1_000_000L+"}");
@@ -114,11 +110,15 @@ final class ServiceProbe {
                 var row=JsonParser.parseString(line).getAsJsonObject();String type=row.get("t").getAsString();
                 counts.merge(type,1,Integer::sum);
                 if(type.equals("dh_status")) {
-                    var gate=dev.vox.lss.common.dh.DhAcquisition.Gate.valueOf(row.get("acquisition_wait").getAsString());
-                    long mask=row.get("acquisition_gates").getAsLong(),wait=row.get("acquisition_wait_ms").getAsLong();
-                    if(wait< -1 || mask>>>dev.vox.lss.common.dh.DhAcquisition.Gate.values().length!=0
-                            || mask!=0 && (mask&(1L<<gate.ordinal()))==0)
-                        throw new IllegalStateException("Invalid packaged acquisition observation");
+                    // Production enums must round-trip; removed acquisition-gate fields must stay gone.
+                    dev.vox.lss.common.diagnostics.DhStatusSnapshot.State.valueOf(row.get("state").getAsString());
+                    dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason.valueOf(row.get("reason").getAsString());
+                    dev.vox.lss.common.diagnostics.DhStatusSnapshot.Activity.valueOf(row.get("activity").getAsString());
+                    for(String retired:java.util.List.of("acquisition_wait","acquisition_gates","acquisition_wait_ms","cache_ready","updates_enqueued","updates_received"))
+                        if(row.has(retired))throw new IllegalStateException("Packaged trace carries retired field "+retired);
+                    if(row.get("receipts_stored").getAsLong()<0 || row.get("receipts_restored").getAsLong()<0
+                            || row.get("updates_applied").getAsLong()<0 || row.get("updates_deferred").getAsLong()<0)
+                        throw new IllegalStateException("Invalid packaged status observation");
                 }
                 if(type.equals("net") && (!row.get("source").getAsString().equals("DH") || row.get("raw_bps").getAsLong()!=-1
                         || !row.has("dcpt") || !row.has("runway") || !row.has("fps")))

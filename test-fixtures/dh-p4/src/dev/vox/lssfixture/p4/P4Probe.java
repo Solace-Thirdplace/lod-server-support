@@ -32,7 +32,7 @@ public final class P4Probe {
     public static void tick() {
         if(done)return;long now=System.nanoTime();if(started==0)started=now;
         try {
-            if(now-started>(mode().equals("cache-rejoin-range")?3_600_000_000_000L:900_000_000_000L))throw new IllegalStateException("P4 deadline, phase "+phase);
+            if(now-started>900_000_000_000L)throw new IllegalStateException("P4 deadline, phase "+phase);
             var mc=Minecraft.getInstance();
             if(System.getProperty("lss.p4.backend", "lss").equals("official")){Class.forName("privatep4.OfficialClient").getMethod("tick",long.class).invoke(null,now);return;}
             if(mode().equals("legacy-menu")){legacy(now);return;}
@@ -42,7 +42,6 @@ public final class P4Probe {
             if(mc.level==null||mc.player==null)return;
             // Additional cases use separate controllers with no shared production state.
             if(mode().equals("content")) ContentOracle.tick(now);
-            else if((mode().equals("cache-pressure") || mode().equals("cache-rejoin-range"))) CachePressure.tick(now);
             else if(mode().equals("benchmark")) BenchmarkClient.tick(now);
             else if(mode().equals("configuration")) ConfigurationProbe.tick(now);
             else throw new IllegalArgumentException(mode());

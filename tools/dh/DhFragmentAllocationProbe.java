@@ -12,11 +12,12 @@ public final class DhFragmentAllocationProbe {
     private static final com.sun.management.ThreadMXBean METER =
             (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
     private static final long THREAD = Thread.currentThread().threadId();
-    private static final String[] PHASES = {"capture", "envelope", "assembly", "flatten", "terrain", "cache"};
+    // The persisted DTO cache phase was removed with the cache (receipts are timestamps only).
+    private static final String[] PHASES = {"capture", "envelope", "assembly", "flatten", "terrain"};
     private static volatile String consumed;
     private record Row(String directory, DhProfile profile, int first, int last) {}
     private static final class Sample {
-        final long[] allocated = new long[6], cpu = new long[6];
+        final long[] allocated = new long[PHASES.length], cpu = new long[PHASES.length];
         long peak, fragmentBytes;
         int fragments;
         String normalized;
@@ -26,7 +27,8 @@ public final class DhFragmentAllocationProbe {
         }
     }
     public static void main(String[] args) throws Exception {
-        Path corpus = Path.of(args[0]), scratch = Path.of(args[1]);
+        // args[1] (scratch) is unused since the cache phase was removed; kept for CLI compatibility.
+        Path corpus = Path.of(args[0]);
         int rounds = Integer.parseInt(args[2]), samples = Integer.parseInt(args[3]);
         if (rounds < 1 || rounds > 1000 || samples < 1 || samples > 20)
             throw new IllegalArgumentException("bounded rounds/samples required");
@@ -50,14 +52,12 @@ public final class DhFragmentAllocationProbe {
             var position=DhPosition.unpack(ByteBuffer.wrap(split.bytes()).getLong());
             var reply=(DhMessage.Response)codec.decode(frames.getLast());
             var shape=new DhTerrainTile.WorldShape(-64,384,true);
-            var cache=new DhTerrainCache(scratch.resolve(row.directory),new DhTerrainCache.Key(
-                    "offline.invalid:1","offline","world","minecraft:overworld",1,row.profile,shape,"probe"));
-            for(int i=0;i<30;i++) replay(frames,codec,row.profile,position,reply,shape,cache,new Sample());
+            for(int i=0;i<30;i++) replay(frames,codec,row.profile,position,reply,shape,new Sample());
             for(int sample=0;sample<samples;sample++) {
                 var stats=new Sample();
-                for(int i=0;i<rounds;i++)replay(frames,codec,row.profile,position,reply,shape,cache,stats);
+                for(int i=0;i<rounds;i++)replay(frames,codec,row.profile,position,reply,shape,stats);
                 var phases=new LinkedHashMap<String,Object>();
-                for(int i=0;i<6;i++)phases.put(PHASES[i],Map.of("allocated_bytes_per_tile",stats.allocated[i]/(double)rounds,
+                for(int i=0;i<PHASES.length;i++)phases.put(PHASES[i],Map.of("allocated_bytes_per_tile",stats.allocated[i]/(double)rounds,
                         "cpu_ns_per_tile",stats.cpu[i]/(double)rounds));
                 results.add(Map.of("corpus",row.directory,"sample",sample,"rounds",rounds,"phases",phases,
                         "peak_owned_bytes",stats.peak,"fragment_bytes",stats.fragmentBytes,"fragments",stats.fragments,"normalized",stats.normalized));
@@ -68,7 +68,7 @@ public final class DhFragmentAllocationProbe {
                 "scope","offline Java allocation and thread CPU; no GPU, network, generation or frame-time claim")));
     }
     private static void replay(List<byte[]> frames,DhProtocolCodec codec,DhProfile profile,DhPosition position,
-            DhMessage.Response reply,DhTerrainTile.WorldShape shape,DhTerrainCache cache,Sample stats) throws Exception {
+            DhMessage.Response reply,DhTerrainTile.WorldShape shape,Sample stats) throws Exception {
         var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
         try(var assembly=new DhAssembly(DhLimits.DEFAULT,budget)) {
             assembly.expect(reply.requestId(),position);int fragments=0;long fragmentBytes=0;
@@ -92,10 +92,6 @@ public final class DhFragmentAllocationProbe {
                     stats.phase(4,bytes,cpu);
                     // Hashing is outside timing; equality is checked by the before/after driver.
                     consumed=tile.normalizedSha256();stats.normalized=consumed;
-                    bytes=METER.getThreadAllocatedBytes(THREAD);cpu=METER.getCurrentThreadCpuTime();
-                    if(!complete.cache(cache,tile.modifiedTimestamp()))throw new IllegalStateException("offline cache admission declined");
-                    try(var cached=cache.read(position,budget)) {if(cached==null)throw new IllegalStateException("offline source read missing");}
-                    stats.phase(5,bytes,cpu);
                 }
             }
             stats.peak=Math.max(stats.peak,budget.peak());stats.fragmentBytes=fragmentBytes;stats.fragments=fragments;
