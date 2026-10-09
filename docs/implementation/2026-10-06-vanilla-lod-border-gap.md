@@ -37,10 +37,12 @@ shape, renderer clipping, DH authority, remote timestamps or wire protocol.
 
 The initial pump checked at most 64 grid positions per tick and used a 125 ms
 cooldown (6.67 submissions/s at 20 TPS). That historical bound did not keep up
-with movement. The follow-up checks at most 256 geometric candidates and 64 actual
-chunk lookups per tick, has 128 submissions/s credit with at most eight submissions
-per tick, pauses above 128 ingest jobs, and retries declined nonempty chunks after
-one second. It only calls cached `getChunk(..., FULL, false)`; it never loads or
+with movement. The current pump does at most 128 actual chunk lookups per tick,
+has 256 submissions/s credit with at most 16 submissions per tick, pauses above
+2048 queued Voxy ingest jobs (above the DH adapter's 1024 gate, so vanilla border
+terrain never waits behind DH approximations), and retries declined nonempty
+chunks after one second. Since 2026-10-10 it runs only while a native or DH terrain
+session is active and `lod.voxy_border_fill` is on. It only calls cached `getChunk(..., FULL, false)`; it never loads or
 generates terrain. Weak references avoid retaining unloaded chunks. Maps are bounded
 and pruned on movement/range changes, with retirement on world/engine replacement,
 disconnect, reset or reception Off. Submitted chunks do not repeat merely because

@@ -1,6 +1,6 @@
 # DH P2/P4 manual test guide
 
-Updated: 2026-10-09.
+Updated: 2026-10-10 (remediation build; see [the remediation record](2026-10-10-dh-remediation.md)).
 
 Use **LSS dev — 1.21.1 NeoForge - Copy For Far Testing** in Windows Prism.
 The local server address is **[::1]:25585**. The server resumes the existing
@@ -28,17 +28,19 @@ Use `server-console.py 'save-all flush'` in that directory for commands and
 
 ## DH options
 
-On **General**, **Use Distant Horizons** allows DH fallback when the server has
+On **General**, **Allow DH Server Terrain** allows DH fallback when the server has
 no native LSS service. Native LSS always wins when advertised, including a disabled
-native offer. Changing this permission needs a reconnect. The protocol is automatic;
-there is no server-type selector. Official 15, official 16 and DH Support 15 are
-supported. Older official servers may reconnect once during discovery; this
-protocol-16 manual server should connect directly. Reception still gates this
-checkbox before Apply; General and Far Players share one save transaction.
+native offer. Changing it needs a reconnect on Fabric and a game restart on NeoForge
+(the DH channel is registered at startup only when allowed). The protocol is automatic;
+there is no server-type selector. Official 16 and DH Support 15 are supported. An
+official 3.2.x (protocol 15) server is not used: `/lss diag` asks for a DH update and
+nothing reconnects. Reception still gates this checkbox before Apply; General and Far
+Players share one save transaction. The DH keys are stored in
+`lss-client-experimental.yaml` beside the main client file.
 
 Sync on load and Live updates are now **config-only**, both defaulting to on and
-requiring server permission. To change them, merge a `dh` mapping into the existing
-`lod` section of `minecraft/config/lss-client-config.yaml`, then run `/lss reload`:
+requiring server permission. To change them, merge a `dh` mapping into the `lod`
+section of `minecraft/config/lss-client-experimental.yaml`, then run `/lss reload`:
 
 ```yaml
 lod:
@@ -53,12 +55,14 @@ and manual protocol selector remain removed; retired `lod.dh.refresh_seconds`
 and `lod.dh.profile` values are ignored.
 
 Sync on load checks terrain when it enters the LOD interest region or on rejoin,
-with DH's 20-minute load debounce. Standing still never causes periodic checks.
+with DH's 20-minute load debounce, kept per dimension for the whole connection
+(portal returns do not revalidate again). Standing still never causes periodic checks.
 Live updates subscribe to server-pushed edits for the negotiated radius, without
 requesting a full tile for each complete edit. `/lss diag` reports whether the
 requested services are actually available and how many updates were enqueued.
 
-The historical October 6 candidate passed 3,326 unit tests (four skips), 78 Fabric and eight NeoForge
+Historical results (pre-remediation builds; not evidence for the current build):
+the October 6 candidate passed 3,326 unit tests (four skips), 78 Fabric and eight NeoForge
 server tests, and all six LSS/VSS packaging checks. Four fresh packaged NeoForge
 cases pass: automatic official-15 detection with one reconnect and DH Support-15
 detection without reconnect, both with Voxy storage readback; native v20 priority with Use DH enabled and zero DH
@@ -70,7 +74,8 @@ independent comparisons. The later October6 case counts11,332 actual comparisons
 target payloads/conversions on unchanged rejoin, push-only edits/removal with sync
 off and no new requests, and terrain preservation while live updates are off.
 That historical menu had three DH checkboxes. The current menu has only General’s
-Use Distant Horizons checkbox; see the October 9 menu evidence for its checks.
+Allow DH Server Terrain checkbox. The official-15 reconnect and the Voxy content
+readback in these results no longer exist.
 Earlier harness failures remain retained and are not feature passes.
 
 ## Initial-join border retest
@@ -101,39 +106,28 @@ no remaining stored terrain. Flying should now acquire and generate terrain
 inside the 32-chunk bound. Use `/lss diag` if filling stops
 while moving into new terrain.
 
-## Reconnect cache check
+## Reconnect receipt check
 
-The current build retains complete validated DH terrain. Let distant
-terrain settle, disconnect, and rejoin at the same position. With server sync
-available, timestamp validation should precede cached destination restoration,
-when Sync on load is enabled. Matching Voxy columns need no conversion/ingest; different
-existing columns are preserved, including terrain visited with vanilla in the
-previous connection. Only fully default destination columns rebuild from unchanged
-source. A partial hole may therefore remain until a changed server reply or reset.
+The client keeps a small per-server receipt (tile timestamp) for each complete
+DH tile it delivered. Let distant terrain settle, disconnect, and rejoin at the
+same position. On rejoin the client checks once that Voxy still holds terrain
+for those tiles, then, when Sync on load is available, asks the server only
+whether each tile changed. Unchanged tiles download nothing and are not
+re-ingested; changed tiles download again. Without sync (server or local setting),
+restored receipts are trusted as they are, so edits made while you were away appear
+only after a push, `/lss reset` or a later session with sync. Turning reception off
+and on again clears receipts in that case and requests the terrain again.
 
-`/lss diag` reports matched/preserved columns and cache availability. Inspect
-an area you visited before disconnecting: it should retain its refined appearance.
-Partial upstream tiles and missing source tiles still download again. A live push
-invalidates its old complete source snapshot, so that affected tile can download
-again next connection; it does not cause every cached tile to replay into Voxy. Zero target
-payloads in the old private run was never a zero-download claim for the session.
-`/lss reset` explicitly discards retained data and reacquires it.
-
-Before the UI update, the post-P4 packaged Fabric/NeoForge clients passed unchanged target reuse, offline
-edits, Voxy loss and a JVM restart, each with 2400 independent block-state checks.
-Both also visit the target with vanilla, retreat, reconnect and preserve its raw
-destination digest with zero target conversion. Production full-content comparison
-remains a premise, not an independent light/biome or completion oracle. The older
-damaged-column repair is replaced by preservation. Both loaders additionally pass
-900 independent ocean light samples; NeoForge lifecycle/source toggles pass. See the
-[review disposition](2026-10-05-dh-post-p4-review-disposition.md).
+`/lss diag` reports stored and restored receipts. If Voxy's storage was wiped,
+the presence check finds no terrain and the tiles download again. `/lss reset`
+discards receipts and reacquires. A partial upstream tile is never receipted.
 
 ## Start with untouched distant terrain
 
 Before connecting, set vanilla render distance to **4 chunks**. Keep Voxy enabled,
 On **General**, enable LSS reception and set LOD distance to **32 chunks**.
-On **General**, enable **Use Distant Horizons**; its protocol is detected automatically.
-Changing it needs a reconnect. Leave the config-only sync/live preferences on
+On **General**, enable **Allow DH Server Terrain**; its protocol is detected automatically.
+Changing it needs a game restart on NeoForge. Leave the config-only sync/live preferences on
 for the first two checks; missing values use those defaults.
 
 Run these commands after connecting:
@@ -204,7 +198,7 @@ Send the failed step, expected/observed result, position, approximate delay and
 whether reconnect/reset changes it. Include a screenshot for rendering problems
 and `/lss diag` output. `/lss diagnostics export` writes a local diagnostic report;
 share it only if you choose to. The instance's `minecraft/logs/latest.log` is also
-useful. Keep Use Distant Horizons enabled on this server: it has no native LSS service.
+useful. Keep Allow DH Server Terrain enabled on this server: it has no native LSS service.
 
 To restore the removable landmark afterward:
 
