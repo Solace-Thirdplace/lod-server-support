@@ -20,7 +20,7 @@ buckets. It checks global quotas, progress, old-session memory release and warm
 return. Injected records are not thousands of real server downloads; a bounded
 progress run is not full-radius saturation.
 
-`legacy-menu` opens actual Sodium0.6.13, checks General’s Use Distant Horizons checkbox, dependency,
+`legacy-menu` opens actual Sodium0.6.13, checks General’s Allow DH Server Terrain checkbox, dependency,
 shared Apply/save preserving config-only sync/live preferences, Auto scale and actual tab/text bounds. Inspect its screenshot
 separately. `NtfsCacheBenchmark` runs headless on Windows with current production
 cache code, a verified complete real-source DTO, actual force/rename/index/read

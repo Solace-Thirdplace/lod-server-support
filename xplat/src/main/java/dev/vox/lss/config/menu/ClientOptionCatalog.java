@@ -195,8 +195,8 @@ public final class ClientOptionCatalog {
                 .enabledBy(ID_RECEIVE_SERVER_LODS)
                 .build();
 
-        // Permit DH fallback when native LSS is unavailable; reconnect applies it.
-        // Synchronization and live-update preferences remain file-only settings.
+        // Allow DH server terrain when native LSS is unavailable; reconnect applies it.
+        // Persisted in the experimental sidecar; sync/live preferences stay file-only there.
         var source = BoolSpec.builder(ID_LOD_SOURCE)
                 .name("lss.config.lod_source")
                 .tooltip("lss.config.lod_source.tooltip")

@@ -21,6 +21,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,8 +54,27 @@ class LSSConfigMenuTest {
     }
 
 
+    /** Sodium 0.8 registers the page once at game start; the Xaero native-only tooltip must
+     *  follow the CURRENT terrain source, not the context captured at registration (D-25). */
     @Test
-    void walksTheCatalogIntoThreePagesWithTheCatalogsShape() {
+    void contextDependentTooltipsIgnoreTheRegistrationContext() {
+        if (draft == null) register(new RecordingConfigBuilder());
+        var stale = new dev.vox.lss.config.menu.MenuContext(true, true, true, false);
+        var builder = new RecordingConfigBuilder();
+        new LSSConfigMenu().registerDraft(builder, draft, stale);
+        var xaero = ClientOptionCatalog.find(ClientOptionCatalog.ID_XAERO_MAP_BRIDGE).orElseThrow();
+        var live = dev.vox.lss.config.menu.MenuContext.current();
+        assertTrue(live.nativeTerrain(), "unit context reads native terrain");
+        builder.mods.get(0).pages.forEach(p -> p.groups.forEach(g -> g.options.forEach(o -> {
+            var recorded = (RecordedOption<?>) o;
+            if (recorded.id.toString().equals(xaero.id()))
+                assertEquals(xaero.tooltip().resolve(live), recorded.tooltip.getString());
+        })));
+        assertNotEquals(xaero.tooltip().resolve(stale), xaero.tooltip().resolve(live));
+    }
+
+    @Test
+    void walksTheCatalogIntoTwoPagesWithTheCatalogsShape() {
         var builder = new RecordingConfigBuilder();
         register(builder);
 

@@ -127,7 +127,7 @@ public final class Probe {
                 };
                 if(o==null || !o.getClass().getSimpleName().equals(expected))throw new IllegalStateException("Wrong actual Sodium control "+id);
                 String name=((net.minecraft.network.chat.Component)o.getClass().getMethod("getName").invoke(o)).getString();
-                if(!name.equals("Use Distant Horizons"))throw new IllegalStateException("Unexpected DH fallback name: "+name);
+                if(!name.equals("Allow DH Server Terrain"))throw new IllegalStateException("Unexpected DH fallback name: "+name);
                 menuOptions.put(id,o);
             }
             List<?> mods=(List<?>)sodiumConfig.getClass().getMethod("getModOptions").invoke(sodiumConfig);
