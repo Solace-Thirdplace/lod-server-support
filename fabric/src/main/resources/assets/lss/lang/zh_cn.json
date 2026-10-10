@@ -111,7 +111,7 @@
   "lss.settings.error_logged": "技术细节已记录到游戏日志。",
   "lss.config.far_players.legacy_tab": "玩家",
   "lss.config.lod_source": "允许 DH 服务器地形",
-  "lss.config.lod_source.tooltip": "让 Voxy 显示运行 Distant Horizons 但未安装 LSS 的服务器地形。原生 LSS 始终优先。需要 Voxy；不要与 Distant Horizons 客户端模组同时使用。重连后生效（NeoForge：需重启游戏）。DH 地形是方块精度的近似，可能覆盖已保存的 Voxy 地形。",
+  "lss.config.lod_source.tooltip": "让 Voxy 显示运行 Distant Horizons 但未安装 LSS 的服务器地形。原生 LSS 始终优先。需要 Voxy；不要与 Distant Horizons 客户端模组同时使用。重连后生效。DH 地形是方块精度的近似，可能覆盖已保存的 Voxy 地形。",
   "lss.config.xaero_map_bridge.tooltip.native_only": "将原生 LSS 地形写入 Xaero 世界地图。DH 地形仅写入 Voxy；使用 DH 时此选项无效。",
   "lss.status.dh.source": "来源：Distant Horizons，%s — %s",
   "lss.status.dh.activity": "活动：%s",

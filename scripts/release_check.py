@@ -796,7 +796,7 @@ FABRIC_DEPENDENCY_ALLOWLIST = {
 NEOFORGE_DEPENDENCY_ALLOWLIST = {"neoforge", "minecraft"}
 # Allowed only as type="optional": the external SQLite JDBC library mod (issue #304
 # line work) may be declared optional, never required.
-NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST = {"sqlite_jdbc"}
+NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST = set()  # 1.21.1-only (issue #304); SQLite is private here
 
 
 def _declared_mixin_configs(jar, loader):
@@ -2539,7 +2539,7 @@ def _selftest_fixtures():
                          "dev/vox/lss/mixin/AccessorScreenWidgets.class": b"x",
                          "dev/vox/lss/mixin/sodium/SodiumLegacyOptionsHook.class": b"x"}
         fab_meta = {"id": "lss", "mixins": ["lss.mixins.json", "lss-sodium-legacy.mixins.json"],
-                    "depends": {"minecraft": "1.21.1", "fabricloader": ">=0.18.4", "fabric-api": "*"},
+                    "depends": {"minecraft": "1.21.11", "fabricloader": ">=0.18.4", "fabric-api": "*"},
                     "suggests": {"sodium": "*", "modmenu": "*", "xaeroworldmap": "*"}}
         neo_toml = ('[[mods]]\nmodId="lss"\n\n[[mixins]]\nconfig="lss.neoforge.mixins.json"\n\n'
                     '[[mixins]]\nconfig="lss-sodium-legacy.mixins.json"\n\n'
@@ -2591,7 +2591,8 @@ def _selftest_fixtures():
         # The external SQLite library mod is allowed only as an optional dependency.
         p = _mixin_jar("dep-neo-sqlite-opt.jar", "neoforge", {"META-INF/neoforge.mods.toml": neo_toml
                        + '\n[[dependencies.lss]]\n    modId="sqlite_jdbc"\n    type="optional"\n'})
-        check(not any("sqlite_jdbc" in issue for issue in p), f"optional sqlite_jdbc rejected: {p}")
+        check(any("sqlite_jdbc" in issue for issue in p) != ("sqlite_jdbc" in NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST),
+              f"optional sqlite_jdbc handled against this line's allowlist: {p}")
         p = _mixin_jar("dep-neo-sqlite-req.jar", "neoforge", {"META-INF/neoforge.mods.toml": neo_toml
                        + '\n[[dependencies.lss]]\n    modId="sqlite_jdbc"\n    type="required"\n'})
         check(any("sqlite_jdbc" in issue for issue in p), f"required sqlite_jdbc accepted: {p}")
