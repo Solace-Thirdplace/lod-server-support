@@ -115,7 +115,8 @@ same position. On rejoin the client checks once that Voxy still holds terrain
 for those tiles, then, when Sync on load is available, asks the server only
 whether each tile changed. Unchanged tiles download nothing and are not
 re-ingested; changed tiles download again. Receipts exist only where sync is
-available: without it (DH Support, or sync off on the server or client) nothing is
+available (official and DH Support servers enable it by default): with sync off on the
+server or client nothing is
 restored, and terrain downloads again on each connection or reception resume.
 
 `/lss diag` reports stored and restored receipts. If Voxy's storage was wiped, or

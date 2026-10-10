@@ -94,7 +94,9 @@ Fixture and documentation adaptation follow in later commits on the branch.
 - An edit missed while out of range or under load appears when that tile re-enters
   view after the 20-minute load interval (per dimension and connection), on reset,
   or on rejoin. A tile that stays in view is not rechecked.
-- Without sync (DH Support, or sync off), every connection downloads the whole range.
+- Without sync (turned off on the server or client), every connection downloads the
+  whole range. DH Support enables sync by default (live rig 2026-10-10: sync available,
+  receipts stored); the official DH client instead keeps stale LODs on sync-off servers.
 - `/lss diag` shows "last reply age -1 ms" before the first reply (cosmetic).
 
 ## Verification (2026-10-09, commit `236bbba4`)
