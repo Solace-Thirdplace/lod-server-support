@@ -56,7 +56,14 @@ public record MenuContext(boolean governorOn, boolean xaeroPresent,
             xaero = false;
         }
         boolean nativeTerrain;
-        try { nativeTerrain = !dev.vox.lss.networking.client.DhClientSession.selected(); }
+        try {
+            // DH terrain is in use only on a live connection that selected it. With Allow DH
+            // Server Terrain on by default, selected() alone is also true with no connection
+            // (title screen), where the native-only tooltips would claim DH is in use.
+            var mc = net.minecraft.client.Minecraft.getInstance();
+            nativeTerrain = mc == null || mc.getConnection() == null
+                    || !dev.vox.lss.networking.client.DhClientSession.selected();
+        }
         catch (Throwable unavailable) { nativeTerrain = true; }
         return new MenuContext(governor, xaero, FarPlayerRenderer.RENDER_AVAILABLE, nativeTerrain);
     }
