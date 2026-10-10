@@ -10,6 +10,31 @@ class SettingsHandleTest {
     @TempDir Path dir;
     private SettingsStore<ServerSettings> serverStore(){return new SettingsStore<>(dir,"lss",SettingsSchema.server(false));}
     private static <T> void edit(SettingsStore<T> store,Map<String,Object> changes)throws Exception{store.saveDraft(store.read().hash(),changes);}
+
+    @Test void dhSynchronizationDefaultsOnAndRetiredRefreshIsNotAnActiveSetting() {
+        var schema=SettingsSchema.client();
+        assertTrue(schema.defaults().lod().dh().syncOnLoad());
+        assertTrue(schema.defaults().lod().dh().realTimeUpdates());
+        assertFalse(schema.descriptorsByPath().containsKey("lod.dh.refresh_seconds"));
+        assertFalse(schema.descriptorsByPath().containsKey("lod.dh.profile"));
+    }
+    @Test void dhFallbackPermissionIsReconnectScopedButSynchronizationIsLive() throws Exception {
+        var store=new SettingsStore<>(dir,"lss",SettingsSchema.client());
+        var h=new SettingsHandle<>(store); Object connection=new Object(); h.beginSession(connection);
+        assertEquals("distant_horizons",h.state().effective().lod().source(),"DH server terrain is allowed by default");
+        edit(store,Map.of("lod.source","lss","lod.dh.sync_on_load",false));
+        var commit=h.commit(h.prepareReload());
+        assertEquals("distant_horizons",h.state().effective().lod().source());
+        assertFalse(h.state().effective().lod().dh().syncOnLoad());
+        assertEquals(Set.of("lod.source"),commit.pendingReconnect());
+        h.endSession(connection); h.beginSession(new Object());
+        assertEquals("lss",h.state().effective().lod().source());
+        assertThrows(SettingsException.class,()->SettingsSchema.client().fromValues(Map.of("lod.source","automatic")));
+        assertThrows(SettingsException.class,()->SettingsSchema.client().fromValues(Map.of("lod.dh.profile","guess")));
+        edit(store,Map.of("lod.dh.sync_on_load",true)); h.commit(h.prepareReload());
+        assertTrue(h.state().effective().lod().dh().syncOnLoad());
+        h.close();
+    }
     @Test void diskDraftDoesNotChangeAnyActiveSnapshot()throws Exception {
         var store=serverStore();var h=new SettingsHandle<>(store);var before=h.state();edit(store,Map.of("generation.enabled",false));
         assertSame(before,h.state());assertTrue(h.state().effective().generation().enabled());assertFalse(store.read().normalized().generation().enabled());

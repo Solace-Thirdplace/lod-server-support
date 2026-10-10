@@ -52,8 +52,24 @@ class YamlSettingsCodecTest {
         }
         var client=SettingsSchema.client();var cc=new YamlSettingsCodec<>(client);
         assertEquals(client.defaults(),cc.parse(cc.defaults()).normalized());
-        assertEquals(29,client.descriptors().size());
+        assertEquals(33,client.descriptors().size());
         assertTrue(client.descriptors().stream().allMatch(d->d.platform()==SettingsSchema.Platform.ALL));
+    }
+    @Test void retiredDhTimerAndProtocolSelectorLoadWithoutBecomingAnActiveSettingOrWeakeningUnknownKeyChecks() {
+        var schema=SettingsSchema.client();var codec=new YamlSettingsCodec<>(schema);
+        byte[] old=bytes("config_version: 1\nlod:\n  source: distant_horizons\n  dh:\n    profile: official_16\n    refresh_seconds: 30 # old preference\n");
+        var document=codec.parse(old);
+        assertTrue(document.configured().lod().dh().syncOnLoad());assertTrue(document.configured().lod().dh().realTimeUpdates());
+        assertFalse(schema.descriptorsByPath().containsKey("lod.dh.refresh_seconds"));
+        assertFalse(schema.descriptorsByPath().containsKey("lod.dh.profile"));
+        // The next write removes retired and experimental keys from the main file (downgrade safety).
+        var edited=codec.editSplit(document,Map.of("lod.dh.real_time_updates",false));
+        assertFalse(new String(edited.main(),StandardCharsets.UTF_8).contains("refresh_seconds"));
+        assertFalse(new String(edited.main(),StandardCharsets.UTF_8).contains("profile: official_16"));
+        assertFalse(new String(edited.main(),StandardCharsets.UTF_8).contains("distant_horizons"));
+        var reparsed=codec.parse(edited.main(),edited.sidecar()).configured();
+        assertFalse(reparsed.lod().dh().realTimeUpdates());assertEquals("distant_horizons",reparsed.lod().source());
+        assertThrows(SettingsException.class,()->codec.parse(bytes("config_version: 1\nlod:\n  dh:\n    refresh_secondz: 30\n")));
     }
     @Test void mapsAndNestedAliasListsAreDeeplyImmutable(){
         var groups=new ArrayList<List<String>>();var group=new ArrayList<>(List.of("Example.COM","alt"));groups.add(group);
