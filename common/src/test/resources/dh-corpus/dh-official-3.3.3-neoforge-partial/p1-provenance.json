@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "source": "actual custom-payload bytes received from a local disposable NeoForge 1.21.1 official DH server on 2026-10-01",
+  "dh": "DistantHorizons-3.3.3-1.21.1-fabric-neoforge.jar",
+  "dh_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+  "profile": "official_16",
+  "protocol": 16,
+  "format": 2,
+  "compression": 4,
+  "world": {
+    "min_y": -64,
+    "height": 384,
+    "sky": true
+  },
+  "tile": [
+    -1,
+    1
+  ],
+  "request_id": 2,
+  "buffer_id": 13,
+  "capture_scope": "only terrain fragments and response retained; handshake and opaque server/world identities excluded",
+  "assembled_dto_sha256": "275f788a80ac5512d5f5a7d076ba6d935e5e57b1676018482f08b261b2a3dccf",
+  "normalization_schema": 1,
+  "normalization_oracle": "Normalized SHA is a Java decoder regression pin. The originally reported independent Python/stdlib reader was not retained; its counts are historical observations, not a reproducible in-repository oracle.",
+  "normalization_evidence": [
+    "Exact jar BlockStateWrapper_neoforge.serialize encodes air as AIR and appends _STATE_ to stateless blocks.",
+    "Exact jar ChunkWrapper_neoforge.getExclusiveMaxBuildHeight returns ChunkAccess.getMaxBuildHeight without increment.",
+    "Exact jar LodDataBuilder.createFromChunk starts lastY at exclusive max and encodes height=lastY-y, bottom=y+1-minY; its first AIR run ends one voxel above exclusive max."
+  ],
+  "coverage_layout": "x=0..31 UNKNOWN; x=32..63 COMPLETE; all z. No gaps filled or unknown columns normalized to air.",
+  "mappings": 72,
+  "normalized_sha256": "3af44eba340ba5a2d3b3934e1a667f70b99cd3181aa4357b063505afe02629bf",
+  "coverage": {
+    "UNKNOWN": 2048,
+    "COMPLETE": 2048
+  },
+  "spans": 24389,
+  "clipped_air_spans": 2048,
+  "generation": {
+    "0": 2048,
+    "9": 2048
+  },
+  "world_compression": {
+    "0": 2048,
+    "1": 2048
+  },
+  "block_counts": {
+    "minecraft:air": 548284,
+    "minecraft:oak_leaves": 2901,
+    "minecraft:grass_block": 85996,
+    "minecraft:dirt": 7554,
+    "minecraft:granite": 4067,
+    "minecraft:stone": 44087,
+    "minecraft:andesite": 1240,
+    "minecraft:diorite": 2515,
+    "minecraft:deepslate": 73181,
+    "minecraft:tuff": 1567,
+    "minecraft:bedrock": 5464,
+    "minecraft:deepslate_diamond_ore": 38,
+    "minecraft:copper_ore": 189,
+    "minecraft:oak_planks": 627,
+    "minecraft:oak_fence": 1439,
+    "minecraft:iron_ore": 109,
+    "minecraft:gravel": 2292,
+    "minecraft:cobweb": 135,
+    "minecraft:rail": 135,
+    "minecraft:lapis_ore": 13,
+    "minecraft:short_grass": 90,
+    "minecraft:deepslate_copper_ore": 185,
+    "minecraft:coal_ore": 158,
+    "minecraft:birch_leaves": 499,
+    "minecraft:birch_log": 448,
+    "minecraft:deepslate_redstone_ore": 68,
+    "minecraft:deepslate_iron_ore": 87,
+    "minecraft:oak_log": 1532,
+    "minecraft:glow_lichen": 16,
+    "minecraft:lava": 78,
+    "minecraft:wall_torch": 10,
+    "minecraft:deepslate_gold_ore": 29,
+    "minecraft:brown_mushroom": 9,
+    "minecraft:spawner": 14,
+    "minecraft:water": 1321,
+    "minecraft:redstone_ore": 2,
+    "minecraft:deepslate_lapis_ore": 13,
+    "minecraft:sand": 35,
+    "minecraft:chain": 5
+  },
+  "decoded_stream_bytes": 81074,
+  "files": {
+    "received-0004.bin": "423d2dbbfd4ebd282ad6f65f80fbb5adef8b594193b1cd8fb8da2b668dec52cf",
+    "received-0005.bin": "40982d424b94fd2eb7238bdea2de6fe6d2f2303844dbfb1677691a3aa84757df",
+    "received-0006.bin": "6e99539abd5eadc84deea52ae35117616169371a565ac2d3e67ad50b0f7c7249"
+  }
+}

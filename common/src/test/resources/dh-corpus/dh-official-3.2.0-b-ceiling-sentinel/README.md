@@ -1,0 +1,1 @@
+Original stock DH 3.2.0-b / official protocol 15 inbound frames from the owned custom-height P4 test. See capture.json for exact bytes/producer binding. The ceiling marker previously rejected the entire tile. No account or world identifier is included.
