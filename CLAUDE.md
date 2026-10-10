@@ -27,6 +27,10 @@ Fast selection is advisory. Never weaken required build/release gates because a 
 - Never operate the user’s Windows foreground for an unattended test. Use private-display rigs, owned process identities, exact artifacts and the shared harness lock. Preserve normal servers, personal profiles/worlds and credentials. No automatic diagnostic/evidence upload.
 - Use isolated branches/worktrees for ports. No reset of dirty trees, blind keep-ours, target-branch merge, push, deployment or publication is implied by local validation.
 
+## Distant Horizons adapter
+
+Experimental, client-side: lets Voxy clients show terrain from servers running Distant Horizons without LSS. On by default since 0.17.0 (`lod.source: distant_horizons`, user decision 2026-10-10). Native LSS always wins on any server that offers it. The DH settings live in the experimental sidecar (`lss-client-experimental.yaml`), which stores only nondefault values, so the main client file stays readable by older versions. The private live rig is `test-fixtures/dh-live` (see its PORTING.md); `dh-p4` is 1.21.1-only. This line needs the four-argument NeoForge `playBidirectional` (21.10+ registers the three-argument handler for the serverbound flow only); `NeoForgeDhTransportContractTest` pins it.
+
 ## Known Test Flakes & Environmental Failures
 
 [The canonical flake catalog](docs/operations/test-flakes.md) preserves exact signatures and actions. A different assertion is a regression, not permission to rerun away a failure. Preserve first-attempt XML/logs before any justified retry and record actual test identities/counts.

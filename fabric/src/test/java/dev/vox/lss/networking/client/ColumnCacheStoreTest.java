@@ -75,6 +75,69 @@ class ColumnCacheStoreTest {
     }
 
     @Test
+    void strictSweepRunsAfterQueuedAsyncSave() {
+        var dim = testDimension("strict_fifo");
+        var map = new Long2LongOpenHashMap();
+        map.put(7L, 700L);
+        ColumnCacheStore.saveAsync("test-strict-fifo", dim, map);
+        ColumnCacheStore.clearForServersStrict(java.util.List.of("test-strict-fifo"));
+        assertTrue(ColumnCacheStore.load("test-strict-fifo", dim).isEmpty(),
+                "a successful DH sweep must invalidate queued native receipts too");
+    }
+
+    @Test
+    void strictSweepReportsAnUndeletableBucketAndStillClearsOtherAliases() throws IOException {
+        var dim = testDimension("strict_failure");
+        var map = new Long2LongOpenHashMap();
+        map.put(7L, 700L);
+        ColumnCacheStore.save("test-strict-good-alias", dim, map);
+        Path badBucket = ColumnCacheStore.cacheRoot().resolve("test-strict-bad-alias");
+        Path obstacle = badBucket.resolve("unexpected-subdirectory");
+        Files.createDirectories(obstacle);
+        Path retained = obstacle.resolve("retained.bin");
+        Files.write(retained, new byte[]{1}); // Nonempty subdirectories are never recursively swept.
+        try {
+            var failure = assertThrows(IllegalStateException.class, () -> ColumnCacheStore.clearForServersStrict(
+                    java.util.List.of("test-strict-bad-alias", "test-strict-good-alias")));
+            assertEquals("Native cache sweep failed", failure.getMessage());
+            assertInstanceOf(java.io.UncheckedIOException.class, failure.getCause());
+            assertTrue(Files.exists(retained), "failed deletion must be observable to the DH caller");
+            assertTrue(ColumnCacheStore.load("test-strict-good-alias", dim).isEmpty(),
+                    "one failed alias must not prevent sweeping the other aliases");
+        } finally {
+            Files.deleteIfExists(retained); Files.deleteIfExists(obstacle); Files.deleteIfExists(badBucket);
+            ColumnCacheStore.clearForServer("test-strict-good-alias");
+        }
+    }
+
+    @Test
+    void strictSweepDoesNotReportSuccessWhenItsIoWaitTimesOut() throws Exception {
+        var dim = testDimension("strict_timeout");
+        var map = new Long2LongOpenHashMap();
+        map.put(7L, 700L);
+        ColumnCacheStore.save("test-strict-timeout", dim, map);
+        Path file = getCacheFile("test-strict-timeout", dim);
+        var gate = new java.util.concurrent.CountDownLatch(1);
+        long oldTimeout = ColumnCacheStore.ioWaitTimeoutMs;
+        try {
+            ColumnCacheStore.runIoAsyncForTest(() -> {
+                try { gate.await(); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            });
+            ColumnCacheStore.ioWaitTimeoutMs = 100;
+            var failure = assertThrows(IllegalStateException.class, () -> ColumnCacheStore.clearForServersStrict(
+                    java.util.List.of("test-strict-timeout")));
+            assertEquals("Native cache sweep timed out", failure.getMessage());
+            assertInstanceOf(java.util.concurrent.TimeoutException.class, failure.getCause());
+            assertTrue(Files.exists(file), "DH must stop while its sweep has not actually run");
+        } finally {
+            gate.countDown(); ColumnCacheStore.ioWaitTimeoutMs = oldTimeout;
+            ColumnCacheStore.flushPendingIo();
+        }
+        assertFalse(Files.exists(file), "the timed-out task still completes in FIFO order when IO resumes");
+    }
+
+    @Test
     void hungIoThreadCannotFreezeASynchronousClearForever() throws Exception {
         // clearForServer/clearAll run on the main client (render) thread via /lss clearcache.
         // The clear contract only needs submit-side FIFO ordering (the clear task is queued
@@ -466,6 +529,34 @@ class ColumnCacheStoreTest {
 
         assertTrue(ColumnCacheStore.load("test-clear-all-1", dimA).isEmpty());
         assertTrue(ColumnCacheStore.load("test-clear-all-2", dimB).isEmpty());
+    }
+
+    @Test
+    void clearAllPreservesForeignSourceFilesAndContinuesAfterBucketFailure() throws IOException {
+        Path source=ColumnCacheStore.cacheRoot().resolve(dev.vox.lss.common.dh.DhReceiptStore.DIRECTORY);
+        Files.createDirectories(source);Path foreign=source.resolve("keep.txt");Files.writeString(foreign,"foreign");
+        Path obstacle=ColumnCacheStore.cacheRoot().resolve("test-clear-all-obstacle").resolve("foreign-subdir");
+        Files.createDirectories(obstacle);Path retained=obstacle.resolve("keep.txt");Files.writeString(retained,"foreign");
+        var dim=testDimension("composite_clear");ColumnCacheStore.save("test-composite-good",dim,mapOf(1L,2L));
+        try {
+            ColumnCacheStore.clearAll();
+            assertEquals("foreign",Files.readString(foreign));assertEquals("foreign",Files.readString(retained));
+            assertTrue(ColumnCacheStore.load("test-composite-good",dim).isEmpty());
+        } finally {Files.delete(foreign);Files.delete(retained);Files.delete(obstacle);Files.delete(obstacle.getParent());}
+    }
+    @Test
+    void symlinkedSourceRootDoesNotPreventClearingNativeBuckets() throws IOException {
+        Path source=ColumnCacheStore.cacheRoot().resolve(dev.vox.lss.common.dh.DhReceiptStore.DIRECTORY);
+        ColumnCacheStore.clearAll();Path staging=Files.createTempDirectory(source.getParent().getParent(),"test-source-root-backup-");Path saved=staging.resolve("saved");
+        boolean existed=Files.exists(source);if(existed)Files.move(source,saved);
+        Path outside=Files.createTempDirectory("test-external-source-");
+        Path foreign=outside.resolve("keep.txt");Files.writeString(foreign,"foreign");
+        Files.createSymbolicLink(source,outside);
+        var dim=testDimension("symlink_clear");ColumnCacheStore.save("test-symlink-good",dim,mapOf(1L,2L));
+        try {
+            ColumnCacheStore.clearAll();assertEquals("foreign",Files.readString(foreign));
+            assertTrue(Files.isSymbolicLink(source));assertTrue(ColumnCacheStore.load("test-symlink-good",dim).isEmpty());
+        } finally {Files.delete(source);Files.delete(foreign);Files.delete(outside);if(existed)Files.move(saved,source);Files.delete(staging);}
     }
 
     // ---- merge-on-save (F2): the persisted cache is history, not a sliding disc ----

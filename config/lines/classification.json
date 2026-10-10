@@ -1,10 +1,10 @@
 {
   "basis": {
-    "1.21.1": "a6bfb5f6000bd66cf7906bbf263b17c5e49e9f16",
-    "1.21.10": "10499e8306c118db651ef966f35c0d0eee961dc4",
-    "1.21.11": "7cfae92c7ac828e361f572f0ad6a4805516061e0",
-    "26.1": "38e1156e7581cc98541e5d773f586704b1e6c176",
-    "26.2": "8efca7adac7351cfde6d3b0a35b0fd7e1d9bdbb6"
+    "1.21.1": "f70fe1526c08aa414183ff1f08dcfdda4953e3ff",
+    "1.21.10": "339d466d21d91207abb085256427240ade6dded9",
+    "1.21.11": "8cc3f0e01c86f9f3ea1465d58caf880c3e76b2cc",
+    "26.1": "f3f442b71eca65b05af0ff6b3a8f83643fd8a29a",
+    "26.2": "13b6138851d2acfeeb8811a74128b2d9f58cb726"
   },
   "files": {
     ".github/line.env": {
@@ -215,6 +215,57 @@
     "common/src/main/java/dev/vox/lss/common/config/YamlSettingsCodec.java": {
       "kind": "identical"
     },
+    "common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhBandwidthRamp.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhCodecException.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhConnectionState.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhInput.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhLimits.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhMaterial.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhMemoryBudget.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhMessage.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhPosition.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhProfile.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhProtocolCodec.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhProtocolDiscovery.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhReceiptStore.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhTerrainDecoder.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhTerrainTile.java": {
+      "kind": "identical"
+    },
     "common/src/main/java/dev/vox/lss/common/diagnostics/ClientDiagnosticSnapshot.java": {
       "kind": "identical"
     },
@@ -228,6 +279,9 @@
       "kind": "identical"
     },
     "common/src/main/java/dev/vox/lss/common/diagnostics/ClientStatusText.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/diagnostics/DhStatusSnapshot.java": {
       "kind": "identical"
     },
     "common/src/main/java/dev/vox/lss/common/diagnostics/DiagnosticExport.java": {
@@ -462,6 +516,9 @@
     "common/src/main/resources/META-INF/licenses/snakeyaml-engine-NOTICE.txt": {
       "kind": "identical"
     },
+    "common/src/main/resources/META-INF/licenses/xz-java-0BSD.txt": {
+      "kind": "identical"
+    },
     "common/src/main/resources/dev/vox/lss/settings/client.yaml": {
       "kind": "identical"
     },
@@ -511,6 +568,9 @@
     "common/src/test/java/dev/vox/lss/common/config/ConservativePresetWorldScopeTest.java": {
       "kind": "identical"
     },
+    "common/src/test/java/dev/vox/lss/common/config/DhDefaultDowngradeTest.java": {
+      "kind": "identical"
+    },
     "common/src/test/java/dev/vox/lss/common/config/ExternalOptionRefreshTest.java": {
       "kind": "identical"
     },
@@ -548,10 +608,46 @@
     "common/src/test/java/dev/vox/lss/common/config/SettingsReloadTest.java": {
       "kind": "identical"
     },
+    "common/src/test/java/dev/vox/lss/common/config/SettingsSidecarStoreTest.java": {
+      "kind": "identical"
+    },
     "common/src/test/java/dev/vox/lss/common/config/SettingsStoreTest.java": {
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/config/YamlSettingsCodecTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhAssemblyTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhBandwidthRampTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhCaptureIntegrityTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhConnectionStateTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhPositionHashTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhProtocolCodecTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhProtocolDiscoveryTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhReceiptStoreTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhTerrainDecoderTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhTerrainFixtures.java": {
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/diagnostics/ClientReloadTextTest.java": {
@@ -818,6 +914,153 @@
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/wire/WireSectionCursorTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/capture-sha256.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/capture.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/received-0003.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/received-0004.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-neoforge/capture.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-neoforge/received-0004.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-neoforge/received-0005.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-neoforge/received-0006.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/capture.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/received-0009.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/received-0010.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/capture.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/normalized.properties": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0001-request.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0002-split.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0003-response.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0004-request.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0005-response.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0006-request.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0007-split.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0008-response.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-ocean/database-tile.dto": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-ocean/provenance.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-partial/normalized.properties": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-partial/p1-provenance.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-partial/received-0004.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-partial/received-0005.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-partial/received-0006.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/provenance.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/received-0003.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/received-0004.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-meadow/capture.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-meadow/normalized.properties": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-meadow/p1-provenance.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-meadow/received-0001.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-meadow/received-0002.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-meadow/received-0003.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-meadow/received-0004.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-meadow/received-0005.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-meadow/received-0006.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean/normalized.properties": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean/p1-provenance.json": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean/received-0001.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean/received-0002.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean/received-0003.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean/received-0004.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean/sent-config.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean/sent-level-init.bin": {
+      "kind": "identical"
+    },
+    "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean/sent-request.bin": {
       "kind": "identical"
     },
     "common/src/testFixtures/java/dev/vox/lss/common/region/RegionSummaryServiceFixture.java": {
@@ -1589,13 +1832,13 @@
     "fabric/build.gradle": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 SQLite isolation port reviewed across all five lines by Astra: identical semantic changes, preserved MC/JDK/shipping facts and loader-specific zstd dev visibility. YAML parser, settings CLI, policy ownership and both packaging checkers preserved; runtime integration independently reviewed.",
+      "review": "2026-10-10 0.17.0 release pin: delta from the 0.16.0 reviewed blobs adds mockito-core 5.20.0 and objenesis 3.3 test dependencies on every line; the loom-remap 1.21.x lines (1.21.1/1.21.10/1.21.11) add localRuntime org.tukaani:xz:1.10 because their development runs see unshaded common classes, while 26.1/26.2 consume common's shadow jar and carry no XZ dev-runtime row (26.1 keeps the explanatory comment without the row: comment-only residue, no build effect). Release jars carry only common's relocated private XZ on every line. All other line flavours unchanged from the reviewed 0.16.0 blobs.",
       "reviewed_blobs": {
-        "1.21.1": "9ce793afd5eb8378c1f4ff31040fd9cbb72aed9d",
-        "1.21.10": "f1873b230c8fd4faed9b8881270bbee16491b312",
-        "1.21.11": "bfb26efb89f7dbe6ecb18e7943c726eb04772d33",
-        "26.1": "981545ba1cb5a8c34a8cc9951b94abdc3610a0c1",
-        "26.2": "dec9d1c12128532ee791f3b3e0aa76017b6b396c"
+        "1.21.1": "662ab4dc66c98e945a8d6ea04f47e9ec99c589df",
+        "1.21.10": "d6912f82d903c5dc93e4623cd68d8133f783e9b9",
+        "1.21.11": "4a9a2119499d7777fc38f6dd29c6cf1889797eee",
+        "26.1": "bdecf5c5f041f53bd0e63ca1c117ac73601a954c",
+        "26.2": "51376589872383f88d6cfa178c5ef8d00e19cadd"
       },
       "surface": "build-toolchain",
       "tests": [
@@ -1938,13 +2181,13 @@
     "fabric/src/main/java/dev/vox/lss/config/LSSConfigMenu.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-10 0.17.0 release pin: display-time tooltip resolution and multi-dependency enabled providers; identical delta on 1.21.1/1.21.11/26.1/26.2 apart from ResourceLocation (1.21.1) vs Identifier. Absent on 1.21.10 (Sodium 0.8 walker cut; legacy page only).",
       "reviewed_blobs": {
-        "1.21.1": "16df025c8a8f46880776f274de5f57f2835004e0",
+        "1.21.1": "80d205dd2ea992c5bb593e80b25bb35b38553be5",
         "1.21.10": null,
-        "1.21.11": "d740006f72af1f3ab1ecbbb3ecb9476c7480c41b",
-        "26.1": "d740006f72af1f3ab1ecbbb3ecb9476c7480c41b",
-        "26.2": "d740006f72af1f3ab1ecbbb3ecb9476c7480c41b"
+        "1.21.11": "d98933b740cd62fc7748f4df0bdd4925abe8eaf9",
+        "26.1": "d98933b740cd62fc7748f4df0bdd4925abe8eaf9",
+        "26.2": "d98933b740cd62fc7748f4df0bdd4925abe8eaf9"
       },
       "surface": "line-adaptation:fabric/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
       "tests": [
@@ -2039,6 +2282,25 @@
         "Full platform build and existing version-surface/behavior contracts"
       ]
     },
+    "fabric/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java": {
+      "axes": "ResourceLocation vs Identifier, Fabric payload registry playC2S/playS2C vs serverboundPlay/clientboundPlay (26.x), ChunkPos fields vs accessors. Transport logic byte-identical.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: 1.21.10 byte-identical; 1.21.11 Identifier; 26.x Identifier, serverboundPlay/clientboundPlay and ChunkPos accessors.",
+      "reviewed_blobs": {
+        "1.21.1": "0effef4b4f9bc4ca2138ad734318a240495cb4a9",
+        "1.21.10": "0effef4b4f9bc4ca2138ad734318a240495cb4a9",
+        "1.21.11": "74af856ffafeb6fa4e593fddcf2fa5c45914144e",
+        "26.1": "0dd9948d7f018b79f02b03bdfb2dd541a10ef69e",
+        "26.2": "0dd9948d7f018b79f02b03bdfb2dd541a10ef69e"
+      },
+      "surface": "dh-client-adapter:fabric/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java",
+      "tests": [
+        "DhClientSessionTest",
+        "DhColumnConverterTest",
+        "VoxyVanillaCoverageTest",
+        "Full platform build and existing version-surface/behavior contracts"
+      ]
+    },
     "fabric/src/main/java/dev/vox/lss/networking/client/FarPlayerRenderer.java": {
       "axes": "Fabric render API generations; Neo only1.21.1 live, others intentional stubs.",
       "kind": "adapted",
@@ -2123,13 +2385,13 @@
     "fabric/src/main/resources/assets/lss/lang/en_us.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Independent Astra residual review through main 9c594de4 and four explicit support refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. Client outcomes distinguish failed/pending adoption, startup has one publisher, footer action row stays accessible. Only declared Screen/GuiGraphics/locale API flavors differ; exact full blobs bound. Final followup review through c91c3a65/87b575a4: localized recovery/reload/export messages preserve owner-thread translation and export-ticket capture; dev-only 1.21.1 parser classpath does not alter packaged dependencies; operator guidance uses YAML paths. Exact residual source deltas reviewed across all five refs. 2026-09-28 Sodium cleanup reviewed across all five lines: only obsolete footer locale keys removed and the manifest hook renamed to the shared invisible draft-refresh hook. Existing line adaptations unchanged; focused menu/locale tests, both loader builds and artifact checks passed. 2026-09-28 automatic Sodium Apply reload: reviewed all five lines; locale changes are limited to Apply/reconnect and privacy wording, save-recovery calls use the shared Apply path, and native chat descriptors remain behind the existing per-line screen adapter. Modern/legacy adapter tests and exact 26.1 chat-call contract updated; focused common/config/menu/NeoForge tests, builds and all artifact checks passed.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH source/option string additions on every line; 1.21.10 and 1.21.11 drop the \"(NeoForge: restart required)\" note from lss.config.lod_source.tooltip because those lines have no NeoForge client route. Other keys unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "deb5a78639a2627310bd4f720977c38d4b339825",
-        "1.21.10": "deb5a78639a2627310bd4f720977c38d4b339825",
-        "1.21.11": "deb5a78639a2627310bd4f720977c38d4b339825",
-        "26.1": "deb5a78639a2627310bd4f720977c38d4b339825",
-        "26.2": "779ff4cbc590950d0617e6fa635d029ac2ab701c"
+        "1.21.1": "2b185c1c55be8df88794ff6afa9e43f09eadfbd4",
+        "1.21.10": "fed2725b2209af5b1de45d8918f46d4601a26966",
+        "1.21.11": "fed2725b2209af5b1de45d8918f46d4601a26966",
+        "26.1": "2b185c1c55be8df88794ff6afa9e43f09eadfbd4",
+        "26.2": "51dc1a7bac92e75b940e9648acea83f68bfc7f3a"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/en_us.json",
       "tests": [
@@ -2140,13 +2402,13 @@
     "fabric/src/main/resources/assets/lss/lang/zh_cn.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Independent Astra residual review through main 9c594de4 and four explicit support refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. Client outcomes distinguish failed/pending adoption, startup has one publisher, footer action row stays accessible. Only declared Screen/GuiGraphics/locale API flavors differ; exact full blobs bound. Final followup review through c91c3a65/87b575a4: localized recovery/reload/export messages preserve owner-thread translation and export-ticket capture; dev-only 1.21.1 parser classpath does not alter packaged dependencies; operator guidance uses YAML paths. Exact residual source deltas reviewed across all five refs. 2026-09-28 Sodium cleanup reviewed across all five lines: only obsolete footer locale keys removed and the manifest hook renamed to the shared invisible draft-refresh hook. Existing line adaptations unchanged; focused menu/locale tests, both loader builds and artifact checks passed. 2026-09-28 automatic Sodium Apply reload: reviewed all five lines; locale changes are limited to Apply/reconnect and privacy wording, save-recovery calls use the shared Apply path, and native chat descriptors remain behind the existing per-line screen adapter. Modern/legacy adapter tests and exact 26.1 chat-call contract updated; focused common/config/menu/NeoForge tests, builds and all artifact checks passed.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
       "reviewed_blobs": {
-        "1.21.1": "e95eddcc84c52f635bc3fcdd44c7486f1bbaff44",
-        "1.21.10": "e95eddcc84c52f635bc3fcdd44c7486f1bbaff44",
-        "1.21.11": "e95eddcc84c52f635bc3fcdd44c7486f1bbaff44",
-        "26.1": "e95eddcc84c52f635bc3fcdd44c7486f1bbaff44",
-        "26.2": "ff57b51df52f099d8c77e753140e31636675f482"
+        "1.21.1": "864dbd3a85c0322235105b4c8f2ca3e9facecbfd",
+        "1.21.10": "41f453ae7079fb51deee7071487404409f762716",
+        "1.21.11": "41f453ae7079fb51deee7071487404409f762716",
+        "26.1": "864dbd3a85c0322235105b4c8f2ca3e9facecbfd",
+        "26.2": "ec1602bf8aaf161d8c11395c222990faa31104a5"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/zh_cn.json",
       "tests": [
@@ -2157,13 +2419,13 @@
     "fabric/src/main/resources/assets/lss/lang/zh_tw.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Independent Astra residual review through main 9c594de4 and four explicit support refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. Client outcomes distinguish failed/pending adoption, startup has one publisher, footer action row stays accessible. Only declared Screen/GuiGraphics/locale API flavors differ; exact full blobs bound. Final followup review through c91c3a65/87b575a4: localized recovery/reload/export messages preserve owner-thread translation and export-ticket capture; dev-only 1.21.1 parser classpath does not alter packaged dependencies; operator guidance uses YAML paths. Exact residual source deltas reviewed across all five refs. 2026-09-28 Sodium cleanup reviewed across all five lines: only obsolete footer locale keys removed and the manifest hook renamed to the shared invisible draft-refresh hook. Existing line adaptations unchanged; focused menu/locale tests, both loader builds and artifact checks passed. 2026-09-28 automatic Sodium Apply reload: reviewed all five lines; locale changes are limited to Apply/reconnect and privacy wording, save-recovery calls use the shared Apply path, and native chat descriptors remain behind the existing per-line screen adapter. Modern/legacy adapter tests and exact 26.1 chat-call contract updated; focused common/config/menu/NeoForge tests, builds and all artifact checks passed.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
       "reviewed_blobs": {
-        "1.21.1": "aaf93b793a3dcc996e64e59eaaf1e7c796390a37",
-        "1.21.10": "aaf93b793a3dcc996e64e59eaaf1e7c796390a37",
-        "1.21.11": "aaf93b793a3dcc996e64e59eaaf1e7c796390a37",
-        "26.1": "aaf93b793a3dcc996e64e59eaaf1e7c796390a37",
-        "26.2": "00200abd704403b54ef093839efb500106487392"
+        "1.21.1": "10a11f3e964b6d7cb27de3c73fabe463b758834d",
+        "1.21.10": "3618c9882ed89ba3ed0a3cae77867723b21b3ad5",
+        "1.21.11": "3618c9882ed89ba3ed0a3cae77867723b21b3ad5",
+        "26.1": "10a11f3e964b6d7cb27de3c73fabe463b758834d",
+        "26.2": "c02be4f44bfc4f6ca560e7e7eafef06b6b6bf1ce"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/zh_tw.json",
       "tests": [
@@ -2243,13 +2505,13 @@
     "fabric/src/main/resources/lss.mixins.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Implementation candidate; independent final change review must cover residual logic before handoff. 2026-09-28 Sodium cleanup reviewed across all five lines: only obsolete footer locale keys removed and the manifest hook renamed to the shared invisible draft-refresh hook. Existing line adaptations unchanged; focused menu/locale tests, both loader builds and artifact checks passed.",
+      "review": "2026-10-10 0.17.0 release pin: identical one-line addition of AccessorScreenWidgets on every line; per-line compatibilityLevel flavour unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "9c04461dfa16d9469a9936614e002528f89d5c42",
-        "1.21.10": "4704d35a6b31499cf9aa4a1166a7f57dd6e3b3c2",
-        "1.21.11": "4704d35a6b31499cf9aa4a1166a7f57dd6e3b3c2",
-        "26.1": "ccb160082852e32ffd2d9617577fcfaccf5f6a32",
-        "26.2": "ccb160082852e32ffd2d9617577fcfaccf5f6a32"
+        "1.21.1": "3f15ba35b4a6891bf7fb743be84f23d025c3f909",
+        "1.21.10": "5112a5bb917aa282adce414ef251e7a14ce09a8d",
+        "1.21.11": "5112a5bb917aa282adce414ef251e7a14ce09a8d",
+        "26.1": "5276ab7b6fb879e1db217328743a5f6b4e1b220d",
+        "26.2": "5276ab7b6fb879e1db217328743a5f6b4e1b220d"
       },
       "surface": "line-adaptation:fabric/src/main/resources/lss.mixins.json",
       "tests": [
@@ -2645,6 +2907,25 @@
     "fabric/src/test/java/dev/vox/lss/compat/VoxyStorageProbeTest.java": {
       "kind": "identical"
     },
+    "fabric/src/test/java/dev/vox/lss/compat/VoxyTerrainProbeTest.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/dev/vox/lss/compat/VoxyVanillaCoverageTest.java": {
+      "axes": "Light readiness lightOnInSection vs lightOnInColumn; 1.21.10+ drop the isLightUpdateQueueEmpty stubs (absent there and never read by production on any line); ChunkPos asLong vs pack on 26.x.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: stub flavour only; every assertion retained.",
+      "reviewed_blobs": {
+        "1.21.1": "1e8cd5bca65dddb0af575efd1ba5c18a75ca86fb",
+        "1.21.10": "26d05d7f7a378aaaf0aa477db376496eb057f0a8",
+        "1.21.11": "f756c8a109e2a0a3de289e1800ac576f7963b4f2",
+        "26.1": "0486176e2372c48da53437c295893dbad5099b5e",
+        "26.2": "0486176e2372c48da53437c295893dbad5099b5e"
+      },
+      "surface": "dh-client-adapter:fabric/src/test/java/dev/vox/lss/compat/VoxyVanillaCoverageTest.java",
+      "tests": [
+        "VoxyVanillaCoverageTest"
+      ]
+    },
     "fabric/src/test/java/dev/vox/lss/compat/XaeroAcquisitionLifecycleTest.java": {
       "axes": "World height and MC symbol flavors; queue/lifetime/lock behavior shared.",
       "kind": "adapted",
@@ -2741,13 +3022,13 @@
     "fabric/src/test/java/dev/vox/lss/config/LSSConfigMenuTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger. 2026-09-28 automatic Sodium Apply reload: reviewed all five lines; locale changes are limited to Apply/reconnect and privacy wording, save-recovery calls use the shared Apply path, and native chat descriptors remain behind the existing per-line screen adapter. Modern/legacy adapter tests and exact 26.1 chat-call contract updated; focused common/config/menu/NeoForge tests, builds and all artifact checks passed.",
+      "review": "2026-10-10 0.17.0 release pin: identical delta (multi-dependency enabled-provider pin, display-time tooltip pin) apart from ResourceLocation (1.21.1) vs Identifier; absent on 1.21.10 with the walker.",
       "reviewed_blobs": {
-        "1.21.1": "7e95c6fb322b3f9dc12822a0ad0af90df12faae1",
+        "1.21.1": "98aa8c075124b7f7a5896c328beb675e7c4f7742",
         "1.21.10": null,
-        "1.21.11": "4c0ae5e675a913b38ac2f1ad9686e21940e487a0",
-        "26.1": "4c0ae5e675a913b38ac2f1ad9686e21940e487a0",
-        "26.2": "4c0ae5e675a913b38ac2f1ad9686e21940e487a0"
+        "1.21.11": "7d9cb1acd57e0fe4a0e37e7f845ce91ba4169d52",
+        "26.1": "7d9cb1acd57e0fe4a0e37e7f845ce91ba4169d52",
+        "26.2": "7d9cb1acd57e0fe4a0e37e7f845ce91ba4169d52"
       },
       "surface": "line-adaptation:fabric/src/test/java/dev/vox/lss/config/LSSConfigMenuTest.java",
       "tests": [
@@ -2764,7 +3045,21 @@
       "kind": "identical"
     },
     "fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java": {
-      "kind": "identical"
+      "axes": "Sodium page generation: 1.21.10 pins display-time tooltip context on the legacy LegacySodiumPage twins (its Sodium 0.8 LSSConfigMenu walker is cut); the other lines pin the LSSConfigMenu twins. All other assertions byte-identical.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.10 differs from the shared blob only in the display-time twin pin (commit 27d61c1e), which targets the legacy page twins because LSSConfigMenu does not exist on that line; both legacy twins contain the pinned buildWith(h, cfg, MenuContext.current(), call. Other four lines byte-identical. 2026-10-10 default flip: the fallback-permission test now asserts the default is on, turns it off and defers \"lss\" to the next connection; identical edit on every line, the 1.21.10 twin-pin residual unchanged.",
+      "reviewed_blobs": {
+        "1.21.1": "7da3a4a40e786c329b52aa5102a5ecdbafe58429",
+        "1.21.10": "25754232e995703d0c6e9b52f224e61ed6d1f680",
+        "1.21.11": "7da3a4a40e786c329b52aa5102a5ecdbafe58429",
+        "26.1": "7da3a4a40e786c329b52aa5102a5ecdbafe58429",
+        "26.2": "7da3a4a40e786c329b52aa5102a5ecdbafe58429"
+      },
+      "surface": "sodium-generation:fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java",
+      "tests": [
+        "ClientOptionCatalogTest",
+        "Full platform build and existing version-surface/behavior contracts"
+      ]
     },
     "fabric/src/test/java/dev/vox/lss/config/menu/ClientSettingsEditSessionTest.java": {
       "kind": "identical"
@@ -2920,13 +3215,13 @@
     "fabric/src/test/java/dev/vox/lss/networking/client/ColumnCacheStoreTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Implementation candidate; independent final change review must cover residual logic before handoff.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH receipt-sweep test additions on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "3ab3a31d7022c5d811ab9c9b5fab2e6eb0e6a378",
-        "1.21.10": "3ab3a31d7022c5d811ab9c9b5fab2e6eb0e6a378",
-        "1.21.11": "697c21dd04a32e8c4cea2a39caebb8503a7b51fd",
-        "26.1": "697c21dd04a32e8c4cea2a39caebb8503a7b51fd",
-        "26.2": "697c21dd04a32e8c4cea2a39caebb8503a7b51fd"
+        "1.21.1": "d4e423f118f75604cda8c6448b0bfd2dd871203f",
+        "1.21.10": "d4e423f118f75604cda8c6448b0bfd2dd871203f",
+        "1.21.11": "2daca4ff882483b1bad7cbc72e1f8f2fe674395b",
+        "26.1": "2daca4ff882483b1bad7cbc72e1f8f2fe674395b",
+        "26.2": "2daca4ff882483b1bad7cbc72e1f8f2fe674395b"
       },
       "surface": "line-adaptation:fabric/src/test/java/dev/vox/lss/networking/client/ColumnCacheStoreTest.java",
       "tests": [
@@ -2953,6 +3248,38 @@
       "surface": "line-adaptation:fabric/src/test/java/dev/vox/lss/networking/client/ColumnStateMapTest.java",
       "tests": [
         "Full platform build and existing version-surface/behavior contracts"
+      ]
+    },
+    "fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java": {
+      "axes": "Mock stubs follow getMinBuildHeight() (1.21.1) vs getMinY(); assertions byte-identical.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: two stub method names only. 2026-10-10 hosted-CI fold: cleanup drains RECEIPT_IO before @TempDir deletion (identical three-line change on every line). 2026-10-10 default flip: setup no longer writes lod.source (the default selects DH) and a new test pins fresh-client selection, native precedence and reception-off idling; identical edit on every line.",
+      "reviewed_blobs": {
+        "1.21.1": "6ceb4f047e5c0f9cfa31c73b09a2d596df51c0fa",
+        "1.21.10": "e7592748ff5560f57702b9a71684c6d2bc979964",
+        "1.21.11": "e7592748ff5560f57702b9a71684c6d2bc979964",
+        "26.1": "e7592748ff5560f57702b9a71684c6d2bc979964",
+        "26.2": "e7592748ff5560f57702b9a71684c6d2bc979964"
+      },
+      "surface": "dh-client-adapter:fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java",
+      "tests": [
+        "DhClientSessionTest"
+      ]
+    },
+    "fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java": {
+      "axes": "Light-block API, BuiltInRegistries get vs getValue, ResourceLocation vs Identifier, ResourceKey location()/identifier(). Assertions and expected values byte-identical.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: API flavour substitutions only.",
+      "reviewed_blobs": {
+        "1.21.1": "ac685c451caf7c17732977a056ad20dca1e26324",
+        "1.21.10": "55f4d1dfa28d2df4bc86093992b92ded2598d5b5",
+        "1.21.11": "ebcab3e67e6e685400565c81569650790f865439",
+        "26.1": "48ac9e469120797f01dd0f4e605f61e6dcbfb2ae",
+        "26.2": "48ac9e469120797f01dd0f4e605f61e6dcbfb2ae"
+      },
+      "surface": "dh-client-adapter:fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java",
+      "tests": [
+        "DhColumnConverterTest"
       ]
     },
     "fabric/src/test/java/dev/vox/lss/networking/client/FarPlayerClientSupportTest.java": {
@@ -4567,13 +4894,13 @@
     "gradle.properties": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-29 0.16.0 release preparation: reviewed diff changes only mod_version from 0.15.1 to 0.16.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged.",
+      "review": "2026-10-10 0.17.0 release pin: reviewed diff changes only mod_version from 0.16.0 to 0.17.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "53755c612d8a46d0e75a10d102bdcf853cd54597",
-        "1.21.10": "b1211e10f0e47695f2ad55a30cdf81ca8c44c039",
-        "1.21.11": "3191b27ed5fa12cd027591dcd24c585ecfc5f958",
-        "26.1": "23658e8afd53632dc4317ec2d5ff8fd4610a1c8d",
-        "26.2": "d6fd4282aebfc63683ac313f40cf3ec8e39ae012"
+        "1.21.1": "5feefc00cb8c831e5ddaa86f0940d06642e6b10f",
+        "1.21.10": "7adda3cc9a9f5d9fecc607f07bd4363f6cc29228",
+        "1.21.11": "c3813b2e29efda5cea88fe6f73cdbebe3097068d",
+        "26.1": "9e5e1171850c4507d1d2b436add8ba06ea38d052",
+        "26.2": "836b158eb9758fe7d6fda0c0ff2de87c035969f2"
       },
       "surface": "build-toolchain",
       "tests": [
@@ -4620,9 +4947,9 @@
     "neoforge/build.gradle": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 SQLite isolation port reviewed across all five lines by Astra: identical semantic changes, preserved MC/JDK/shipping facts and loader-specific zstd dev visibility. YAML parser, settings CLI, policy ownership and both packaging checkers preserved; runtime integration independently reviewed.",
+      "review": "2026-10-10 0.17.0 release pin: only 1.21.1 changes, adding additionalRuntimeClasspath org.tukaani:xz:1.10 beside the existing snakeyaml-engine row (FML 4.x development runs load common's unshaded source set; precedent d8eadf1f). The other lines' development runs consume common's shadow jar and stay unchanged. Shipping jars carry only the relocated private XZ.",
       "reviewed_blobs": {
-        "1.21.1": "c20b480076bcade2bf8b448fa3ae380f1fde5ce6",
+        "1.21.1": "a890269ca0cc1956182e16136dcabcd475f11e18",
         "1.21.10": "c31b518b0e8dc71bf4fc2f73dc80ae492142833b",
         "1.21.11": "34acb5fafc8e4f92f0a76888541a18a489b0c67c",
         "26.1": "342c58f6b738419cc3c0681a0949223101ddb4d4",
@@ -4698,13 +5025,13 @@
     "neoforge/src/main/java/dev/vox/lss/config/LSSConfigMenu.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-10 0.17.0 release pin: same-FQN NeoForge twin of the Fabric walker; identical delta on 1.21.1/1.21.11/26.1/26.2 apart from ResourceLocation (1.21.1) vs Identifier. Absent on 1.21.10 (legacy page only).",
       "reviewed_blobs": {
-        "1.21.1": "0ce91e3f60c51903959710ffc47232b19f5f890e",
+        "1.21.1": "cd7c055b9eed8c799f72677f125a7b45ca7bf459",
         "1.21.10": null,
-        "1.21.11": "83609ce88a42cca13e59b08216744c202c13ac0b",
-        "26.1": "83609ce88a42cca13e59b08216744c202c13ac0b",
-        "26.2": "83609ce88a42cca13e59b08216744c202c13ac0b"
+        "1.21.11": "0b0e5d309c56d3c98e20c792f5727087058b24d5",
+        "26.1": "0b0e5d309c56d3c98e20c792f5727087058b24d5",
+        "26.2": "0b0e5d309c56d3c98e20c792f5727087058b24d5"
       },
       "surface": "line-adaptation:neoforge/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
       "tests": [
@@ -4764,13 +5091,13 @@
     "neoforge/src/main/java/dev/vox/lss/neoforge/LSSNeoClientBootstrap.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-10 0.17.0 release pin: identical delta on every line: DhClientTransport init and mod-bus payload registration, plus the client chunk-load hook for vanilla coverage. Residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "9f092967907f6d6116b7dca175394a8912d273b1",
-        "1.21.10": "fc5f2e8b05f23bff722657bcfaef2214749fe85b",
-        "1.21.11": "fc5f2e8b05f23bff722657bcfaef2214749fe85b",
-        "26.1": "fc5f2e8b05f23bff722657bcfaef2214749fe85b",
-        "26.2": "fc5f2e8b05f23bff722657bcfaef2214749fe85b"
+        "1.21.1": "8dab79381507525eccb19f37bcbf836ddb2c0700",
+        "1.21.10": "7944595b52fef82deb3961f3822361c09ba820ca",
+        "1.21.11": "7944595b52fef82deb3961f3822361c09ba820ca",
+        "26.1": "7944595b52fef82deb3961f3822361c09ba820ca",
+        "26.2": "7944595b52fef82deb3961f3822361c09ba820ca"
       },
       "surface": "line-adaptation:neoforge/src/main/java/dev/vox/lss/neoforge/LSSNeoClientBootstrap.java",
       "tests": [
@@ -4780,13 +5107,13 @@
     "neoforge/src/main/java/dev/vox/lss/neoforge/LSSNeoMod.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Implementation candidate; independent final change review must cover residual logic before handoff.",
+      "review": "2026-10-10 0.17.0 release pin: identical delta on every line: the reflective client bootstrap receives the mod event bus.",
       "reviewed_blobs": {
-        "1.21.1": "5f472076ab088bdfe86338c686f6b2909ee4ed45",
-        "1.21.10": "4e738ec74a332d42b67aa575af61c98cc899ba5a",
-        "1.21.11": "4e738ec74a332d42b67aa575af61c98cc899ba5a",
-        "26.1": "4e738ec74a332d42b67aa575af61c98cc899ba5a",
-        "26.2": "4e738ec74a332d42b67aa575af61c98cc899ba5a"
+        "1.21.1": "7e2f7ffb1061f3893131821f4ab7817ed7a4e00b",
+        "1.21.10": "b1ea98d6f52ada191067fcd932590ac191da7899",
+        "1.21.11": "b1ea98d6f52ada191067fcd932590ac191da7899",
+        "26.1": "b1ea98d6f52ada191067fcd932590ac191da7899",
+        "26.2": "b1ea98d6f52ada191067fcd932590ac191da7899"
       },
       "surface": "line-adaptation:neoforge/src/main/java/dev/vox/lss/neoforge/LSSNeoMod.java",
       "tests": [
@@ -4798,6 +5125,23 @@
     },
     "neoforge/src/main/java/dev/vox/lss/networking/LSSNetworking.java": {
       "kind": "identical"
+    },
+    "neoforge/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java": {
+      "axes": "ResourceLocation vs Identifier, PacketDistributor vs ClientPacketDistributor, ChunkPos fields vs accessors, and the four-argument playBidirectional(type, codec, handler, handler) on 1.21.10/1.21.11/26.1/26.2 (the three-argument form registers no clientbound handler there; absent on 1.21.1 by design). Handler body byte-identical.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: the documented NeoForge clientbound-handler fix (commits on each port, pinned by NeoForgeDhTransportContractTest; javadoc/comment says 26.x but the same NeoForge behaviour applies on 1.21.10/1.21.11) plus distributor, identifier and ChunkPos API flavours. No other behaviour difference.",
+      "reviewed_blobs": {
+        "1.21.1": "7a65e5f0fd09a2e5200c577465dd30951e1f278d",
+        "1.21.10": "caba2cd78ea414c7f7bb71e65256bd171fa49de9",
+        "1.21.11": "a9d3249c8d0c9e0288863229ff2f332742292880",
+        "26.1": "f547a32fdf15c5fdc062a9b006f3d023fdec782e",
+        "26.2": "f547a32fdf15c5fdc062a9b006f3d023fdec782e"
+      },
+      "surface": "dh-client-adapter:neoforge/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java",
+      "tests": [
+        "NeoForgeDhTransportContractTest (1.21.10+)",
+        "Full platform build and existing version-surface/behavior contracts"
+      ]
     },
     "neoforge/src/main/java/dev/vox/lss/networking/client/FarPlayerRenderer.java": {
       "axes": "Fabric render API generations; Neo only1.21.1 live, others intentional stubs.",
@@ -5127,13 +5471,13 @@
     "neoforge/src/main/resources/lss.neoforge.mixins.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Implementation candidate; independent final change review must cover residual logic before handoff. 2026-09-28 Sodium cleanup reviewed across all five lines: only obsolete footer locale keys removed and the manifest hook renamed to the shared invisible draft-refresh hook. Existing line adaptations unchanged; focused menu/locale tests, both loader builds and artifact checks passed.",
+      "review": "2026-10-10 0.17.0 release pin: identical one-line addition of AccessorScreenWidgets on every line; per-line compatibilityLevel flavour unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "9c04461dfa16d9469a9936614e002528f89d5c42",
-        "1.21.10": "4704d35a6b31499cf9aa4a1166a7f57dd6e3b3c2",
-        "1.21.11": "4704d35a6b31499cf9aa4a1166a7f57dd6e3b3c2",
-        "26.1": "ccb160082852e32ffd2d9617577fcfaccf5f6a32",
-        "26.2": "ccb160082852e32ffd2d9617577fcfaccf5f6a32"
+        "1.21.1": "3f15ba35b4a6891bf7fb743be84f23d025c3f909",
+        "1.21.10": "5112a5bb917aa282adce414ef251e7a14ce09a8d",
+        "1.21.11": "5112a5bb917aa282adce414ef251e7a14ce09a8d",
+        "26.1": "5276ab7b6fb879e1db217328743a5f6b4e1b220d",
+        "26.2": "5276ab7b6fb879e1db217328743a5f6b4e1b220d"
       },
       "surface": "line-adaptation:neoforge/src/main/resources/lss.neoforge.mixins.json",
       "tests": [
@@ -5158,6 +5502,22 @@
     },
     "neoforge/src/test/java/dev/vox/lss/neoforge/LSSNeoPermissionsContractTest.java": {
       "kind": "identical"
+    },
+    "neoforge/src/test/java/dev/vox/lss/neoforge/NeoForgeDhTransportContractTest.java": {
+      "axes": "Present on 1.21.10/1.21.11/26.1/26.2 only (byte-identical there); absent on 1.21.1 where the three-argument registration is retained by design.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Classfile pin of the four-argument playBidirectional fix; identical on every line that carries the fix.",
+      "reviewed_blobs": {
+        "1.21.1": null,
+        "1.21.10": "46e6148d7a758b76f7023d298d52e16d1e5ea9f7",
+        "1.21.11": "46e6148d7a758b76f7023d298d52e16d1e5ea9f7",
+        "26.1": "46e6148d7a758b76f7023d298d52e16d1e5ea9f7",
+        "26.2": "46e6148d7a758b76f7023d298d52e16d1e5ea9f7"
+      },
+      "surface": "dh-client-adapter:neoforge/src/test/java/dev/vox/lss/neoforge/NeoForgeDhTransportContractTest.java",
+      "tests": [
+        "NeoForgeDhTransportContractTest"
+      ]
     },
     "neoforge/src/test/java/dev/vox/lss/neoforge/NeoForgeLoaderSeamContractTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
@@ -5230,13 +5590,13 @@
     "paper/build.gradle": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 SQLite isolation port reviewed across all five lines by Astra: identical semantic changes, preserved MC/JDK/shipping facts and loader-specific zstd dev visibility. YAML parser, settings CLI, policy ownership and both packaging checkers preserved; runtime integration independently reviewed.",
+      "review": "2026-10-10 0.17.0 release pin: identical delta on every line: client-only common/dh and private XZ are excluded from the Paper and soak shadow jars. Residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "6d8c195729c5683b14187b82ba47bfeaeb21dc56",
-        "1.21.10": "347039265352255eca18b16e6dd1d64b0c9f12f7",
-        "1.21.11": "665bece63ff6c81e3a1bade189cbfea6dfbf16c3",
-        "26.1": "54b1f3d96313465ce4f3c4c63ed12cb53625d2ad",
-        "26.2": "dd9dcc69beb8099173eeaed967635012e79c5bb1"
+        "1.21.1": "b97b3dafb850ef998d774eb6702de512446aa055",
+        "1.21.10": "d6bdaf39d408dbc26e6d862590dbc5853fb77666",
+        "1.21.11": "0965d8eebb3d44ef8bb0cdf9a68dcd5e40dc8375",
+        "26.1": "7b2a37f7986fce5643712106d12a2ad40168aa79",
+        "26.2": "1b1294564f6a181cb556e68a226760da98006979"
       },
       "surface": "build-toolchain",
       "tests": [
@@ -6285,13 +6645,13 @@
     "scripts/release_check.py": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-29 release housekeeping: identical semantic delta on all five lines, limited to corrected SQLite/zstd packaging docstrings, diagnostics, comments and removal of unused private fixture arguments; all gate predicates and line-specific checks preserved. Existing negative selftests and final artifacts rechecked.",
+      "review": "2026-10-10 0.17.0 release pin: the DH release-gate delta (client-only common/dh + private XZ placement, Paper exclusion, XZ third-party notice, forbidden fixture mixin configs, dependency allowlists and selftests) is textually identical on all five lines except documented line facts: FABRIC_DEPENDENCY_ALLOWLIST suggests also voxy on 1.21.10/1.21.11/26.1/26.2, matching each line's fabric.mod.json; NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST is {\"sqlite_jdbc\"} on 1.21.1 only (issue #304) and empty elsewhere, with the optional-sqlite selftest written against the line's allowlist (equivalent to 1.21.1's specialized assertion); the dependency selftest fixture names the line's Minecraft version. Pre-existing per-line gate flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "ff3e8f33b41d654b2197f7f4006f348788861e67",
-        "1.21.10": "19c8a96eceeeb844e9cbb100504f7d0577f1cfc3",
-        "1.21.11": "ec1f0044c2e15843a8684a1a0092bd0cb557049c",
-        "26.1": "d6d796cf0c3942241405be51d693e73e9428fe10",
-        "26.2": "1e3718e5e556963a39efa24c13223032ef2e2af1"
+        "1.21.1": "1c659da35caaa67ce0f01b4144b5456f8b9c0c01",
+        "1.21.10": "f8d3884a03eb9cdd10730eaf392fbdfde5b34cb3",
+        "1.21.11": "787c73b648c3f41678abf47738af3fc72b5bc87d",
+        "26.1": "9361699c25e441fb18cb8ed7ea658a94cc225cf1",
+        "26.2": "baa1664b31fcdf286091bc59de59e78d90e00020"
       },
       "surface": "line-adaptation:scripts/release_check.py",
       "tests": [
@@ -7229,6 +7589,663 @@
     "test-fixtures/concurrent-server-core/test_sources.py": {
       "kind": "identical"
     },
+    "test-fixtures/dh-live/bounded_storage.py": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports only: the 1.21.1 dh-p4 bounded-storage policy copied verbatim apart from its docstring, since dh-p4 exists only on 1.21.1.",
+      "reviewed_blobs": {
+        "1.21.1": null,
+        "1.21.10": "df51304b88de2661ec3669b99944dc7e445264ef",
+        "1.21.11": "df51304b88de2661ec3669b99944dc7e445264ef",
+        "26.1": "df51304b88de2661ec3669b99944dc7e445264ef",
+        "26.2": "df51304b88de2661ec3669b99944dc7e445264ef"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/bounded_storage.py",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/build.py": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports parameterize javac/remap/loader floor through line.py and add line.py to the receipt sources; 1.21.1 inline.",
+      "reviewed_blobs": {
+        "1.21.1": "cf88e24f15b33f0133aa86c97796c5ac70e66138",
+        "1.21.10": "cbe9e5cec009dd03cf672e2d9ab36fa0f1368a65",
+        "1.21.11": "cbe9e5cec009dd03cf672e2d9ab36fa0f1368a65",
+        "26.1": "cbe9e5cec009dd03cf672e2d9ab36fa0f1368a65",
+        "26.2": "cbe9e5cec009dd03cf672e2d9ab36fa0f1368a65"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/build.py",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/classpath.gradle": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/exercise.py": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports take the DH jar default and sha pin from line.py and require --base explicitly; 1.21.1 inline defaults. 2026-10-10 default flip: passes --source-unset through to prepare.py; identical insertion on every line.",
+      "reviewed_blobs": {
+        "1.21.1": "86311e753977012deded9971ab29f5975aaa96a8",
+        "1.21.10": "3da2f3d7bf8cbb3d60139adde364620f7f2bee85",
+        "1.21.11": "3da2f3d7bf8cbb3d60139adde364620f7f2bee85",
+        "26.1": "3da2f3d7bf8cbb3d60139adde364620f7f2bee85",
+        "26.2": "3da2f3d7bf8cbb3d60139adde364620f7f2bee85"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/exercise.py",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/fixture-tests.gradle": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/line.py": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports only: one parameter table per line; values reviewed against each line's pinned servers, jars and data-pack/dimension schema.",
+      "reviewed_blobs": {
+        "1.21.1": null,
+        "1.21.10": "51f4f7f597ce5b3021cc1b04034719623dc06bef",
+        "1.21.11": "57dcf98dbdec10f6a5db9d934c52e186d52d6ab3",
+        "26.1": "0af58d978c150174ed3bee04bc0c97148ec66d85",
+        "26.2": "5740904bff3f58cb732ad4081e7f95e6ae5088f7"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/line.py",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/prepare.py": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports parameterize servers/mods/pins/profile/datapack through line.py; 1.21.10/1.21.11 (no NeoForge client route) let the Fabric observer drive updates/lifecycle/boundary and refuse the native boundary arm without the NeoForge artifact; 26.x keep 1.21.1's Fabric scenario set. 2026-10-10 default flip: --source-unset writes no experimental client key (no lod.source, no sidecar) and refuses to run if one is written; identical insertion on every line.",
+      "reviewed_blobs": {
+        "1.21.1": "8150ee34bc654e132afb95cd3c29d07325642c17",
+        "1.21.10": "603a3b6dfa4e2fc7fe6221ad1b35e38872770d1a",
+        "1.21.11": "10b16790ab061d1a8e580b7d3adf66f1a994dcc7",
+        "26.1": "a89db73729632bf7c42cc8c5e4f0a7da6b016ecf",
+        "26.2": "a89db73729632bf7c42cc8c5e4f0a7da6b016ecf"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/prepare.py",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/resources/META-INF/neoforge.mods.toml": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/resources/lss-dh-fixture.mixins.json": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. compatibilityLevel JAVA_21 (1.21.x) vs JAVA_25 (26.x).",
+      "reviewed_blobs": {
+        "1.21.1": "55d4f1c11fbab9a594442fa13b0af148630f74b6",
+        "1.21.10": "55d4f1c11fbab9a594442fa13b0af148630f74b6",
+        "1.21.11": "55d4f1c11fbab9a594442fa13b0af148630f74b6",
+        "26.1": "d38fe8db1ebad02f0e41efd2f047cc8627d1fa99",
+        "26.2": "d38fe8db1ebad02f0e41efd2f047cc8627d1fa99"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/resources/lss-dh-fixture.mixins.json",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/run.py": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports take java/NeoForge args/game rule from line.py and import bounded_storage from dh-live; 1.21.1 imports it from dh-p4.",
+      "reviewed_blobs": {
+        "1.21.1": "4579729d948e1f931882db6474066e9584d2463b",
+        "1.21.10": "eb980e0eb03013139dd34222d5368f71a837593b",
+        "1.21.11": "eb980e0eb03013139dd34222d5368f71a837593b",
+        "26.1": "eb980e0eb03013139dd34222d5368f71a837593b",
+        "26.2": "eb980e0eb03013139dd34222d5368f71a837593b"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/run.py",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/BoundaryProbe.java": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Camera, screenshot, permissions, ChunkPos and HUD API flavours only.",
+      "reviewed_blobs": {
+        "1.21.1": "02c73bb9a268a99d4fd8e55f7aabda0c7223b114",
+        "1.21.10": "5baf7f171022bb9ffbe7c386e148d7fa73086214",
+        "1.21.11": "b26f487ea4a4147314d1be9cc69214f872edce22",
+        "26.1": "3b83e316cd18e167c0bd79e6d37f94515393bba8",
+        "26.2": "b075038d64b81a20a6645ed24d8d664dd4847268"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/src/dev/vox/lssfixture/dh/BoundaryProbe.java",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Disconnect, height, identifier, permissions, ChunkPos and 26.2 concrete-block API flavours only.",
+      "reviewed_blobs": {
+        "1.21.1": "6f92eb702714abb13d3ca397450143bddc75a7f6",
+        "1.21.10": "2c84d5167ba4e0de1b38682c89f7c8ec3fc500fb",
+        "1.21.11": "018f80eaebd41df31b3bfab4f04b20001bc34ad4",
+        "26.1": "1cde6da3ca7353bacf8a082bcf62d1bc8b621649",
+        "26.2": "9bfdc2744209769847ce0b8931d012bd6911e871"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/FixtureMixinPlugin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/MeasureProbe.java": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Disconnect, ChunkPos and screen API flavours only.",
+      "reviewed_blobs": {
+        "1.21.1": "60d5eb529283dc876122302f9262f0952187cb16",
+        "1.21.10": "81d6c5b183a8b4ae17df622141ecebfb1de559eb",
+        "1.21.11": "81d6c5b183a8b4ae17df622141ecebfb1de559eb",
+        "26.1": "712e0f392bf8e58c8536f68c838e49488fcb5d94",
+        "26.2": "6b1fa9ad7537027bde8506a90ccdd0a84f5af01c"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/src/dev/vox/lssfixture/dh/MeasureProbe.java",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/OceanLightProbe.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. 1.21.10 drives the legacy Sodium 0.7 page (its line has no 0.8 config API) with expected control count from RENDER_AVAILABLE; ports read End skylight from the dimension type and prune vanilla-held samples at phase 0 (spawn differs per line); 26.2 screen/HUD/render-target API. Observer-only differences.",
+      "reviewed_blobs": {
+        "1.21.1": "79e210acd7f231c7ea540e91afc539f8c8a002f2",
+        "1.21.10": "cb244a46cf5f054ff1470627a251a49def850cc8",
+        "1.21.11": "f22a94d53b44037da288fa7790928b977207141c",
+        "26.1": "80640a6d38fe8a903bd9318b4155fab909b8fe34",
+        "26.2": "77f1bad3d4b0651db15a917ededc7e272fe34b76"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/RaceProbe.java": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Permissions, identifier and 26.2 concrete-block API flavours only.",
+      "reviewed_blobs": {
+        "1.21.1": "8e9c6cdec796cc670d52ac442db611229754dc04",
+        "1.21.10": "8e9c6cdec796cc670d52ac442db611229754dc04",
+        "1.21.11": "b61c35b885052d0b53840d21fd35047d74ae857c",
+        "26.1": "b61c35b885052d0b53840d21fd35047d74ae857c",
+        "26.2": "8f1d7dc952ab01d5345f26ee7ad8369caf8c9580"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/src/dev/vox/lssfixture/dh/RaceProbe.java",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/RejoinProbe.java": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Height API (getMaxBuildHeight() exclusive vs getMaxY()+1) and ChunkPos accessors only.",
+      "reviewed_blobs": {
+        "1.21.1": "4b571965486e8e1f9262c487e50283bdde7070b7",
+        "1.21.10": "dc3dc3391033154346cddc19c24ce1028553cc9e",
+        "1.21.11": "dc3dc3391033154346cddc19c24ce1028553cc9e",
+        "26.1": "8645a23ecff4361e6752fab6710fad05cb02644e",
+        "26.2": "8645a23ecff4361e6752fab6710fad05cb02644e"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/src/dev/vox/lssfixture/dh/RejoinProbe.java",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ServiceProbe.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/UpdatesProbe.java": {
+      "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Disconnect and screen API flavours only.",
+      "reviewed_blobs": {
+        "1.21.1": "365881c0369e6fc651421254fa901d844afad49e",
+        "1.21.10": "533244de532d5f66fdb3febaf4e8e63ae309c3fe",
+        "1.21.11": "533244de532d5f66fdb3febaf4e8e63ae309c3fe",
+        "26.1": "533244de532d5f66fdb3febaf4e8e63ae309c3fe",
+        "26.2": "4249d36daf961a702a05946da223314e34ab0a09"
+      },
+      "surface": "dh-live-fixture:test-fixtures/dh-live/src/dev/vox/lssfixture/dh/UpdatesProbe.java",
+      "tests": [
+        "test-fixtures/dh-live fixture-tests.gradle (ContentProbeTest)",
+        "private DH live rig per line (not CI)"
+      ]
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/CaptureMixin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/ConverterMixin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/MeasureFrameMixin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/MeasurePumpMixin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/MeasureTimingMixin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/ReceiveMixin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/SendMixin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/TickMixin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/VoxyIngestRaceMixin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/VoxyRenderMixin.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-live/tests/dev/vox/lssfixture/dh/ContentProbeTest.java": {
+      "kind": "identical"
+    },
+    "test-fixtures/dh-p4/bounded_storage.py": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "db26ac1247ae1d52cee0db244e092d69c05d8786",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/bounded_storage.py",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/build.py": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "8a0516daf2226c41d5bb43e4a552822c07b38ec3",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/build.py",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/fixed_area_metrics.py": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "dba48d993150c5f13dcb12143c3e2383f1af368f",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/fixed_area_metrics.py",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/prepare.py": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "22beb1d32e4c65ec709c1f3339af2083e4407f00",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/prepare.py",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/run.py": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "a6b10f2e3b7a41b808dd42a9f88f7acc25e73c40",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/run.py",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/BenchmarkClient.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "7bf8b3f004fe3fa6b0843fb40ee2edb3cd3e58e1",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/BenchmarkClient.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/CapturedTerrainSummary.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "44288f3fe60db17bd864a313b69a108205218894",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/CapturedTerrainSummary.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ConfigurationProbe.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "f8f1c70108662acc7de2d2304711b9e428fc6ae4",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ConfigurationProbe.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ContentOracle.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "cdccf4ad7b697b1bd68bbcad3da52989e3452005",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ContentOracle.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/FrameMetrics.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "c630dbcf32671438ecf6efe6cba8aa526f5fc313",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/FrameMetrics.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/P4Probe.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "835fac44952fff8aeef2207bb41555ee03677003",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/P4Probe.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/VoxyDrawStats.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "b1d3fc1492dd3f41415dd6f8b708025c6d2d2a4b",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/VoxyDrawStats.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/BenchmarkArea.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "0ab2ed5fea6f189107991e8db82f281db8fed122",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/BenchmarkArea.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/ClientTick.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "66df139fe856903ffd13756646dff37395c78b24",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/ClientTick.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/DecodedSource.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "6837cd7c5eb2198ce3dc318ea985a538c67414bc",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/DecodedSource.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/Frames.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "1dba0e83059531acc3c8358070a71f00c44383ee",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/Frames.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/MouseGuard.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "33386828bb5b770a58890b987fe66f7f48acc566",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/MouseGuard.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/RawCapture.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "cbf6468fedd3cc589a60749ed959d27be92333f5",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/RawCapture.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/SourceCapture.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "45e758eda2dc45e6ca59f33f1700238b9461da3b",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/SourceCapture.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/VoxyDraw.java": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "9f31b109a22658e565add95f47e621be21088835",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/VoxyDraw.java",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/summarize.py": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "9e0827788a38df48a1b28b21fcc2640bb47cbbbe",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/summarize.py",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/tests/test_bounded_storage.py": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "a75c8c4576dbaac31250a2a7da9386cf73c41b56",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/tests/test_bounded_storage.py",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
+    "test-fixtures/dh-p4/tests/test_dh_p4_metrics.py": {
+      "axes": "1.21.1-only private DH P4 benchmark rig (absent on every other line by design); not shipped.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.1-only fixture; no port counterpart required.",
+      "reviewed_blobs": {
+        "1.21.1": "39b3c1cdb26f9f5c347100ffec0e473ccc7d572b",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null
+      },
+      "surface": "dh-p4-fixture:test-fixtures/dh-p4/tests/test_dh_p4_metrics.py",
+      "tests": [
+        "test-fixtures/dh-p4/tests (test_bounded_storage.py, test_dh_p4_metrics.py)"
+      ]
+    },
     "test-fixtures/elytra-live-fixture/build.gradle": {
       "kind": "identical"
     },
@@ -7790,6 +8807,12 @@
     "tools/compat/test_staged_export.py": {
       "kind": "identical"
     },
+    "tools/dh/DhFragmentAllocationProbe.java": {
+      "kind": "identical"
+    },
+    "tools/dh/assemble_playable.py": {
+      "kind": "identical"
+    },
     "tools/lines/lines.py": {
       "axes": "Current implementation is byte-identical across all five lines; exact source refs, profile data and explicit target inputs carry line variation. No normalization or residual shared-logic exemption.",
       "kind": "adapted",
@@ -7834,6 +8857,9 @@
       "kind": "identical"
     },
     "tools/packaging/test_sqlite_capsule.py": {
+      "kind": "identical"
+    },
+    "tools/rig/OwnedJavaBootstrap.java": {
       "kind": "identical"
     },
     "tools/rig/acquire_neo_installers.py": {
@@ -8210,6 +9236,9 @@
     "tools/rig/server_control_smoke.py": {
       "kind": "identical"
     },
+    "tools/rig/server_storage_stop.py": {
+      "kind": "identical"
+    },
     "tools/rig/source_client_natives.py": {
       "kind": "identical"
     },
@@ -8560,6 +9589,12 @@
     "tools/rig/ui_snapshot_wait.py": {
       "kind": "identical"
     },
+    "tools/rig/windows_java_fixture.py": {
+      "kind": "identical"
+    },
+    "tools/rig/windows_private_desktop.ps1": {
+      "kind": "identical"
+    },
     "tools/rig/world_snapshot.py": {
       "kind": "identical"
     },
@@ -8593,7 +9628,30 @@
     "tools/tests/test_artifacts.py": {
       "kind": "identical"
     },
+    "tools/tests/test_dh_release_gate.py": {
+      "axes": "1.21.10 asserts its release_check forbidden-entry message (\"ships dev-only code\", a pre-existing 1.21.10 release_check flavour); the other four lines share one blob.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: One assertion string follows the line's existing release_check message; test logic identical.",
+      "reviewed_blobs": {
+        "1.21.1": "0461122082ec3222289bc1949cef85fa341e81e9",
+        "1.21.10": "2850355a9c11e27eac83e405a74c339e1410cbf6",
+        "1.21.11": "0461122082ec3222289bc1949cef85fa341e81e9",
+        "26.1": "0461122082ec3222289bc1949cef85fa341e81e9",
+        "26.2": "0461122082ec3222289bc1949cef85fa341e81e9"
+      },
+      "surface": "dh-release-gate:tools/tests/test_dh_release_gate.py",
+      "tests": [
+        "tools/tests (python3 -m unittest)",
+        "release_check.py --selftest"
+      ]
+    },
     "tools/tests/test_inventory.py": {
+      "kind": "identical"
+    },
+    "tools/tests/test_owned_process_grace.py": {
+      "kind": "identical"
+    },
+    "tools/tests/test_server_storage_stop.py": {
       "kind": "identical"
     },
     "tools/verify/private-client-tests.init.gradle": {
@@ -8632,6 +9690,9 @@
     "xplat/src/main/java/dev/vox/lss/compat/AntiXrayCompat.java": {
       "kind": "identical"
     },
+    "xplat/src/main/java/dev/vox/lss/compat/DhVoxyBridge.java": {
+      "kind": "identical"
+    },
     "xplat/src/main/java/dev/vox/lss/compat/MeliusVanishBridge.java": {
       "kind": "identical"
     },
@@ -8657,13 +9718,13 @@
     "xplat/src/main/java/dev/vox/lss/compat/VoxyCompat.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Implementation candidate; independent final change review must cover residual logic before handoff.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH ingest delta on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "4418b141e09693487531ebfa9c048f7aae2181d1",
-        "1.21.10": "880f83d4f5eb56f8f82305d92f041497535dd457",
-        "1.21.11": "880f83d4f5eb56f8f82305d92f041497535dd457",
-        "26.1": "1af1a6c1a35cde1402784010a00ae8c8108a8496",
-        "26.2": "4247a0f6c5033b54975d0d2db9ace6694714d679"
+        "1.21.1": "24c01496c8b31331d7cfafa3261e5da6599544bd",
+        "1.21.10": "aa1c536f3a8a63847b2e2a0e96b7516eebb956a3",
+        "1.21.11": "aa1c536f3a8a63847b2e2a0e96b7516eebb956a3",
+        "26.1": "289cc2c103a4822548dab5dd0d9a87a23e3ec9f1",
+        "26.2": "6b2743181d0025ad757cc68cd251fa5f9e80ad0e"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/compat/VoxyCompat.java",
       "tests": [
@@ -8672,6 +9733,28 @@
     },
     "xplat/src/main/java/dev/vox/lss/compat/VoxyStorageOverride.java": {
       "kind": "identical"
+    },
+    "xplat/src/main/java/dev/vox/lss/compat/VoxyTerrainProbe.java": {
+      "kind": "identical"
+    },
+    "xplat/src/main/java/dev/vox/lss/compat/VoxyVanillaCoverage.java": {
+      "axes": "Camera API (getMainCamera().getPosition() / getMainCamera().position() / mainCamera().position()), ChunkPos toLong/asLong vs pack, light readiness lightOnInSection vs lightOnInColumn(SectionPos.getZeroNode). Coverage logic byte-identical.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: camera, ChunkPos packing and light-readiness API flavours only.",
+      "reviewed_blobs": {
+        "1.21.1": "56f487e8adcf2ef62e646b48258e861860ebb0b2",
+        "1.21.10": "d0bb184f6dfc785ba7938575ecfec75b94ab216e",
+        "1.21.11": "d0bb184f6dfc785ba7938575ecfec75b94ab216e",
+        "26.1": "a9b582ae53711c972721a1e6603e9f84dc444db7",
+        "26.2": "ab63ae8af06d8815b8684624626cb976742322ea"
+      },
+      "surface": "dh-client-adapter:xplat/src/main/java/dev/vox/lss/compat/VoxyVanillaCoverage.java",
+      "tests": [
+        "DhClientSessionTest",
+        "DhColumnConverterTest",
+        "VoxyVanillaCoverageTest",
+        "Full platform build and existing version-surface/behavior contracts"
+      ]
     },
     "xplat/src/main/java/dev/vox/lss/compat/XaeroAcquisitionQueue.java": {
       "kind": "identical"
@@ -8736,13 +9819,13 @@
     "xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger. 2026-09-28 automatic Sodium Apply reload: reviewed all five lines; locale changes are limited to Apply/reconnect and privacy wording, save-recovery calls use the shared Apply path, and native chat descriptors remain behind the existing per-line screen adapter. Modern/legacy adapter tests and exact 26.1 chat-call contract updated; focused common/config/menu/NeoForge tests, builds and all artifact checks passed.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH option/dependency delta on every line; residual line flavours unchanged. 2026-10-10 default flip (user decision): lod_source defaultValue false->true plus a two-line comment, identical on every line.",
       "reviewed_blobs": {
-        "1.21.1": "e8a944497d651c51b635087ab5c8186909789787",
-        "1.21.10": "acb3fe73e1c9bf7cea7c1c778710e95975a3c7b9",
-        "1.21.11": "acb3fe73e1c9bf7cea7c1c778710e95975a3c7b9",
-        "26.1": "acb3fe73e1c9bf7cea7c1c778710e95975a3c7b9",
-        "26.2": "acb3fe73e1c9bf7cea7c1c778710e95975a3c7b9"
+        "1.21.1": "93ccd40ba5c057367dcea643d16138b7cda7a9bc",
+        "1.21.10": "50c472c55d3a0f38dd54246e9e44ab6646790a20",
+        "1.21.11": "50c472c55d3a0f38dd54246e9e44ab6646790a20",
+        "26.1": "50c472c55d3a0f38dd54246e9e44ab6646790a20",
+        "26.2": "50c472c55d3a0f38dd54246e9e44ab6646790a20"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java",
       "tests": [
@@ -8783,13 +9866,13 @@
     "xplat/src/main/java/dev/vox/lss/config/menu/MenuContext.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-10 0.17.0 release pin: identical nativeTerrain context delta on every line; residual line flavours unchanged. 2026-10-10 default flip: nativeTerrain reports DH only on a live connection that selected it (title screen stays native); identical edit on every line.",
       "reviewed_blobs": {
-        "1.21.1": "0de1d4447c170c7ce5f49c15cd9f5b816c7996a4",
-        "1.21.10": "322db5a6572cf5bd181bcac6c8933db81df8f314",
-        "1.21.11": "322db5a6572cf5bd181bcac6c8933db81df8f314",
-        "26.1": "322db5a6572cf5bd181bcac6c8933db81df8f314",
-        "26.2": "322db5a6572cf5bd181bcac6c8933db81df8f314"
+        "1.21.1": "af35e784e282def2119103f856c52b1dbf75d1f9",
+        "1.21.10": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f",
+        "1.21.11": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f",
+        "26.1": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f",
+        "26.2": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/config/menu/MenuContext.java",
       "tests": [
@@ -8890,6 +9973,9 @@
     "xplat/src/main/java/dev/vox/lss/mixin/AccessorRegionFileStorage.java": {
       "kind": "identical"
     },
+    "xplat/src/main/java/dev/vox/lss/mixin/AccessorScreenWidgets.java": {
+      "kind": "identical"
+    },
     "xplat/src/main/java/dev/vox/lss/mixin/AccessorServerChunkCache.java": {
       "kind": "identical"
     },
@@ -8943,13 +10029,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java": {
       "axes": "Only command-factory Javadoc differs between 1.x and 26.x; Sodium-independent status/preset/export behavior is shared.",
       "kind": "adapted",
-      "review": "2026-09-28 final YAML client cross-line residual review at 03469b99/4ac9d976/30e6cf9a/934c9832/ae293834: notice reservation, translation-ready status and settings export logic shared; per-line render/text/screen/chat/key APIs and inherited name-tag-distance locale wording inspected. Modern Sodium rebuild bytecode confirms clearWidgets precedes layout calculation. Source/API review, not live UI acceptance. Final followup review through c91c3a65/87b575a4: localized recovery/reload/export messages preserve owner-thread translation and export-ticket capture; dev-only 1.21.1 parser classpath does not alter packaged dependencies; operator guidance uses YAML paths. Exact residual source deltas reviewed across all five refs.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH reset/clear-cache delta on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "78df5988f20f32a0337146ae9161eb098f7313da",
-        "1.21.10": "78df5988f20f32a0337146ae9161eb098f7313da",
-        "1.21.11": "78df5988f20f32a0337146ae9161eb098f7313da",
-        "26.1": "a221c8b4aa6bd41f388c59ff43e1ce9edf7897fa",
-        "26.2": "a221c8b4aa6bd41f388c59ff43e1ce9edf7897fa"
+        "1.21.1": "ca2e24e274fc997c8ab9c314b564fa45bdb2efe9",
+        "1.21.10": "ca2e24e274fc997c8ab9c314b564fa45bdb2efe9",
+        "1.21.11": "ca2e24e274fc997c8ab9c314b564fa45bdb2efe9",
+        "26.1": "b4471afb20177217fc8588e9d40b7b339646dbcd",
+        "26.2": "b4471afb20177217fc8588e9d40b7b339646dbcd"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java",
       "tests": [
@@ -8962,13 +10048,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/ClientIdentityResolver.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH material resolution delta on every line apart from ResourceLocation.tryParse (1.21.1/1.21.10) vs Identifier.tryParse (1.21.11/26.1/26.2).",
       "reviewed_blobs": {
-        "1.21.1": "379f0414d80c9f2665e716c01685138d3ea0cc9c",
-        "1.21.10": "a16e3bb002a00706f946320e0f1c25f35f455fad",
-        "1.21.11": "26e7ad2724860c74dad78247a086fcd317c29979",
-        "26.1": "26e7ad2724860c74dad78247a086fcd317c29979",
-        "26.2": "26e7ad2724860c74dad78247a086fcd317c29979"
+        "1.21.1": "79b6f9251be6bed5ceaa5cb31d683429b853cac8",
+        "1.21.10": "708ef151bfee5319278a47a975877aef52d535c4",
+        "1.21.11": "0f803bb26ca92c9f1bc3e4eec45b8abcd84a87d2",
+        "26.1": "0f803bb26ca92c9f1bc3e4eec45b8abcd84a87d2",
+        "26.2": "0f803bb26ca92c9f1bc3e4eec45b8abcd84a87d2"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/client/ClientIdentityResolver.java",
       "tests": [
@@ -8978,13 +10064,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/ClientNetGlue.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH session lifecycle wiring (join/disconnect/tick, native offer, reception gate, cache sweep) on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "90d561f9509a38592e19f7f6d8d3fce750c0c6d5",
-        "1.21.10": "14c288823342e55cbdb046d49abd98d4baea3a76",
-        "1.21.11": "14c288823342e55cbdb046d49abd98d4baea3a76",
-        "26.1": "14c288823342e55cbdb046d49abd98d4baea3a76",
-        "26.2": "14c288823342e55cbdb046d49abd98d4baea3a76"
+        "1.21.1": "81f37329e28888035c674a2348c3f7b459e8cfed",
+        "1.21.10": "5bfdb5a9da0d1b4aba963c21e448158ed438727c",
+        "1.21.11": "5bfdb5a9da0d1b4aba963c21e448158ed438727c",
+        "26.1": "5bfdb5a9da0d1b4aba963c21e448158ed438727c",
+        "26.2": "5bfdb5a9da0d1b4aba963c21e448158ed438727c"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/client/ClientNetGlue.java",
       "tests": [
@@ -8994,13 +10080,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/ClientNetTrace.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Implementation candidate; independent final change review must cover residual logic before handoff.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH trace delta on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "28c57966d3bd405ca9e5a0562d090b19f4fa222d",
-        "1.21.10": "28c57966d3bd405ca9e5a0562d090b19f4fa222d",
-        "1.21.11": "db2c267b65061589ae44c56c6ba52a73213cab11",
-        "26.1": "db2c267b65061589ae44c56c6ba52a73213cab11",
-        "26.2": "db2c267b65061589ae44c56c6ba52a73213cab11"
+        "1.21.1": "5c10b927f29d1198a574440e4a00b3ee267c03e8",
+        "1.21.10": "5c10b927f29d1198a574440e4a00b3ee267c03e8",
+        "1.21.11": "bc0ff9569a8172b1f2fc21784c887c78b8bbd393",
+        "26.1": "bc0ff9569a8172b1f2fc21784c887c78b8bbd393",
+        "26.2": "bc0ff9569a8172b1f2fc21784c887c78b8bbd393"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/client/ClientNetTrace.java",
       "tests": [
@@ -9016,13 +10102,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/ClientStatus.java": {
       "axes": "26.2 uses setScreenAndShow; other lines use setScreen. Cached tick collection and lifecycle handling are shared.",
       "kind": "adapted",
-      "review": "2026-09-28 final YAML client cross-line residual review at 03469b99/4ac9d976/30e6cf9a/934c9832/ae293834: notice reservation, translation-ready status and settings export logic shared; per-line render/text/screen/chat/key APIs and inherited name-tag-distance locale wording inspected. Modern Sodium rebuild bytecode confirms clearWidgets precedes layout calculation. Source/API review, not live UI acceptance.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH status block delta on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "2100311a83da3426b927bd683e47af6b0257e118",
-        "1.21.10": "2100311a83da3426b927bd683e47af6b0257e118",
-        "1.21.11": "2100311a83da3426b927bd683e47af6b0257e118",
-        "26.1": "2100311a83da3426b927bd683e47af6b0257e118",
-        "26.2": "ece77ac4013eb7d514afbf64519a1307057b2eb3"
+        "1.21.1": "2d8d674cdea7410da44c678dbec3a7f6a431412a",
+        "1.21.10": "2d8d674cdea7410da44c678dbec3a7f6a431412a",
+        "1.21.11": "2d8d674cdea7410da44c678dbec3a7f6a431412a",
+        "26.1": "2d8d674cdea7410da44c678dbec3a7f6a431412a",
+        "26.2": "b6e1d0c46cdeb1cbe097e834f02d1116687e4ba9"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/client/ClientStatus.java",
       "tests": [
@@ -9062,13 +10148,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/ColumnCacheStore.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH receipt-sweep delta on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "5c2039ab9e6e1b706adc52cc1c4242489be8e60a",
-        "1.21.10": "5c2039ab9e6e1b706adc52cc1c4242489be8e60a",
-        "1.21.11": "797d7ef9b2f771510f5230656da4cec308ef5514",
-        "26.1": "797d7ef9b2f771510f5230656da4cec308ef5514",
-        "26.2": "797d7ef9b2f771510f5230656da4cec308ef5514"
+        "1.21.1": "292732c284c9ed40969c4f223ff7247f6f4c12b2",
+        "1.21.10": "292732c284c9ed40969c4f223ff7247f6f4c12b2",
+        "1.21.11": "333d5f3840f5c2e95ca596a6eeaa808b502414b0",
+        "26.1": "333d5f3840f5c2e95ca596a6eeaa808b502414b0",
+        "26.2": "333d5f3840f5c2e95ca596a6eeaa808b502414b0"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/client/ColumnCacheStore.java",
       "tests": [
@@ -9080,6 +10166,47 @@
     },
     "xplat/src/main/java/dev/vox/lss/networking/client/ColumnStateMap.java": {
       "kind": "identical"
+    },
+    "xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java": {
+      "axes": "MC API flavours only: ResourceKey location()/identifier(), ChunkPos fields vs x()/z() record accessors, getMinBuildHeight() vs getMinY(). Session, queue, budget and receipt logic byte-identical.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: 1.21.10 only getMinY; 1.21.11 adds identifier(); 26.1/26.2 add ChunkPos accessors. No logic, constant or message differences.",
+      "reviewed_blobs": {
+        "1.21.1": "9bc8013e57cc5dbab610396200a7d525ec1bfa8f",
+        "1.21.10": "4aecf08e31c823eb212206e89427fd7eda13f787",
+        "1.21.11": "2bf8293aa27b9c521f5739c94390e491cde2575d",
+        "26.1": "8cf927b79ad8f748666e2941e389d27c897c15ac",
+        "26.2": "8cf927b79ad8f748666e2941e389d27c897c15ac"
+      },
+      "surface": "dh-client-adapter:xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java",
+      "tests": [
+        "DhClientSessionTest",
+        "DhColumnConverterTest",
+        "VoxyVanillaCoverageTest",
+        "Full platform build and existing version-surface/behavior contracts"
+      ]
+    },
+    "xplat/src/main/java/dev/vox/lss/networking/client/DhClientTrace.java": {
+      "kind": "identical"
+    },
+    "xplat/src/main/java/dev/vox/lss/networking/client/DhColumnConverter.java": {
+      "axes": "Section construction (1.21.1 Registry<Biome> SectionConstruction; 1.21.10+ PalettedContainerFactory), registryOrThrow vs lookupOrThrow, ImmutableRegistryAccess freeze() on 1.21.x, light-block API (getLightBlock(getter,pos) / getLightBlock() / getLightDampening()). Conversion logic byte-identical.",
+      "kind": "adapted",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: only the section-construction, registry-lookup and light-block API flavours. Comments name the flavour per line (26.x comment generalizes the 1.21.x form to the 1.21.1 seam; comment-only).",
+      "reviewed_blobs": {
+        "1.21.1": "df306c220361e5737a8aa841176b323cc8b487e1",
+        "1.21.10": "d2186d6823ba947cf49f9686da511345c985c515",
+        "1.21.11": "05dcebf1b3896b94b2d7aeb4c98e894cbf4628e2",
+        "26.1": "9213d58a7305df533ca86e183020148aa9738cea",
+        "26.2": "9213d58a7305df533ca86e183020148aa9738cea"
+      },
+      "surface": "dh-client-adapter:xplat/src/main/java/dev/vox/lss/networking/client/DhColumnConverter.java",
+      "tests": [
+        "DhClientSessionTest",
+        "DhColumnConverterTest",
+        "VoxyVanillaCoverageTest",
+        "Full platform build and existing version-surface/behavior contracts"
+      ]
     },
     "xplat/src/main/java/dev/vox/lss/networking/client/FarPlayerClientSupport.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",

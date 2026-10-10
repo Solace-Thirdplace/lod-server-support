@@ -41,6 +41,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * empty page list.
  */
 class LegacySodiumPageTest {
+    @Test void selectedTabRemainsReachableAfterAnExtraWidePrecedingTab() {
+        assertEquals(2,LegacySodiumPage.tabStart(320,2,List.of(60,220,100)));
+        assertEquals(1,LegacySodiumPage.tabStart(341,2,List.of(60,100,100)));
+        assertEquals(1,LegacySodiumPage.tabEnd(341,0,List.of(60,240,30,30)));
+        assertEquals(4,LegacySodiumPage.tabEnd(341,2,List.of(60,240,30,30)));
+    }
     @org.junit.jupiter.api.io.TempDir java.nio.file.Path temp;
     private ClientSettingsEditSession draft() {
         try {
@@ -68,6 +74,14 @@ class LegacySodiumPageTest {
         OptionImpl.FAIL_BUILD = false;
         LegacySodiumPage.resetForTests();
         SodiumGeneration.resetForTests();
+    }
+
+    @Test void donationFooterMustNotCoverGeneralOrQualityControls() {
+        for(int[] size:new int[][]{{426,240},{341,256},{320,256}}) {
+            var general=List.of(new LegacySodiumPage.Bounds(6,size[1]-34,210,20));
+            assertFalse(LegacySodiumPage.footerFree(size[0],size[1],124,general));
+        }
+        assertTrue(LegacySodiumPage.footerFree(426,240,124,List.of()));
     }
 
     @Test
@@ -119,6 +133,17 @@ class LegacySodiumPageTest {
     }
 
     @Test
+    void aMissingEnumControlDoesNotDisableTheBooleanAndSliderPage() throws Exception {
+        var isolated=new ClassLoader(getClass().getClassLoader()) {
+            @Override protected Class<?> loadClass(String name,boolean resolve) throws ClassNotFoundException {
+                if(name.endsWith(".CyclingControl"))throw new ClassNotFoundException(name);
+                return super.loadClass(name,resolve);
+            }
+        };
+        assertNotNull(LegacySodiumPage.resolve("net.caffeinemc.mods.sodium",isolated));
+    }
+
+    @Test
     void pagesMirrorTheCatalogWithBrandedTitles() throws Throwable {
         List<Object> pages = LegacySodiumPage.buildWith(handles, draft(), PLAIN, "LSS", h -> { });
         assertEquals(ClientOptionCatalog.pages().size(), pages.size());
@@ -127,7 +152,7 @@ class LegacySodiumPageTest {
         assertEquals("LSS", general.getName().getString(), "the first tab is the bare brand");
         assertTrue(far.getName().getString().startsWith("LSS "), "later tabs prefix the brand: " + far.getName().getString());
         assertEquals(4, general.getGroups().size());
-        assertEquals(List.of(1, 1, 2, 1), general.getGroups().stream().map(g -> g.getOptions().size()).toList());
+        assertEquals(List.of(1, 1, 2, 2), general.getGroups().stream().map(g -> g.getOptions().size()).toList());
         assertEquals(1, far.getGroups().size());
         assertEquals(5, far.getGroups().get(0).getOptions().size(), "five explicit far-player controls");
         // Names in catalog order.
@@ -143,6 +168,8 @@ class LegacySodiumPageTest {
         assertInstanceOf(TickBoxControl.class, receive.getControl());
         assertEquals(OptionImpact.HIGH, receive.getImpact());
         assertEquals(Boolean.TRUE, receive.getValue());
+
+        assertInstanceOf(TickBoxControl.class,general.getOptions().get(5).getControl());
 
         Option<?> distance = general.getOptions().get(1);
         var slider = assertInstanceOf(SliderControl.class, distance.getControl());
@@ -168,10 +195,16 @@ class LegacySodiumPageTest {
         @SuppressWarnings("unchecked") Option<Boolean> receive = (Option<Boolean>) general.getOptions().get(0);
         Option<?> distance = general.getOptions().get(1);
         assertTrue(distance.isAvailable());
+        @SuppressWarnings("unchecked") Option<Boolean> source=(Option<Boolean>)general.getOptions().get(5);
+        assertTrue(source.isAvailable());
+        assertTrue(source.getValue(),"DH server terrain is allowed by default");
+        source.setValue(false);
         receive.setValue(false);           // STAGED — not applied
         assertFalse(distance.isAvailable(), "greys before Apply, off the staged value");
+        assertFalse(source.isAvailable(), "DH fallback follows the staged reception master");
         receive.setValue(true);
         assertTrue(distance.isAvailable());
+        assertTrue(source.isAvailable());
     }
 
     @Test
@@ -189,7 +222,9 @@ class LegacySodiumPageTest {
         rate.setValue(1);
         share.setValue(false);
         tags.setValue(false);
-        assertTrue(receive.hasChanged() && rate.hasChanged() && share.hasChanged() && tags.hasChanged());
+        @SuppressWarnings("unchecked") Option<Boolean> source = (Option<Boolean>) general.getOptions().get(5);
+        source.setValue(false);
+        assertTrue(receive.hasChanged() && rate.hasChanged() && share.hasChanged() && tags.hasChanged() && source.hasChanged());
 
         // What SodiumOptionsGUI.applyChanges() does (javap 0.6.13/0.7.3): apply every
         // changed option, collect their storages in a HashSet, save each once.
@@ -205,6 +240,7 @@ class LegacySodiumPageTest {
         assertEquals(1, dirty.size(), "one storage transaction across both pages");
         dirty.forEach(OptionStorage::save);
 
+        assertEquals("lss", cfg.get("lod.source"));
         assertFalse(cfg.bool("lod.receive"));
         assertEquals(10, cfg.integer("lod.download.max_columns_per_second"), "slider index 1 → 10 col/s");
         assertFalse(cfg.bool("far_players.sharing.enabled"));
