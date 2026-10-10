@@ -40,6 +40,6 @@ public record DhStatusSnapshot(DhProfile profile, State state, Reason reason, Ac
                 "Freshness: sync on load=" + syncOnLoad + ", available=" + syncAvailable
                         + "; live updates=" + liveUpdates + ", available=" + liveAvailable
                         + ", applied/deferred=" + receivedUpdates + "/" + deferredUpdates
-                        + ", last reply age=" + lastReplyAgeMillis + " ms");
+                        + ", last reply=" + (lastReplyAgeMillis < 0 ? "none yet" : lastReplyAgeMillis + " ms ago"));
     }
 }

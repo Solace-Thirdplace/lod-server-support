@@ -116,7 +116,6 @@ final class ClientSessionGate {
     private volatile LodRequestManager requestManager;
     private volatile boolean receiveEnabled = true;
     private boolean joined;
-    private boolean nativeSource=true;
     private boolean localIntegratedServer;
     private LodRequestManager pendingWithdrawal;
 
@@ -216,13 +215,6 @@ final class ClientSessionGate {
 
     void onJoin(boolean receiveServerLods, boolean localIntegratedServer, boolean hasConsumers,
                 boolean enableV16ServerCompat, boolean enableV19ServerCompat) {
-        onJoin(receiveServerLods, localIntegratedServer, hasConsumers, enableV16ServerCompat, enableV19ServerCompat, true);
-    }
-
-    void onJoin(boolean receiveServerLods, boolean localIntegratedServer, boolean hasConsumers,
-                boolean enableV16ServerCompat, boolean enableV19ServerCompat, boolean nativeSource) {
-        this.nativeSource=nativeSource;
-        receiveServerLods &= nativeSource;
         this.statusHandshakeFailed = false;
         this.statusProtocolRejected = false;
         this.joined = true;
@@ -354,7 +346,6 @@ final class ClientSessionGate {
     /** SessionConfig reply ladder. Main client thread. */
     void onSessionConfig(SessionConfigS2CPayload payload, boolean hasConsumers,
                          boolean enableV16ServerCompat) {
-        if (!this.nativeSource) return;
         // Any SessionConfig — even an incompatible one — disarms the discovery ladder: the
         // server answered, so there is nothing to re-discover.
         this.discoveryArmed = false;

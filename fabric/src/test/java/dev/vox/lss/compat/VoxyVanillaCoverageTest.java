@@ -16,6 +16,12 @@ import static org.mockito.Mockito.*;
 
 /** Loaded-border recovery without server approximation, generation, repeated writes or stale worlds. */
 public class VoxyVanillaCoverageTest {
+    /** X-6: plain Voxy users (no native or negotiated DH terrain session) never get the border pump. */
+    @Test void theBorderPumpIsIdleWithoutATerrainSession() {
+        assertNull(dev.vox.lss.networking.client.ClientNetGlue.getRequestManager());
+        assertFalse(dev.vox.lss.networking.client.DhClientSession.terrainSessionActive());
+        assertFalse(VoxyVanillaCoverage.terrainSessionActive());
+    }
     @Test void unrelatedLightWorkAtTwentyOrThirtyFpsCannotStarveReadyMovingChunks() {
         for(int fps:new int[]{20,30}) {
             var backend=new Backend();var coverage=new VoxyVanillaCoverage(backend);var world=new World();

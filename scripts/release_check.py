@@ -187,9 +187,10 @@ XZ_NOTICE_PARAGRAPH = (
 DH_PACKAGE = "dev/vox/lss/common/dh/"
 # Paper never runs the client DH adapter, so its jar carries neither the DH codec nor
 # the private XZ copy (X-7). These client-only common classes still NAME common/dh
-# types in their constant pools: they are reachable on Paper only through method
-# signatures (DiagnosticExport's client overload) that a server never invokes, and the
-# JVM resolves those references lazily, so the absent classes are never loaded. Any
+# types in their constant pools (DhProfile in the snapshot's record components and
+# status text): Paper reaches them only through client-side diagnostics code a server
+# never invokes, and the JVM resolves those references lazily, so the absent classes are
+# never loaded. Any
 # other Paper class linking common/dh would fail at runtime: keep this set minimal.
 # Entries match the class itself and its nested classes ($...).
 PAPER_DH_REFERENCE_ALLOWLIST = (
@@ -795,6 +796,9 @@ FABRIC_DEPENDENCY_ALLOWLIST = {
     "breaks": set(), "conflicts": set(),
 }
 NEOFORGE_DEPENDENCY_ALLOWLIST = {"neoforge", "minecraft"}
+# Allowed only as type="optional": the external SQLite JDBC library mod (issue #304
+# line work) may be declared optional, never required.
+NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST = {"sqlite_jdbc"}
 
 
 def _declared_mixin_configs(jar, loader):
@@ -872,6 +876,10 @@ def check_dependency_allowlist(jar, loader, problems):
         if not block.startswith("dependencies."):
             continue
         dep = re.search(r'(?m)^\s*modId\s*=\s*"([^"]+)"', block)
+        kind = re.search(r'(?m)^\s*type\s*=\s*"([^"]+)"', block)
+        if (dep is not None and dep.group(1) in NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST
+                and kind is not None and kind.group(1) == "optional"):
+            continue
         if dep is None or dep.group(1) not in NEOFORGE_DEPENDENCY_ALLOWLIST:
             found = dep.group(1) if dep else "<no modId>"
             problems.append(f"{base}: neoforge.mods.toml declares unexpected dependency "
@@ -2579,6 +2587,13 @@ def _selftest_fixtures():
         p = _mixin_jar("dep-neo.jar", "neoforge", {"META-INF/neoforge.mods.toml": neo_toml
                        + '\n[[dependencies.lss]]\n    modId="distanthorizons"\n    type="optional"\n'})
         check(any("distanthorizons" in issue for issue in p), f"neoforge DH dependency accepted: {p}")
+        # The external SQLite library mod is allowed only as an optional dependency.
+        p = _mixin_jar("dep-neo-sqlite-opt.jar", "neoforge", {"META-INF/neoforge.mods.toml": neo_toml
+                       + '\n[[dependencies.lss]]\n    modId="sqlite_jdbc"\n    type="optional"\n'})
+        check(not any("sqlite_jdbc" in issue for issue in p), f"optional sqlite_jdbc rejected: {p}")
+        p = _mixin_jar("dep-neo-sqlite-req.jar", "neoforge", {"META-INF/neoforge.mods.toml": neo_toml
+                       + '\n[[dependencies.lss]]\n    modId="sqlite_jdbc"\n    type="required"\n'})
+        check(any("sqlite_jdbc" in issue for issue in p), f"required sqlite_jdbc accepted: {p}")
         p = []
         check_dh_codec(yaml_flat, "fabric", p)
         check(any("nested common" in issue for issue in p), f"flat Fabric DH codec accepted: {p}")

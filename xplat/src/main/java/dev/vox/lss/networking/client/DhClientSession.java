@@ -40,6 +40,8 @@ import java.util.function.Consumer;
 public final class DhClientSession {
     /** Voxy section backlog above which DH stops admitting work. One overworld tile is up to 384 sections. */
     public static final int INGEST_GATE = 1024;
+    /** Worker-to-client handoff deadline. A test seam: tests shorten it instead of racing 5 s. */
+    static volatile long handoffTimeoutMillis = 5_000;
     private static Consumer<byte[]> sender;
     private static String unavailable = "DH transport is unavailable on this loader";
     private static Reason transportReason = Reason.TRANSPORT_UNAVAILABLE;
@@ -169,7 +171,7 @@ public final class DhClientSession {
         if (!selected() || !LSSClientConfig.CONFIG.receiveServerLods() || mc.level == null || mc.getConnection() == null) {
             var old = session; session = null;
             if (old != null) {
-                // Reception OFF on a live connection: the next session must revalidate.
+                // Reception OFF on a live connection: the next session is a resume (revalidates with sync).
                 if (mc.getConnection() != null && selected() && !LSSClientConfig.CONFIG.receiveServerLods()) receptionPaused = true;
                 old.beginRetire();
             }
@@ -555,7 +557,9 @@ public final class DhClientSession {
             }
             expireRequests(now);
             // A silent official sync request may retain its upstream permit forever.
-            if (unanswered >= 2) { fail("Two unanswered DH requests; reconnect before retrying", Reason.SOURCE_STOPPED); return; }
+            // Official DH keeps a sync permit for a request it failed silently; more asks would
+            // only queue behind it on the server, so stop until the next connection.
+            if (unanswered >= 2) { fail("The DH server stopped answering terrain requests (two in a row); reconnect to resume", Reason.SOURCE_STOPPED); return; }
             if (now - maintenanceAt > 1_000_000_000L && maintenanceQueued.compareAndSet(false, true)) {
                 maintenanceAt = now;
                 try { worker.execute(() -> {
@@ -836,7 +840,7 @@ public final class DhClientSession {
                 if (entry == null) continue;
                 if (present != null && !Boolean.TRUE.equals(present.get(p))) { forgetReceipt(p); continue; }
                 boolean revalidate = sync && loadDue(loads, p, now); // without sync: held as is
-                policy.restore(p, entry.timestamp(), now, revalidate);
+                if (!policy.restore(p, entry.timestamp(), now, revalidate)) continue;
                 if (revalidate) markLoaded(loads, p, now);
                 restored.incrementAndGet();
             }
@@ -870,9 +874,9 @@ public final class DhClientSession {
         }
         /**
          * Worker. A lost push fragment without a readable header has no tile identity, but pushes only
-         * arrive within the server's update distance of the player. Revalidate (or, without
-         * synchronization, reacquire) held tiles in that window, and cancel requests in
-         * flight there, whose replies may predate the lost push.
+         * arrive within the server's update distance of the player. With sync, revalidate held
+         * tiles in that window and cancel requests in flight there, whose replies may predate
+         * the lost push. Without sync, held terrain is kept (official DH client behaviour).
          */
         void recoverLoss() throws Exception {
             if (!pushRecovery.compareAndSet(true, false)) return;
@@ -896,7 +900,7 @@ public final class DhClientSession {
                     var cancelled = cancelPending(p);
                     if (!cancelled.isEmpty()) cancelledIds.addAll(cancelled);
                     if (!policy.hasSnapshot(p)) continue;
-                    if (sync && policy.syncTimestamp(p) > 0) policy.revalidate(p, now); else { policy.invalidate(p); forgetReceipt(p); }
+                    if (policy.syncTimestamp(p) > 0) policy.revalidate(p, now); else { policy.invalidate(p); forgetReceipt(p); }
                 }
                 if (!cancelledIds.isEmpty()) {
                     try { worker.execute(() -> cancelledIds.forEach(assembly::cancel)); }
@@ -1042,7 +1046,8 @@ public final class DhClientSession {
                     if (policy.acquisitionPriority(p) != priority) continue;
                     // A persisted receipt waits for its destination probe; never full-request it first.
                     // That includes one the policy evicted on a long flight (bounded window).
-                    if (!unprobed.contains(p) && stored.containsKey(p) && !policy.hasSnapshot(p)) unprobed.add(p);
+                    // Only a true eviction re-probes: a tile on cooldown or deferred keeps its policy state.
+                    if (!unprobed.contains(p) && stored.containsKey(p) && !policy.contains(p)) unprobed.add(p);
                     if (unprobed.contains(p)) continue;
                     int x = p.x() * 4, z = p.z() * 4;
                     boolean any = false;
@@ -1316,7 +1321,7 @@ public final class DhClientSession {
                 try { if (!result.complete(action.call())) { /* timed out first */ } }
                 catch (Exception e) { result.completeExceptionally(e); }
             });
-            try { return result.get(5, TimeUnit.SECONDS); }
+            try { return result.get(handoffTimeoutMillis, TimeUnit.MILLISECONDS); }
             catch (ExecutionException e) {
                 if (e.getCause() instanceof Exception cause) throw cause;
                 throw e;

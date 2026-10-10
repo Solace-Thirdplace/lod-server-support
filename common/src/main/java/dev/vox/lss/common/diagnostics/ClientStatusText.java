@@ -33,7 +33,8 @@ public final class ClientStatusText {
             lines.add(text("dh.receipts",d.storedReceipts(),d.restoredReceipts(),d.pressureDroppedTerrainFrames()));
             lines.add(text("dh.freshness",onOff(d.syncOnLoad()),text(d.syncAvailable()?"available":"disabled"),
                     onOff(d.liveUpdates()),text(d.liveAvailable()?"available":"disabled"),
-                    d.receivedUpdates(),d.deferredUpdates(),d.lastReplyAgeMillis()));
+                    d.receivedUpdates(),d.deferredUpdates(),
+                    d.lastReplyAgeMillis()<0?text("dh.no_reply"):text("dh.reply_age",d.lastReplyAgeMillis())));
         } else {
         lines.add(text("connection", enumText("discovery", s.discovery()), s.protocol()));
         lines.add(text("reception", onOff(s.receptionEnabled()), text(s.consumerAvailable() ? "available" : "none")));

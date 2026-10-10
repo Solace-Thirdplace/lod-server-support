@@ -92,9 +92,10 @@ Fixture and documentation adaptation follow in later commits on the branch.
   the current connection's vanilla regions.
 - Upstream request coalescing can hand a request an older in-flight read; the push
   sequence covers the push case, a later load check covers the rest.
-- An edit missed while out of range or under load appears when that tile re-enters
-  view after the 20-minute load interval (per dimension and connection), on reset,
-  or on rejoin. A tile that stays in view is not rechecked.
+- With sync, an edit missed while out of range or under load appears when that tile
+  re-enters view after the 20-minute load interval (per dimension and connection), on
+  reset, or on rejoin; a tile that stays in view is not rechecked. Without sync it
+  appears only after `/lss reset` (official DH client behaviour).
 - Without sync (turned off on the server or client), held terrain is never rechecked,
   matching the official DH client; an unidentifiable lost push keeps held terrain
   instead of re-downloading the window. DH Support enables sync by default (live rig
@@ -128,7 +129,8 @@ A 4-Opus + 2-Fable panel reviewed `fa17926b`. All verified findings were folded 
   (mutation-tested).
 - Without sync, restored receipts froze terrain forever, and a reception resume or
   a dimension round trip mishandled the persisted file (O2, F1, F2): receipts are
-  sync-only and survive round trips.
+  sync-only and survive round trips (sync-only part superseded by the 2026-10-10
+  sync-off decision: receipts are now kept without sync and never rechecked).
 - An unknown key in the experimental file disabled all LSS client settings (O3).
 - The adapted live-rig mixins could not load (receive's new loss-epoch argument) and
   the converter hooks targeted an unused overload (O4); both fixed and compiled.

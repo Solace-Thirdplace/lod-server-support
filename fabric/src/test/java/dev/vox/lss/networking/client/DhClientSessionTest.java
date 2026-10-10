@@ -194,6 +194,50 @@ class DhClientSessionTest {
         assertEquals(1,cfg.size());assertFalse(cfg.getFirst().updates());assertFalse(cfg.getFirst().synchronize());
         assertTrue(settings.state().configured().lod().dh().realTimeUpdates());assertFalse(active(s));
     }
+    /** X-13 wiring: reception OFF on a live connection makes the next session a resume. */
+    @Test void receptionOffThenOnBuildsAResumedSession() throws Exception {
+        var s=updateSession();setting(Map.of("lod.receive",false));DhClientSession.tick();
+        assertFalse(active(s));assertTrue((boolean)read(null,DhClientSession.class,"receptionPaused"));
+        setting(Map.of("lod.receive",true));DhClientSession.tick();
+        var next=read(null,DhClientSession.class,"session");
+        if(next!=null){sessions.add(next);assertTrue((boolean)read(next,SESSION,"resumed"));}
+        else assertTrue((boolean)read(null,DhClientSession.class,"receptionPaused"),"the resume is not lost while the session waits to start");
+    }
+    /** D-30: an integrated (singleplayer) host never records vanilla authority. */
+    @Test void anIntegratedHostRecordsNoVanillaAuthority() throws Exception {
+        var state=(DhConnectionState)read(null,DhClientSession.class,"connectionState");
+        setting(Map.of("lod.source","distant_horizons"));
+        minecraft.singleplayer=mcMock(net.minecraft.client.server.IntegratedServer.class);
+        try {DhClientSession.vanillaLoaded(level,3,3);assertTrue(state.policy(DIMENSION).eligible(3,3));}
+        finally {minecraft.singleplayer=null;}
+        DhClientSession.vanillaLoaded(level,3,3);assertFalse(state.policy(DIMENSION).eligible(3,3));
+    }
+    /** D-22: the user's own sync-off choice is named as such, not as a server limitation. */
+    @Test void syncTurnedOffLocallyIsReportedAsALocalChoice() throws Exception {
+        updateSession();setting(Map.of("lod.dh.sync_on_load",false));
+        assertEquals(DhStatusSnapshot.Reason.SYNC_DISABLED_LOCALLY,DhClientSession.diagnostics().reason());
+        setting(Map.of("lod.dh.sync_on_load",true));
+        assertEquals(DhStatusSnapshot.Reason.NONE,DhClientSession.diagnostics().reason());
+    }
+    /** An "unchanged" reply only confirms the stamp it was asked about. */
+    @Test void anUnchangedReplyForAStampThatMovedOnIsNotAccepted() throws Exception {
+        var s=updateSession();long now=System.nanoTime();
+        policy(s).accepted(POSITION,1,1,456,now); // the tile moved on (e.g. a newer delivery) after the ask
+        pendingMap(s).put(41,newPending(s,POSITION,false,now,123L));assembly(s).expect(41,POSITION);
+        capture(codec(s).encode(new DhMessage.Response(41,null,List.of())),System.nanoTime()).receive();
+        pumpUntil(()->pendingMap(s).isEmpty()&&frameCount(s)==0,"unchanged reply did not settle");
+        assertNotEquals(123,policy(s).syncTimestamp(POSITION),"the stale stamp is never re-accepted");
+        assertTrue(policy(s).due(POSITION,System.nanoTime()+3_000_000_000L),"the tile is checked again");
+    }
+    /** With live updates off a stray recovery request touches nothing. */
+    @Test void recoveryWithLiveUpdatesOffTouchesNothing() throws Exception {
+        var s=updateSession();long now=System.nanoTime();var held=new DhPosition(6,0,0);
+        policy(s).accepted(held,1,1,123,now);setting(Map.of("lod.dh.real_time_updates",false));
+        ((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).set(true);
+        worker(s).submit(()->{try{invoke(s,"recoverLoss");}catch(Exception e){throw new RuntimeException(e);}}).get(5,TimeUnit.SECONDS);
+        pumpUntil(()->true,"");
+        assertTrue(policy(s).hasSnapshot(held));assertFalse(policy(s).due(held,Long.MAX_VALUE));
+    }
     @Test void nativeTakeoverWithdrawsUpdatesButReplacedListenerAndReconfigurationDoNotSendOldControls() throws Exception {
         var s=updateSession();write(s,SESSION,"announced",true);DhClientSession.nativeOffer();
         assertEquals(1,sent.size());assertFalse(((DhMessage.SessionConfig)codec(s).decode(sent.getFirst())).updates());
@@ -1045,19 +1089,23 @@ class DhClientSessionTest {
         assertSame(s,read(null,DhClientSession.class,"session"));assertTrue(active(s));
     }
     @Test void aClientThreadTimeoutDuringAPushLeavesDhActiveAndSchedulesAcquisition() throws Exception {
+        long previousTimeout=(long)read(null,DhClientSession.class,"handoffTimeoutMillis");
+        write(null,DhClientSession.class,"handoffTimeoutMillis",300L);
         try(var bridge=new DeliveryBridge()) {
             var s=updateSession(-128,512);policy(s).accepted(CONTENT_POSITION,1,1,123,System.nanoTime());
             capture(resource("dh-official-3.3.3-neoforge-content","target-0007-split.bin"),System.nanoTime()).receive();
             var update=contentResponse(s,1,true);
             capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",update.bufferId(),List.of())),System.nanoTime()).receive();
-            // Deliberately leave the first client action queued past its five-second deadline.
-            long deadline=System.nanoTime()+7_000_000_000L;
+            // Leave the first client action queued past a shortened handoff deadline: the
+            // worker must give up and release the frame without the client thread ever running.
+            long deadline=System.nanoTime()+30_000_000_000L;
             while(frameCount(s)>0 && System.nanoTime()<deadline)Thread.sleep(25);
-            pumpUntil(()->frameCount(s)==0,"push timeout did not settle");
+            assertEquals(0,frameCount(s),"the worker did not time out its client handoff");
+            pumpUntil(()->true,"");
             assertTrue(active(s));assertTrue(policy(s).due(CONTENT_POSITION,System.nanoTime()));
             assertEquals(0,policy(s).timestamp(CONTENT_POSITION));
             assertEquals(0,budget(s).used(),"Captured and decoded terrain is released; no fence is retained");
-        }
+        } finally {write(null,DhClientSession.class,"handoffTimeoutMillis",previousTimeout);}
     }
     @Test void unsolicitedPartialTerrainAppliesOnlyCompletelyDescribedColumnsWithoutAnOutstandingRequest() throws Exception {
         try(var bridge=new DeliveryBridge()) {
@@ -1173,8 +1221,10 @@ class DhClientSessionTest {
     private static final class TestMinecraft extends Minecraft {
         private LinkedBlockingQueue<Runnable> mainTasks;
         private ServerData server;
+        private net.minecraft.client.server.IntegratedServer singleplayer;
         private TestMinecraft() {super(null);} // never invoked: no native window in unit tests
         @Override public void execute(Runnable task) {mainTasks.add(task);}
+        @Override public net.minecraft.client.server.IntegratedServer getSingleplayerServer() {return singleplayer;}
         @Override public ServerData getCurrentServer() {return server;}
     }
     @SuppressWarnings("unchecked") private static ConcurrentMap<Integer,Object> pendingMap(Object s) {
@@ -1467,6 +1517,34 @@ class DhClientSessionTest {
         worker(s).submit(()->{try{invoke(s,"recoverLoss");}catch(Exception e){throw new RuntimeException(e);}}).get(5,TimeUnit.SECONDS);
         pumpUntil(()->true,"");
         assertTrue(policy(s).hasSnapshot(held));assertFalse(policy(s).due(held,Long.MAX_VALUE));
+        assertFalse(((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).get());
+        assertTrue(String.valueOf(read(s,SESSION,"problem")).contains("sync off"),"the no-sync branch ran, not an early return");
+    }
+    /** Review 2026-10-10: a receipt held without sync is revalidated once sync is turned on. */
+    @Test void aReceiptRestoredWithoutSyncIsRevalidatedWhenSyncTurnsOn() throws Exception {
+        var s=updateSession();var tile=new DhPosition(6,0,0);setting(Map.of("lod.dh.sync_on_load",false));
+        stored(s).put(tile,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION));
+        @SuppressWarnings("unchecked") var unprobed=(Set<DhPosition>)read(s,SESSION,"unprobed");unprobed.add(tile);
+        invoke(s,"applyProbe",new Class<?>[]{List.class,Map.class},List.of(tile),Map.of(tile,true));
+        assertTrue(policy(s).hasSnapshot(tile));assertFalse(policy(s).due(tile,Long.MAX_VALUE));
+        setting(Map.of("lod.dh.sync_on_load",true));
+        invoke(s,"tick");
+        long now=System.nanoTime();
+        invoke(s,"observeLoaded",new Class<?>[]{long.class,ChunkPos.class},now,new ChunkPos(2,2));
+        assertTrue(policy(s).due(tile,now),"the held tile gets one conditional recheck");
+        assertEquals(123,policy(s).syncTimestamp(tile));
+    }
+    /** Review 2026-10-10: a tile the policy holds in another state (cooldown) is never re-probed. */
+    @Test void aStoredTileOnCooldownIsNotProbedAgainAndAgain() throws Exception {
+        var s=deliverySession(-128,512);write(s,SESSION,"receiptStore",receiptStore(-128,512));
+        stored(s).put(CONTENT_POSITION,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION));
+        policy(s).cooldown(CONTENT_POSITION,System.nanoTime());
+        setting(Map.of("lod.distance_chunks",2));
+        scanAt(s,System.nanoTime(),new ChunkPos(-10,2));
+        assertFalse(((Set<?>)read(s,SESSION,"unprobed")).contains(CONTENT_POSITION));
+        @SuppressWarnings("unchecked") var unprobed=(Set<DhPosition>)read(s,SESSION,"unprobed");unprobed.add(CONTENT_POSITION);
+        invoke(s,"applyProbe",new Class<?>[]{List.class,Map.class},List.of(CONTENT_POSITION),Map.of(CONTENT_POSITION,true));
+        assertEquals(0,counter(s,"restored"),"restore counts only real restores");
     }
     @Test void aMalformedTileTakesAStrikeWithoutStoppingTheSession() throws Exception {
         var s=updateSession();long now=System.nanoTime();pending(s,1,false,now);
@@ -1737,6 +1815,7 @@ class DhClientSessionTest {
         write(resumed,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,false,0,0,500));
         write(resumed,SESSION,"levelKey","test-world");write(resumed,SESSION,"announced",true);
         invoke(resumed,"tick");
+        assertTrue((boolean)read(resumed,SESSION,"resumeApplied"),"the resume branch ran");
         assertTrue(policy(resumed).hasSnapshot(tile),"Without sync, held terrain is kept (official DH client behaviour)");
         assertFalse(policy(resumed).due(tile,Long.MAX_VALUE));
     }

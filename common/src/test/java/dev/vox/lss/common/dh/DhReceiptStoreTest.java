@@ -78,6 +78,26 @@ class DhReceiptStoreTest {
         assertFalse(new DhReceiptStore.Entry(5, DhReceiptStore.CONVERSION_VERSION - 1).current());
         assertFalse(new DhReceiptStore.Entry(0, DhReceiptStore.CONVERSION_VERSION).current());
     }
+    @Test void bucketsAreBoundedLeastRecentlyWrittenFirst() throws Exception {
+        var dir = root.resolve(DhReceiptStore.DIRECTORY);
+        long base = System.currentTimeMillis() - 1_000_000;
+        for (int i = 0; i < DhReceiptStore.MAX_BUCKETS; i++) {
+            var before = listBuckets(dir);
+            store("play.example.net", "w" + i).save(Map.of(new DhPosition(6, 0, 0), entry(1)));
+            var added = new java.util.ArrayList<>(listBuckets(dir)); added.removeAll(before);
+            assertEquals(1, added.size());
+            Files.setLastModifiedTime(added.get(0), java.nio.file.attribute.FileTime.fromMillis(base + 1000L * i));
+        }
+        store("play.example.net", "newest").save(Map.of(new DhPosition(6, 0, 0), entry(3)));
+        assertEquals(DhReceiptStore.MAX_BUCKETS, listBuckets(dir).size());
+        assertTrue(store("play.example.net", "w0").load().isEmpty(), "the least recently written bucket is trimmed");
+        assertEquals(1, store("play.example.net", "w1").load().size());
+        assertEquals(1, store("play.example.net", "newest").load().size());
+    }
+    private static java.util.List<Path> listBuckets(Path dir) throws Exception {
+        if (!Files.isDirectory(dir)) return java.util.List.of();
+        try (var files = Files.list(dir)) { return files.filter(p -> p.toString().endsWith(".rcpt")).toList(); }
+    }
     @Test void aSymlinkedReceiptDirectoryIsRefused() throws Exception {
         Path outside = Files.createTempDirectory("dh-receipt-outside");
         try {

@@ -475,7 +475,7 @@ public final class ClientNetGlue {
                 && !Boolean.getBoolean("lss.test.integratedServer");
         sessionGate.onJoin(LSSClientConfig.CONFIG.receiveServerLods(), localIntegratedServer,
                 LSSApi.hasVoxelConsumers(), LSSClientConfig.CONFIG.enableV16ServerCompat(),
-                LSSClientConfig.CONFIG.enableV19ServerCompat(), true);
+                LSSClientConfig.CONFIG.enableV19ServerCompat());
     }
 
     /** DISCONNECT ladder body. Known shared residual (N-3 review, pre-existing and

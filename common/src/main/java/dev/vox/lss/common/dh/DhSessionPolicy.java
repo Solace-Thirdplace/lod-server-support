@@ -50,10 +50,15 @@ public final class DhSessionPolicy {
      * it is due now for one conditional request (the server answers changed or
      * unchanged); without it the receipt is held, since no server check is possible.
      */
-    public void restore(DhPosition p, long timestamp, long now, boolean revalidate) {
-        if (timestamp <= 0 || receipts.containsKey(p)) return;
+    /** @return true when the receipt was restored (the policy had no entry for the tile). */
+    public boolean restore(DhPosition p, long timestamp, long now, boolean revalidate) {
+        if (timestamp <= 0 || receipts.containsKey(p)) return false;
         put(p, new Receipt(timestamp, now, revalidate ? now : Long.MAX_VALUE, false, true, !revalidate, 0, false, revalidate));
+        return true;
     }
+    /** Any policy state for the tile (held, cooling down, deferred or absent). False only
+     *  for a tile the policy never saw or evicted. */
+    public boolean contains(DhPosition p) { return receipts.containsKey(p); }
     public boolean generationNeeded(DhPosition p) { var r=receipts.get(p); return r!=null && r.generate && !r.held; }
     public boolean retryExhausted(DhPosition p) { var r=receipts.get(p); return r!=null && r.failures>=MAX_REJECTED_ATTEMPTS; }
     /** Diagnostic distinction: a held successful snapshot is idle, not parked missing work. */
