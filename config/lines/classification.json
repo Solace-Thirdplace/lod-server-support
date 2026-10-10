@@ -1,10 +1,10 @@
 {
   "basis": {
-    "1.21.1": "14e1fb24f88b2a64ae37c284863b4e6b72538331",
-    "1.21.10": "5cb972570383b9a9ac1190a57e7fe4a5c4b463d8",
-    "1.21.11": "19a15c622e3a36c40a3821e53200d900e80e4e79",
-    "26.1": "c821170d4101a6d48c9ae365109d412def8d58bc",
-    "26.2": "1966ef1ec0a42929f6aec93d2a44f942d11c9dcb"
+    "1.21.1": "7e44068a9667d2522b135c6f5d14e0376905df77",
+    "1.21.10": "9109085753a914a7d2caf4aa563165d301c9bd0e",
+    "1.21.11": "622796b9ac9ec1e9ccbc5cfae847152d1a49d313",
+    "26.1": "c21b722640682c84bf49a153944a28d3dbe3fa34",
+    "26.2": "f4b3af09271edd4e7cff64eeecd15ec845283306"
   },
   "files": {
     ".github/line.env": {
@@ -3253,13 +3253,13 @@
     "fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java": {
       "axes": "Mock stubs follow getMinBuildHeight() (1.21.1) vs getMinY(); assertions byte-identical.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: two stub method names only.",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: two stub method names only. 2026-10-10 hosted-CI fold: cleanup drains RECEIPT_IO before @TempDir deletion (identical three-line change on every line).",
       "reviewed_blobs": {
-        "1.21.1": "5412b920588bace4c529f32974507120851e2b3f",
-        "1.21.10": "a3b82a8536e030e66db26a8c2f7689e9d2ea6339",
-        "1.21.11": "a3b82a8536e030e66db26a8c2f7689e9d2ea6339",
-        "26.1": "a3b82a8536e030e66db26a8c2f7689e9d2ea6339",
-        "26.2": "a3b82a8536e030e66db26a8c2f7689e9d2ea6339"
+        "1.21.1": "523eb4354f11c7b8356ca2d54a8865665367661e",
+        "1.21.10": "791e43e83b58e9f74182febefc02bf46def65630",
+        "1.21.11": "791e43e83b58e9f74182febefc02bf46def65630",
+        "26.1": "791e43e83b58e9f74182febefc02bf46def65630",
+        "26.2": "791e43e83b58e9f74182febefc02bf46def65630"
       },
       "surface": "dh-client-adapter:fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java",
       "tests": [
