@@ -1,10 +1,7 @@
 ### New Features
 
-- **Experimental: terrain from Distant Horizons servers** — Fabric and NeoForge clients with Voxy can show distant terrain from servers running Distant Horizons 3.3.x or DH Support without LSS. On by default for Voxy players; turn off "Allow DH Server Terrain" in the LSS settings to disable it.
-- **Fast rejoins on DH servers** — The client remembers which DH terrain it already has, so rejoining downloads only what changed.
+- **Distant Horizons compatibility (experimental, on by default)** — Join servers running Distant Horizons and see far terrain load in with Voxy. For the best results, we still recommend installing LSS on the server too.
 
-### Support and Compatibility
+### Support
 
-- **Platforms** — Fabric, Paper/Purpur, and NeoForge on Minecraft 1.21.1. The whole line is best-effort; Fabric and NeoForge distant-player rendering are available. Folia is unavailable on this line.
-- **Compatibility** — Native LSS always takes priority, and the LSS network protocol is unchanged. Do not install the Distant Horizons client mod alongside; older DH 3.2.x servers are not supported. Not endorsed by the Distant Horizons team.
-- **Known limitations** — DH terrain is a block-resolution approximation. Existing Xaero first-spawn gaps, region-boundary shading seams, and shader/LOD-depth limitations remain.
+- **Platforms** — Fabric, Paper/Purpur and NeoForge for Minecraft 1.21.1.
