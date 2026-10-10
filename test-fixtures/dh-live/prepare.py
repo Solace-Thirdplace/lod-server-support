@@ -17,6 +17,7 @@ p.add_argument('--moving-border',action='store_true')
 p.add_argument('--bounded-storage',action='store_true')
 p.add_argument('--slow-config',action='store_true')
 p.add_argument('--allow-dh',action='store_true',help='Enable DH fallback even in the native boundary case')
+p.add_argument('--source-unset',action='store_true',help='Write no experimental client key (no lod.source, no sidecar): the client runs on the shipped defaults')
 p.add_argument('--boundary-expect',choices=['report','covered'],default='covered')
 p.add_argument('--builder',choices=['FullBuilder','FastOverworldBuilder'],default='FullBuilder')
 p.add_argument('--loader',choices=['neoforge','fabric'],default='neoforge');a=p.parse_args()
@@ -73,12 +74,17 @@ instance=run/'instances/dh-neoforge';game=instance/'minecraft';(game/'config').m
 (instance/'mmc-pack.json').write_text(json.dumps({'formatVersion':1,'components':profile['components']}))
 (instance/'instance.cfg').write_text('[General]\nInstanceType=OneSix\nname=DH NeoForge private verification\nOverrideJavaLocation=true\nJavaPath='+LINE['java']+'\nOverrideJavaArgs=true\nJvmArgs=-XX:ActiveProcessorCount=4 -Dlss.rig.runId='+run.name+' -Dlss.rig.scenario='+a.scenario+' -Dlss.rig.expect='+a.expect+' -Dlss.rig.profile='+{'dh_support_15':'SUPPORT_15','official_15':'OFFICIAL_15','official_16':'OFFICIAL_16'}[a.profile]+' -Dlss.rig.boundaryExpect='+a.boundary_expect+' -Dlss.rig.movingBorder='+str(a.moving_border).lower()+' -Dlss.rig.slowConfig='+str(a.slow_config).lower()+' -Dlss.rig.nativePreferred='+str(a.scenario=='boundary' and a.terrain_source=='native').lower()+' -Dlss.rig.initialEndpoint=[::1]:'+('25587' if a.scenario=='load' else '25586')+' -Dlss.rig.arm='+a.arm+' -Dlss.rig.coldSeconds='+str(a.cold_seconds)+' -Dlss.rig.warmSeconds='+str(a.warm_seconds)+(' -Xlog:gc:file='+str(run/'instances/dh-neoforge/minecraft/gc.log')+':uptime' if a.scenario=='movement' else '')+' -Dlss.rig.captureDir='+str(run/'captures')+'\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc=3072\nOverrideWindow=true\nMinecraftWinWidth='+str(1280 if a.scenario in ['menu','updates'] else 960)+'\nMinecraftWinHeight='+str(720 if a.scenario in ['menu','updates'] else 540)+'\nLaunchMaximized=false\nOverrideCommands=true\nPreLaunchCommand=\nPostExitCommand=\nWrapperCommand=\n')
 (game/'options.txt').write_text('maxFps:30\nrenderDistance:'+str(12 if a.scenario=='boundary' else 4)+'\nsimulationDistance:5\npauseOnLostFocus:false\nenableVsync:false\nguiScale:'+str(0 if a.scenario in ['menu','updates'] else 2)+'\nonboardAccessibility:false\n')
-client_settings=render_files({'lod.source':'lss' if a.scenario=='content' or a.scenario=='boundary' and a.terrain_source=='native' and not a.allow_dh or a.arm=='dh-off' else 'distant_horizons','lod.receive':True,'lod.dh.sync_on_load':True,'lod.dh.real_time_updates':a.scenario in ['menu','updates'],'lod.distance_chunks':a.load_range if a.scenario=='load' else 0 if a.arm=='dh-range128' else 40 if a.scenario=='absence' else 12 if a.scenario in ['content','service','race','rejoin','updates','boundary'] else 32,'integrations.xaero_map.enabled':False},side='client')
+client_settings=render_files({**({} if a.source_unset else {'lod.source':'lss' if a.scenario=='content' or a.scenario=='boundary' and a.terrain_source=='native' and not a.allow_dh or a.arm=='dh-off' else 'distant_horizons'}),'lod.receive':True,**({} if a.source_unset else {'lod.dh.sync_on_load':True,'lod.dh.real_time_updates':a.scenario in ['menu','updates']}),'lod.distance_chunks':a.load_range if a.scenario=='load' else 0 if a.arm=='dh-range128' else 40 if a.scenario=='absence' else 12 if a.scenario in ['content','service','race','rejoin','updates','boundary'] else 32,'integrations.xaero_map.enabled':False},side='client')
 (game/'config/lss-client-config.yaml').write_text(client_settings['main'])
 if a.scenario=='load' and a.arm=='official':
  # Same LOD radius as the LSS arm; everything else stays at DH's shipped defaults.
  (game/'config/DistantHorizons.toml').write_text('[client.advanced.graphics.quality]\nlodChunkRenderDistanceRadius = '+str(a.load_range)+'\n')
 if client_settings['sidecar'] is not None:(game/'config/lss-client-experimental.yaml').write_text(client_settings['sidecar'])
+if a.source_unset:
+ # The shipped default must be what runs: no source key in main and no sidecar at all.
+ written=[l for l in client_settings['main'].splitlines() if l.strip().startswith('source:')]
+ if written or client_settings['sidecar'] is not None:raise ValueError('--source-unset wrote an experimental setting: '+repr(written))
+ (run/'client-source-setting.json').write_text(json.dumps({'lod_source_written':False,'sidecar_written':False},indent=2)+'\n')
 (run/'server/eula.txt').write_text('eula=true\n')
 if a.scenario=='absence':
  (run/'server/config').mkdir(exist_ok=True)

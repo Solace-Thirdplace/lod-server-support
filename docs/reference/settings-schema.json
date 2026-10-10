@@ -1548,7 +1548,7 @@
         "path": "lod.source",
         "legacyKey": "dhTerrainSource",
         "kind": "STRING",
-        "defaultValue": "lss",
+        "defaultValue": "distant_horizons",
         "timing": "S",
         "platform": "ALL",
         "sensitive": false,
@@ -1557,7 +1557,7 @@
         "minimum": null,
         "maximum": null,
         "zeroSentinel": false,
-        "description": "[reconnect] lss = native only; distant_horizons = allow DH server terrain when the native terrain service is absent.",
+        "description": "[reconnect] distant_horizons (default) = allow DH server terrain when the native terrain service is absent; lss = native only.",
         "translationKey": "lss.config.lod_source"
       },
       {

@@ -43,15 +43,18 @@ class ClientOptionCatalogTest {
                 try { handle.commit(handle.prepareReload());reloads.incrementAndGet(); }
                 catch(IOException failure) { throw new AssertionError(failure); }
             });
-            ((OptionSpec.BoolSpec)ClientOptionCatalog.find(ClientOptionCatalog.ID_LOD_SOURCE).orElseThrow()).setter().accept(cfg,true);
+            var source=(OptionSpec.BoolSpec)ClientOptionCatalog.find(ClientOptionCatalog.ID_LOD_SOURCE).orElseThrow();
+            assertTrue(source.defaultValue());assertTrue(source.getter().apply(cfg),"DH server terrain is allowed by default");
+            source.setter().accept(cfg,false);
             assertTrue(cfg.apply());assertEquals(1,reloads.get());
-            assertEquals("lss",handle.state().effective().lod().source());
+            assertEquals("lss",store.read().configured().lod().source());
+            assertEquals("distant_horizons",handle.state().effective().lod().source());
             assertFalse(handle.state().effective().lod().dh().syncOnLoad());
             assertFalse(handle.state().effective().lod().dh().realTimeUpdates());
             assertEquals(Set.of("lod.source"),handle.state().pendingReconnect());
-            handle.beginSession(connection);assertEquals("lss",handle.state().effective().lod().source());
+            handle.beginSession(connection);assertEquals("distant_horizons",handle.state().effective().lod().source());
             handle.endSession(connection);handle.beginSession(new Object());
-            assertEquals("distant_horizons",handle.state().effective().lod().source());
+            assertEquals("lss",handle.state().effective().lod().source());
             assertTrue(handle.state().pendingReconnect().isEmpty());
         }
     }
