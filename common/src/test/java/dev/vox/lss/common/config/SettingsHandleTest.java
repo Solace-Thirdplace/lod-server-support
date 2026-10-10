@@ -21,13 +21,14 @@ class SettingsHandleTest {
     @Test void dhFallbackPermissionIsReconnectScopedButSynchronizationIsLive() throws Exception {
         var store=new SettingsStore<>(dir,"lss",SettingsSchema.client());
         var h=new SettingsHandle<>(store); Object connection=new Object(); h.beginSession(connection);
-        edit(store,Map.of("lod.source","distant_horizons","lod.dh.sync_on_load",false));
+        assertEquals("distant_horizons",h.state().effective().lod().source(),"DH server terrain is allowed by default");
+        edit(store,Map.of("lod.source","lss","lod.dh.sync_on_load",false));
         var commit=h.commit(h.prepareReload());
-        assertEquals("lss",h.state().effective().lod().source());
+        assertEquals("distant_horizons",h.state().effective().lod().source());
         assertFalse(h.state().effective().lod().dh().syncOnLoad());
         assertEquals(Set.of("lod.source"),commit.pendingReconnect());
         h.endSession(connection); h.beginSession(new Object());
-        assertEquals("distant_horizons",h.state().effective().lod().source());
+        assertEquals("lss",h.state().effective().lod().source());
         assertThrows(SettingsException.class,()->SettingsSchema.client().fromValues(Map.of("lod.source","automatic")));
         assertThrows(SettingsException.class,()->SettingsSchema.client().fromValues(Map.of("lod.dh.profile","guess")));
         edit(store,Map.of("lod.dh.sync_on_load",true)); h.commit(h.prepareReload());
