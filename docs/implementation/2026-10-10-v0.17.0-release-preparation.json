@@ -1,43 +1,125 @@
 {
+  "dh_default_flip": {
+    "decision": "user decision 2026-10-10: Allow DH Server Terrain (lod.source) defaults to distant_horizons on all five lines",
+    "live_default_path": {
+      "artifacts_identical_to_gate_jars": true,
+      "cases": [
+        {
+          "case": "neoforge-default-official16",
+          "columns_enqueued": 719,
+          "commit": "6b21ef651901d894531df246480405beba02e24f",
+          "loader": "neoforge",
+          "ordinary_connected": true,
+          "pass": true,
+          "reason": "NONE",
+          "requests": 72,
+          "source_setting": {
+            "lod_source_written": false,
+            "sidecar_written": false
+          },
+          "state": "READY",
+          "stored_receipts": 32,
+          "tiles": 34,
+          "voxy_storage_samples": 67584,
+          "wire_bytes": 3215400
+        },
+        {
+          "case": "fabric-default-official16",
+          "columns_enqueued": 933,
+          "commit": "6b21ef651901d894531df246480405beba02e24f",
+          "loader": "fabric",
+          "ordinary_connected": true,
+          "pass": true,
+          "reason": "NONE",
+          "requests": 101,
+          "source_setting": {
+            "lod_source_written": false,
+            "sidecar_written": false
+          },
+          "state": "READY",
+          "stored_receipts": 32,
+          "tiles": 59,
+          "voxy_storage_samples": 53760,
+          "wire_bytes": 4211731
+        },
+        {
+          "case": "neoforge-default-no-service",
+          "commit": "6b21ef651901d894531df246480405beba02e24f",
+          "loader": "neoforge",
+          "observation_ms": 30006,
+          "ordinary_connected": true,
+          "pass": true,
+          "reason": "NO_DH_CHANNEL",
+          "requests_after_stop": 0,
+          "requests_before_stop": 0,
+          "source_setting": {
+            "lod_source_written": false,
+            "sidecar_written": false
+          },
+          "state": "NO_SERVICE"
+        },
+        {
+          "case": "fabric-default-no-service",
+          "commit": "6b21ef651901d894531df246480405beba02e24f",
+          "loader": "fabric",
+          "observation_ms": 30000,
+          "ordinary_connected": true,
+          "pass": true,
+          "reason": "NO_DH_CHANNEL",
+          "requests_after_stop": 0,
+          "requests_before_stop": 0,
+          "source_setting": {
+            "lod_source_written": false,
+            "sidecar_written": false
+          },
+          "state": "NO_SERVICE"
+        }
+      ],
+      "evidence": "build/dh-ports/default-on/",
+      "rig_option": "test-fixtures/dh-live --source-unset (no lod.source, no sidecar)"
+    },
+    "menu_context_fix": "MenuContext reports DH only on a live connection that selected it (title screen stays native); found by LSSConfigMenuTest in the first default-on gate",
+    "sidecar": "experimental sidecar stores only nondefault values; fresh client has no sidecar and allows DH; turning it off writes source: lss to the sidecar only; main client file never carries experimental keys"
+  },
   "intended_lss_publish_artifact_count": 13,
   "lines": {
     "1.21.1": {
       "artifacts": {
         "fabric/build/libs/lod-server-support-fabric-0.17.0+1.21.1.jar": {
           "brand": "LSS",
-          "bytes": 9109359,
+          "bytes": 9109462,
           "publish": true,
-          "sha256": "891e0a86082b1a05941217aa25ee77e588c3db6a7d91abf3298ae31fefdae5c0"
+          "sha256": "23c0c26eb609457a8bfcd9733817e09d7e0ea32bc2798278a1ed6bdbf81db68a"
         },
         "fabric/build/libs/voxy-server-side-fabric-0.17.0+1.21.1.jar": {
           "brand": "VSS",
-          "bytes": 9115677,
+          "bytes": 9115780,
           "publish": "pending user decision",
-          "sha256": "95b59a64359c5a71b4fcc920a3fb43b6203bdb51accc4fb7faafbfba2086cf7c"
+          "sha256": "28b663d8d0beabf921b8b290142492e7ffed5a8f241fae9f069636df94a301a7"
         },
         "neoforge/build/libs/lod-server-support-neoforge-0.17.0+1.21.1.jar": {
           "brand": "LSS",
-          "bytes": 14332901,
+          "bytes": 14333035,
           "publish": true,
-          "sha256": "1072f9345b638b79e15bf0b3816b8bdbc2c8e3c8d7adf89516d07c4c2b7cfbf2"
+          "sha256": "969073854d6c52ee60705e51eda7d97a36c09a3f9a64a31094cac12582a87de2"
         },
         "neoforge/build/libs/voxy-server-side-neoforge-0.17.0+1.21.1.jar": {
           "brand": "VSS",
-          "bytes": 14339147,
+          "bytes": 14339281,
           "publish": "pending user decision",
-          "sha256": "ca323a99dde084df532df29049c2ffb20dd2433aefa64a936c9a073fc775dbd6"
+          "sha256": "8d01050b0781bb707367045ef9101038247a10291bad374a71ed7d1cc206877d"
         },
         "paper/build/libs/lod-server-support-paper-0.17.0+1.21.1.jar": {
           "brand": "LSS",
-          "bytes": 8338417,
+          "bytes": 8338419,
           "publish": true,
-          "sha256": "41649dadf09c3eb570e7269dd76a7c7329944ce40c02a0e28cb036cd74568d54"
+          "sha256": "de8f5a1c57070b267b11a437c769eca7312528cd4fd97d40f08583805bdc2828"
         },
         "paper/build/libs/voxy-server-side-paper-0.17.0+1.21.1.jar": {
           "brand": "VSS",
-          "bytes": 8338351,
+          "bytes": 8338353,
           "publish": "pending user decision",
-          "sha256": "3c8e82f03125bae366aceec6ab7a1fc9b4c34401c0df036b19033613bd463bc2"
+          "sha256": "7195b80c5082938531a2a24e0f1460a33e1420c8989a0e32cf8f9f3f38652c12"
         }
       },
       "base_branch": "support/mc1.21.1",
@@ -89,8 +171,9 @@
           "tests_ran": 9
         },
         "unittest-tools-rig": {
-          "exit": 0,
-          "result": "OK (skipped=3)",
+          "disposition": "accepted environmental exception: exactly 8 storage-guard failures, all \"Physical VHD host storage below 50 GiB reserve plus run budget\" (C: 54 GiB free at run time); no other failure",
+          "exit": 1,
+          "result": "FAILED (failures=8, skipped=3)",
           "tests_ran": 651
         },
         "unittest-tools-tests": {
@@ -113,10 +196,10 @@
         },
         "neoforge_dh": "ships (Voxy route)"
       },
-      "gate_attempt": "01",
-      "gate_elapsed_seconds": 328.3,
+      "gate_attempt": "03",
+      "gate_elapsed_seconds": 274.3,
       "gate_exit": 0,
-      "gate_log_sha256": "cc9b5fcd9aae5de1a7a3d78e62e1336d646a08d7799b7b8209a70be8e0e80ba7",
+      "gate_log_sha256": "1f1717f6197b06cc26358b5b09d610c13e595bd67540d6ddcca1333d98a64bec",
       "gradle_tasks": [
         ":common:test",
         ":fabric:build",
@@ -133,13 +216,13 @@
           "errors": 0,
           "failures": 0,
           "skipped": 0,
-          "tests": 1048
+          "tests": 1051
         },
         "fabric": {
           "errors": 0,
           "failures": 0,
           "skipped": 4,
-          "tests": 1820
+          "tests": 1821
         },
         "neoforge": {
           "errors": 0,
@@ -158,8 +241,8 @@
       "merge": "merge commit only (no squash/rebase)",
       "neoforge_lss_published": true,
       "notes_file": "docs/planning/v0.17.0-release-notes/mc1.21.1.md",
-      "notes_sha256": "2c06e6a9739c9a30251ac0835cd7b8d5c743ee4cad8a0de94f5892c42b974e36",
-      "pin_commit": "ae8926a8b5a96bdd1188d5746bd7455b4c936cb1",
+      "notes_sha256": "0eee8f6e6bf6300a9559e529752d270ddadb08161bf9961468100df03e034950",
+      "pin_commit": "b445a9784873fbc953ae463b3f15c1e74b8e4ca0",
       "release_branch": "release/v0.17.0-mc1.21.1",
       "server_gametests_passed": {
         "fabric": 78,
@@ -171,39 +254,39 @@
       "artifacts": {
         "fabric/build/libs/lod-server-support-fabric-0.17.0+1.21.10.jar": {
           "brand": "LSS",
-          "bytes": 9103753,
+          "bytes": 9103857,
           "publish": true,
-          "sha256": "d0b605ba3fd5eedf8bb843c5a2812f4caa0f1b7479c025e19e3f400f34b508d4"
+          "sha256": "8ee0ccbb18d2e044afccc5790c33711fa009d482c466cfe500d388d2b6d46faa"
         },
         "fabric/build/libs/voxy-server-side-fabric-0.17.0+1.21.10.jar": {
           "brand": "VSS",
-          "bytes": 9110066,
+          "bytes": 9110170,
           "publish": "pending user decision",
-          "sha256": "d713c1d9bd81969cea7df8aaca8b21d969eb47bdd6aad97358296f385485ed79"
+          "sha256": "70b4217dfc6f405e2c350f2be4155706fafd19e60093aa84b7525a35f2b01af3"
         },
         "neoforge/build/libs/lod-server-support-neoforge-0.17.0+1.21.10.jar": {
           "brand": "LSS",
-          "bytes": 14299138,
+          "bytes": 14299272,
           "publish": false,
-          "sha256": "00a9be06ca9d643080081b443c5bc3e6bcb1b660cfaa9251560bcac4fb59cf16"
+          "sha256": "9eef69407246b33273a0515aadc93470f61a3b674fd311c4a41660526ba6ac5d"
         },
         "neoforge/build/libs/voxy-server-side-neoforge-0.17.0+1.21.10.jar": {
           "brand": "VSS",
-          "bytes": 14305380,
+          "bytes": 14305514,
           "publish": "pending user decision",
-          "sha256": "d07cf226008d2c29c2543e02d6720310744e46e9c38f929e509d09d7ef747ac4"
+          "sha256": "c687aa9fbaed4be613f9056a595a83361f5d094e687fe604b654fba187c92fc1"
         },
         "paper/build/libs/lod-server-support-paper-0.17.0+1.21.10.jar": {
           "brand": "LSS",
-          "bytes": 8337979,
+          "bytes": 8337981,
           "publish": true,
-          "sha256": "6c0bcb4669ea3b4bef71d077bb8098858596b3738ba44d96648b3f8c5111a7d0"
+          "sha256": "fa5c08686cb8403257e1acc5a00f315dc68744187ab9e62e2bc9f6097e512d2f"
         },
         "paper/build/libs/voxy-server-side-paper-0.17.0+1.21.10.jar": {
           "brand": "VSS",
-          "bytes": 8337917,
+          "bytes": 8337919,
           "publish": "pending user decision",
-          "sha256": "451c8b53907fb150fb7edf7a4639f0fe83c309ea4e8de1334d7e00f7d59b0073"
+          "sha256": "39cf2398d63d81966267d8a5f1c889f1acbb595d2cf0fef45146a3c1b8f57c87"
         }
       },
       "base_branch": "support/mc1.21.10",
@@ -255,8 +338,9 @@
           "tests_ran": 9
         },
         "unittest-tools-rig": {
-          "exit": 0,
-          "result": "OK (skipped=3)",
+          "disposition": "accepted environmental exception: exactly 8 storage-guard failures, all \"Physical VHD host storage below 50 GiB reserve plus run budget\" (C: 54 GiB free at run time); no other failure",
+          "exit": 1,
+          "result": "FAILED (failures=8, skipped=3)",
           "tests_ran": 651
         },
         "unittest-tools-tests": {
@@ -279,10 +363,10 @@
         "neoforge_dh": "compiled and tested; not advertised (no Voxy route)",
         "options_page": "legacy Sodium page only (Sodium 0.7.3)"
       },
-      "gate_attempt": "01",
-      "gate_elapsed_seconds": 204.3,
+      "gate_attempt": "03",
+      "gate_elapsed_seconds": 310.6,
       "gate_exit": 0,
-      "gate_log_sha256": "8a576cf189005f4a22b9e8439bc8fb86976d77ba52088d536516927e5eaf4534",
+      "gate_log_sha256": "5a16550454d2cc0b79ef8e66fc80bcd0d8e020b109e7a419373eba1f5a54f8e8",
       "gradle_tasks": [
         ":common:test",
         ":fabric:build",
@@ -300,13 +384,13 @@
           "errors": 0,
           "failures": 0,
           "skipped": 0,
-          "tests": 1047
+          "tests": 1050
         },
         "fabric": {
           "errors": 0,
           "failures": 0,
           "skipped": 6,
-          "tests": 1818
+          "tests": 1819
         },
         "neoforge": {
           "errors": 0,
@@ -325,8 +409,8 @@
       "merge": "merge commit only (no squash/rebase)",
       "neoforge_lss_published": false,
       "notes_file": "docs/planning/v0.17.0-release-notes/mc1.21.10.md",
-      "notes_sha256": "b7346748f676f7a6a3bf2486354103853e50b97f94e4627f9525fd4396d51764",
-      "pin_commit": "feaaee8cf1a17f3b8b77663c4fdededb7107f25f",
+      "notes_sha256": "ef78c4bf87a8d6803623e54caedce537be144388421f58f83ad8cabbeba47cd9",
+      "pin_commit": "9a34146cc27b15db172735ba4b3ad588bf5d6180",
       "release_branch": "release/v0.17.0-mc1.21.10",
       "server_gametests_passed": {
         "fabric": 80,
@@ -338,39 +422,39 @@
       "artifacts": {
         "fabric/build/libs/lod-server-support-fabric-0.17.0+1.21.11.jar": {
           "brand": "LSS",
-          "bytes": 9110276,
+          "bytes": 9110380,
           "publish": true,
-          "sha256": "8af716e64f1575008b5ceb8bd37faed8320293c5298a61f98fc986b3d29db105"
+          "sha256": "b1e6a45cdccb9537af64b856efa9c7974a28aaf8a9e1a1833cfbe0c56dfc7363"
         },
         "fabric/build/libs/voxy-server-side-fabric-0.17.0+1.21.11.jar": {
           "brand": "VSS",
-          "bytes": 9116589,
+          "bytes": 9116693,
           "publish": "pending user decision",
-          "sha256": "ed4b97ad9a379352e8ade46c8ac34b301866a2bfb14f621fe5c3742814dec41c"
+          "sha256": "bfea99708890c63e69c378a7b180b436205a859140818dd408e32d64412a1ee7"
         },
         "neoforge/build/libs/lod-server-support-neoforge-0.17.0+1.21.11.jar": {
           "brand": "LSS",
-          "bytes": 14305896,
+          "bytes": 14306030,
           "publish": false,
-          "sha256": "f66a8209d3a9aa5cff5ad1e1721bb5ae04d94cb6c2b7e7c57a806a8ce2f9edaf"
+          "sha256": "e33b920a9698c0a058d50cdbb98f53dfc2881840905cbbef4d6e08d821131e3c"
         },
         "neoforge/build/libs/voxy-server-side-neoforge-0.17.0+1.21.11.jar": {
           "brand": "VSS",
-          "bytes": 14312135,
+          "bytes": 14312269,
           "publish": "pending user decision",
-          "sha256": "1d581a74edde6c96dd86459169c809d25bb2ee431990d3caf614a89fbdd63912"
+          "sha256": "df00655f8a7a19e5299fed7f8729ca7d317de2a48be2935bf408bbd7d37acc7f"
         },
         "paper/build/libs/lod-server-support-paper-0.17.0+1.21.11.jar": {
           "brand": "LSS",
-          "bytes": 8337906,
+          "bytes": 8337908,
           "publish": true,
-          "sha256": "a7af09be78d392e31a5c2ed749497e6bedd404bd2915f0a72fd41d762c07abb8"
+          "sha256": "275123656a6a67bc5174bbb8b828044248560e79923e621c5d144c3097a32d1a"
         },
         "paper/build/libs/voxy-server-side-paper-0.17.0+1.21.11.jar": {
           "brand": "VSS",
-          "bytes": 8337845,
+          "bytes": 8337847,
           "publish": "pending user decision",
-          "sha256": "e6127f7466f2528dd7c29a04f13d9204c2d73f4c13a3fa91bc6ccb04497abded"
+          "sha256": "e8a09d968a42e44af0961ee8d3a7f4bd3854883ec64811325e77f3827158e09b"
         }
       },
       "base_branch": "support/mc1.21.11-v0.14",
@@ -422,8 +506,9 @@
           "tests_ran": 9
         },
         "unittest-tools-rig": {
-          "exit": 0,
-          "result": "OK (skipped=3)",
+          "disposition": "accepted environmental exception: exactly 8 storage-guard failures, all \"Physical VHD host storage below 50 GiB reserve plus run budget\" (C: 54 GiB free at run time); no other failure",
+          "exit": 1,
+          "result": "FAILED (failures=8, skipped=3)",
           "tests_ran": 651
         },
         "unittest-tools-tests": {
@@ -445,10 +530,10 @@
         },
         "neoforge_dh": "compiled and tested; not advertised (no Voxy route)"
       },
-      "gate_attempt": "01",
-      "gate_elapsed_seconds": 200.3,
+      "gate_attempt": "02",
+      "gate_elapsed_seconds": 325.2,
       "gate_exit": 0,
-      "gate_log_sha256": "35e891329d007f9114c2dc505d0fcca825678b2eaed34a919b02bc649a849747",
+      "gate_log_sha256": "497da2c7a25ec6edccaba03101dde068bb5b6e5825f7968ca2e3a654491bbe1a",
       "gradle_tasks": [
         ":common:test",
         ":fabric:build",
@@ -466,13 +551,13 @@
           "errors": 0,
           "failures": 0,
           "skipped": 0,
-          "tests": 1047
+          "tests": 1050
         },
         "fabric": {
           "errors": 0,
           "failures": 0,
           "skipped": 4,
-          "tests": 1821
+          "tests": 1822
         },
         "neoforge": {
           "errors": 0,
@@ -491,8 +576,8 @@
       "merge": "merge commit only (no squash/rebase)",
       "neoforge_lss_published": false,
       "notes_file": "docs/planning/v0.17.0-release-notes/mc1.21.11.md",
-      "notes_sha256": "4e3544041e2a2252f0d0599a23ec0b157ecf4ffeda7d49873211c2e54f83ae09",
-      "pin_commit": "bc6bc5bcdf547385e96cd8cbfdcefb945ca37da6",
+      "notes_sha256": "77b7e8404e76f9fec0c3c0879e52d14763dc7a86bdcb7f7fdca50e724359ae57",
+      "pin_commit": "23f1cd4bd9224b33708ab5c36edde75c40b9c61f",
       "release_branch": "release/v0.17.0-mc1.21.11",
       "server_gametests_passed": {
         "fabric": 80,
@@ -504,39 +589,39 @@
       "artifacts": {
         "fabric/build/libs/lod-server-support-fabric-0.17.0+26.1.2.jar": {
           "brand": "LSS",
-          "bytes": 9112856,
+          "bytes": 9112989,
           "publish": true,
-          "sha256": "1db19e2ea1c3690560a9d8b43db5b73c3b835b2f2aef6484e2e12336dabe49d2"
+          "sha256": "c88e37f44645b7a1330d859b747d7af548dfb7beb10cc18d2924881c22818e60"
         },
         "fabric/build/libs/voxy-server-side-fabric-0.17.0+26.1.2.jar": {
           "brand": "VSS",
-          "bytes": 9119174,
+          "bytes": 9119307,
           "publish": "pending user decision",
-          "sha256": "20a0835a059507b7ed1c8ff373a988fda1d130b7bf1f21ddda93d7b58f34b966"
+          "sha256": "ee2f38ee34f952651ca5d39f2f22a07da0bee434a74e943054ba1f741a91133a"
         },
         "neoforge/build/libs/lod-server-support-neoforge-0.17.0+26.1.2.jar": {
           "brand": "LSS",
-          "bytes": 14308303,
+          "bytes": 14308440,
           "publish": true,
-          "sha256": "831dd1b58d1509fc7f4ebfaf160b78a6f9b0d6d5b1625d84a15a99162286a08e"
+          "sha256": "41e5490577c8cb0b6d4dc0a8c6cd86b3061e1da60418c0fe7398b26f6ffffb50"
         },
         "neoforge/build/libs/voxy-server-side-neoforge-0.17.0+26.1.2.jar": {
           "brand": "VSS",
-          "bytes": 14314549,
+          "bytes": 14314686,
           "publish": "pending user decision",
-          "sha256": "a1ed2348cf7db80a39aa13ea17c3b9cd6757ed7014b013523ba609bbe6489faf"
+          "sha256": "38b2f1ef2ddf4822e413a989602edb6839c227aa5f22ecd6428c7ad0d9144ea0"
         },
         "paper/build/libs/lod-server-support-paper-0.17.0+26.1.2.jar": {
           "brand": "LSS",
-          "bytes": 8337821,
+          "bytes": 8337827,
           "publish": true,
-          "sha256": "38e56ccbd15a2aff0aba7b9c0f0a8638c31bf0325d14d6831f832e83b1fd82b7"
+          "sha256": "46b5eec6ef8da156b6f2af4a18609d23b9779a4885b56d27ddaec5867f5e84ec"
         },
         "paper/build/libs/voxy-server-side-paper-0.17.0+26.1.2.jar": {
           "brand": "VSS",
-          "bytes": 8337759,
+          "bytes": 8337765,
           "publish": "pending user decision",
-          "sha256": "2d9403deb63fea4d7e11c3b9e13d1e009c15008326266f803f59f51e829abcef"
+          "sha256": "e54e88de5dcba146504d70003d64d498c378d7541485e99eb55073e5df88d0e8"
         }
       },
       "base_branch": "support/mc26.1-v0.14",
@@ -588,8 +673,9 @@
           "tests_ran": 9
         },
         "unittest-tools-rig": {
-          "exit": 0,
-          "result": "OK (skipped=3)",
+          "disposition": "accepted environmental exception: exactly 8 storage-guard failures, all \"Physical VHD host storage below 50 GiB reserve plus run budget\" (C: 54 GiB free at run time); no other failure",
+          "exit": 1,
+          "result": "FAILED (failures=8, skipped=3)",
           "tests_ran": 651
         },
         "unittest-tools-tests": {
@@ -611,10 +697,10 @@
         },
         "neoforge_dh": "ships (Foxy route)"
       },
-      "gate_attempt": "01",
-      "gate_elapsed_seconds": 213.9,
+      "gate_attempt": "02",
+      "gate_elapsed_seconds": 326.3,
       "gate_exit": 0,
-      "gate_log_sha256": "977e9cd48723097bb4e8c3d030c3812dcadf8dc2fd3371101333cb53f1688abe",
+      "gate_log_sha256": "2b1dd4cc8939bb8829b45da7dc6854380d022c637d19f7b12f272e628323b06e",
       "gradle_tasks": [
         ":common:test",
         ":fabric:build",
@@ -632,13 +718,13 @@
           "errors": 0,
           "failures": 0,
           "skipped": 0,
-          "tests": 1047
+          "tests": 1050
         },
         "fabric": {
           "errors": 0,
           "failures": 0,
           "skipped": 4,
-          "tests": 1828
+          "tests": 1829
         },
         "neoforge": {
           "errors": 0,
@@ -657,8 +743,8 @@
       "merge": "merge commit only (no squash/rebase)",
       "neoforge_lss_published": true,
       "notes_file": "docs/planning/v0.17.0-release-notes/mc26.1.md",
-      "notes_sha256": "efbae310394a4ce4724a13f9e4b42468425a31e158987296d86adab6a7581da7",
-      "pin_commit": "c1db2f58b1eb8d48ccf3a7f540fe7bff929e7a8b",
+      "notes_sha256": "78db576f8a3f2bac687698376d6616d93640939a73e177de74f3a672669caa4d",
+      "pin_commit": "7619a14d26fe2cbfc68e72b461785d844cb7c9a5",
       "release_branch": "release/v0.17.0-mc26.1",
       "server_gametests_passed": {
         "fabric": 79,
@@ -670,39 +756,39 @@
       "artifacts": {
         "fabric/build/libs/lod-server-support-fabric-0.17.0+26.2.jar": {
           "brand": "LSS",
-          "bytes": 9114237,
+          "bytes": 9114370,
           "publish": true,
-          "sha256": "a28c2addd59ce2a8d95c7e9f44e2993f56f5435fdff703143873287df739a3ed"
+          "sha256": "0e581e8d7df416cd6ce5eb53e4238c27074003603ca1140178d78ba4409e0e7a"
         },
         "fabric/build/libs/voxy-server-side-fabric-0.17.0+26.2.jar": {
           "brand": "VSS",
-          "bytes": 9120555,
+          "bytes": 9120688,
           "publish": "pending user decision",
-          "sha256": "550559690c3909c55057a97b7d7d8a63ec51a9a26103f75819e71525e98b6e13"
+          "sha256": "b6c9a27294e8c010ba3b5be1f5c6ec8568722900c78bf987a2ea832c98c4d98a"
         },
         "neoforge/build/libs/lod-server-support-neoforge-0.17.0+26.2.jar": {
           "brand": "LSS",
-          "bytes": 14309257,
+          "bytes": 14309394,
           "publish": true,
-          "sha256": "b3a0d0edea0e42512210f1620c59087c8cebc05c860d5cc06f304f615076a3b1"
+          "sha256": "979c65aa2774d85084a2c32d459947e52c63a89d6a8205a9fac740b894402946"
         },
         "neoforge/build/libs/voxy-server-side-neoforge-0.17.0+26.2.jar": {
           "brand": "VSS",
-          "bytes": 14315504,
+          "bytes": 14315641,
           "publish": "pending user decision",
-          "sha256": "7fdcac3434915a54df182c9936295af9f05f23831830e7bb2ba36bfc1f045f3f"
+          "sha256": "cd0b7f764eb51a64d711f318365d2a92c56b97489c41d66384e0dd0667baca3c"
         },
         "paper/build/libs/lod-server-support-paper-0.17.0+26.2.jar": {
           "brand": "LSS",
-          "bytes": 8337954,
+          "bytes": 8337960,
           "publish": true,
-          "sha256": "2a3adfd3834287516ce46b65fafa4c1351a167912f9cf1fed0599dfc3f2d53cc"
+          "sha256": "46ff8630b6f449933d558a92fc8c55ab14271895e30be67ddde41b0c034d9752"
         },
         "paper/build/libs/voxy-server-side-paper-0.17.0+26.2.jar": {
           "brand": "VSS",
-          "bytes": 8337894,
+          "bytes": 8337900,
           "publish": "pending user decision",
-          "sha256": "1f3ac77b75140f8d38972ac5c3ee928ffe2ae811fc810a2d3f6cd858b3e05e29"
+          "sha256": "30cad6a9024f1097312d44ab231051ef14f1ac48a375cc8340f4214b7b7c1c71"
         }
       },
       "base_branch": "main",
@@ -754,7 +840,7 @@
           "tests_ran": 9
         },
         "unittest-tools-rig": {
-          "disposition": "accepted environmental exception: exactly 8 storage-guard failures, all \"Physical VHD host storage below 50 GiB reserve plus run budget\" (C: 58 GiB free at run time); no other failure",
+          "disposition": "accepted environmental exception: exactly 8 storage-guard failures, all \"Physical VHD host storage below 50 GiB reserve plus run budget\" (C: 54 GiB free at run time); no other failure",
           "exit": 1,
           "result": "FAILED (failures=8, skipped=3)",
           "tests_ran": 651
@@ -778,10 +864,10 @@
         },
         "neoforge_dh": "ships (Foxy route)"
       },
-      "gate_attempt": "01",
-      "gate_elapsed_seconds": 218.6,
+      "gate_attempt": "02",
+      "gate_elapsed_seconds": 330.2,
       "gate_exit": 0,
-      "gate_log_sha256": "610c0d65c6ed139701f98e08a6ec3b8d7884421d4de7813cee72fa9cb34b0c19",
+      "gate_log_sha256": "80291ba822a8847f55a29effc6920c49f508becc1a6c3f21a217cce012c7d5ff",
       "gradle_tasks": [
         ":common:test",
         ":fabric:build",
@@ -799,13 +885,13 @@
           "errors": 0,
           "failures": 0,
           "skipped": 0,
-          "tests": 1048
+          "tests": 1051
         },
         "fabric": {
           "errors": 0,
           "failures": 0,
           "skipped": 4,
-          "tests": 1827
+          "tests": 1828
         },
         "neoforge": {
           "errors": 0,
@@ -824,8 +910,8 @@
       "merge": "merge commit only (no squash/rebase)",
       "neoforge_lss_published": true,
       "notes_file": "docs/planning/v0.17.0-release-notes/main.md",
-      "notes_sha256": "dcfb939d2b48acb2fffaa20b2fec855990cf8f247ebfafde04d2671123aeda4b",
-      "pin_commit": "8ab07bdf0cb2d54f0c44c614f3dcd3bd20343081",
+      "notes_sha256": "66e02126ff903dfdd9651518ffe69a151ee79bf2bf3ec6275b1ed62a6a6ce5ad",
+      "pin_commit": "6b21ef651901d894531df246480405beba02e24f",
       "release_branch": "release/v0.17.0-mc26.2",
       "server_gametests_passed": {
         "fabric": 79,
@@ -844,8 +930,8 @@
     "summary": "NeoForge 26.x/21.10/21.11 three-argument playBidirectional registers no clientbound handler; client crashed at startup with DH terrain allowed. Fixed with the four-argument overload (handler for both flows), pinned by NeoForgeDhTransportContractTest. 1.21.1 (NeoForge 21.1) unaffected."
   },
   "published": false,
-  "pushed": false,
-  "remote_ci": "pending branch push and PR checks",
+  "pushed": true,
+  "remote_ci": "pending: pushed with this record; PR #317-#321 checks re-run on the record commit",
   "schema_version": 1,
   "status": "preflight-passed-awaiting-release-authorization",
   "tagged": false,
