@@ -73,7 +73,6 @@ dependencies {
     storeDeps "com.github.luben:zstd-jni:1.5.7-3"
     localRuntime "com.github.luben:zstd-jni:1.5.7-3"
     // Unshaded common classes in development runs; release common owns private XZ.
-    localRuntime "org.tukaani:xz:1.10"
     compileOnly "maven.modrinth:sodium:mc26.1.2-0.8.12-fabric"
     compileOnly "maven.modrinth:modmenu:18.0.0-beta.1"
     // The legacy (0.6/0.7) Sodium options surface SodiumLegacySurfaceResolvesTest checks
