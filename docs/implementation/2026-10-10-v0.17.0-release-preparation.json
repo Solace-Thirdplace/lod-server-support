@@ -1,0 +1,856 @@
+{
+  "intended_lss_publish_artifact_count": 13,
+  "lines": {
+    "1.21.1": {
+      "artifacts": {
+        "fabric/build/libs/lod-server-support-fabric-0.17.0+1.21.1.jar": {
+          "brand": "LSS",
+          "bytes": 9109359,
+          "publish": true,
+          "sha256": "891e0a86082b1a05941217aa25ee77e588c3db6a7d91abf3298ae31fefdae5c0"
+        },
+        "fabric/build/libs/voxy-server-side-fabric-0.17.0+1.21.1.jar": {
+          "brand": "VSS",
+          "bytes": 9115677,
+          "publish": "pending user decision",
+          "sha256": "95b59a64359c5a71b4fcc920a3fb43b6203bdb51accc4fb7faafbfba2086cf7c"
+        },
+        "neoforge/build/libs/lod-server-support-neoforge-0.17.0+1.21.1.jar": {
+          "brand": "LSS",
+          "bytes": 14332901,
+          "publish": true,
+          "sha256": "1072f9345b638b79e15bf0b3816b8bdbc2c8e3c8d7adf89516d07c4c2b7cfbf2"
+        },
+        "neoforge/build/libs/voxy-server-side-neoforge-0.17.0+1.21.1.jar": {
+          "brand": "VSS",
+          "bytes": 14339147,
+          "publish": "pending user decision",
+          "sha256": "ca323a99dde084df532df29049c2ffb20dd2433aefa64a936c9a073fc775dbd6"
+        },
+        "paper/build/libs/lod-server-support-paper-0.17.0+1.21.1.jar": {
+          "brand": "LSS",
+          "bytes": 8338417,
+          "publish": true,
+          "sha256": "41649dadf09c3eb570e7269dd76a7c7329944ce40c02a0e28cb036cd74568d54"
+        },
+        "paper/build/libs/voxy-server-side-paper-0.17.0+1.21.1.jar": {
+          "brand": "VSS",
+          "bytes": 8338351,
+          "publish": "pending user decision",
+          "sha256": "3c8e82f03125bae366aceec6ab7a1fc9b4c34401c0df036b19033613bd463bc2"
+        }
+      },
+      "base_branch": "support/mc1.21.1",
+      "base_commit": "6677fe93dfc35b8ca1e158972d4cf58eb9703bd2",
+      "checks": {
+        "catalog-render-check": {
+          "exit": 0,
+          "result": ""
+        },
+        "catalog-validate": {
+          "exit": 0,
+          "result": "{\"lines\": 5, \"profiles\": 13, \"latest_exact_identity_records\": 27}"
+        },
+        "compat-ci": {
+          "exit": 0,
+          "result": ""
+        },
+        "fixture-exclusion": {
+          "exit": 0,
+          "result": "inspected neoforge/build/libs/voxy-server-side-neoforge-0.17.0+1.21.1.jar"
+        },
+        "release-check": {
+          "exit": 0,
+          "result": "OK: release artifacts clean"
+        },
+        "release-selftest": {
+          "exit": 0,
+          "result": "release_check selftest OK: 164 cases",
+          "tests_ran": 9
+        },
+        "unittest-test-fixtures-client-preset-tools": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 9
+        },
+        "unittest-tools-compat": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 103
+        },
+        "unittest-tools-lines": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 14
+        },
+        "unittest-tools-packaging": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 9
+        },
+        "unittest-tools-rig": {
+          "exit": 0,
+          "result": "OK (skipped=3)",
+          "tests_ran": 651
+        },
+        "unittest-tools-tests": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 30
+        },
+        "unittest-tools-verify": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 11
+        }
+      },
+      "client_gametest": "unavailable-on-line",
+      "dh": {
+        "evidence": "build/dh-neoforge/2026-10-10/remediation/",
+        "matrices": {
+          "dh-live": "13/13",
+          "dh-p4": "8/8"
+        },
+        "neoforge_dh": "ships (Voxy route)"
+      },
+      "gate_attempt": "01",
+      "gate_elapsed_seconds": 328.3,
+      "gate_exit": 0,
+      "gate_log_sha256": "cc9b5fcd9aae5de1a7a3d78e62e1336d646a08d7799b7b8209a70be8e0e80ba7",
+      "gradle_tasks": [
+        ":common:test",
+        ":fabric:build",
+        ":paper:build",
+        ":paper:test",
+        ":paper:shadowJar",
+        ":neoforge:build",
+        ":neoforge:runGameTestServer",
+        "vssJars"
+      ],
+      "jdk": "21",
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1048
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 4,
+          "tests": 1820
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 23
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 536
+        }
+      },
+      "make_latest": false,
+      "merge": "merge commit only (no squash/rebase)",
+      "neoforge_lss_published": true,
+      "notes_file": "docs/planning/v0.17.0-release-notes/mc1.21.1.md",
+      "notes_sha256": "2c06e6a9739c9a30251ac0835cd7b8d5c743ee4cad8a0de94f5892c42b974e36",
+      "pin_commit": "ae8926a8b5a96bdd1188d5746bd7455b4c936cb1",
+      "release_branch": "release/v0.17.0-mc1.21.1",
+      "server_gametests_passed": {
+        "fabric": 78,
+        "neoforge": 8
+      },
+      "tag": "v0.17.0+mc1.21.1"
+    },
+    "1.21.10": {
+      "artifacts": {
+        "fabric/build/libs/lod-server-support-fabric-0.17.0+1.21.10.jar": {
+          "brand": "LSS",
+          "bytes": 9103753,
+          "publish": true,
+          "sha256": "d0b605ba3fd5eedf8bb843c5a2812f4caa0f1b7479c025e19e3f400f34b508d4"
+        },
+        "fabric/build/libs/voxy-server-side-fabric-0.17.0+1.21.10.jar": {
+          "brand": "VSS",
+          "bytes": 9110066,
+          "publish": "pending user decision",
+          "sha256": "d713c1d9bd81969cea7df8aaca8b21d969eb47bdd6aad97358296f385485ed79"
+        },
+        "neoforge/build/libs/lod-server-support-neoforge-0.17.0+1.21.10.jar": {
+          "brand": "LSS",
+          "bytes": 14299138,
+          "publish": false,
+          "sha256": "00a9be06ca9d643080081b443c5bc3e6bcb1b660cfaa9251560bcac4fb59cf16"
+        },
+        "neoforge/build/libs/voxy-server-side-neoforge-0.17.0+1.21.10.jar": {
+          "brand": "VSS",
+          "bytes": 14305380,
+          "publish": "pending user decision",
+          "sha256": "d07cf226008d2c29c2543e02d6720310744e46e9c38f929e509d09d7ef747ac4"
+        },
+        "paper/build/libs/lod-server-support-paper-0.17.0+1.21.10.jar": {
+          "brand": "LSS",
+          "bytes": 8337979,
+          "publish": true,
+          "sha256": "6c0bcb4669ea3b4bef71d077bb8098858596b3738ba44d96648b3f8c5111a7d0"
+        },
+        "paper/build/libs/voxy-server-side-paper-0.17.0+1.21.10.jar": {
+          "brand": "VSS",
+          "bytes": 8337917,
+          "publish": "pending user decision",
+          "sha256": "451c8b53907fb150fb7edf7a4639f0fe83c309ea4e8de1334d7e00f7d59b0073"
+        }
+      },
+      "base_branch": "support/mc1.21.10",
+      "base_commit": "cf95820aeaedd701e9291b49b6bf98538c0ce73c",
+      "checks": {
+        "catalog-render-check": {
+          "exit": 0,
+          "result": ""
+        },
+        "catalog-validate": {
+          "exit": 0,
+          "result": "{\"lines\": 5, \"profiles\": 8, \"latest_exact_identity_records\": 6}"
+        },
+        "compat-ci": {
+          "exit": 0,
+          "result": ""
+        },
+        "fixture-exclusion": {
+          "exit": 0,
+          "result": "inspected neoforge/build/libs/voxy-server-side-neoforge-0.17.0+1.21.10.jar"
+        },
+        "release-check": {
+          "exit": 0,
+          "result": "OK: release artifacts clean"
+        },
+        "release-selftest": {
+          "exit": 0,
+          "result": "release_check selftest OK: 164 cases",
+          "tests_ran": 9
+        },
+        "unittest-test-fixtures-client-preset-tools": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 9
+        },
+        "unittest-tools-compat": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 103
+        },
+        "unittest-tools-lines": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 14
+        },
+        "unittest-tools-packaging": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 9
+        },
+        "unittest-tools-rig": {
+          "exit": 0,
+          "result": "OK (skipped=3)",
+          "tests_ran": 651
+        },
+        "unittest-tools-tests": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 30
+        },
+        "unittest-tools-verify": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 11
+        }
+      },
+      "client_gametest": "passed",
+      "dh": {
+        "evidence": "build/dh-ports/1.21.10/",
+        "matrices": {
+          "dh-live": "9/9"
+        },
+        "neoforge_dh": "compiled and tested; not advertised (no Voxy route)",
+        "options_page": "legacy Sodium page only (Sodium 0.7.3)"
+      },
+      "gate_attempt": "01",
+      "gate_elapsed_seconds": 204.3,
+      "gate_exit": 0,
+      "gate_log_sha256": "8a576cf189005f4a22b9e8439bc8fb86976d77ba52088d536516927e5eaf4534",
+      "gradle_tasks": [
+        ":common:test",
+        ":fabric:build",
+        ":paper:build",
+        ":paper:test",
+        ":paper:shadowJar",
+        ":neoforge:build",
+        ":neoforge:runGameTestServer",
+        "vssJars",
+        ":fabric:runClientGameTest"
+      ],
+      "jdk": "21",
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1047
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 6,
+          "tests": 1818
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 20
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 536
+        }
+      },
+      "make_latest": false,
+      "merge": "merge commit only (no squash/rebase)",
+      "neoforge_lss_published": false,
+      "notes_file": "docs/planning/v0.17.0-release-notes/mc1.21.10.md",
+      "notes_sha256": "b7346748f676f7a6a3bf2486354103853e50b97f94e4627f9525fd4396d51764",
+      "pin_commit": "feaaee8cf1a17f3b8b77663c4fdededb7107f25f",
+      "release_branch": "release/v0.17.0-mc1.21.10",
+      "server_gametests_passed": {
+        "fabric": 80,
+        "neoforge": 8
+      },
+      "tag": "v0.17.0+mc1.21.10"
+    },
+    "1.21.11": {
+      "artifacts": {
+        "fabric/build/libs/lod-server-support-fabric-0.17.0+1.21.11.jar": {
+          "brand": "LSS",
+          "bytes": 9110276,
+          "publish": true,
+          "sha256": "8af716e64f1575008b5ceb8bd37faed8320293c5298a61f98fc986b3d29db105"
+        },
+        "fabric/build/libs/voxy-server-side-fabric-0.17.0+1.21.11.jar": {
+          "brand": "VSS",
+          "bytes": 9116589,
+          "publish": "pending user decision",
+          "sha256": "ed4b97ad9a379352e8ade46c8ac34b301866a2bfb14f621fe5c3742814dec41c"
+        },
+        "neoforge/build/libs/lod-server-support-neoforge-0.17.0+1.21.11.jar": {
+          "brand": "LSS",
+          "bytes": 14305896,
+          "publish": false,
+          "sha256": "f66a8209d3a9aa5cff5ad1e1721bb5ae04d94cb6c2b7e7c57a806a8ce2f9edaf"
+        },
+        "neoforge/build/libs/voxy-server-side-neoforge-0.17.0+1.21.11.jar": {
+          "brand": "VSS",
+          "bytes": 14312135,
+          "publish": "pending user decision",
+          "sha256": "1d581a74edde6c96dd86459169c809d25bb2ee431990d3caf614a89fbdd63912"
+        },
+        "paper/build/libs/lod-server-support-paper-0.17.0+1.21.11.jar": {
+          "brand": "LSS",
+          "bytes": 8337906,
+          "publish": true,
+          "sha256": "a7af09be78d392e31a5c2ed749497e6bedd404bd2915f0a72fd41d762c07abb8"
+        },
+        "paper/build/libs/voxy-server-side-paper-0.17.0+1.21.11.jar": {
+          "brand": "VSS",
+          "bytes": 8337845,
+          "publish": "pending user decision",
+          "sha256": "e6127f7466f2528dd7c29a04f13d9204c2d73f4c13a3fa91bc6ccb04497abded"
+        }
+      },
+      "base_branch": "support/mc1.21.11-v0.14",
+      "base_commit": "ac3f9ed0307a42eae4ee68664365c974093c3523",
+      "checks": {
+        "catalog-render-check": {
+          "exit": 0,
+          "result": ""
+        },
+        "catalog-validate": {
+          "exit": 0,
+          "result": "{\"lines\": 5, \"profiles\": 14, \"latest_exact_identity_records\": 8}"
+        },
+        "compat-ci": {
+          "exit": 0,
+          "result": ""
+        },
+        "fixture-exclusion": {
+          "exit": 0,
+          "result": "inspected neoforge/build/libs/voxy-server-side-neoforge-0.17.0+1.21.11.jar"
+        },
+        "release-check": {
+          "exit": 0,
+          "result": "OK: release artifacts clean"
+        },
+        "release-selftest": {
+          "exit": 0,
+          "result": "release_check selftest OK: 164 cases",
+          "tests_ran": 9
+        },
+        "unittest-test-fixtures-client-preset-tools": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 9
+        },
+        "unittest-tools-compat": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 103
+        },
+        "unittest-tools-lines": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 14
+        },
+        "unittest-tools-packaging": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 9
+        },
+        "unittest-tools-rig": {
+          "exit": 0,
+          "result": "OK (skipped=3)",
+          "tests_ran": 651
+        },
+        "unittest-tools-tests": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 30
+        },
+        "unittest-tools-verify": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 11
+        }
+      },
+      "client_gametest": "passed",
+      "dh": {
+        "evidence": "build/dh-ports/1.21.11/",
+        "matrices": {
+          "dh-live": "9/9"
+        },
+        "neoforge_dh": "compiled and tested; not advertised (no Voxy route)"
+      },
+      "gate_attempt": "01",
+      "gate_elapsed_seconds": 200.3,
+      "gate_exit": 0,
+      "gate_log_sha256": "35e891329d007f9114c2dc505d0fcca825678b2eaed34a919b02bc649a849747",
+      "gradle_tasks": [
+        ":common:test",
+        ":fabric:build",
+        ":paper:build",
+        ":paper:test",
+        ":paper:shadowJar",
+        ":neoforge:build",
+        ":neoforge:runGameTestServer",
+        "vssJars",
+        ":fabric:runClientGameTest"
+      ],
+      "jdk": "21",
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1047
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 4,
+          "tests": 1821
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 24
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 536
+        }
+      },
+      "make_latest": false,
+      "merge": "merge commit only (no squash/rebase)",
+      "neoforge_lss_published": false,
+      "notes_file": "docs/planning/v0.17.0-release-notes/mc1.21.11.md",
+      "notes_sha256": "4e3544041e2a2252f0d0599a23ec0b157ecf4ffeda7d49873211c2e54f83ae09",
+      "pin_commit": "bc6bc5bcdf547385e96cd8cbfdcefb945ca37da6",
+      "release_branch": "release/v0.17.0-mc1.21.11",
+      "server_gametests_passed": {
+        "fabric": 80,
+        "neoforge": 8
+      },
+      "tag": "v0.17.0+mc1.21.11"
+    },
+    "26.1": {
+      "artifacts": {
+        "fabric/build/libs/lod-server-support-fabric-0.17.0+26.1.2.jar": {
+          "brand": "LSS",
+          "bytes": 9112856,
+          "publish": true,
+          "sha256": "1db19e2ea1c3690560a9d8b43db5b73c3b835b2f2aef6484e2e12336dabe49d2"
+        },
+        "fabric/build/libs/voxy-server-side-fabric-0.17.0+26.1.2.jar": {
+          "brand": "VSS",
+          "bytes": 9119174,
+          "publish": "pending user decision",
+          "sha256": "20a0835a059507b7ed1c8ff373a988fda1d130b7bf1f21ddda93d7b58f34b966"
+        },
+        "neoforge/build/libs/lod-server-support-neoforge-0.17.0+26.1.2.jar": {
+          "brand": "LSS",
+          "bytes": 14308303,
+          "publish": true,
+          "sha256": "831dd1b58d1509fc7f4ebfaf160b78a6f9b0d6d5b1625d84a15a99162286a08e"
+        },
+        "neoforge/build/libs/voxy-server-side-neoforge-0.17.0+26.1.2.jar": {
+          "brand": "VSS",
+          "bytes": 14314549,
+          "publish": "pending user decision",
+          "sha256": "a1ed2348cf7db80a39aa13ea17c3b9cd6757ed7014b013523ba609bbe6489faf"
+        },
+        "paper/build/libs/lod-server-support-paper-0.17.0+26.1.2.jar": {
+          "brand": "LSS",
+          "bytes": 8337821,
+          "publish": true,
+          "sha256": "38e56ccbd15a2aff0aba7b9c0f0a8638c31bf0325d14d6831f832e83b1fd82b7"
+        },
+        "paper/build/libs/voxy-server-side-paper-0.17.0+26.1.2.jar": {
+          "brand": "VSS",
+          "bytes": 8337759,
+          "publish": "pending user decision",
+          "sha256": "2d9403deb63fea4d7e11c3b9e13d1e009c15008326266f803f59f51e829abcef"
+        }
+      },
+      "base_branch": "support/mc26.1-v0.14",
+      "base_commit": "d69524cc3de717e369d4ddf795f1002c1f5b2bef",
+      "checks": {
+        "catalog-render-check": {
+          "exit": 0,
+          "result": ""
+        },
+        "catalog-validate": {
+          "exit": 0,
+          "result": "{\"lines\": 5, \"profiles\": 7, \"latest_exact_identity_records\": 5}"
+        },
+        "compat-ci": {
+          "exit": 0,
+          "result": ""
+        },
+        "fixture-exclusion": {
+          "exit": 0,
+          "result": "inspected neoforge/build/libs/voxy-server-side-neoforge-0.17.0+26.1.2.jar"
+        },
+        "release-check": {
+          "exit": 0,
+          "result": "OK: release artifacts clean"
+        },
+        "release-selftest": {
+          "exit": 0,
+          "result": "release_check selftest OK: 164 cases",
+          "tests_ran": 9
+        },
+        "unittest-test-fixtures-client-preset-tools": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 9
+        },
+        "unittest-tools-compat": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 103
+        },
+        "unittest-tools-lines": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 14
+        },
+        "unittest-tools-packaging": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 9
+        },
+        "unittest-tools-rig": {
+          "exit": 0,
+          "result": "OK (skipped=3)",
+          "tests_ran": 651
+        },
+        "unittest-tools-tests": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 30
+        },
+        "unittest-tools-verify": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 11
+        }
+      },
+      "client_gametest": "passed",
+      "dh": {
+        "evidence": "build/dh-ports/26.1/",
+        "matrices": {
+          "dh-live": "10/10 required + 3 additional"
+        },
+        "neoforge_dh": "ships (Foxy route)"
+      },
+      "gate_attempt": "01",
+      "gate_elapsed_seconds": 213.9,
+      "gate_exit": 0,
+      "gate_log_sha256": "977e9cd48723097bb4e8c3d030c3812dcadf8dc2fd3371101333cb53f1688abe",
+      "gradle_tasks": [
+        ":common:test",
+        ":fabric:build",
+        ":paper:build",
+        ":paper:test",
+        ":paper:shadowJar",
+        ":neoforge:build",
+        ":neoforge:runGameTestServer",
+        "vssJars",
+        ":fabric:runClientGameTest"
+      ],
+      "jdk": "25",
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1047
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 4,
+          "tests": 1828
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 24
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 536
+        }
+      },
+      "make_latest": false,
+      "merge": "merge commit only (no squash/rebase)",
+      "neoforge_lss_published": true,
+      "notes_file": "docs/planning/v0.17.0-release-notes/mc26.1.md",
+      "notes_sha256": "efbae310394a4ce4724a13f9e4b42468425a31e158987296d86adab6a7581da7",
+      "pin_commit": "c1db2f58b1eb8d48ccf3a7f540fe7bff929e7a8b",
+      "release_branch": "release/v0.17.0-mc26.1",
+      "server_gametests_passed": {
+        "fabric": 79,
+        "neoforge": 8
+      },
+      "tag": "v0.17.0+mc26.1"
+    },
+    "26.2": {
+      "artifacts": {
+        "fabric/build/libs/lod-server-support-fabric-0.17.0+26.2.jar": {
+          "brand": "LSS",
+          "bytes": 9114237,
+          "publish": true,
+          "sha256": "a28c2addd59ce2a8d95c7e9f44e2993f56f5435fdff703143873287df739a3ed"
+        },
+        "fabric/build/libs/voxy-server-side-fabric-0.17.0+26.2.jar": {
+          "brand": "VSS",
+          "bytes": 9120555,
+          "publish": "pending user decision",
+          "sha256": "550559690c3909c55057a97b7d7d8a63ec51a9a26103f75819e71525e98b6e13"
+        },
+        "neoforge/build/libs/lod-server-support-neoforge-0.17.0+26.2.jar": {
+          "brand": "LSS",
+          "bytes": 14309257,
+          "publish": true,
+          "sha256": "b3a0d0edea0e42512210f1620c59087c8cebc05c860d5cc06f304f615076a3b1"
+        },
+        "neoforge/build/libs/voxy-server-side-neoforge-0.17.0+26.2.jar": {
+          "brand": "VSS",
+          "bytes": 14315504,
+          "publish": "pending user decision",
+          "sha256": "7fdcac3434915a54df182c9936295af9f05f23831830e7bb2ba36bfc1f045f3f"
+        },
+        "paper/build/libs/lod-server-support-paper-0.17.0+26.2.jar": {
+          "brand": "LSS",
+          "bytes": 8337954,
+          "publish": true,
+          "sha256": "2a3adfd3834287516ce46b65fafa4c1351a167912f9cf1fed0599dfc3f2d53cc"
+        },
+        "paper/build/libs/voxy-server-side-paper-0.17.0+26.2.jar": {
+          "brand": "VSS",
+          "bytes": 8337894,
+          "publish": "pending user decision",
+          "sha256": "1f3ac77b75140f8d38972ac5c3ee928ffe2ae811fc810a2d3f6cd858b3e05e29"
+        }
+      },
+      "base_branch": "main",
+      "base_commit": "1d5ca99546271b2cf4ecd7ecd1a32f43a572748f",
+      "checks": {
+        "catalog-render-check": {
+          "exit": 0,
+          "result": ""
+        },
+        "catalog-validate": {
+          "exit": 0,
+          "result": "{\"lines\": 5, \"profiles\": 11, \"latest_exact_identity_records\": 8}"
+        },
+        "compat-ci": {
+          "exit": 0,
+          "result": ""
+        },
+        "fixture-exclusion": {
+          "exit": 0,
+          "result": "inspected neoforge/build/libs/voxy-server-side-neoforge-0.17.0+26.2.jar"
+        },
+        "release-check": {
+          "exit": 0,
+          "result": "OK: release artifacts clean"
+        },
+        "release-selftest": {
+          "exit": 0,
+          "result": "release_check selftest OK: 164 cases",
+          "tests_ran": 9
+        },
+        "unittest-test-fixtures-client-preset-tools": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 9
+        },
+        "unittest-tools-compat": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 103
+        },
+        "unittest-tools-lines": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 14
+        },
+        "unittest-tools-packaging": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 9
+        },
+        "unittest-tools-rig": {
+          "disposition": "accepted environmental exception: exactly 8 storage-guard failures, all \"Physical VHD host storage below 50 GiB reserve plus run budget\" (C: 58 GiB free at run time); no other failure",
+          "exit": 1,
+          "result": "FAILED (failures=8, skipped=3)",
+          "tests_ran": 651
+        },
+        "unittest-tools-tests": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 30
+        },
+        "unittest-tools-verify": {
+          "exit": 0,
+          "result": "OK",
+          "tests_ran": 11
+        }
+      },
+      "client_gametest": "passed",
+      "dh": {
+        "evidence": "build/dh-ports/26.2/",
+        "matrices": {
+          "dh-live": "6/6 required + 2 optional"
+        },
+        "neoforge_dh": "ships (Foxy route)"
+      },
+      "gate_attempt": "01",
+      "gate_elapsed_seconds": 218.6,
+      "gate_exit": 0,
+      "gate_log_sha256": "610c0d65c6ed139701f98e08a6ec3b8d7884421d4de7813cee72fa9cb34b0c19",
+      "gradle_tasks": [
+        ":common:test",
+        ":fabric:build",
+        ":paper:build",
+        ":paper:test",
+        ":paper:shadowJar",
+        ":neoforge:build",
+        ":neoforge:runGameTestServer",
+        "vssJars",
+        ":fabric:runClientGameTest"
+      ],
+      "jdk": "25",
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1048
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 4,
+          "tests": 1827
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 24
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 538
+        }
+      },
+      "make_latest": true,
+      "merge": "merge commit only (no squash/rebase)",
+      "neoforge_lss_published": true,
+      "notes_file": "docs/planning/v0.17.0-release-notes/main.md",
+      "notes_sha256": "dcfb939d2b48acb2fffaa20b2fec855990cf8f247ebfafde04d2671123aeda4b",
+      "pin_commit": "8ab07bdf0cb2d54f0c44c614f3dcd3bd20343081",
+      "release_branch": "release/v0.17.0-mc26.2",
+      "server_gametests_passed": {
+        "fabric": 79,
+        "neoforge": 8
+      },
+      "tag": "v0.17.0"
+    }
+  },
+  "product_fix_found_by_porting": {
+    "commits": {
+      "1.21.10": "2b96ca09",
+      "1.21.11": "5dca3a92",
+      "26.1": "1f11f64f",
+      "26.2": "834c8b13"
+    },
+    "summary": "NeoForge 26.x/21.10/21.11 three-argument playBidirectional registers no clientbound handler; client crashed at startup with DH terrain allowed. Fixed with the four-argument overload (handler for both flows), pinned by NeoForgeDhTransportContractTest. 1.21.1 (NeoForge 21.1) unaffected."
+  },
+  "published": false,
+  "pushed": false,
+  "remote_ci": "pending branch push and PR checks",
+  "schema_version": 1,
+  "status": "preflight-passed-awaiting-release-authorization",
+  "tagged": false,
+  "validation_state": "~/.local/state/lss-release-prep-v0.17.0-20261010",
+  "version": "0.17.0",
+  "vss_artifacts_built_and_checked": 15,
+  "vss_publish": "pending user decision"
+}
