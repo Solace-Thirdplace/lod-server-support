@@ -541,8 +541,13 @@ class DhClientSessionTest {
         assertFalse(Files.exists(dir.resolve("lss-client-experimental.yaml")),"no sidecar is written for the default");
         assertEquals("distant_horizons",settings.state().effective().lod().source());
         assertTrue(DhClientSession.fallbackEnabled());assertTrue(DhClientSession.selected());
+        assertFalse(dev.vox.lss.config.menu.MenuContext.current().nativeTerrain(),"a DH-selected connection reads DH in the menu");
+        var player=minecraft.player;minecraft.player=null;
+        assertTrue(dev.vox.lss.config.menu.MenuContext.current().nativeTerrain(),"no connection (title screen) never claims DH is in use");
+        minecraft.player=player;
         DhClientSession.installNativeAvailability(()->true);
         assertFalse(DhClientSession.selected(),"native LSS still wins with the default on");
+        assertTrue(dev.vox.lss.config.menu.MenuContext.current().nativeTerrain());
         DhClientSession.installNativeAvailability(()->false);
         settings.store().saveDraft(settings.store().read().hash(),Map.of("lod.receive",false));
         settings.commit(settings.prepareReload());
