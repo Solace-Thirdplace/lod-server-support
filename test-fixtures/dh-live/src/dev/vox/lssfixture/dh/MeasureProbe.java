@@ -28,7 +28,7 @@ public final class MeasureProbe {
     static final List<long[]> dhTicks = new ArrayList<>(), pumpCalls = new ArrayList<>(), frames = new ArrayList<>();
     static volatile boolean recording;
     private static long lastFrame, flightStart; private static int lastChunkX = Integer.MIN_VALUE, crossings;
-    private static double flown;
+    private static double flown, startX, startZ;
 
     static long epoch() { return System.currentTimeMillis(); }
     private static long seconds(String key, long fallback) { return Long.getLong(key, fallback) * 1_000_000_000L; }
@@ -61,7 +61,7 @@ public final class MeasureProbe {
             Probe.write("dh-load.json", "{\"pass\":true,\"arm\":\"" + ARM + "\",\"cold_start_ms\":" + coldStart + ",\"cold_end_ms\":" + coldEnd
                     + ",\"warm_start_ms\":" + warmStart + ",\"warm_end_ms\":" + warmEnd + "}");
             Probe.write("dh-result.json", "{\"pass\":true,\"case\":\"load\",\"arm\":\"" + ARM + "\"}");
-            phase = 4; mc.level.disconnect(); mc.disconnect();
+            phase = 4; Probe.done = true; mc.stop();
         }
     }
 
@@ -81,12 +81,14 @@ public final class MeasureProbe {
         if (phase == 1) {
             player.setDeltaMovement(0, 0, 0);
             if (now - phaseAt < seconds("lss.rig.settleSeconds", 120)) return;
-            phase = 2; flightStart = now; recording = true; lastChunkX = player.chunkPosition().x; return;
+            phase = 2; flightStart = now; recording = true; lastChunkX = player.chunkPosition().x; startX = player.getX(); startZ = player.getZ(); return;
         }
         if (phase == 2) {
             double speed = Double.parseDouble(System.getProperty("lss.rig.speed", "1.5")); // blocks per tick (~30 b/s)
-            player.setPos(player.getX() + speed, 120, player.getZ()); player.setDeltaMovement(0, 0, 0);
+            // A server-side teleport per tick: client-only position changes are rubber-banded
+            // back by the server's moved-wrongly check, so the player would never cross a chunk.
             flown += speed;
+            mc.getConnection().sendCommand(String.format(java.util.Locale.ROOT, "tp @s %.2f 120 %.2f", startX + flown, startZ));
             int cx = player.chunkPosition().x; if (cx != lastChunkX) { crossings++; lastChunkX = cx; }
             if (flown < Double.parseDouble(System.getProperty("lss.rig.flightBlocks", "1536"))) return;
             recording = false; phase = 3;
@@ -100,7 +102,7 @@ public final class MeasureProbe {
             out.put("dh_state_after", String.valueOf(DhClientSession.diagnostics().state()));
             Probe.write("dh-movement-metrics.json", new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(out));
             Probe.write("dh-result.json", "{\"pass\":true,\"case\":\"movement\",\"arm\":\"" + ARM + "\"}");
-            mc.level.disconnect(); mc.disconnect();
+            Probe.done = true; mc.stop();
         }
     }
 
