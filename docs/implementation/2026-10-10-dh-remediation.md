@@ -176,3 +176,38 @@ Found by the rig and fixed:
   stored receipts, so Support clients keep and revalidate receipts like official ones.
 - Two fixture defects (a double settings save racing the async reload; the old
   official-15 expectation), fixed in the fixtures.
+
+## Measurements (2026-10-10, final candidate, private Linux rig)
+
+Evidence: `build/dh-neoforge/2026-10-10/remediation/measure-summary.json` (outer checkout).
+Descriptive only; software rendering (llvmpipe), so frame times are not a GPU claim.
+
+**Server load (X-16 / plan S0).** Fresh identical official DH 3.3.3 NeoForge servers
+(seed 8675309, default DH server config), client at spawn with a 32-chunk LOD radius on
+both arms, two runs each. Cold window 420 s from join; then an unchanged rejoin and a
+180 s warm window. Server CPU from `/proc` samples; bytes from a counting proxy (they
+include vanilla traffic on both arms).
+
+| | LSS adapter | Official DH 3.3.3 client | Ratio |
+| --- | --- | --- | --- |
+| Cold server CPU (s) | 267, 281 | 310, 356 | ~0.82 |
+| Cold bytes to client | 9.21 MB, 9.14 MB | 10.79 MB, 11.07 MB | ~0.84 |
+| Server DH tiles generated | 360, 360 | 360, 360 | 1.0 |
+| Warm server CPU (s) | 18.8, 21.7 | 24.8, 23.3 | ~0.83 |
+| Warm bytes to client | 0.18 MB, 0.32 MB | 10.19 MB, 10.13 MB | ~0.02 |
+
+The LSS arm restored 251/251 receipts on the rejoin and requested only revalidation.
+Our client costs the server less than the official client, and far less on rejoin.
+
+**Movement pause (review §7).** Straight flight at 30 blocks/s, 95 chunk crossings.
+
+| Arm | DH tick p99 / max (ms) | On crossings max (ms) | Border pump p99 / max (ms) | GC pauses max (ms) |
+| --- | --- | --- | --- | --- |
+| DH, range 128 | 0.47 / 4.19 | 0.94 | 0.30 / 7.52 | 160 |
+| DH, range 32 | 0.25 / 4.20 | 0.39 | 0.41 / 4.04 | 153 |
+| DH off | 0.005 / 0.05 | 0.01 | 0.007 / 0.06 | 149 |
+
+No movement-correlated hitch from the adapter remains (D-4's ~26 ms per crossing is
+gone); GC behaves the same with DH off. Frame intervals were slower with DH on
+(median ~115 ms vs ~59 ms) because software rendering draws more Voxy terrain; that is
+rendering cost, to be checked on a real GPU.
