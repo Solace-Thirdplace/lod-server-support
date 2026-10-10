@@ -548,11 +548,10 @@ public final class DhClientSession {
             }
             if (levelKey == null) { activity = Activity.WAITING_SERVER; problem = "waiting for DH world initialization"; return; }
             if (resumed && !resumeApplied) {
-                // Reception resumed: treat as a load. Without synchronization a held receipt
-                // could never learn about edits made while reception was off.
+                // Reception resumed: treat as a load (revalidates where sync is available).
+                // Without sync, held terrain stays as it is, like the official DH client.
                 resumeApplied = true;
                 connectionState.forgetLoads(dimension);
-                if (!syncAvailable()) policy.clearReceipts();
             }
             expireRequests(now);
             // A silent official sync request may retain its upstream permit forever.
@@ -749,10 +748,11 @@ public final class DhClientSession {
                 });
             } catch (RejectedExecutionException e) { receiptsLoading = false; receiptsUnavailable = true; }
         }
-        /** Receipts are only worth keeping where a later session can revalidate them: without
-         *  synchronization a restored receipt could never learn about offline edits. */
+        /** Receipts are kept with or without sync. Without sync a restored receipt is never
+         *  rechecked, so offline edits stay unseen (the official DH client's behaviour, chosen
+         *  by the user on 2026-10-10 to avoid full downloads); with sync it is revalidated. */
         void rememberReceipt(DhPosition p, long timestamp) {
-            if (receiptStore == null || timestamp <= 0 || !syncAvailable()) return;
+            if (receiptStore == null || timestamp <= 0) return;
             stored.remove(p); stored.put(p, new DhReceiptStore.Entry(timestamp, DhReceiptStore.CONVERSION_VERSION));
             unprobed.remove(p);
             while (stored.size() > DhReceiptStore.MAX_ENTRIES) stored.remove(stored.keySet().iterator().next());
@@ -835,8 +835,7 @@ public final class DhClientSession {
                 var entry = stored.get(p);
                 if (entry == null) continue;
                 if (present != null && !Boolean.TRUE.equals(present.get(p))) { forgetReceipt(p); continue; }
-                if (!sync) continue; // never hold a receipt that cannot be revalidated; the tile downloads
-                boolean revalidate = loadDue(loads, p, now);
+                boolean revalidate = sync && loadDue(loads, p, now); // without sync: held as is
                 policy.restore(p, entry.timestamp(), now, revalidate);
                 if (revalidate) markLoaded(loads, p, now);
                 restored.incrementAndGet();
@@ -887,6 +886,9 @@ public final class DhClientSession {
                 var center = player.chunkPosition();
                 int cx = Math.floorDiv(center.x, 4), cz = Math.floorDiv(center.z, 4), rings = (radius + 3) / 4 + 1;
                 boolean sync = syncAvailable();
+                // Without sync, held terrain is accepted as possibly stale (official DH client
+                // behaviour): an unidentifiable lost push never costs a re-download of the window.
+                if (!sync) { problem = "DH update lost in transit; held terrain kept (sync off)"; return; }
                 var cancelledIds = new ArrayList<Integer>();
                 for (int x = cx - rings; x <= cx + rings; x++) for (int z = cz - rings; z <= cz + rings; z++) {
                     var p = new DhPosition(6, x, z);
@@ -1040,7 +1042,7 @@ public final class DhClientSession {
                     if (policy.acquisitionPriority(p) != priority) continue;
                     // A persisted receipt waits for its destination probe; never full-request it first.
                     // That includes one the policy evicted on a long flight (bounded window).
-                    if (!unprobed.contains(p) && stored.containsKey(p) && !policy.hasSnapshot(p) && syncAvailable()) unprobed.add(p);
+                    if (!unprobed.contains(p) && stored.containsKey(p) && !policy.hasSnapshot(p)) unprobed.add(p);
                     if (unprobed.contains(p)) continue;
                     int x = p.x() * 4, z = p.z() * 4;
                     boolean any = false;

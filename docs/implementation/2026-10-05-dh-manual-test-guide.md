@@ -114,10 +114,10 @@ DH tile it delivered. Let distant terrain settle, disconnect, and rejoin at the
 same position. On rejoin the client checks once that Voxy still holds terrain
 for those tiles, then, when Sync on load is available, asks the server only
 whether each tile changed. Unchanged tiles download nothing and are not
-re-ingested; changed tiles download again. Receipts exist only where sync is
-available (official and DH Support servers enable it by default): with sync off on the
-server or client nothing is
-restored, and terrain downloads again on each connection or reception resume.
+re-ingested; changed tiles download again. With sync off on the server or client,
+receipts are restored as they are and never rechecked (the official DH client's
+behaviour): nothing downloads again, and offline edits stay unseen until a live
+push, `/lss reset`, or a later session with sync.
 
 `/lss diag` reports stored and restored receipts. If Voxy's storage was wiped, or
 any quarter of a tile is missing, the presence check fails and the tile downloads

@@ -16,6 +16,7 @@ The user accepted the review's decision verdicts and chose:
 | Packaging (X-6/X-7/X-8) | **Middle path.** DH channel registration gated on opt-in, the fringe pump has its own flag, Paper ships no DH/XZ code, the transfer mixin is deleted. No separate add-on mod. |
 | Official protocol 15 (X-4) | **Cut.** No forced reconnect. Supported: official 16 and DH Support 15. A live rig (2026-10-10) showed official 3.2.x sends nothing to a protocol-16 hello, so the client idles as "no DH reply" (which names 3.2.x as a likely cause) and sends nothing more; `OLD_DH_PROTOCOL` with a chat notice applies only when a server actually advertises protocol 15. This is a feature cut on a best-effort line, recorded here as its dated decision. |
 | DH outreach | Handled by the user. |
+| Sync off (2026-10-10) | **Match the official DH client.** Without sync, receipts are kept and restored as held without rechecking; offline edits stay unseen. Avoiding full downloads takes priority over freshness the user opted out of. Supersedes the panel round's sync-only receipts. |
 
 Not done, deliberately:
 
@@ -72,7 +73,7 @@ Fixture and documentation adaptation follow in later commits on the branch.
 | X-2 | See D-1. |
 | X-3 | Scoped recovery (D-2/D-3); a malformed tile costs that tile a cooldown, not the session. Control decoding tolerates unknown messages and trailing bytes; terrain decoding stays strict. |
 | X-4 | Official-15 support cut (decision above). Same-connection support switching for Support 15 stays. |
-| X-5 | Receipts: tile → timestamp + conversion version, per server/world/dimension/seed/profile/shape key, atomic file, LRU of 64 buckets × 65,536 entries. Kept and restored only where sync is available (otherwise they could never learn of offline edits). On rejoin a probe checks all four Voxy sections of each tile (`acquireIfExists` where Voxy has it); transient probe failures retry, repeated ones drop the receipts. Legacy DTO files are swept (own files only). |
+| X-5 | Receipts: tile → timestamp + conversion version, per server/world/dimension/seed/profile/shape key, atomic file, LRU of 64 buckets × 65,536 entries. Kept with or without sync; without sync they are restored as held and never rechecked (sync-off decision above). On rejoin a probe checks all four Voxy sections of each tile (`acquireIfExists` where Voxy has it); transient probe failures retry, repeated ones drop the receipts. Legacy DTO files are swept (own files only). |
 | X-6 | Fabric registers the DH receiver per connection when opted in, and treats the channel as usable only where that receiver exists; NeoForge registers at startup when opted in, otherwise reports `RESTART_REQUIRED`. The fringe pump runs only during a native session or a negotiated DH session (config received), and with `lod.voxy_border_fill` (default on, which keeps the pre-existing native behaviour; it is not a new native change). |
 | X-7 | Paper excludes DH and XZ; `release_check` pins their absence. |
 | X-8 | Middle path (decision above). |
@@ -80,7 +81,7 @@ Fixture and documentation adaptation follow in later commits on the branch.
 | X-10 | Sidecar YAML. Downgraded builds ignore it and read the main file normally; startup moves development-build keys out of the main file once. The sidecar can never disable the main settings: unknown, retired or invalid content is dropped with a warning, and a failed main publish rolls the sidecar back. |
 | X-11 | Not changed (user decision). |
 | X-12 | The load debounce lives in the connection state, per dimension. |
-| X-13 | Resume counts as a load: revalidate when the server allows sync; without sync no receipt is restored at all (see X-5). |
+| X-13 | Resume counts as a load: revalidate when sync is available; without sync held terrain is kept as it is (sync-off decision). |
 | X-14 | Status is state + reason + activity + counters. Gate detail stays in the trace. |
 | X-15 | Voxy ingest gate 1024 sections (above one tile); fringe gate 2048; vanilla cap per region (D-11). Request caps unchanged. |
 | X-16 | Open; see "Not done". |
@@ -94,9 +95,10 @@ Fixture and documentation adaptation follow in later commits on the branch.
 - An edit missed while out of range or under load appears when that tile re-enters
   view after the 20-minute load interval (per dimension and connection), on reset,
   or on rejoin. A tile that stays in view is not rechecked.
-- Without sync (turned off on the server or client), every connection downloads the
-  whole range. DH Support enables sync by default (live rig 2026-10-10: sync available,
-  receipts stored); the official DH client instead keeps stale LODs on sync-off servers.
+- Without sync (turned off on the server or client), held terrain is never rechecked,
+  matching the official DH client; an unidentifiable lost push keeps held terrain
+  instead of re-downloading the window. DH Support enables sync by default (live rig
+  2026-10-10: sync available, receipts stored).
 - `/lss diag` shows "last reply age -1 ms" before the first reply (cosmetic).
 
 ## Verification (2026-10-09, commit `236bbba4`)

@@ -1458,6 +1458,16 @@ class DhClientSessionTest {
         pumpUntil(()->true,"");
         assertTrue(active(s));assertEquals(0,budget(s).used());assertFalse((boolean)((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).get());
     }
+    /** Without sync an unidentifiable lost push never re-downloads the update window. */
+    @Test void withoutSynchronizationAHeaderlessLostPushKeepsHeldTerrain() throws Exception {
+        var s=updateSession();long now=System.nanoTime();var held=new DhPosition(6,0,0);
+        setting(Map.of("lod.dh.sync_on_load",false));
+        policy(s).accepted(held,1,1,123,now);
+        ((java.util.concurrent.atomic.AtomicBoolean)read(s,SESSION,"pushRecovery")).set(true);
+        worker(s).submit(()->{try{invoke(s,"recoverLoss");}catch(Exception e){throw new RuntimeException(e);}}).get(5,TimeUnit.SECONDS);
+        pumpUntil(()->true,"");
+        assertTrue(policy(s).hasSnapshot(held));assertFalse(policy(s).due(held,Long.MAX_VALUE));
+    }
     @Test void aMalformedTileTakesAStrikeWithoutStoppingTheSession() throws Exception {
         var s=updateSession();long now=System.nanoTime();pending(s,1,false,now);
         capture(codec(s).encode(new DhMessage.Split(77,new byte[64],true)),now).receive();
@@ -1600,18 +1610,20 @@ class DhClientSessionTest {
         invoke(s,"saveReceipts",new Class<?>[]{boolean.class},true);awaitReceiptIo();
         assertEquals(Set.of(held,fresh),store.load().keySet());
     }
-    /** Panel O2-1: without synchronization a receipt can never be revalidated, so none is kept or restored. */
-    @Test void withoutSynchronizationReceiptsAreNeitherWrittenNorRestored() throws Exception {
+    /** User decision 2026-10-10: without sync, match the official DH client: keep receipts and
+     *  restore them as held without rechecking (stale accepted, no full download). */
+    @Test void withoutSynchronizationReceiptsAreKeptAndRestoredWithoutRechecking() throws Exception {
         var store=receiptStore(-128,512);var tile=new DhPosition(6,1,1);
         store.save(Map.of(tile,new DhReceiptStore.Entry(123,DhReceiptStore.CONVERSION_VERSION)));
         var s=deliverySession(-128,512);
         write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,false,0,0,500));
         loadReceipts(s,store);
         invoke(s,"applyProbe",new Class<?>[]{List.class,Map.class},List.of(tile),Map.of(tile,true));
-        assertFalse(policy(s).hasSnapshot(tile),"A DH Support or no-sync tile must download, not stay frozen");
-        assertEquals(0,counter(s,"restored"));
+        assertTrue(policy(s).hasSnapshot(tile),"The tile is held: no download");
+        assertFalse(policy(s).due(tile,Long.MAX_VALUE),"...and never rechecked without sync");
+        assertEquals(1,counter(s,"restored"));
         invoke(s,"rememberReceipt",new Class<?>[]{DhPosition.class,long.class},new DhPosition(6,2,2),456L);
-        assertFalse(stored(s).containsKey(new DhPosition(6,2,2)));
+        assertTrue(stored(s).containsKey(new DhPosition(6,2,2)));
     }
     /** Panel O1-3 / O2-5: a transient probe failure retries; it never trusts the batch. */
     @Test void aTransientProbeFailureRetriesAndRepeatedFailuresDropTheReceipts() throws Exception {
@@ -1715,7 +1727,7 @@ class DhClientSessionTest {
         invoke(next,"observeLoaded",new Class<?>[]{long.class,ChunkPos.class},now+60_000_000_000L,new ChunkPos(2,2));
         assertFalse(policy(next).due(tile,Long.MAX_VALUE),"A dimension return within 20 minutes does not revalidate again");
     }
-    @Test void resumingReceptionRevalidatesAndClearsReceiptsWithoutSynchronization() throws Exception {
+    @Test void resumingReceptionWithoutSynchronizationKeepsHeldTerrain() throws Exception {
         var s=session();configureFrontier(s);var tile=new DhPosition(6,0,0);long now=System.nanoTime();
         policy(s).accepted(tile,1,1,123,now);
         invoke(s,"observeLoaded",new Class<?>[]{long.class,ChunkPos.class},now,new ChunkPos(2,2));policy(s).accepted(tile,1,1,123,now);
@@ -1725,7 +1737,8 @@ class DhClientSessionTest {
         write(resumed,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,false,0,0,500));
         write(resumed,SESSION,"levelKey","test-world");write(resumed,SESSION,"announced",true);
         invoke(resumed,"tick");
-        assertFalse(policy(resumed).hasSnapshot(tile),"Without sync, a held receipt could never see edits made while reception was off");
+        assertTrue(policy(resumed).hasSnapshot(tile),"Without sync, held terrain is kept (official DH client behaviour)");
+        assertFalse(policy(resumed).due(tile,Long.MAX_VALUE));
     }
 
     /** D-11 / X-15: no column cap; diagnostics name the real block reason. */
