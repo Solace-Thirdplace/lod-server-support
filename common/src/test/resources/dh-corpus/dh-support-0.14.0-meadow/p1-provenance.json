@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "source": "actual custom-payload bytes received from local disposable Paper/DH Support server on 2026-09-29",
+  "server": "Paper 1.21.1 build 133",
+  "server_sha256": "39bd8c00b9e18de91dcabd3cc3dcfa5328685a53b7187a2f63280c22e2d287b9",
+  "dh_support": "0.14.0",
+  "dh_support_revision": "0004539b41b2608cc8185e3063fef3ea71415c9c",
+  "dh_support_sha256": "3dd299bb8dc6fb38cde9bec54e9a87b51161ed1e44b9245f637513472c1985ca",
+  "builder": "default FullBuilder",
+  "world_seed": 8675309,
+  "protocol": 15,
+  "format": 1,
+  "compression": 3,
+  "world": {
+    "min_y": -64,
+    "height": 384,
+    "sky": true
+  },
+  "tile": [
+    -4,
+    -1
+  ],
+  "spans": 35209,
+  "mappings": 38,
+  "decoded_stream_bytes": 299938,
+  "normalization_schema": 1,
+  "normalized_sha256": "d446d3356f55b9164c2ddc251e09c869e551d15f00a4c144647cb7ee6b9685a3",
+  "files": {
+    "received-0001.bin": "d1722bae44575f4e927a954abc263811199775a87ab48eec40a21b88d8a9464a",
+    "received-0002.bin": "0615e392c13e15824f879b78e8fa7c5182633a8f0bbce481b63f7ed21a4ce0ff",
+    "received-0003.bin": "2f04825d28b4fb131db897bab238c67c1623b6cfeecee783522259ee13636666",
+    "received-0004.bin": "804e4cefdd275ebfe74144a43bbdc02bdc23a38fa4fd68f3a986ef549d96dbc4",
+    "received-0005.bin": "38581273ffa169439fcb639bd9c0dc07a12717cd7d280574a21fe8a618867fb2",
+    "received-0006.bin": "00fd528aa8e8d3848e8e27a8a5c0a3663356a58da95355354018a4006320dd13"
+  }
+}
