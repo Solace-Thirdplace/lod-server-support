@@ -69,7 +69,8 @@ final class ServiceProbe {
             }
             Probe.write("dh-service.json","{\"pass\":true,\"profile\":\""+profile+"\",\"ordinary_connected\":true,"
                     +"\"negotiation_reconnects\":0,\"requests\":"+Probe.requests.get()+",\"tiles\":"+Probe.count(session,"tiles")
-                    +",\"support_local_startup_gate\":"+localStart+",\"support_first_request_gap_ms\":"+(supportRequests.size()<2?-1:(supportRequests.get(1)-supportRequests.getFirst())/1_000_000L)+",\"first_bandwidth_kb\":"+firstBandwidth+",\"max_bandwidth_kb\":"+maxBandwidth+",\"storage_samples\":"+stored[0]+",\"solid_samples\":"+stored[1]+",\"columns\":"+stored[2]+"}");
+                    +",\"support_local_startup_gate\":"+localStart+",\"support_first_request_gap_ms\":"+(supportRequests.size()<2?-1:(supportRequests.get(1)-supportRequests.getFirst())/1_000_000L)+",\"first_bandwidth_kb\":"+firstBandwidth+",\"max_bandwidth_kb\":"+maxBandwidth+",\"storage_samples\":"+stored[0]+",\"solid_samples\":"+stored[1]+",\"columns\":"+stored[2]
+                    +",\"sync_available\":"+DhClientSession.diagnostics().syncAvailable()+",\"stored_receipts\":"+DhClientSession.diagnostics().storedReceipts()+"}");
             if(LSSClientConfig.CONFIG.enableAdaptiveTransferRate() && LSSClientConfig.CONFIG.enableJoinSlowStart() && firstBandwidth!=50)
                 throw new IllegalStateException("Packaged client did not advertise slow start");
             finish("ready_and_storage");
