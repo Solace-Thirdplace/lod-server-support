@@ -64,6 +64,8 @@ dependencies {
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
     testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
+    testImplementation 'org.mockito:mockito-core:5.20.0'
+    testImplementation 'org.objenesis:objenesis:3.3'
     // LOD-store Phase 0 experiment deps (docs/planning/lod-store-implementation-plan.md):
     // the codec/schema decision tool (LodStoreExperimentTool, gated on
     // -Plss.store.experiment.regionDir) measures decompress throughput + SQLite page-shape
@@ -77,6 +79,8 @@ dependencies {
     // exclusively from common's private capsule, including development runs.
     storeDeps "com.github.luben:zstd-jni:1.5.7-3"
     localRuntime "com.github.luben:zstd-jni:1.5.7-3"
+    // Unshaded common classes in development runs; release common owns private XZ.
+    localRuntime "org.tukaani:xz:1.10"
     // 1.21.10 line: Sodium for MC 1.21.10 tops out at 0.7.3, which predates the
     // structured config API (net.caffeinemc.mods.sodium.api.config) the 0.8+ walker
     // binds — LSSConfigMenu + the sodium:config_api_user entrypoint stay CUT here.

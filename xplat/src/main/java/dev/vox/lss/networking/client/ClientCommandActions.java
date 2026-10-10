@@ -35,16 +35,23 @@ public final class ClientCommandActions {
 
     /** /lss clearcache. */
     public static void clearCache(Consumer<Component> feedback) {
+        boolean dhContext=DhClientSession.selected() && net.minecraft.client.Minecraft.getInstance().getConnection()!=null;
+        boolean dhActive=DhClientSession.canAcquire();
+        if (dhContext || DhClientSession.ownsWork()) DhClientSession.drainForReset();
         var manager = ClientNetGlue.getRequestManager();
         if (manager != null) {
             manager.flushCache();
             feedback.accept(Component.literal(
                     Brand.shortName() + " column cache cleared for current server. Chunks will be re-requested."));
+        } else if(dhContext && net.minecraft.client.Minecraft.getInstance().getCurrentServer()!=null) {
+            feedback.accept(Component.literal(Brand.shortName() + " column cache cleared for current server. "
+                    + (dhActive?"Chunks will be re-requested.":"No active DH download service; acquisition remains paused.")));
         } else {
             ColumnCacheStore.clearAll();
             feedback.accept(Component.literal(
                     Brand.shortName() + " column cache cleared for all servers."));
         }
+        if (dhContext) DhClientSession.resumeAfterReset();
     }
 
     /**
@@ -60,9 +67,15 @@ public final class ClientCommandActions {
     public static void runReset(Consumer<Component> feedback, boolean confirmed,
                                 boolean forceVoxyWipe) {
         var manager = ClientNetGlue.getRequestManager();
+        // A DH server connection is a terrain session for reset purposes even when it is
+        // not acquiring yet (waiting for config, push-only, stopped): its receipts must be
+        // cleared and the session resumed, never left retired. DH merely being allowed on a
+        // server without the DH channel is not: that keeps the no-session confirm prompt.
+        boolean dhContext=DhClientSession.dhServerConnection();
         ResetCoordinator.run(new ResetCoordinator.Deps(
                 manager != null,
                 () -> {
+                    if (dhContext || DhClientSession.ownsWork()) DhClientSession.drainForReset();
                     if (manager != null) {
                         ClientNetGlue.reportUndispatchedColumns(manager);
                     }
@@ -79,15 +92,20 @@ public final class ClientCommandActions {
                 dev.vox.lss.compat.ModCompat::probeVoxyStorage,
                 () -> {
                     if (manager != null) manager.flushCache();
+                    if (dhContext) DhClientSession.resumeAfterReset();
                 },
-                ColumnCacheStore::clearAll,
+                () -> {
+                    ColumnCacheStore.clearAll();
+                    // A drained DH session must never stay retired or keep in-memory receipts.
+                    if (DhClientSession.selected()) DhClientSession.resumeAfterReset();
+                },
                 FarPlayerClientSupport::resetAndResubscribe,
                 line -> feedback.accept(Component.literal(line).withStyle(ChatFormatting.GOLD)),
                 // The force grant's connection identity: the live ClientPacketListener
                 // (null = the no-session sentinel — a no-session grant matches only a
                 // still-no-session confirm).
                 () -> (Object) net.minecraft.client.Minecraft.getInstance().getConnection(),
-                System::nanoTime),
+                System::nanoTime, dhContext),
                 confirmed, forceVoxyWipe);
     }
 

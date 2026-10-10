@@ -53,6 +53,9 @@ final class ClientNetTrace {
     /** Below this speed (blocks/tick) there is no meaningful heading, so no runway. */
     private static final double MIN_SPEED_FOR_RUNWAY = 0.05;
 
+    enum Source { NATIVE_LSS, DH }
+    private static Source lastSource;
+    private static Object lastOwner, lastLevel;
     private static long nextEmitMs;
     private static long lastWireBytes;
     private static long lastRawBytes;
@@ -64,6 +67,7 @@ final class ClientNetTrace {
     static void reset() {
         nextEmitMs = 0;
         lastSampleMs = 0;
+        lastSource = null; lastOwner = null; lastLevel = null;
     }
 
     /**
@@ -73,31 +77,35 @@ final class ClientNetTrace {
     static void maybeEmit(Minecraft mc, LocalPlayer player, ClientLevel level, int viewDistance,
                           int queueSize, long queueBytes, int ingestBacklog, int inFlight,
                           long governedBps, int governedCols, double rttP50, double rttP95) {
+        maybeEmit(mc, player, level, viewDistance, queueSize, queueBytes, ingestBacklog, inFlight,
+                governedBps, governedCols, rttP50, rttP95, Source.NATIVE_LSS, mc.getConnection(),
+                LSSClientNetworking.getWireBytesReceived(), LSSClientNetworking.getBytesReceived());
+    }
+
+    /** Explicit source counters keep DH traffic out of native raw/governor measurements. */
+    static void maybeEmit(Minecraft mc, LocalPlayer player, ClientLevel level, int viewDistance,
+                          int queueSize, long queueBytes, int ingestBacklog, int inFlight,
+                          long governedBps, int governedCols, double rttP50, double rttP95,
+                          Source source, Object owner, long wire, long raw) {
+        if (!ClientTraceLog.enabled()) return;
         long now = System.currentTimeMillis();
+        if (source != lastSource || owner != lastOwner || level != lastLevel) {
+            reset(); lastSource = source; lastOwner = owner; lastLevel = level;
+        }
         if (now < nextEmitMs) return;
         nextEmitMs = now + INTERVAL_MS;
-
-        // Both counters live on the session gate and RESET on a new session — a negative
-        // delta means a reconnect crossed this window, not a rate.
-        long wire = LSSClientNetworking.getWireBytesReceived();
-        long raw = LSSClientNetworking.getBytesReceived();
         long elapsed = lastSampleMs == 0 ? 0 : now - lastSampleMs;
-        long wireBps = elapsed > 0 && wire >= lastWireBytes
-                ? (wire - lastWireBytes) * 1000L / elapsed : -1;
-        long rawBps = elapsed > 0 && raw >= lastRawBytes
-                ? (raw - lastRawBytes) * 1000L / elapsed : -1;
-        lastWireBytes = wire;
-        lastRawBytes = raw;
-        lastSampleMs = now;
+        long wireBps = rate(wire, lastWireBytes, elapsed);
+        long rawBps = rate(raw, lastRawBytes, elapsed);
+        lastWireBytes = wire; lastRawBytes = raw; lastSampleMs = now;
 
-        var movement = player.getDeltaMovement();
-        double speedPerTick = Math.sqrt(movement.x * movement.x + movement.z * movement.z);
+        double speedPerTick = speed(player);
         int runway = runwayChunks(level, player, speedPerTick, viewDistance);
         // Seconds of clear terrain ahead: chunks * 16 blocks, over blocks/second.
         String runwaySeconds = runway < 0 ? "-1"
                 : String.format(java.util.Locale.ROOT, "%.2f", runway * 16.0 / (speedPerTick * 20.0));
 
-        ClientTraceLog.event("net", "\"ping\":" + pingMillis(mc)
+        ClientTraceLog.event("net", "\"source\":\"" + source.name() + "\",\"ping\":" + pingMillis(mc)
                 + ",\"dcpt\":" + desiredChunksPerTick(mc)
                 + ",\"runway\":" + runway
                 + ",\"runway_s\":" + runwaySeconds
@@ -125,6 +133,18 @@ final class ClientNetTrace {
         sendPingProbe(mc);
     }
 
+    static long rate(long counter, long previous, long elapsedMs) {
+        return elapsedMs > 0 && counter >= 0 && previous >= 0 && counter >= previous
+                ? (counter - previous) * 1000L / elapsedMs : -1;
+    }
+
+    private static double speed(LocalPlayer player) {
+        try {
+            var v = player.getDeltaMovement();
+            return Math.sqrt(v.x * v.x + v.z * v.z);
+        } catch (Exception | LinkageError unavailable) { return 0; }
+    }
+
     /**
      * Vanilla's own ping/pong on the shared connection. The pong handler
      * ({@code ClientPacketListener.handlePongResponse}) logs into the debug overlay's ping
@@ -137,7 +157,7 @@ final class ClientNetTrace {
             if (connection != null) {
                 connection.send(new ServerboundPingRequestPacket(Util.getMillis()));
             }
-        } catch (Exception e) {
+        } catch (Exception | LinkageError e) {
             // A diagnostic probe is never worth a client-side failure.
         }
     }
@@ -148,7 +168,7 @@ final class ClientNetTrace {
             var logger = mc.getDebugOverlay().getPingLogger();
             int size = logger.size();
             return size == 0 ? -1 : logger.get(size - 1);
-        } catch (Exception e) {
+        } catch (Exception | LinkageError e) {
             return -1;
         }
     }
@@ -194,7 +214,7 @@ final class ClientNetTrace {
                 runway++;
             }
             return runway;
-        } catch (Exception e) {
+        } catch (Exception | LinkageError e) {
             return -1;
         }
     }
@@ -211,7 +231,7 @@ final class ClientNetTrace {
                 }
             }
             return missing;
-        } catch (Exception e) {
+        } catch (Exception | LinkageError e) {
             return -1;
         }
     }
@@ -219,7 +239,7 @@ final class ClientNetTrace {
     private static int loadedChunks(ClientLevel level) {
         try {
             return level.getChunkSource().getLoadedChunksCount();
-        } catch (Exception e) {
+        } catch (Exception | LinkageError e) {
             return -1;
         }
     }
