@@ -1,10 +1,10 @@
 {
   "basis": {
-    "1.21.1": "7e44068a9667d2522b135c6f5d14e0376905df77",
-    "1.21.10": "9109085753a914a7d2caf4aa563165d301c9bd0e",
-    "1.21.11": "622796b9ac9ec1e9ccbc5cfae847152d1a49d313",
-    "26.1": "c21b722640682c84bf49a153944a28d3dbe3fa34",
-    "26.2": "f4b3af09271edd4e7cff64eeecd15ec845283306"
+    "1.21.1": "f70fe1526c08aa414183ff1f08dcfdda4953e3ff",
+    "1.21.10": "339d466d21d91207abb085256427240ade6dded9",
+    "1.21.11": "8cc3f0e01c86f9f3ea1465d58caf880c3e76b2cc",
+    "26.1": "f3f442b71eca65b05af0ff6b3a8f83643fd8a29a",
+    "26.2": "13b6138851d2acfeeb8811a74128b2d9f58cb726"
   },
   "files": {
     ".github/line.env": {
@@ -3047,13 +3047,13 @@
     "fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java": {
       "axes": "Sodium page generation: 1.21.10 pins display-time tooltip context on the legacy LegacySodiumPage twins (its Sodium 0.8 LSSConfigMenu walker is cut); the other lines pin the LSSConfigMenu twins. All other assertions byte-identical.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: 1.21.10 differs from the shared blob only in the display-time twin pin (commit 27d61c1e), which targets the legacy page twins because LSSConfigMenu does not exist on that line; both legacy twins contain the pinned buildWith(h, cfg, MenuContext.current(), call. Other four lines byte-identical.",
+      "review": "2026-10-10 0.17.0 release pin: 1.21.10 differs from the shared blob only in the display-time twin pin (commit 27d61c1e), which targets the legacy page twins because LSSConfigMenu does not exist on that line; both legacy twins contain the pinned buildWith(h, cfg, MenuContext.current(), call. Other four lines byte-identical. 2026-10-10 default flip: the fallback-permission test now asserts the default is on, turns it off and defers \"lss\" to the next connection; identical edit on every line, the 1.21.10 twin-pin residual unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "68bcd22f83a75676cbd8465aeaae30880643b906",
-        "1.21.10": "97213f5fef931c2c0b9105667c9e09b7071b4770",
-        "1.21.11": "68bcd22f83a75676cbd8465aeaae30880643b906",
-        "26.1": "68bcd22f83a75676cbd8465aeaae30880643b906",
-        "26.2": "68bcd22f83a75676cbd8465aeaae30880643b906"
+        "1.21.1": "7da3a4a40e786c329b52aa5102a5ecdbafe58429",
+        "1.21.10": "25754232e995703d0c6e9b52f224e61ed6d1f680",
+        "1.21.11": "7da3a4a40e786c329b52aa5102a5ecdbafe58429",
+        "26.1": "7da3a4a40e786c329b52aa5102a5ecdbafe58429",
+        "26.2": "7da3a4a40e786c329b52aa5102a5ecdbafe58429"
       },
       "surface": "sodium-generation:fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java",
       "tests": [
@@ -3253,13 +3253,13 @@
     "fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java": {
       "axes": "Mock stubs follow getMinBuildHeight() (1.21.1) vs getMinY(); assertions byte-identical.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: two stub method names only. 2026-10-10 hosted-CI fold: cleanup drains RECEIPT_IO before @TempDir deletion (identical three-line change on every line).",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: two stub method names only. 2026-10-10 hosted-CI fold: cleanup drains RECEIPT_IO before @TempDir deletion (identical three-line change on every line). 2026-10-10 default flip: setup no longer writes lod.source (the default selects DH) and a new test pins fresh-client selection, native precedence and reception-off idling; identical edit on every line.",
       "reviewed_blobs": {
-        "1.21.1": "523eb4354f11c7b8356ca2d54a8865665367661e",
-        "1.21.10": "791e43e83b58e9f74182febefc02bf46def65630",
-        "1.21.11": "791e43e83b58e9f74182febefc02bf46def65630",
-        "26.1": "791e43e83b58e9f74182febefc02bf46def65630",
-        "26.2": "791e43e83b58e9f74182febefc02bf46def65630"
+        "1.21.1": "6ceb4f047e5c0f9cfa31c73b09a2d596df51c0fa",
+        "1.21.10": "e7592748ff5560f57702b9a71684c6d2bc979964",
+        "1.21.11": "e7592748ff5560f57702b9a71684c6d2bc979964",
+        "26.1": "e7592748ff5560f57702b9a71684c6d2bc979964",
+        "26.2": "e7592748ff5560f57702b9a71684c6d2bc979964"
       },
       "surface": "dh-client-adapter:fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java",
       "tests": [
@@ -7629,13 +7629,13 @@
     "test-fixtures/dh-live/exercise.py": {
       "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports take the DH jar default and sha pin from line.py and require --base explicitly; 1.21.1 inline defaults.",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports take the DH jar default and sha pin from line.py and require --base explicitly; 1.21.1 inline defaults. 2026-10-10 default flip: passes --source-unset through to prepare.py; identical insertion on every line.",
       "reviewed_blobs": {
-        "1.21.1": "b288f556214f4661c44a80e96d586de2f9f86730",
-        "1.21.10": "7b4c1c2e2885ec6e3317160884f050d0c22b2549",
-        "1.21.11": "7b4c1c2e2885ec6e3317160884f050d0c22b2549",
-        "26.1": "7b4c1c2e2885ec6e3317160884f050d0c22b2549",
-        "26.2": "7b4c1c2e2885ec6e3317160884f050d0c22b2549"
+        "1.21.1": "86311e753977012deded9971ab29f5975aaa96a8",
+        "1.21.10": "3da2f3d7bf8cbb3d60139adde364620f7f2bee85",
+        "1.21.11": "3da2f3d7bf8cbb3d60139adde364620f7f2bee85",
+        "26.1": "3da2f3d7bf8cbb3d60139adde364620f7f2bee85",
+        "26.2": "3da2f3d7bf8cbb3d60139adde364620f7f2bee85"
       },
       "surface": "dh-live-fixture:test-fixtures/dh-live/exercise.py",
       "tests": [
@@ -7666,13 +7666,13 @@
     "test-fixtures/dh-live/prepare.py": {
       "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports parameterize servers/mods/pins/profile/datapack through line.py; 1.21.10/1.21.11 (no NeoForge client route) let the Fabric observer drive updates/lifecycle/boundary and refuse the native boundary arm without the NeoForge artifact; 26.x keep 1.21.1's Fabric scenario set.",
+      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports parameterize servers/mods/pins/profile/datapack through line.py; 1.21.10/1.21.11 (no NeoForge client route) let the Fabric observer drive updates/lifecycle/boundary and refuse the native boundary arm without the NeoForge artifact; 26.x keep 1.21.1's Fabric scenario set. 2026-10-10 default flip: --source-unset writes no experimental client key (no lod.source, no sidecar) and refuses to run if one is written; identical insertion on every line.",
       "reviewed_blobs": {
-        "1.21.1": "63bb629abc9b1fdbad96cfcad8f91a8298806129",
-        "1.21.10": "ddc61d807ecf4cc866d7ebfcd242fe0e791afb19",
-        "1.21.11": "8350911c10824eae78f8aefbd1fff8a762e40ba1",
-        "26.1": "bec42eec6d288b2ab5934d6c086978ca50ff9965",
-        "26.2": "bec42eec6d288b2ab5934d6c086978ca50ff9965"
+        "1.21.1": "8150ee34bc654e132afb95cd3c29d07325642c17",
+        "1.21.10": "603a3b6dfa4e2fc7fe6221ad1b35e38872770d1a",
+        "1.21.11": "10b16790ab061d1a8e580b7d3adf66f1a994dcc7",
+        "26.1": "a89db73729632bf7c42cc8c5e4f0a7da6b016ecf",
+        "26.2": "a89db73729632bf7c42cc8c5e4f0a7da6b016ecf"
       },
       "surface": "dh-live-fixture:test-fixtures/dh-live/prepare.py",
       "tests": [
@@ -9819,13 +9819,13 @@
     "xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical DH option/dependency delta on every line; residual line flavours unchanged.",
+      "review": "2026-10-10 0.17.0 release pin: identical DH option/dependency delta on every line; residual line flavours unchanged. 2026-10-10 default flip (user decision): lod_source defaultValue false->true plus a two-line comment, identical on every line.",
       "reviewed_blobs": {
-        "1.21.1": "c3b06ec4d706f54cd995cb6260f931efc38a48cd",
-        "1.21.10": "3a023892e66f67add43df4de191081536103bcf6",
-        "1.21.11": "3a023892e66f67add43df4de191081536103bcf6",
-        "26.1": "3a023892e66f67add43df4de191081536103bcf6",
-        "26.2": "3a023892e66f67add43df4de191081536103bcf6"
+        "1.21.1": "93ccd40ba5c057367dcea643d16138b7cda7a9bc",
+        "1.21.10": "50c472c55d3a0f38dd54246e9e44ab6646790a20",
+        "1.21.11": "50c472c55d3a0f38dd54246e9e44ab6646790a20",
+        "26.1": "50c472c55d3a0f38dd54246e9e44ab6646790a20",
+        "26.2": "50c472c55d3a0f38dd54246e9e44ab6646790a20"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java",
       "tests": [
@@ -9866,13 +9866,13 @@
     "xplat/src/main/java/dev/vox/lss/config/menu/MenuContext.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical nativeTerrain context delta on every line; residual line flavours unchanged.",
+      "review": "2026-10-10 0.17.0 release pin: identical nativeTerrain context delta on every line; residual line flavours unchanged. 2026-10-10 default flip: nativeTerrain reports DH only on a live connection that selected it (title screen stays native); identical edit on every line.",
       "reviewed_blobs": {
-        "1.21.1": "1ace713c86093abe006fa11fcc2eb26e3516d7c1",
-        "1.21.10": "c8f20e88033a610612739263696dde3fe48aad54",
-        "1.21.11": "c8f20e88033a610612739263696dde3fe48aad54",
-        "26.1": "c8f20e88033a610612739263696dde3fe48aad54",
-        "26.2": "c8f20e88033a610612739263696dde3fe48aad54"
+        "1.21.1": "af35e784e282def2119103f856c52b1dbf75d1f9",
+        "1.21.10": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f",
+        "1.21.11": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f",
+        "26.1": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f",
+        "26.2": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/config/menu/MenuContext.java",
       "tests": [
