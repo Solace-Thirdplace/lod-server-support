@@ -24,8 +24,9 @@ public final class BenchmarkClient {
   if(framesAt!=0){if(now-framesAt<60_000_000_000L)return;if(Boolean.getBoolean("lss.p4.windowsNative"))P4Probe.write("dh-frame-metrics.json",FrameMetrics.finish());row.put("peak_owned_bytes",peak);P4Probe.pass(row);return;}
   if(!TARGETS.stream().allMatch(policy::hasSnapshot) || !((Map<?,?>)P4Probe.field(s,"pending")).isEmpty())return;
   if(receivedAt==0)receivedAt=now;
-  // Every target holds a complete-tile receipt and Voxy holds terrain in all 16 of its columns.
-  if(verified==null){if((boolean)P4Probe.field(s,"receiptsUnavailable"))throw new IllegalStateException("DH receipts unavailable");var receipts=(Map<?,?>)P4Probe.field(s,"stored");if(!TARGETS.stream().allMatch(receipts::containsKey))return;
+  // Every target is held complete (plus a persisted receipt where sync can revalidate one;
+  // the benchmark runs with sync off, where no receipt is kept) and Voxy holds terrain in all 16 columns.
+  if(verified==null){if(DhClientSession.diagnostics().syncAvailable()){if((boolean)P4Probe.field(s,"receiptsUnavailable"))throw new IllegalStateException("DH receipts unavailable");var receipts=(Map<?,?>)P4Probe.field(s,"stored");if(!TARGETS.stream().allMatch(receipts::containsKey))return;}
    var level=mc.level;var probe=DhVoxyBridge.openProbe(level);if(probe==null)throw new IllegalStateException("Pinned Voxy presence probe unavailable");
    int minY=level.getMinBuildHeight(),height=level.getHeight();verified=CompletableFuture.supplyAsync(()->{try{
    for(var pos:TARGETS)for(int c=0;c<16;c++)if(!probe.hasTerrain(pos.x()*4+c/4,pos.z()*4+c%4,minY,height))return false;return true;
