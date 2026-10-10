@@ -67,7 +67,7 @@ class LegacySettingsMigrationTest {
                     case BOOLEAN -> {expected=!((Boolean)descriptor.defaultValue());oldValue=expected;}
                     case INTEGER -> {expected=descriptor.minimum()==null?3:Math.max(3,descriptor.minimum().intValue());oldValue=expected;}
                     case NUMBER -> {oldValue=4.5;expected=4.5;}
-                    case STRING -> {oldValue=path.endsWith("mode")?"off":"minecraft:dirt";expected=oldValue;}
+                    case STRING -> {oldValue=path.equals("lod.source")?"distant_horizons":path.equals("lod.dh.profile")?"official_16":path.endsWith("mode")?"off":"minecraft:dirt";expected=oldValue;}
                     case STRING_LIST -> {oldValue=List.of("custom:entry");expected=oldValue;}
                     case STRING_GROUPS -> {oldValue=List.of(List.of("Exact.Case","alternate"));expected=oldValue;}
                     case STRING_MAP -> {oldValue=Map.of("remote:block","minecraft:stone");expected=oldValue;}

@@ -43,14 +43,41 @@ public final class SettingsStore<T> {
     public SettingsSchema<T> schema(){return schema;}
     public YamlSettingsCodec<T> codec(){return codec;}
     public Path path(){synchronized(lock){return selected==null?candidate(prefix,"yaml"):selected;}}
+    /** Client experimental keys live beside the SELECTED main file and share its brand prefix,
+     *  so a jar swap that adopts the other brand's main file adopts its sidecar too. */
+    public Path sidecarPath() {
+        if(!schema.isClient())return null;
+        synchronized(lock) {
+            Path main=path();String name=main.getFileName().toString();
+            String stem=name.endsWith(".yaml")?name.substring(0,name.length()-5):name;
+            stem=stem.endsWith("-config")?stem.substring(0,stem.length()-7)+"-experimental":stem+"-experimental";
+            return main.resolveSibling(stem+".yaml");
+        }
+    }
+    private byte[] readSidecar()throws IOException {
+        Path sidecar=sidecarPath();
+        return sidecar!=null&&Files.exists(sidecar)?readBounded(sidecar):null;
+    }
+    private String currentHash()throws IOException {return YamlSettingsCodec.hash(readBounded(selected),readSidecar());}
     public YamlSettingsCodec.Document<T> initialize()throws IOException {
         synchronized(lock) {
-            if(selected!=null&&Files.exists(selected))return reportInitial(read());
+            if(selected!=null&&Files.exists(selected))return reportInitial(splitDevelopmentKeys(read()));
             if(selected==null)select();
-            if(Files.exists(selected))return reportInitial(read());
+            if(Files.exists(selected))return reportInitial(splitDevelopmentKeys(read()));
             Files.createDirectories(directory);
             if(legacySource!=null) migrate();else createFresh();
             return reportInitial(read());
+        }
+    }
+    /** A main file written by a development build may still carry experimental keys that
+     *  older releases reject. Move them out once at startup, so a downgrade before any
+     *  Apply still reads the main file. Best effort: on failure the file stays readable here. */
+    private YamlSettingsCodec.Document<T> splitDevelopmentKeys(YamlSettingsCodec.Document<T> document) {
+        if(!codec.mainCarriesSidecarKeys(document.bytes()))return document;
+        try {return publishSplit(document,codec.editSplit(document,Map.of()));}
+        catch(IOException|RuntimeException e) {
+            report.accept("Experimental keys remain in the main settings file: "+e.getMessage());
+            return document;
         }
     }
     private YamlSettingsCodec.Document<T> reportInitial(YamlSettingsCodec.Document<T> document) {
@@ -63,32 +90,76 @@ public final class SettingsStore<T> {
         synchronized(lock) {
             if(selected==null)throw new SettingsException("Settings store has not been initialized");
             if(!Files.exists(selected))throw new SettingsException("Settings file is missing: "+selected);
-            return codec.parse(readBounded(selected));
+            return codec.parse(readBounded(selected),readSidecar());
         }
     }
-    /** Menu persistence changes the document only; it never publishes a runtime snapshot. */
+    /** Menu persistence changes the document only; it never publishes a runtime snapshot.
+     *  The hash covers main + sidecar. The sidecar is published first: if the main rewrite
+     *  then fails, the sidecar (which overrides main) already carries the requested values. */
     public YamlSettingsCodec.Document<T> saveDraft(String baseHash,Map<String,Object> changes)throws IOException {
         synchronized(lock) {
             var disk=read();
             if(!disk.hash().equals(baseHash))throw new SettingsException("Settings changed on disk; reopen or explicitly rebase the retained draft");
             if(changes.isEmpty())return disk;
-            byte[] output=codec.edit(disk,changes);
-            Path temp=writeTemp(output);
-            try {
-                codec.parse(readBounded(temp));boundary.beforePublish(temp,selected);
-                if(!Files.exists(selected)||!YamlSettingsCodec.hash(readBounded(selected)).equals(baseHash))throw new SettingsException("Settings changed on disk; draft was retained without replacing the file");
-                // Portable hash+rename cannot exclude an uncooperative editor in the last race window.
-                try { Files.move(temp,selected,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING); }
-                catch(AtomicMoveNotSupportedException e){throw new SettingsException("Atomic settings replacement is unsupported on this filesystem; move the configuration to a supported local filesystem",e);}
-                forceDirectory();
-                return codec.parse(output);
-            } finally {Files.deleteIfExists(temp);}
+            return publishSplit(disk,codec.editSplit(disk,changes));
         }
     }
-    public record SourceIdentity(long size,FileTime modified,Object fileKey) {}
+    /** Caller holds the lock. Sidecar first; if the main rewrite then fails, the sidecar is
+     *  restored so the pair never ends half-applied (which would also look like a conflict). */
+    private YamlSettingsCodec.Document<T> publishSplit(YamlSettingsCodec.Document<T> disk,YamlSettingsCodec.Output output)throws IOException {
+        String expected=disk.hash();
+        boolean sidecarChanged=!Arrays.equals(output.sidecar(),disk.sidecar());
+        if(sidecarChanged) {
+            publishSidecar(output.sidecar(),expected);
+            expected=YamlSettingsCodec.hash(disk.bytes(),output.sidecar());
+        }
+        if(!Arrays.equals(output.main(),disk.bytes())) {
+            Path temp=writeTemp(output.main());
+            try {
+                codec.parse(readBounded(temp));boundary.beforePublish(temp,selected);
+                if(!Files.exists(selected)||!currentHash().equals(expected))throw new SettingsException("Settings changed on disk; draft was retained without replacing the file");
+                // Portable hash+rename cannot exclude an uncooperative editor in the last race window.
+                move(temp,selected);
+                forceDirectory();
+            } catch(IOException|RuntimeException failure) {
+                if(sidecarChanged) {
+                    try {publishSidecar(disk.sidecar(),expected);}
+                    catch(IOException|RuntimeException rollback) {failure.addSuppressed(rollback);}
+                }
+                throw failure;
+            } finally {Files.deleteIfExists(temp);}
+        }
+        return codec.parse(output.main(),output.sidecar());
+    }
+    /** Replace or delete the sidecar after re-checking the combined hash. */
+    private void publishSidecar(byte[] bytes,String expectedHash)throws IOException {
+        Path sidecar=sidecarPath();
+        if(bytes==null) {
+            if(!currentHash().equals(expectedHash))throw new SettingsException("Settings changed on disk; draft was retained without replacing the file");
+            Files.deleteIfExists(sidecar);forceDirectory();return;
+        }
+        Path temp=writeTemp(bytes);
+        try {
+            YamlSettingsCodec.sidecarTree(readBounded(temp));boundary.beforePublish(temp,sidecar);
+            if(!Files.exists(selected)||!currentHash().equals(expectedHash))throw new SettingsException("Settings changed on disk; draft was retained without replacing the file");
+            move(temp,sidecar);
+            forceDirectory();
+        } finally {Files.deleteIfExists(temp);}
+    }
+    private static void move(Path temp,Path target)throws IOException {
+        try { Files.move(temp,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING); }
+        catch(AtomicMoveNotSupportedException e){throw new SettingsException("Atomic settings replacement is unsupported on this filesystem; move the configuration to a supported local filesystem",e);}
+    }
+    /** {@code sidecar} is null when the sidecar file does not exist. */
+    public record SourceIdentity(long size,FileTime modified,Object fileKey,SourceIdentity sidecar) {}
     private SourceIdentity identity()throws IOException {
         var a=Files.readAttributes(selected,BasicFileAttributes.class);
-        return new SourceIdentity(a.size(),a.lastModifiedTime(),a.fileKey());
+        Path path=sidecarPath();SourceIdentity side=null;
+        if(path!=null&&Files.exists(path)) {
+            var b=Files.readAttributes(path,BasicFileAttributes.class);
+            side=new SourceIdentity(b.size(),b.lastModifiedTime(),b.fileKey(),null);
+        }
+        return new SourceIdentity(a.size(),a.lastModifiedTime(),a.fileKey(),side);
     }
     /** Last full hash check runs on the IO worker, never on a tick/client owner. */
     public SourceIdentity verifySource(String hash)throws IOException {
@@ -104,7 +175,7 @@ public final class SettingsStore<T> {
     public boolean identityMatches(SourceIdentity expected)throws IOException {
         synchronized(lock){return Files.exists(selected)&&expected.equals(identity());}
     }
-    public boolean matches(String hash)throws IOException {synchronized(lock){return selected!=null&&Files.exists(selected)&&YamlSettingsCodec.hash(readBounded(selected)).equals(hash);}}
+    public boolean matches(String hash)throws IOException {synchronized(lock){return selected!=null&&Files.exists(selected)&&currentHash().equals(hash);}}
     private void select() {
         List<Path> yaml=List.of(candidate(prefix,"yaml"),candidate(other(),"yaml"));
         List<Path> json=List.of(candidate(prefix,"json"),candidate(other(),"json"));
@@ -135,12 +206,19 @@ public final class SettingsStore<T> {
                 if(!oldKeys.contains("lodStoreBackfillColumnsPerSecond"))emitted.remove("storage.lod_store.backfill.columns_per_second");
             }
         }
-        byte[] output=codec.generate(emitted);
+        // Experimental keys never enter the main file; an existing sidecar is never replaced.
+        var split=codec.generateSplit(emitted);
+        byte[] output=split.main();
         Path backup=backup(original);
         Path temp=writeTemp(output);
         try {
             codec.parse(readBounded(temp));boundary.beforePublish(temp,selected);
             if(!Arrays.equals(original,readBounded(legacySource)))throw new SettingsException("Legacy JSON changed during migration; retry at next startup");
+            Path sidecar=sidecarPath();
+            if(split.sidecar()!=null&&!Files.exists(sidecar)) {
+                Path sideTemp=writeTemp(split.sidecar());
+                try {installNew(sideTemp,sidecar);}finally{Files.deleteIfExists(sideTemp);}
+            }
             checkNoYaml();installNew(temp,selected);forceDirectory();
             report.accept("Migrated "+legacySource+" to "+selected+"; backup "+backup+"; ignored keys="+result.ignoredKeys()+"; normalized paths="+result.normalizations().stream().map(SettingsSchema.Normalization::path).toList());
             ReloadFeedback.normalizationLines(result.normalizations()).forEach(report);

@@ -102,7 +102,16 @@ def migrate(directory: pathlib.Path | str, *, side: str = "server", platform: st
 
 
 def render(changes: dict | None = None, *, side: str = "server", platform: str = "mod", document: str | None = None) -> str:
-    """Render fixture bytes with the product codec; private data stays in a task temp dir."""
+    """Render fixture bytes with the product codec; private data stays in a task temp dir.
+
+    Client experimental keys are written to a sidecar; use render_files() to keep it."""
+    return render_files(changes, side=side, platform=platform, document=document)["main"]
+
+
+def render_files(changes: dict | None = None, *, side: str = "server", platform: str = "mod",
+                 document: str | None = None) -> dict:
+    """Return {"main": text, "sidecar": text or None}. Write the sidecar beside the main
+    file as lss-client-experimental.yaml when it is not None."""
     with tempfile.TemporaryDirectory(prefix="lss-settings-render-") as temporary:
         path = pathlib.Path(temporary) / f"lss-{side}-config.yaml"
         if document is None:
@@ -112,7 +121,9 @@ def render(changes: dict | None = None, *, side: str = "server", platform: str =
             validate(path, side=side, platform=platform)
         if changes:
             edit(path, changes, side=side, platform=platform)
-        return path.read_text(encoding="utf-8")
+        sidecar = path.with_name(f"lss-{side}-experimental.yaml")
+        return {"main": path.read_text(encoding="utf-8"),
+                "sidecar": sidecar.read_text(encoding="utf-8") if sidecar.exists() else None}
 
 
 def values(document: str | pathlib.Path, *, side: str = "server", platform: str = "mod", normalized: bool = False) -> dict:
