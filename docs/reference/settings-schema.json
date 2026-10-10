@@ -1545,6 +1545,70 @@
     "platform": "client",
     "descriptors": [
       {
+        "path": "lod.source",
+        "legacyKey": "dhTerrainSource",
+        "kind": "STRING",
+        "defaultValue": "lss",
+        "timing": "S",
+        "platform": "ALL",
+        "sensitive": false,
+        "group": "lod",
+        "units": "",
+        "minimum": null,
+        "maximum": null,
+        "zeroSentinel": false,
+        "description": "[reconnect] lss = native only; distant_horizons = allow DH server terrain when the native terrain service is absent.",
+        "translationKey": "lss.config.lod_source"
+      },
+      {
+        "path": "lod.dh.sync_on_load",
+        "legacyKey": "dhSynchronizeOnLoad",
+        "kind": "BOOLEAN",
+        "defaultValue": true,
+        "timing": "H",
+        "platform": "ALL",
+        "sensitive": false,
+        "group": "lod.dh",
+        "units": "",
+        "minimum": null,
+        "maximum": null,
+        "zeroSentinel": false,
+        "description": "Check saved DH terrain timestamps when loading it, if the server permits synchronization.",
+        "translationKey": "lss.settings.lod.dh.sync_on_load"
+      },
+      {
+        "path": "lod.dh.real_time_updates",
+        "legacyKey": "dhRealTimeUpdates",
+        "kind": "BOOLEAN",
+        "defaultValue": true,
+        "timing": "H",
+        "platform": "ALL",
+        "sensitive": false,
+        "group": "lod.dh",
+        "units": "",
+        "minimum": null,
+        "maximum": null,
+        "zeroSentinel": false,
+        "description": "Receive server-pushed DH terrain changes when allowed; no periodic polling.",
+        "translationKey": "lss.settings.lod.dh.real_time_updates"
+      },
+      {
+        "path": "lod.voxy_border_fill",
+        "legacyKey": "voxyBorderFill",
+        "kind": "BOOLEAN",
+        "defaultValue": true,
+        "timing": "H",
+        "platform": "ALL",
+        "sensitive": false,
+        "group": "lod",
+        "units": "",
+        "minimum": null,
+        "maximum": null,
+        "zeroSentinel": false,
+        "description": "Fill Voxy's missing vanilla border chunks while a native or DH terrain session is active.",
+        "translationKey": "lss.settings.lod.voxy_border_fill"
+      },
+      {
         "path": "lod.receive",
         "legacyKey": "receiveServerLods",
         "kind": "BOOLEAN",
@@ -1605,7 +1669,7 @@
         "minimum": null,
         "maximum": null,
         "zeroSentinel": false,
-        "description": "Adjust download rate when latency indicates congestion.",
+        "description": "Adjust download rate when latency indicates congestion; also paces DH joins.",
         "translationKey": "lss.settings.lod.download.adaptive_rate"
       },
       {
@@ -1845,7 +1909,7 @@
         "minimum": null,
         "maximum": null,
         "zeroSentinel": false,
-        "description": "[reconnect] Write terrain into Xaero's World Map; requires that mod.",
+        "description": "[reconnect] Write native terrain service data into Xaero's World Map; requires that mod.",
         "translationKey": "lss.settings.integrations.xaero_map.enabled"
       },
       {
@@ -2009,6 +2073,6 @@
         "translationKey": "lss.settings.far_players.sharing.max_distance_blocks"
       }
     ],
-    "document": "# LOD Server Support — client defaults (Fabric/NeoForge).\n# After editing this file, run /lss reload to activate changes.\n# Sodium Apply saves and reloads automatically. [reconnect] settings wait for the next connection.\nconfig_version: 1 # Local settings schema version, independent of the network protocol.\n\n# Downloads distant terrain for installed consumers such as Voxy or Xaero's map.\n# The terrain renderer controls how that data is drawn; this download radius does\n# not raise vanilla render/simulation distance. More terrain can cost client disk,\n# memory and processing time. Turning reception off does not erase cached terrain.\nlod:\n  receive: true # Download server LOD terrain; off stops acquisition, not saved terrain display.\n  distance_chunks: 0 # 0 = server default; otherwise 1–2048, capped by the server's radius.\n  # Balance terrain fill speed against connection quality and client processing load.\n  # A column-rate limit counts chunk columns, not bytes: dense/modded terrain can\n  # cost more per column. Lower rates can help stutters but take longer to fill.\n  # Adaptive controls react to latency or consumer backlog; they are not an FPS cap.\n  download:\n    max_columns_per_second: 0 # 0 = unlimited; positive range 10–100000 columns/second.\n    adaptive_rate: true # Adjust download rate when latency indicates congestion.\n    slow_start_on_join: true # Begin new sessions gently; requires adaptive_rate.\n    ingest_backpressure: true # Slow downloads when terrain consumers fall behind.\n\n# Controls which missing or stale terrain is requested and how often it is checked.\n# Region ordering and scan shortcuts reduce repeated work; they do not invent terrain\n# or increase server generation speed. These are primarily troubleshooting switches.\nscan:\n  region_order: true # [reconnect] Complete nearby regions instead of scanning chunk rings.\n  adaptive_cadence: true # [reconnect] Rescan sooner when the current request set completes.\n  retain_completed_prefix: true # [reconnect] Avoid rewalking already satisfied terrain.\n  quadtree: true # [reconnect] Use the optimized completed-region scan.\n  region_summaries: true # [reconnect] Validate cached terrain using server summaries.\n\n# Tracks terrain freshness so revisits can avoid downloading unchanged columns.\n# This is separate from the terrain renderer's own saved data. World separation\n# prevents one server address's replacement world from inheriting stale freshness.\n# Use address aliases only for addresses reaching the same world, with matching\n# consumer storage; sharing freshness alone could leave missing terrain unrequested.\ncache:\n  split_by_world: true # [reconnect] Separate cache identity when one address changes worlds.\n  address_aliases: [] # [reconnect] Ordered address groups; first address is canonical.\n  # Example: [[\"play.example.com\", \"alt.example.com\"]]. Requires consumer corroboration.\n  # Aliases stay inactive while the Xaero map bridge is enabled.\n\n# Protocol fallbacks allow older LOD servers. Block fallbacks provide a local visual\n# substitute when this client does not know a received block; they do not install\n# missing content or make otherwise incompatible modpacks compatible.\ncompatibility:\n  protocols:\n    v16: true # [reconnect] Allow fallback to protocol-16 servers.\n    v19: true # [reconnect] Allow fallback to protocol-19 servers.\n  v16_generation: true # [reconnect] Request generation from compatible protocol-16 servers.\n  block_fallbacks:\n    default: \"minecraft:stone\" # [reconnect] Unknown block fallback; must not resolve to air.\n    overrides: {} # [reconnect] Remote block ID -> local block ID mappings.\n\nintegrations:\n  # Writes received terrain into Xaero's persistent map beyond normal view distance.\n  # Filling a large map adds client CPU, memory and disk work. Turning this off stops\n  # future writes after reconnect; it does not remove terrain already saved on the map.\n  # Backpressure lets map writing keep up instead of allowing an unchecked backlog.\n  xaero_map:\n    enabled: false # [reconnect] Write terrain into Xaero's World Map; requires that mod.\n    backpressure: true # Pace downloads to map writes; requires ingest_backpressure.\n\n# Draws distant player models from server snapshots, not fully simulated entities.\n# Larger render/animation distances add client work; reducing animation distance\n# keeps distant models visible while skipping their walk animation.\n# Showing other players and sharing your own position are independent choices:\n# disabling this renderer does not automatically hide you from other players.\nfar_players:\n  enabled: true # Show distant players when this loader has a renderer and the server allows it.\n  distance:\n    min_blocks: 0 # 0 = server-controlled inner ring; otherwise up to 16384 blocks.\n    max_blocks: 0 # 0 = server maximum; otherwise up to 16384 blocks.\n  name_tags: true # Show this mod's far-player name tags.\n  full_bright: false # Draw distant players at full brightness, including at night.\n  render_distance_blocks: 0 # 0 = effective server/client ring; caps models and name tags.\n  animation_distance_blocks: 512 # Animate nearby proxies; 0 = no walk animation.\n  # Controls whether others may see your position through the far-player feature.\n  # This does not hide you from normal Minecraft tracking or unrelated systems.\n  # Sodium Apply activates this choice; after a disk edit, run /lss reload.\n  sharing:\n    enabled: true # Let other players see you at a distance; use Sodium Apply or /lss reload.\n    max_distance_blocks: 0 # 0 = no extra sharing cap; otherwise up to 16384 blocks.\n"
+    "document": "# LOD Server Support — client defaults (Fabric/NeoForge).\n# After editing this file, run /lss reload to activate changes.\n# Sodium Apply saves and reloads automatically. [reconnect] settings wait for the next connection.\nconfig_version: 1 # Local settings schema version, independent of the network protocol.\n\n# Downloads distant terrain for installed consumers such as Voxy or Xaero's map.\n# The terrain renderer controls how that data is drawn; this download radius does\n# not raise vanilla render/simulation distance. More terrain can cost client disk,\n# memory and processing time. Turning reception off does not erase cached terrain.\nlod:\n  # Experimental keys (lod.source, lod.dh.*, lod.voxy_border_fill) are kept in the\n  # separate *-client-experimental.yaml file beside this one, so this file stays\n  # readable by older versions. General > Allow DH Server Terrain writes it.\n  receive: true # Download server LOD terrain; off stops acquisition, not saved terrain display.\n  distance_chunks: 0 # 0 = server default; otherwise 1–2048, capped by the server's radius.\n  # Balance terrain fill speed against connection quality and client processing load.\n  # A column-rate limit counts chunk columns, not bytes: dense/modded terrain can\n  # cost more per column. Lower rates can help stutters but take longer to fill.\n  # Adaptive controls react to latency or consumer backlog; they are not an FPS cap.\n  download:\n    max_columns_per_second: 0 # 0 = unlimited; positive range 10–100000 columns/second.\n    adaptive_rate: true # Adjust download rate when latency indicates congestion; also paces DH joins.\n    slow_start_on_join: true # Begin new sessions gently; requires adaptive_rate.\n    ingest_backpressure: true # Slow downloads when terrain consumers fall behind.\n\n# Controls which missing or stale terrain is requested and how often it is checked.\n# Region ordering and scan shortcuts reduce repeated work; they do not invent terrain\n# or increase server generation speed. These are primarily troubleshooting switches.\nscan:\n  region_order: true # [reconnect] Complete nearby regions instead of scanning chunk rings.\n  adaptive_cadence: true # [reconnect] Rescan sooner when the current request set completes.\n  retain_completed_prefix: true # [reconnect] Avoid rewalking already satisfied terrain.\n  quadtree: true # [reconnect] Use the optimized completed-region scan.\n  region_summaries: true # [reconnect] Validate cached terrain using server summaries.\n\n# Tracks terrain freshness so revisits can avoid downloading unchanged columns.\n# This is separate from the terrain renderer's own saved data. World separation\n# prevents one server address's replacement world from inheriting stale freshness.\n# Use address aliases only for addresses reaching the same world, with matching\n# consumer storage; sharing freshness alone could leave missing terrain unrequested.\ncache:\n  split_by_world: true # [reconnect] Separate cache identity when one address changes worlds.\n  address_aliases: [] # [reconnect] Ordered address groups; first address is canonical.\n  # Example: [[\"play.example.com\", \"alt.example.com\"]]. Requires consumer corroboration.\n  # Aliases stay inactive while the Xaero map bridge is enabled.\n\n# Protocol fallbacks allow older LOD servers. Block fallbacks provide a local visual\n# substitute when this client does not know a received block; they do not install\n# missing content or make otherwise incompatible modpacks compatible.\ncompatibility:\n  protocols:\n    v16: true # [reconnect] Allow fallback to protocol-16 servers.\n    v19: true # [reconnect] Allow fallback to protocol-19 servers.\n  v16_generation: true # [reconnect] Request generation from compatible protocol-16 servers.\n  block_fallbacks:\n    default: \"minecraft:stone\" # [reconnect] Unknown block fallback; must not resolve to air.\n    overrides: {} # [reconnect] Remote block ID -> local block ID mappings.\n\nintegrations:\n  # Writes received terrain into Xaero's persistent map beyond normal view distance.\n  # Filling a large map adds client CPU, memory and disk work. Turning this off stops\n  # future writes after reconnect; it does not remove terrain already saved on the map.\n  # Backpressure lets map writing keep up instead of allowing an unchecked backlog.\n  xaero_map:\n    enabled: false # [reconnect] Write native terrain service data into Xaero's World Map; requires that mod.\n    backpressure: true # Pace downloads to map writes; requires ingest_backpressure.\n\n# Draws distant player models from server snapshots, not fully simulated entities.\n# Larger render/animation distances add client work; reducing animation distance\n# keeps distant models visible while skipping their walk animation.\n# Showing other players and sharing your own position are independent choices:\n# disabling this renderer does not automatically hide you from other players.\nfar_players:\n  enabled: true # Show distant players when this loader has a renderer and the server allows it.\n  distance:\n    min_blocks: 0 # 0 = server-controlled inner ring; otherwise up to 16384 blocks.\n    max_blocks: 0 # 0 = server maximum; otherwise up to 16384 blocks.\n  name_tags: true # Show this mod's far-player name tags.\n  full_bright: false # Draw distant players at full brightness, including at night.\n  render_distance_blocks: 0 # 0 = effective server/client ring; caps models and name tags.\n  animation_distance_blocks: 512 # Animate nearby proxies; 0 = no walk animation.\n  # Controls whether others may see your position through the far-player feature.\n  # This does not hide you from normal Minecraft tracking or unrelated systems.\n  # Sodium Apply activates this choice; after a disk edit, run /lss reload.\n  sharing:\n    enabled: true # Let other players see you at a distance; use Sodium Apply or /lss reload.\n    max_distance_blocks: 0 # 0 = no extra sharing cap; otherwise up to 16384 blocks.\n"
   }
 }
