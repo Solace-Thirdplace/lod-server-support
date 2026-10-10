@@ -125,7 +125,7 @@ class DhClientSessionTest {
         DhClientSession.disconnect();DestinationEngine.observedIngest=false;mainTasks.clear();
         var store=new SettingsStore<>(dir,"lss",SettingsSchema.client());
         settings=new SettingsHandle<>(store);
-        store.saveDraft(store.read().hash(),Map.of("lod.source","distant_horizons"));
+        // No lod.source is written: Allow DH Server Terrain is ON by default (2026-10-10).
         settings.commit(settings.prepareReload());
         write(LSSClientConfig.CONFIG,LSSClientConfig.class,"handle",settings);
         DhClientSession.installTransport(bytes->sent.add(bytes.clone()),"test transport unavailable");
@@ -536,6 +536,18 @@ class DhClientSessionTest {
         assertFalse(DhClientSession.selected());DhClientSession.tick();
         assertTrue(DhClientSession.status().contains("DH fallback suppressed"));
         DhClientSession.onJoin();assertTrue(DhClientSession.selected());
+    }
+    @Test void aFreshClientWithNoSourceSettingSelectsDhWhenNoNativeServiceIsOffered() throws Exception {
+        assertFalse(Files.exists(dir.resolve("lss-client-experimental.yaml")),"no sidecar is written for the default");
+        assertEquals("distant_horizons",settings.state().effective().lod().source());
+        assertTrue(DhClientSession.fallbackEnabled());assertTrue(DhClientSession.selected());
+        DhClientSession.installNativeAvailability(()->true);
+        assertFalse(DhClientSession.selected(),"native LSS still wins with the default on");
+        DhClientSession.installNativeAvailability(()->false);
+        settings.store().saveDraft(settings.store().read().hash(),Map.of("lod.receive",false));
+        settings.commit(settings.prepareReload());
+        DhClientSession.tick();
+        assertFalse(DhClientSession.running(),"reception off keeps the default DH source idle");assertTrue(sent.isEmpty());
     }
     @Test void disablingDhPermissionLeavesOnlyNativeDiscovery() throws Exception {
         settings.store().saveDraft(settings.store().read().hash(),Map.of("lod.source","lss"));

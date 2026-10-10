@@ -2,7 +2,6 @@ package dev.vox.lss.common.config;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
@@ -14,18 +13,38 @@ class SettingsSidecarStoreTest {
     private Path main() { return dir.resolve("lss-client-config.yaml"); }
     private Path sidecar() { return dir.resolve("lss-client-experimental.yaml"); }
 
-    @Test void optInWritesOnlyTheSidecarAndOptOutDeletesIt() throws Exception {
-        var store=client("lss");var initial=store.initialize();
-        assertEquals(sidecar(),store.sidecarPath());assertFalse(Files.exists(sidecar()));
-        byte[] mainBefore=Files.readAllBytes(main());
-        var opted=store.saveDraft(initial.hash(),Map.of("lod.source","distant_horizons"));
-        assertArrayEquals(mainBefore,Files.readAllBytes(main()),"main must not be rewritten for sidecar-only changes");
-        assertTrue(Files.readString(sidecar()).contains("distant_horizons"));
-        assertEquals("distant_horizons",opted.configured().lod().source());
-        assertEquals(opted.hash(),store.read().hash());assertTrue(store.matches(opted.hash()));
-        var back=store.saveDraft(opted.hash(),Map.of("lod.source","lss"));
-        assertFalse(Files.exists(sidecar()));assertArrayEquals(mainBefore,Files.readAllBytes(main()));
-        assertEquals("lss",back.configured().lod().source());assertEquals(back.hash(),store.read().hash());
+    /** Allow DH Server Terrain is ON by default (2026-10-10): a fresh client has no sidecar and
+     *  allows DH; turning it off writes {@code source: lss} to the sidecar only. */
+    @Test void freshClientAllowsDhAndOptOutWritesOnlyTheSidecarAndOptInDeletesIt() throws Exception {
+        for(String brand:new String[]{"lss","vss"}) {
+            Path root=Files.createDirectories(dir.resolve(brand));
+            Path dirMain=root.resolve(brand+"-client-config.yaml"), dirSidecar=root.resolve(brand+"-client-experimental.yaml");
+            var store=new SettingsStore<>(root,brand,SettingsSchema.client());var initial=store.initialize();
+            assertEquals(dirSidecar,store.sidecarPath());assertFalse(Files.exists(dirSidecar));
+            assertEquals("distant_horizons",initial.configured().lod().source());
+            assertEquals("distant_horizons",store.read().configured().lod().source());
+            assertEquals("distant_horizons",new SettingsHandle<>(new SettingsStore<>(root,brand,SettingsSchema.client())).state().effective().lod().source());
+            assertNull(SettingsSchema.lookup(YamlSettingsCodec.readTree(Files.readAllBytes(dirMain)),"lod.source"));
+            byte[] mainBefore=Files.readAllBytes(dirMain);
+            var opted=store.saveDraft(initial.hash(),Map.of("lod.source","lss"));
+            assertArrayEquals(mainBefore,Files.readAllBytes(dirMain),"main must not be rewritten for sidecar-only changes");
+            assertEquals("lss",SettingsSchema.lookup(YamlSettingsCodec.readTree(Files.readAllBytes(dirSidecar)),"lod.source"));
+            assertFalse(Files.readString(dirSidecar).contains("distant_horizons"));
+            assertEquals("lss",opted.configured().lod().source());assertEquals("lss",new SettingsStore<>(root,brand,SettingsSchema.client()).initialize().configured().lod().source());
+            assertEquals(opted.hash(),store.read().hash());assertTrue(store.matches(opted.hash()));
+            var back=store.saveDraft(opted.hash(),Map.of("lod.source","distant_horizons"));
+            assertFalse(Files.exists(dirSidecar));assertArrayEquals(mainBefore,Files.readAllBytes(dirMain));
+            assertEquals("distant_horizons",back.configured().lod().source());assertEquals(back.hash(),store.read().hash());
+        }
+    }
+    @Test void aDevelopmentSidecarRepeatingTheNewDefaultIsDeletedOnTheNextSave() throws Exception {
+        var store=client("lss");store.initialize();
+        Files.writeString(sidecar(),"lod:\n  source: distant_horizons\n");
+        var read=store.read();assertEquals("distant_horizons",read.configured().lod().source());
+        var saved=store.saveDraft(read.hash(),Map.of("lod.distance_chunks",96));
+        assertFalse(Files.exists(sidecar()));
+        assertNull(SettingsSchema.lookup(YamlSettingsCodec.readTree(Files.readAllBytes(main())),"lod.source"));
+        assertEquals("distant_horizons",saved.configured().lod().source());assertEquals(96,saved.configured().lod().distanceChunks());
     }
     @Test void developmentBuildMainIsHonouredThenMigratedOnNextSave() throws Exception {
         var store=client("lss");store.initialize();
@@ -42,10 +61,10 @@ class SettingsSidecarStoreTest {
     @Test void aSidecarOnlyEditOnDiskIsAConflictAndReloadSeesIt() throws Exception {
         var store=client("lss");var initial=store.initialize();
         var identity=store.verifySource(initial.hash());
-        Files.writeString(sidecar(),"lod:\n  source: distant_horizons\n");
+        Files.writeString(sidecar(),"lod:\n  source: lss\n");
         assertFalse(store.matches(initial.hash()));assertFalse(store.identityMatches(identity));
         assertThrows(SettingsException.class,()->store.saveDraft(initial.hash(),Map.of("lod.receive",false)));
-        assertEquals("distant_horizons",store.read().configured().lod().source());
+        assertEquals("lss",store.read().configured().lod().source());
         Files.delete(sidecar());assertTrue(store.matches(initial.hash()));
     }
     @Test void aMalformedSidecarNeverDisablesTheMainSettingsAndIsNeverRewrittenByReading() throws Exception {
@@ -53,7 +72,7 @@ class SettingsSidecarStoreTest {
         Files.writeString(sidecar(),"lod:\n  receive: false\n");
         assertTrue(store.read().configured().lod().receive());
         Files.writeString(sidecar(),"lod: [broken");
-        assertEquals("lss",store.read().configured().lod().source());
+        assertEquals("distant_horizons",store.read().configured().lod().source(),"an unreadable sidecar falls back to the default");
         assertTrue(new SettingsHandle<>(client("lss")).state().effective().lod().receive());
         assertEquals("lod: [broken",Files.readString(sidecar()));
     }
@@ -74,12 +93,12 @@ class SettingsSidecarStoreTest {
         assertEquals(dir.resolve("vss-client-experimental.yaml"),adopted.sidecarPath());
     }
     @Test void legacyJsonMigrationKeepsExperimentalKeysOutOfMain() throws Exception {
-        Files.writeString(dir.resolve("lss-client-config.json"),"{\"dhTerrainSource\":\"distant_horizons\",\"lodDistanceChunks\":64}");
+        Files.writeString(dir.resolve("lss-client-config.json"),"{\"dhTerrainSource\":\"lss\",\"lodDistanceChunks\":64}");
         var document=client("lss").initialize();
-        assertEquals("distant_horizons",document.configured().lod().source());
+        assertEquals("lss",document.configured().lod().source());
         var tree=YamlSettingsCodec.readTree(Files.readAllBytes(main()));
         assertNull(SettingsSchema.lookup(tree,"lod.source"));
-        assertTrue(Files.readString(sidecar(),StandardCharsets.UTF_8).contains("distant_horizons"));
+        assertEquals("lss",SettingsSchema.lookup(YamlSettingsCodec.readTree(Files.readAllBytes(sidecar())),"lod.source"));
     }
     @Test void serverStoresHaveNoSidecar() throws Exception {
         var store=new SettingsStore<>(dir,"lss",SettingsSchema.server(false));store.initialize();
