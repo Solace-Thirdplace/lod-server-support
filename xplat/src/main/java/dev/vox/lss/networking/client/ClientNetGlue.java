@@ -246,6 +246,10 @@ public final class ClientNetGlue {
      * SWEEP either way ("wipe this server" means every spelling the user declared);
      * only a corroborated match moves the BUCKET to the canonical.
      */
+    static java.util.Collection<String> dhCacheSweep(String serverAddress) {
+        return computeAliasDecision(serverAddress).sweepComponents();
+    }
+
     private static AliasLatch.Decision computeAliasDecision(String connectAddr) {
         // The field was validated at config load (the user's field is deliberately NEVER
         // rewritten — the §11 fold: a re-save must not erase dropped groups), so
@@ -297,6 +301,7 @@ public final class ClientNetGlue {
         Object connection = FarPlayerClientSupport.connectionIdentity();
         Minecraft.getInstance().execute(() -> {
             if (connection != FarPlayerClientSupport.connectionIdentity()) return;
+            DhClientSession.nativeOffer();
             reconcileClientConfig();
             var previous = sessionGate.getRequestManager();
             sessionGate.onSessionConfig(payload, LSSApi.hasVoxelConsumers(),
@@ -462,6 +467,7 @@ public final class ClientNetGlue {
 
     /** JOIN ladder body (each loader's connection-join event calls this). */
     public static void onJoin() {
+        DhClientSession.onJoin();
         LSSClientConfig.CONFIG.beginConnection(FarPlayerClientSupport.connectionIdentity());
         ClientStatus.invalidate();
         // Don't activate on singleplayer/integrated servers (unless testing)
@@ -480,6 +486,7 @@ public final class ClientNetGlue {
      *  teardowns wait for the real disconnect. */
     public static void onDisconnect() {
         ClientStatus.invalidate();
+        DhClientSession.disconnect();
         sessionGate.onDisconnect();
         FarPlayerClientSupport.onSessionEnd();
         dev.vox.lss.compat.ModCompat.onDisconnect();
@@ -500,7 +507,7 @@ public final class ClientNetGlue {
             mc.execute(ClientNetGlue::reconcileClientConfig);
             return;
         }
-        if (sessionGate.reconcileReception(LSSClientConfig.CONFIG.receiveServerLods(), LSSApi.hasVoxelConsumers())
+        if (sessionGate.reconcileReception(LSSClientConfig.CONFIG.receiveServerLods() && !DhClientSession.selected(), LSSApi.hasVoxelConsumers())
                 && !LSSClientConfig.CONFIG.receiveServerLods()) {
             // Receipt retirement/save has completed; cancel queued map work but retain
             // texture rebuilds already committed to the still-connected native world.
@@ -511,6 +518,7 @@ public final class ClientNetGlue {
     /** End-of-client-tick body. */
     public static void onEndClientTick() {
         FarPlayerClientSupport.tickPreferenceRetry();
+        DhClientSession.tick();
         reconcileClientConfig();
         // Runs even before a session: the v16-server discovery fallback (no-op on the v18
         // happy path, which disarms it before the delay elapses).
