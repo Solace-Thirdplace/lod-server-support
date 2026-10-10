@@ -105,16 +105,18 @@ public class LSSConfigMenu implements ConfigEntryPoint {
             }
         };
         option.setName(Component.translatable(spec.nameKey()));
-        option.setTooltip(unused -> Component.translatable(spec.tooltip().resolve(
-                spec.tooltip().condition() == dev.vox.lss.config.menu.Tooltip.Condition.GOVERNOR_ON
-                        ? MenuContext.current() : ctx)));
+        // Sodium 0.8 registers once at game start: context-dependent facts resolve at display.
+        option.setTooltip(unused -> Component.translatable(spec.tooltip().resolveAtDisplay(ctx, MenuContext::current)));
         if (spec.impact() != null) {
             option.setImpact(OptionImpact.valueOf(spec.impact().name()));
         }
         option.setStorageHandler(save);
         if (spec.enabledBy() != null) {
-            Identifier dep = Identifier.parse(spec.enabledBy());
-            option.setEnabledProvider(state -> state.readBooleanOption(dep), dep);
+            Identifier[] deps=ClientOptionCatalog.enabledDependencies(spec).stream().map(Identifier::parse).toArray(Identifier[]::new);
+            option.setEnabledProvider(state -> {
+                for(Identifier dep:deps)if(!state.readBooleanOption(dep))return false;
+                return true;
+            }, deps);
         }
         return option;
     }

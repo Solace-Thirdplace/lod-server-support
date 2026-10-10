@@ -58,16 +58,16 @@ public final class LSSNeoMod {
                 LSSServerNetworking::onRegisterCommands);
 
         if (FMLEnvironment.getDist().isClient()) {
-            initClientReflectively();
+            initClientReflectively(modBus);
         }
     }
 
     /** N-3 ships the bootstrap class; until then the miss is an inert INFO (the client
      *  half is compiled-and-inert on 26.2 anyway — plan §0.1). Contained: a client-boot
      *  failure must never take the whole mod down with it. */
-    private static void initClientReflectively() {
+    private static void initClientReflectively(IEventBus modBus) {
         try {
-            Class.forName(CLIENT_BOOTSTRAP_CLASS).getMethod("init").invoke(null);
+            Class.forName(CLIENT_BOOTSTRAP_CLASS).getMethod("init", IEventBus.class).invoke(null, modBus);
         } catch (ClassNotFoundException e) {
             dev.vox.lss.common.LSSLogger.info(
                     "No NeoForge client bootstrap present — client half inert (N-2 server-only build)");

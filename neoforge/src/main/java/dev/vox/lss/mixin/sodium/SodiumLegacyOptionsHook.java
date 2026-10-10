@@ -58,6 +58,11 @@ public abstract class SodiumLegacyOptionsHook implements LegacyOptionsScreenHand
         }
     }
 
+    @Inject(method = "rebuildGUI", at = @At("RETURN"))
+    private void lss$fitExtendedTabRow(CallbackInfo ci) {
+        if (this.lss$injected != null) LegacySodiumPage.fitDonationButtons(this);
+    }
+
     @Override
     public List<Object> lss$injectedPages() {
         List<Object> injected = this.lss$injected;
