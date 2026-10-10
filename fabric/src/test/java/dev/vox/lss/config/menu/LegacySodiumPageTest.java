@@ -197,7 +197,8 @@ class LegacySodiumPageTest {
         assertTrue(distance.isAvailable());
         @SuppressWarnings("unchecked") Option<Boolean> source=(Option<Boolean>)general.getOptions().get(5);
         assertTrue(source.isAvailable());
-        source.setValue(true);
+        assertTrue(source.getValue(),"DH server terrain is allowed by default");
+        source.setValue(false);
         receive.setValue(false);           // STAGED — not applied
         assertFalse(distance.isAvailable(), "greys before Apply, off the staged value");
         assertFalse(source.isAvailable(), "DH fallback follows the staged reception master");
@@ -222,8 +223,8 @@ class LegacySodiumPageTest {
         share.setValue(false);
         tags.setValue(false);
         @SuppressWarnings("unchecked") Option<Boolean> source = (Option<Boolean>) general.getOptions().get(5);
-        source.setValue(true);
-        assertTrue(receive.hasChanged() && rate.hasChanged() && share.hasChanged() && tags.hasChanged());
+        source.setValue(false);
+        assertTrue(receive.hasChanged() && rate.hasChanged() && share.hasChanged() && tags.hasChanged() && source.hasChanged());
 
         // What SodiumOptionsGUI.applyChanges() does (javap 0.6.13/0.7.3): apply every
         // changed option, collect their storages in a HashSet, save each once.
@@ -239,7 +240,7 @@ class LegacySodiumPageTest {
         assertEquals(1, dirty.size(), "one storage transaction across both pages");
         dirty.forEach(OptionStorage::save);
 
-        assertEquals("distant_horizons", cfg.get("lod.source"));
+        assertEquals("lss", cfg.get("lod.source"));
         assertFalse(cfg.bool("lod.receive"));
         assertEquals(10, cfg.integer("lod.download.max_columns_per_second"), "slider index 1 → 10 col/s");
         assertFalse(cfg.bool("far_players.sharing.enabled"));
