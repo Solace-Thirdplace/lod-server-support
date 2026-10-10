@@ -147,3 +147,28 @@ Same isolated-clone procedure: `:common:test` 1047/0, `:fabric:test` 1810/0 (4 s
 `release_check.py` OK (LSS + VSS × three loaders), `--selftest` 162, `check_artifacts.py`,
 catalog checks, `tools/tests` 30/30, dh-p4 tests 14/14. The adapted live-rig fixtures
 compile against the merged sources; no live rig was run.
+
+## Live rig round (2026-10-10, commit `7a69b751`)
+
+Private owned rigs (Xvfb, llvmpipe, harness lock; the manual server was stopped through
+its console and resumed). Evidence: outer checkout
+`build/dh-neoforge/2026-10-10/remediation/` (`live-matrix.json`, `p4/p4-matrix.json`;
+candidate 1 in `live-matrix-candidate1.json`).
+
+- dh-live, final candidate, 13/13 pass: official 16 service (NeoForge, Fabric), DH
+  Support 15 service, official 3.2.x, vanilla no-service, real-DH conflict, rejoin
+  (NeoForge, Fabric: cold receipt, unchanged/vanilla-held/new-JVM restore, Voxy loss,
+  reset, receipt loss), updates + menu, lifecycle, moving border, native precedence,
+  Fabric menu.
+- dh-p4: content (official 16, no-sky, Support 15), configuration (disabled/missing,
+  surface-only, surface-then-chunks, Support with a dummy chunk) and the Sodium 0.6
+  legacy menu all pass. The Windows-desktop benchmark (performance) was not run.
+
+Found by the rig and fixed:
+- Official DH 3.2.x sends nothing to a protocol-16 hello, so the client idles as
+  "no DH reply"; an unconfirmed `/lss reset` there counted the idle session as
+  refillable and wiped Voxy. Reset now needs a negotiated session (`7a69b751`).
+- DH Support enables sync by default: the Support rig reports sync available and
+  stored receipts, so Support clients keep and revalidate receipts like official ones.
+- Two fixture defects (a double settings save racing the async reload; the old
+  official-15 expectation), fixed in the fixtures.
