@@ -304,9 +304,12 @@ class ClientOptionCatalogTest {
         var xaero = ClientOptionCatalog.find(ClientOptionCatalog.ID_XAERO_MAP_BRIDGE).orElseThrow().tooltip();
         assertTrue(xaero.resolvesAtDisplay());
         assertEquals("lss.config.xaero_map_bridge.tooltip.native_only", xaero.resolveAtDisplay(registered, () -> later));
-        for (String twin : List.of("fabric/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
-                "neoforge/src/main/java/dev/vox/lss/config/LSSConfigMenu.java"))
-            assertTrue(Files.readString(locate(twin)).contains("resolveAtDisplay(ctx, MenuContext::current)"), twin);
+        // 1.21.10 line: LSSConfigMenu (the Sodium 0.8+ walker) is CUT here; the legacy page
+        // is the only renderer and it builds per screen open from the live context, so
+        // its build-time resolve IS display time. Pin that both twins read the live context.
+        for (String twin : List.of("fabric/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java",
+                "neoforge/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java"))
+            assertTrue(Files.readString(locate(twin)).contains("buildWith(h, cfg, MenuContext.current(),"), twin);
     }
 
     static Path locate(String repoRelative) {
