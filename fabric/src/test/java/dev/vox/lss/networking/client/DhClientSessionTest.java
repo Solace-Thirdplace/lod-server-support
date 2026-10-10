@@ -1668,8 +1668,19 @@ class DhClientSessionTest {
         assertFalse(active(s));assertNull(read(null,DhClientSession.class,"session"),"The next tick builds a fresh session");
         assertFalse((boolean)read(null,DhClientSession.class,"resetFailed"));
         assertTrue(store.load().isEmpty(),"Persisted receipts for this server are cleared");
+    }
+    /** Live rig 2026-10-10 (official 3.2.x): a session still waiting for a DH reply cannot refill Voxy. */
+    @Test void anUnconfirmedResetWhileWaitingForADhReplyKeepsTheConfirmPrompt() throws Exception {
+        var s=session();var feedback=new ArrayList<net.minecraft.network.chat.Component>();
+        ClientCommandActions.runReset(feedback::add,false,false);
+        assertTrue(active(s));assertSame(s,read(null,DhClientSession.class,"session"));
+        assertTrue(feedback.getFirst().getString().contains("reset confirm"),feedback::toString);
+    }
+    @Test void aResetOnANegotiatedDhSessionNeedsNoConfirmationAndSaysDhRefills() throws Exception {
+        var s=updateSession();var feedback=new ArrayList<net.minecraft.network.chat.Component>();
+        ClientCommandActions.runReset(feedback::add,false,false);
+        assertFalse(active(s));
         assertTrue(feedback.stream().anyMatch(c->c.getString().contains("DH receipts cleared")),feedback::toString);
-        assertTrue(feedback.stream().noneMatch(c->c.getString().contains("No "+dev.vox.lss.common.Brand.shortName()+" server")));
     }
     /** Panel O4-3: DH merely being allowed on a server without the DH channel keeps the confirm prompt. */
     @Test void anUnconfirmedResetWithoutADhChannelPromptsAndPreservesTheSession() throws Exception {

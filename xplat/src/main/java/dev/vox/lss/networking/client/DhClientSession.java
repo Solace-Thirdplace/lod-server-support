@@ -79,12 +79,13 @@ public final class DhClientSession {
         try { return channelAvailable.getAsBoolean(); }
         catch (RuntimeException | LinkageError unavailable) { return false; }
     }
-    /** Reset treats this connection as a DH terrain session: DH selected and the server
-     *  advertises the DH channel (a plain vanilla server keeps the confirm prompt). */
+    /** Reset treats this connection as a refillable DH terrain session only once the server
+     *  actually negotiated DH (config received). A vanilla server, an unanswered hello (e.g.
+     *  official DH 3.2.x) or a stopped source cannot refill Voxy: those keep the prompt. */
     public static boolean dhServerConnection() {
         var s = session;
         return selected() && hasDhChannel() && Minecraft.getInstance().getConnection() != null
-                && (s == null || s.active); // a stopped source (e.g. DH 3.2.x) cannot refill: keep the prompt
+                && s != null && s.active && s.config != null;
     }
     public static boolean fallbackEnabled() { return LSSClientConfig.CONFIG.dhSourceAllowed(); }
     public static boolean selected() {

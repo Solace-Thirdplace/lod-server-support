@@ -49,7 +49,7 @@ Fixture and documentation adaptation follow in later commits on the branch.
 | D-4 | `DhPosition.hashCode` mixes the packed key. `DhPositionHashTest` bounds collisions. |
 | D-5 | No readback loop exists any more. The presence probe runs once per rejoin; if it is unusable, receipts are trusted and the status says `RECEIPTS_UNVERIFIED`. |
 | D-6 | Obsolete: the conversion identity is gone. Receipts carry `CONVERSION_VERSION` only. |
-| D-7 | Reset treats the connection as a DH terrain session when DH is selected, the server advertises the DH channel and the source has not stopped; it then discards receipts and resumes the session, with DH-specific feedback. Otherwise the confirm prompt stays (a vanilla or DH 3.2.x server cannot refill), and a confirmed wipe still resumes the session. |
+| D-7 | Reset treats the connection as a DH terrain session only when DH is selected, the server advertises the DH channel and actually negotiated DH (config received, source running); it then discards receipts and resumes the session, with DH-specific feedback. Otherwise the confirm prompt stays (a vanilla server, an unanswered hello such as official DH 3.2.x, or a stopped source cannot refill; found by the live rig), and a confirmed wipe still resumes the session. |
 | D-8 | Obsolete with the gate/wait diagnostics (X-14). |
 | D-9 | An out-of-interest push forgets the tile's receipt, so the next load re-requests it. |
 | D-10, D-17–D-20 | Obsolete: the legacy trial, cooldown and transfer hook are deleted (X-4). |
