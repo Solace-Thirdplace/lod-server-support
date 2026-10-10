@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -19,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * classloading under fabric-loader-junit). On BOTH loader trees: {@code @Pseudo} (an
  * absent target is a silent skip — no config plugin, no plugin-time class load), the
  * string target is exactly the probe's prefix + screen suffix, {@code remap = false},
- * exactly ONE inject and it is {@code <init>} @ RETURN (no MC-inherited target — those
- * cannot be remapped on the loom-remap lines), the body delegates to
+ * exactly two injects: {@code <init>} and Sodium's own {@code rebuildGUI}, at RETURN
+ * (no MC-inherited target — those cannot be remapped on the loom-remap lines), the body delegates to
  * {@code LegacySodiumPage.build()}, the config is non-required and lists the hook, and
  * both loader descriptors declare the config.
  */
@@ -43,13 +45,18 @@ class SodiumLegacyHookContractTest {
                     tree + ": remap = false — Sodium is not an MC class");
             Matcher m = INJECT.matcher(src);
             int injects = 0;
+            Set<String> methods = new HashSet<>();
             while (m.find()) {
                 injects++;
                 String body = m.group(1);
-                assertTrue(body.contains("method = \"<init>\""), tree + ": the only inject is the constructor: " + body);
+                Matcher method = Pattern.compile("method = \"([^\"]+)\"").matcher(body);
+                assertTrue(method.find(), tree + ": explicit Sodium target");
+                assertTrue(methods.add(method.group(1)), tree + ": duplicate injection target");
                 assertTrue(body.contains("@At(\"RETURN\")"), tree + ": at RETURN — the page list is filled by then");
             }
-            assertEquals(1, injects, tree + ": exactly one inject (no MC-inherited targets)");
+            assertEquals(2, injects, tree + ": constructor plus Sodium's private layout rebuild");
+            assertEquals(Set.of("<init>", "rebuildGUI"), methods, tree + ": no MC-inherited targets");
+            assertTrue(src.contains("LegacySodiumPage.fitDonationButtons(this)"), tree + ": contain colliding donation controls after each rebuild");
             assertTrue(src.contains("LegacySodiumPage.build()"), tree + ": the body delegates to the reflective builder");
             assertTrue(src.contains("implements LegacyOptionsScreenHandle"), tree + ": the deep-link handle");
             assertFalse(SodiumGenerationTest.CLASS_LOAD.matcher(SodiumGenerationTest.stripComments(src)).find(),

@@ -93,6 +93,18 @@ class ResetCoordinatorTest {
     }
 
     @Test
+    void dhSessionUsesDrainWipeReceiptFlushWithoutTheNoSourcePrompt() {
+        var base=deps(false,ModCompat.VoxyResetOutcome.RESET);
+        var dh=new ResetCoordinator.Deps(false,base.drainAndAwaitDecode(),base.voxyReset(),
+                base.voxyStorageProbe(),base.lssFlush(),base.clearAllCaches(),base.farPlayerResubscribe(),
+                base.feedback(),base.connectionIdentity(),base.nanoTime(),true);
+        assertTrue(ResetCoordinator.run(dh,false));
+        assertEquals(List.of("drain","voxy(force=false)","flush","farp"),log);
+        assertTrue(feedback.stream().anyMatch(line->line.contains("DH receipts cleared")));
+        assertFalse(feedback.stream().anyMatch(line->line.contains("NO re-stream")));
+    }
+
+    @Test
     void activeSessionRunsDrainVoxyFlushInThatOrder() {
         assertTrue(ResetCoordinator.run(deps(true, ModCompat.VoxyResetOutcome.RESET), false));
         assertEquals(List.of("drain", "voxy(force=false)", "flush", "farp"), log,

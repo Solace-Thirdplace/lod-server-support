@@ -9,8 +9,21 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
         boolean consumerAvailable, boolean rendererAvailable, int protocol, int serverDistance,
         int effectiveDistance, long receivedColumns, long receivedBytes, int queuedColumns,
         int ingestBacklog, long ingestFailures, int rateCap, long rateGatedTicks,
-        int xaeroPendingRebuilds, Discovery discovery, Availability xaeroAvailability, ClientDiagnosticSnapshot details, DiagnosticVersions versions, ClientSettingsStatus settings) {
-    public static final int SCHEMA_VERSION = 2;
+        int xaeroPendingRebuilds, Discovery discovery, Availability xaeroAvailability, ClientDiagnosticSnapshot details, DiagnosticVersions versions, ClientSettingsStatus settings, DhStatusSnapshot dh) {
+    public static final int SCHEMA_VERSION = 3;
+    /** Native snapshot constructor preserves the existing field meanings. */
+    public ClientStatusSnapshot(int schemaVersion, long lifecycle, long capturedAtMillis,
+            boolean connected, boolean negotiated, boolean receptionEnabled, boolean serverEnabled,
+            boolean consumerAvailable, boolean rendererAvailable, int protocol, int serverDistance,
+            int effectiveDistance, long receivedColumns, long receivedBytes, int queuedColumns,
+            int ingestBacklog, long ingestFailures, int rateCap, long rateGatedTicks,
+            int xaeroPendingRebuilds, Discovery discovery, Availability xaeroAvailability,
+            ClientDiagnosticSnapshot details, DiagnosticVersions versions, ClientSettingsStatus settings) {
+        this(schemaVersion,lifecycle,capturedAtMillis,connected,negotiated,receptionEnabled,serverEnabled,
+                consumerAvailable,rendererAvailable,protocol,serverDistance,effectiveDistance,receivedColumns,
+                receivedBytes,queuedColumns,ingestBacklog,ingestFailures,rateCap,rateGatedTicks,xaeroPendingRebuilds,
+                discovery,xaeroAvailability,details,versions,settings,null);
+    }
     /** Compatibility constructor for callers that have no settings observation. */
     public ClientStatusSnapshot(int schemaVersion, long lifecycle, long capturedAtMillis,
             boolean connected, boolean negotiated, boolean receptionEnabled, boolean serverEnabled,
@@ -60,7 +73,18 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
         return List.copyOf(reasons);
     }
     public List<String> lines() {
-        return List.of("Connection: " + discovery + "; protocol " + protocol,
+        if(dh!=null && dh.reason()!=DhStatusSnapshot.Reason.NATIVE_OFFER && dh.reason()!=DhStatusSnapshot.Reason.NATIVE_PREFERRED) {
+            var lines=new ArrayList<>(dh.lines());
+            if(settings!=null) {
+                lines.add("Settings: saved="+settings.saved()+"; configured="+settings.configured()+"; effective="+settings.effective());
+                lines.add("Pending settings: reload="+settings.pendingReload()+"; reconnect="+settings.pendingReconnect()
+                        +"; adoption="+settings.pendingAdoption());
+            }
+            lines.add("Versions: "+versions.components());
+            lines.add("Snapshot age: "+Math.max(0,System.currentTimeMillis()-capturedAtMillis)+" ms");
+            return List.copyOf(lines);
+        }
+        var lines=new ArrayList<>(List.of("Connection: " + discovery + "; protocol " + protocol,
                 "Reception: " + (receptionEnabled ? "ON" : "OFF") + "; consumer: " + (consumerAvailable ? "available" : "none"),
                 "Server: " + (discovery == Discovery.PROTOCOL_REJECTED ? "protocol rejected" : !negotiated ? "unknown" : serverEnabled ? "available" : "explicitly disabled"),
                 "Xaero integration: " + xaeroAvailability,
@@ -71,6 +95,8 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
                 "Queues: decode=" + queuedColumns + ", ingest=" + ingestBacklog + ", Xaero rebuild=" + xaeroPendingRebuilds,
                 "Remote limiting cause: unknown; ask an operator for server-local diagnostics.",
                 "Versions: " + versions.components(),
-                "Snapshot age: " + Math.max(0, System.currentTimeMillis() - capturedAtMillis) + " ms");
+                "Snapshot age: " + Math.max(0, System.currentTimeMillis() - capturedAtMillis) + " ms"));
+        if(dh!=null)lines.add("DH fallback: "+dh.reason());
+        return List.copyOf(lines);
     }
 }

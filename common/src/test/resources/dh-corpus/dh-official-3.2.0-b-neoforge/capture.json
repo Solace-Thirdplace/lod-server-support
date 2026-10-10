@@ -1,0 +1,98 @@
+{
+  "producer": "Official DH 3.2.0-b for MC1.21.1",
+  "producer_sha256": "d6a7a963f794501678113e2545d8b25c90e123ef6b9256bb5716907d059e1ef5",
+  "producer_url": "https://modrinth.com/mod/distanthorizons/version/3.2.0-b-1.21.1",
+  "captured_from": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-completion/official-15-runs/attempt-n2p837js",
+  "client_artifact_sha256": "391d1307dd6435c02e8b198e9446cc3c98275ae2b9c5d13b15d78e62aae55ed4",
+  "profile": "OFFICIAL_15",
+  "world": {
+    "min_y": -64,
+    "height": 384,
+    "sky": true
+  },
+  "position": {
+    "detail": 6,
+    "x": -1,
+    "z": 1
+  },
+  "request_id": 2,
+  "buffer_id": 20,
+  "bytes": "verbatim response/fragments; no control frames or private level keys",
+  "frames": {
+    "received-0004.bin": "142c1d60f3a3dd3d94811e555c0d4b758e3535039512dcbb0cea2ef4bcac5503",
+    "received-0005.bin": "99ea93e44e41b4eeb84076a548995d8d240f3c6310efc10e81a18add17bb1d3f",
+    "received-0006.bin": "c330a807cf8f892110d59f8ede75322de42e5902b1a4f4981ddd4565d3cc458b"
+  },
+  "raw_span_inspection": {
+    "world_min_y": -64,
+    "world_height": 384,
+    "format": 2,
+    "compression": 4,
+    "span_count_including_duplicate_corners": 44476,
+    "outside_span_count": 4100,
+    "all_outside_are_one_air_voxel_at_exclusive_ceiling": true,
+    "examples": [
+      {
+        "blob": 0,
+        "material": "minecraft:forest_DH-BSW_AIR",
+        "bottom": 129,
+        "height": 256,
+        "exclusive_high": 385
+      },
+      {
+        "blob": 0,
+        "material": "minecraft:forest_DH-BSW_AIR",
+        "bottom": 135,
+        "height": 250,
+        "exclusive_high": 385
+      },
+      {
+        "blob": 0,
+        "material": "minecraft:forest_DH-BSW_AIR",
+        "bottom": 135,
+        "height": 250,
+        "exclusive_high": 385
+      },
+      {
+        "blob": 0,
+        "material": "minecraft:forest_DH-BSW_AIR",
+        "bottom": 137,
+        "height": 248,
+        "exclusive_high": 385
+      },
+      {
+        "blob": 0,
+        "material": "minecraft:forest_DH-BSW_AIR",
+        "bottom": 136,
+        "height": 249,
+        "exclusive_high": 385
+      },
+      {
+        "blob": 0,
+        "material": "minecraft:forest_DH-BSW_AIR",
+        "bottom": 135,
+        "height": 250,
+        "exclusive_high": 385
+      },
+      {
+        "blob": 0,
+        "material": "minecraft:forest_DH-BSW_AIR",
+        "bottom": 130,
+        "height": 255,
+        "exclusive_high": 385
+      },
+      {
+        "blob": 0,
+        "material": "minecraft:forest_DH-BSW_AIR",
+        "bottom": 130,
+        "height": 255,
+        "exclusive_high": 385
+      }
+    ]
+  },
+  "upstream_builder_classfile_evidence": {
+    "class": "com.seibel.distanthorizons.core.dataObjects.transformers.LodDataBuilder",
+    "javap_sha256": "041732df73b3c628735e6c6175f8be0e0f40b3f4d67cfcc0efa04efcb69cccf1"
+  },
+  "original_result": "Production decoder rejected the upstream one-voxel ceiling-air convention for this profile."
+}

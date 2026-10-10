@@ -5,6 +5,7 @@ import dev.vox.lss.common.Brand;
 import dev.vox.lss.common.LSSLogger;
 import dev.vox.lss.config.LSSClientConfig;
 import net.minecraft.network.chat.Component;
+import net.minecraft.client.gui.screens.Screen;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -71,7 +72,7 @@ public final class LegacySodiumPage {
      *  the ModMenu deep-link ({@code createScreen}, {@code currentPage}), not by this builder. */
     public static final String OPTIONS_SCREEN = SodiumGeneration.LEGACY_SCREEN_SUFFIX;
 
-    public enum MemberKind { STATIC_METHOD, METHOD, CONSTRUCTOR, INTERFACE_METHOD, ENUM, FIELD }
+    public enum MemberKind { STATIC_METHOD, METHOD, PRIVATE_METHOD, CONSTRUCTOR, INTERFACE_METHOD, ENUM, FIELD }
 
     /** One resolved member: owner (relative class name), kind, name, parameter count. */
     public record Member(String owner, MemberKind kind, String name, int arity) {
@@ -82,6 +83,16 @@ public final class LegacySodiumPage {
     public static final List<Member> SURFACE = List.of(
             new Member(OPTIONS_SCREEN, MemberKind.FIELD, "pages", 0),
             new Member(OPTIONS_SCREEN, MemberKind.FIELD, "currentPage", 0),
+            new Member(OPTIONS_SCREEN, MemberKind.FIELD, "donateButton", 0),
+            new Member(OPTIONS_SCREEN, MemberKind.FIELD, "hideDonateButton", 0),
+            new Member(OPTIONS_SCREEN, MemberKind.PRIVATE_METHOD, "rebuildGUI", 0),
+            new Member(".client.gui.widgets.FlatButtonWidget", MemberKind.FIELD, "dim", 0),
+            new Member(".client.gui.widgets.FlatButtonWidget", MemberKind.METHOD, "setVisible", 1),
+            new Member(".client.util.Dim2i", MemberKind.CONSTRUCTOR, "<init>", 4),
+            new Member(".client.util.Dim2i", MemberKind.METHOD, "x", 0),
+            new Member(".client.util.Dim2i", MemberKind.METHOD, "y", 0),
+            new Member(".client.util.Dim2i", MemberKind.METHOD, "width", 0),
+            new Member(".client.util.Dim2i", MemberKind.METHOD, "height", 0),
             new Member(OPTIONS_SCREEN, MemberKind.CONSTRUCTOR, "<init>", 1),
             new Member(OPTIONS_SCREEN, MemberKind.STATIC_METHOD, "createScreen", 1),
             new Member(OPTION_IMPL, MemberKind.STATIC_METHOD, "createBuilder", 2),
@@ -246,19 +257,137 @@ public final class LegacySodiumPage {
                 }
             }
             // Legacy tabs sit beside Sodium's own with no per-mod grouping, so the tab
-            // names carry the brand (plan D7): "LSS", then "LSS Far Players".
+            // names carry the brand. Short labels keep all tabs readable at Auto GUI scale.
+            String titleKey = switch (pageSpec.titleKey()) {
+                case "lss.config.far_players.page" -> "lss.config.far_players.legacy_tab";
+                default -> pageSpec.titleKey();
+            };
             Component title = first
                     ? Component.literal(brand)
-                    : Component.literal(brand + " ").append(Component.translatable(pageSpec.titleKey()));
+                    : Component.literal(brand + " ").append(Component.translatable(titleKey));
             pages.add(h.pageCtor().invoke(title, ImmutableList.copyOf(groups)));
             first = false;
         }
         return pages;
     }
 
+    /** Keep Sodium's donation controls usable when the extended tab row reaches them.
+     * Each rebuild creates new widgets; move only a colliding pair to the free footer,
+     * without changing Sodium's saved donation preference. All optional internals remain
+     * reflective and contained so an unsupported screen still opens normally. */
+    private static final java.util.concurrent.atomic.AtomicBoolean layoutWarned=new java.util.concurrent.atomic.AtomicBoolean();
+    record Bounds(int x,int y,int width,int height) {
+        boolean intersects(Bounds other) {return width>0 && height>0 && other.width>0 && other.height>0
+                && x<other.x+other.width && other.x<x+width && y<other.y+other.height && other.y<y+height;}
+    }
+    static boolean footerFree(int screenWidth,int screenHeight,int width,List<Bounds> children) {
+        var candidate=new Bounds(6,screenHeight-30,width,20);
+        return candidate.x+width<=screenWidth-211 && children.stream().noneMatch(candidate::intersects);
+    }
+    static int tabStart(int screenWidth,int current,List<Integer> widths) {
+        int start=Math.max(0,current-1);
+        while(start<current && widths.subList(start,current+1).stream().mapToInt(w->w+6).sum()-6>screenWidth-56)start++;
+        return start;
+    }
+    private static Bounds bounds(Object child) throws ReflectiveOperationException {
+        Object dim;
+        try {dim=screenField(child,"dim");}
+        catch(NoSuchFieldException missing) {
+            try {dim=child.getClass().getMethod("getDimensions").invoke(child);}
+            catch(NoSuchMethodException absent) {
+                var rect=((net.minecraft.client.gui.components.events.GuiEventListener)child).getRectangle();
+                return new Bounds(rect.left(),rect.top(),rect.width(),rect.height());
+            }
+        }
+        return new Bounds(dimension(dim,"x"),dimension(dim,"y"),dimension(dim,"width"),dimension(dim,"height"));
+    }
+    public static void fitDonationButtons(Object target) {
+        try {
+            Screen screen=(Screen)target;
+            Object donate=screenField(target,"donateButton"),dismiss=screenField(target,"hideDonateButton");
+            fitTabs(target,donate,dismiss);
+            var donation=bounds(donate);var dismissal=bounds(dismiss);
+            var occupied=new ArrayList<Bounds>();boolean collision=false;
+            for(Object child:screen.children()) {
+                if(child==donate || child==dismiss)continue;
+                if(child.getClass().getSimpleName().equals("FlatButtonWidget") && !(boolean)screenField(child,"visible"))continue;
+                var rectangle=bounds(child);occupied.add(rectangle);
+                collision|=donation.intersects(rectangle)||dismissal.intersects(rectangle);
+            }
+            if(!collision)return;
+            int width=donation.width+4+dismissal.width;
+            if(!footerFree(screen.width,screen.height,width,occupied)) {
+                donate.getClass().getMethod("setVisible",boolean.class).invoke(donate,false);
+                dismiss.getClass().getMethod("setVisible",boolean.class).invoke(dismiss,false);return;
+            }
+            moveButton(donate,6,screen.height-30);
+            moveButton(dismiss,6+donation.width+4,screen.height-30);
+        } catch(Throwable failure) {
+            if(layoutWarned.compareAndSet(false,true))dev.vox.lss.common.LSSLogger.warn("Optional Sodium layout adjustment unavailable",failure);
+        }
+    }
+    /** Paginate overflowing tab rows; arrows select a neighboring real page. */
+    static int tabEnd(int screenWidth,int start,List<Integer> widths) {
+        int x=28,end=start;
+        while(end<widths.size() && x+widths.get(end)<=screenWidth-28){x+=widths.get(end)+6;end++;}
+        return end;
+    }
+    private static void fitTabs(Object target,Object donate,Object dismiss) throws ReflectiveOperationException {
+        Screen screen=(Screen)target;
+        var tabs=new ArrayList<Object>();
+        for(Object child:screen.children())if(child!=donate && child!=dismiss
+                && child.getClass().getSimpleName().equals("FlatButtonWidget") && bounds(child).y==6)tabs.add(child);
+        tabs.sort(java.util.Comparator.comparingInt(child->{try{return bounds(child).x;}catch(Exception e){return 0;}}));
+        if(tabs.isEmpty() || bounds(tabs.get(tabs.size()-1)).x+bounds(tabs.get(tabs.size()-1)).width<=screen.width-12)return;
+        var pages=(List<?>)screenField(target,"pages");Object selected=screenField(target,"currentPage");
+        if(tabs.size()!=pages.size())return;
+        int current=pages.indexOf(selected);
+        if(current<0)return;
+        var widths=new ArrayList<Integer>();for(Object tab:tabs)widths.add(bounds(tab).width);
+        int start=tabStart(screen.width,current,widths),end=tabEnd(screen.width,start,widths),x=28;
+        for(int i=0;i<tabs.size();i++) {
+            Object tab=tabs.get(i);int width=bounds(tab).width;
+            boolean visible=i>=start && i<end;
+            tab.getClass().getMethod("setVisible",boolean.class).invoke(tab,visible);
+            if(visible){moveButton(tab,x,6);x+=width+6;}
+        }
+        for(int direction:new int[]{-1,1}) {
+            final int next=Math.floorMod(Math.max(0,current)+direction,pages.size());
+            Runnable action=()->{try{target.getClass().getMethod("setPage",pages.get(next).getClass()).invoke(target,pages.get(next));}
+                catch(ReflectiveOperationException failure){dev.vox.lss.common.LSSLogger.warn("Sodium page navigation unavailable",failure);}};
+            Object sample=tabs.get(0),old=screenField(sample,"dim");
+            Object dim=old.getClass().getConstructor(int.class,int.class,int.class,int.class).newInstance(direction<0?6:screen.width-24,6,18,18);
+            Object button=sample.getClass().getConstructor(old.getClass(),Component.class,Runnable.class)
+                    .newInstance(dim,Component.literal(direction<0?"‹":"›"),action);
+            ((dev.vox.lss.mixin.AccessorScreenWidgets)screen).lss$addWidget((net.minecraft.client.gui.components.events.GuiEventListener)button);
+        }
+    }
+
+    private static int dimension(Object bounds, String name) throws ReflectiveOperationException {
+        return (int) bounds.getClass().getMethod(name).invoke(bounds);
+    }
+
+    private static Object screenField(Object target, String name) throws ReflectiveOperationException {
+        for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
+            try { var field = type.getDeclaredField(name); field.setAccessible(true); return field.get(target); }
+            catch (NoSuchFieldException absent) { /* walk a compatible screen subclass */ }
+        }
+        throw new NoSuchFieldException(name);
+    }
+
+    private static void moveButton(Object button, int x, int y) throws ReflectiveOperationException {
+        var field = button.getClass().getDeclaredField("dim"); field.setAccessible(true);
+        Object old = field.get(button);
+        field.set(button, old.getClass().getConstructor(int.class, int.class, int.class, int.class)
+                .newInstance(x, y, dimension(old, "width"), dimension(old, "height")));
+    }
+
     private static Object buildOption(Handles h, OptionSpec spec, dev.vox.lss.config.menu.ClientSettingsEditSession cfg, MenuContext ctx,
                                       Object storage, Map<String, Object> builtById) throws Throwable {
-        Class<?> valueType = spec instanceof OptionSpec.BoolSpec ? Boolean.class : Integer.class;
+        Class<?> valueType = switch(spec) {
+            case OptionSpec.BoolSpec b -> Boolean.class;
+            case OptionSpec.IntSpec i -> Integer.class;
+        };
         Object b = h.createBuilder().invoke(valueType, storage);
         h.setName().invoke(b, Component.translatable(spec.nameKey()));
         h.setTooltip().invoke(b, Component.translatable(spec.tooltip().resolve(ctx)));
@@ -280,29 +409,28 @@ public final class LegacySodiumPage {
             }
         }
         if (spec.enabledBy() != null) {
-            String dependency = spec.enabledBy();
+            var dependencies=ClientOptionCatalog.enabledDependencies(spec);
             if (h.enabledIsStatic()) {
                 // Sodium 0.5's setEnabled(boolean): no live greying — the dependency's
                 // value at build time is the best the API offers.
-                Object dep = ClientOptionCatalog.find(dependency).map(d -> d.read(cfg)).orElse(Boolean.TRUE);
-                h.setEnabled().invoke(b, Boolean.TRUE.equals(dep));
+                boolean enabled=true;
+                for(String id:dependencies)enabled &= Boolean.TRUE.equals(ClientOptionCatalog.find(id).orElseThrow().read(cfg));
+                h.setEnabled().invoke(b,enabled);
             } else {
-                // Resolved LAZILY (review A-8): the dependency is built earlier on the same
-                // page by catalog contract, but the supplier must not depend on build order.
+                // Resolved LAZILY (review A-8): the dependency is built earlier in the
+                // shared catalog, but the supplier must not depend on build order.
                 h.setEnabled().invoke(b, (BooleanSupplier) () -> {
-                    Object dep = builtById.get(dependency);
-                    return dep == null || Boolean.TRUE.equals(invoke(h.getValue(), dep));
+                    for(String id:dependencies) {
+                        Object dep=builtById.get(id);
+                        if(dep!=null && !Boolean.TRUE.equals(invoke(h.getValue(),dep)))return false;
+                    }
+                    return true;
                 });
             }
         }
         return h.build().invoke(b);
     }
 
-    // The two proxies are the boundaries where SODIUM calls INTO us — from its Apply loop
-    // and from every slider render frame, neither of which catches (javap 0.6.13/0.7.3).
-    // Draft persistence contains IO failures and retains edits. Defensive containment
-    // plus a once-bounded warning also protects optional API incompatibilities and is
-    // defense in depth for the house doctrine: nothing optional may crash a client.
 
     private static Object storageProxy(Handles h, dev.vox.lss.config.menu.ClientSettingsEditSession cfg, SaveHook hook, Consumer<SaveHook> onSave) {
         return Proxy.newProxyInstance(h.storageClass().getClassLoader(), new Class<?>[]{h.storageClass()},

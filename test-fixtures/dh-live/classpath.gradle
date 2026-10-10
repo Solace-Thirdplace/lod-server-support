@@ -1,0 +1,13 @@
+// Read-only build input export for the separately compiled test fixture.
+gradle.projectsEvaluated {
+    ['neoforge', 'fabric'].each { loader ->
+    def module = gradle.rootProject.project(':' + loader)
+    module.tasks.register('exportDhFixtureClasspath') {
+        doLast {
+            def target = module.layout.buildDirectory.file('dh-fixture-classpath.txt').get().asFile
+            target.parentFile.mkdirs()
+            target.text = module.sourceSets.main.compileClasspath.asPath
+        }
+    }
+    }
+}

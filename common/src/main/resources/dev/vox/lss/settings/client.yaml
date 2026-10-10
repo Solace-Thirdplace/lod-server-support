@@ -8,6 +8,9 @@ config_version: 1 # Local settings schema version, independent of the network pr
 # not raise vanilla render/simulation distance. More terrain can cost client disk,
 # memory and processing time. Turning reception off does not erase cached terrain.
 lod:
+  # Experimental keys (lod.source, lod.dh.*, lod.voxy_border_fill) are kept in the
+  # separate *-client-experimental.yaml file beside this one, so this file stays
+  # readable by older versions. General > Allow DH Server Terrain writes it.
   receive: true # Download server LOD terrain; off stops acquisition, not saved terrain display.
   distance_chunks: 0 # 0 = server default; otherwise 1–2048, capped by the server's radius.
   # Balance terrain fill speed against connection quality and client processing load.
@@ -16,7 +19,7 @@ lod:
   # Adaptive controls react to latency or consumer backlog; they are not an FPS cap.
   download:
     max_columns_per_second: 0 # 0 = unlimited; positive range 10–100000 columns/second.
-    adaptive_rate: true # Adjust download rate when latency indicates congestion.
+    adaptive_rate: true # Adjust download rate when latency indicates congestion; also paces DH joins.
     slow_start_on_join: true # Begin new sessions gently; requires adaptive_rate.
     ingest_backpressure: true # Slow downloads when terrain consumers fall behind.
 
@@ -59,7 +62,7 @@ integrations:
   # future writes after reconnect; it does not remove terrain already saved on the map.
   # Backpressure lets map writing keep up instead of allowing an unchecked backlog.
   xaero_map:
-    enabled: false # [reconnect] Write terrain into Xaero's World Map; requires that mod.
+    enabled: false # [reconnect] Write native terrain service data into Xaero's World Map; requires that mod.
     backpressure: true # Pace downloads to map writes; requires ingest_backpressure.
 
 # Draws distant player models from server snapshots, not fully simulated entities.
