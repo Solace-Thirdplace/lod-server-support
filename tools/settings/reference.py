@@ -29,7 +29,14 @@ def render(data: dict | None = None) -> str:
               "backup. Migration accepts the old Gson loader's comments and lenient JSON syntax.",
               "Migration is one-way: v0.15.x reads the retained JSON and ignores YAML edits;",
               "copy any desired changes back into JSON before downgrading.",
-              "Invalid authoritative YAML never falls back to JSON. Reload does not write files.", ""]
+              "Invalid authoritative YAML never falls back to JSON. Reload does not write files.", "",
+              "Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`) live in a",
+              "sidecar file beside the selected client file (`lss-client-experimental.yaml` or",
+              "`vss-client-experimental.yaml`), so the main client file always stays readable by v0.16.0.",
+              "The sidecar holds only nondefault values; deleting it restores the defaults. Older",
+              "development builds wrote these keys into the main file: they are still honoured on read",
+              "and the next save moves them into the sidecar (retired `lod.dh.refresh_seconds` and",
+              "`lod.dh.profile` are removed). One reload reads both files.", ""]
     for key, title in [("server", "Fabric / NeoForge server"), ("paper", "Paper / Folia server"), ("client", "Client")]:
         schema = data[key]
         output += ["## " + title, "", "| YAML path | Type | Default | Range / units | Timing | Applicability |", "| --- | --- | --- | --- | --- | --- |"]
