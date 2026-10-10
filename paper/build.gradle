@@ -38,6 +38,17 @@ def storeNativeStrip = { el ->
     storeNativeRoots.any { p.startsWith(it) } && !storeNativeKeep.any { p.startsWith(it) }
 }
 
+// The DH-compatibility adapter is client-only. Common's DH codec and its private XZ
+// copy can never run on a server, so Paper/Purpur jars do not carry them (X-7). Only
+// client-only common diagnostics classes still name common/dh types; release_check
+// pins that allowlist and the absence below.
+def dhClientOnly = [
+    'dev/vox/lss/common/dh/**',
+    'dev/vox/lss/internal/xz/**',
+    'META-INF/versions/*/dev/vox/lss/internal/xz/**',
+    'META-INF/licenses/xz-java-0BSD.txt',
+]
+
 test {
     useJUnitPlatform()
     // ReleaseWorkflowContractTest reads the workflow YAMLs from the source tree; without
@@ -83,6 +94,7 @@ shadowJar {
     exclude 'org/slf4j/**'
     exclude 'META-INF/maven/org.slf4j/**'
     exclude storeNativeStrip
+    exclude dhClientOnly
 
     // The soak harness is a dev-only tool (-Dlss.soak.scenario); keep it out of release
     // jars. PaperSoakBridge no-ops when the classes are absent (mirrors fabric/build.gradle's
@@ -112,6 +124,7 @@ def soakShadowJar = tasks.register('soakShadowJar',
     exclude 'org/slf4j/**'
     exclude 'META-INF/maven/org.slf4j/**'
     exclude storeNativeStrip
+    exclude dhClientOnly
     // paperweight stamps 'paperweight-mappings-namespace: mojang' on the jar task; without
     // it Paper assumes spigot mappings and remaps (= corrupts) this mojang-mapped jar.
     manifest.inheritFrom(tasks.jar.manifest)
