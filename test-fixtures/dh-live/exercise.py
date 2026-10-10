@@ -8,7 +8,7 @@ p.add_argument('--artifact',type=Path,required=True)
 p.add_argument('--fixture',type=Path,required=True)
 p.add_argument('--dh',type=Path,default=setup/'DistantHorizons-3.3.3-1.21.1-fabric-neoforge.jar')
 p.add_argument('--base',type=Path,default=setup/'private-tests')
-p.add_argument('--scenario',choices=['lifecycle','menu','absence','content','service','race','rejoin','updates','boundary'],default='lifecycle')
+p.add_argument('--scenario',choices=['lifecycle','menu','absence','content','service','race','rejoin','updates','boundary','load','movement'],default='lifecycle');p.add_argument('--arm',choices=['lss','official','dh-range128','dh-range32','dh-off'],default='lss');p.add_argument('--load-range',type=int,default=32);p.add_argument('--cold-seconds',type=int,default=420);p.add_argument('--warm-seconds',type=int,default=180)
 p.add_argument('--server-family',choices=['official','support','vanilla'],default='official')
 p.add_argument('--profile',choices=['dh_support_15','official_15','official_16'],default='official_16')
 p.add_argument('--expect',choices=['ready','no-service','conflict','ocean','old-protocol'],default='ready')
@@ -49,6 +49,7 @@ for module in ['org.slf4j/slf4j-api','com.google.code.gson/gson']:
 env=os.environ.copy();env['LSS_SETTINGS_CLASSPATH']=cp;env['JAVA_HOME']='/usr/lib/jvm/java-21-openjdk-amd64'
 cmd=['python3',str(root/'test-fixtures/dh-live/prepare.py'),'--artifact',str(a.artifact),'--fixture',str(a.fixture),'--dh',str(a.dh),'--base',str(a.base),'--scenario',a.scenario]
 cmd+=['--server-family',a.server_family,'--profile',a.profile,'--expect',a.expect,'--builder',a.builder]
+cmd+=['--arm',a.arm,'--load-range',str(a.load_range),'--cold-seconds',str(a.cold_seconds),'--warm-seconds',str(a.warm_seconds)]
 cmd+=['--loader',a.loader,'--terrain-source',a.terrain_source,'--boundary-expect',a.boundary_expect]
 if a.bounded_storage:cmd.append('--bounded-storage')
 if a.moving_border:cmd.append('--moving-border')

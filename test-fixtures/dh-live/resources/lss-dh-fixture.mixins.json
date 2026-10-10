@@ -10,7 +10,10 @@
     "SendMixin",
     "VoxyRenderMixin",
     "VoxyIngestRaceMixin",
-    "CaptureMixin"
+    "CaptureMixin",
+    "MeasureTimingMixin",
+    "MeasurePumpMixin",
+    "MeasureFrameMixin"
   ],
   "injectors": {
     "defaultRequire": 1

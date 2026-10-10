@@ -352,7 +352,7 @@ public final class Probe {
         if(done || System.getProperty("lss.rig.runId","").isEmpty()) return;
         var mc=Minecraft.getInstance(); long now=System.nanoTime();
         try {
-            if(now-started>(System.getProperty("lss.rig.scenario","").equals("content")?1_800_000_000_000L:600_000_000_000L)) throw new IllegalStateException("Live test deadline in phase "+phase+"; "+DhClientSession.status());
+            if(now-started>(java.util.Set.of("content","load","movement").contains(System.getProperty("lss.rig.scenario",""))?1_800_000_000_000L:600_000_000_000L)) throw new IllegalStateException("Live test deadline in phase "+phase+"; "+DhClientSession.status());
             if(System.getProperty("lss.rig.scenario","").equals("menu")) {menu(now);return;}
             if(!connecting && mc.screen instanceof TitleScreen) {
                 // The backend bakes HAS_STATISTICS into shaders at construction.
@@ -368,6 +368,7 @@ public final class Probe {
             if(System.getProperty("lss.rig.scenario","").equals("content")) {ContentProbe.tick(now);return;}
             if(System.getProperty("lss.rig.scenario","").equals("race")) {RaceProbe.tick(now);return;}
             if(System.getProperty("lss.rig.scenario","").equals("service")) {ServiceProbe.tick(now);return;}
+            if(java.util.Set.of("load","movement").contains(System.getProperty("lss.rig.scenario",""))) {MeasureProbe.tick(now);return;}
             if(mc.level==null || mc.player==null) return;
             if(!positioned) {
                 positioned=true; changed=now; mc.options.hideGui=true;

@@ -7,7 +7,9 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 /** Keep the intrusive queue-order counterexample out of every other private test. */
 public final class FixtureMixinPlugin implements IMixinConfigPlugin {
     public boolean shouldApplyMixin(String target,String mixin) {
-        return !mixin.endsWith("VoxyIngestRaceMixin")||System.getProperty("lss.rig.scenario","").equals("race");
+        String scenario=System.getProperty("lss.rig.scenario","");
+        if(mixin.contains(".Measure"))return scenario.equals("movement");
+        return !mixin.endsWith("VoxyIngestRaceMixin")||scenario.equals("race");
     }
     public void onLoad(String mixinPackage) {}
     public String getRefMapperConfig() {return null;}

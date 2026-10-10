@@ -7,7 +7,7 @@ sys.path[:0]=[str(ROOT/'tools/rig'),str(ROOT/'tools/settings')]
 import storage_guard
 from prepare_prism import launcher_inputs
 from settings_file import render_files
-p=argparse.ArgumentParser();p.add_argument('--artifact',required=True,type=Path);p.add_argument('--fixture',required=True,type=Path);p.add_argument('--dh',required=True,type=Path);p.add_argument('--base',required=True,type=Path);p.add_argument('--scenario',choices=['lifecycle','menu','absence','content','service','race','rejoin','updates','boundary'],default='lifecycle')
+p=argparse.ArgumentParser();p.add_argument('--artifact',required=True,type=Path);p.add_argument('--fixture',required=True,type=Path);p.add_argument('--dh',required=True,type=Path);p.add_argument('--base',required=True,type=Path);p.add_argument('--scenario',choices=['lifecycle','menu','absence','content','service','race','rejoin','updates','boundary','load','movement'],default='lifecycle');p.add_argument('--arm',choices=['lss','official','dh-range128','dh-range32','dh-off'],default='lss');p.add_argument('--load-range',type=int,default=32);p.add_argument('--cold-seconds',type=int,default=420);p.add_argument('--warm-seconds',type=int,default=180)
 p.add_argument('--server-family',choices=['official','support','vanilla'],default='official')
 p.add_argument('--profile',choices=['dh_support_15','official_15','official_16'],default='official_16')
 p.add_argument('--expect',choices=['ready','no-service','conflict','ocean','old-protocol'],default='ready')
@@ -27,6 +27,7 @@ if a.slow_config:
  with zipfile.ZipFile(a.fixture) as fixture:
   if 'dev/vox/lssfixture/dh/mixin/SlowConfigMixin.class' not in fixture.namelist():
    raise ValueError('--slow-config requires a separately compiled private DH-linked overlay; the public observer no longer contains it')
+if a.scenario=='load' and a.arm not in ['lss','official'] or a.scenario=='movement' and a.arm not in ['dh-range128','dh-range32','dh-off']:raise ValueError('Arm does not belong to this measurement scenario')
 if a.scenario=='content':raise ValueError('Forced source-cycle scenario retired: native LSS now wins on dual servers; use native boundary --allow-dh')
 if a.loader=='fabric' and a.scenario not in ['service','rejoin','menu']:raise ValueError('Fabric extension currently covers service, rejoin and menu scenarios only')
 if a.scenario!='service' and (a.server_family!='official' or a.profile!='official_16' or a.expect!='ready'):raise ValueError('Alternate service inputs require the service scenario')
@@ -48,7 +49,7 @@ if a.server_family=='support':
 if a.slow_config:inputs.append((a.fixture,'server/mods/'+a.fixture.name))
 if a.server_family=='official':inputs.append((a.dh,'server/mods/'+a.dh.name))
 inputs+=[(a.artifact,'instances/dh-neoforge/minecraft/mods/lod-server-support-neoforge.jar'),(a.fixture,'instances/dh-neoforge/minecraft/mods/'+a.fixture.name)]
-if a.expect=='conflict':inputs.append((a.dh,'instances/dh-neoforge/minecraft/mods/'+a.dh.name))
+if a.expect=='conflict' or a.scenario=='load' and a.arm=='official':inputs.append((a.dh,'instances/dh-neoforge/minecraft/mods/'+a.dh.name))
 if a.scenario=='content' or a.scenario=='boundary' and a.terrain_source=='native':inputs.append((a.artifact,'server/mods/lod-server-support-neoforge.jar'))
 patterns=['voxy-0.2.15-beta-sodium0.8.12.jar']
 if a.loader=='neoforge':patterns+=['connector-*-full.jar','ConnectorExtras-*.jar','forgified-fabric-api-*.jar','sodium-neoforge-*.jar','xaeroworldmap-neoforge-1.21.1-1.45.0.jar']
@@ -77,10 +78,13 @@ if a.scenario=='content':
 (run/'runtime.json').write_text(json.dumps(runtime,indent=2))
 instance=run/'instances/dh-neoforge';game=instance/'minecraft';(game/'config').mkdir(parents=True,exist_ok=True)
 (instance/'mmc-pack.json').write_text(json.dumps({'formatVersion':1,'components':profile['components']}))
-(instance/'instance.cfg').write_text('[General]\nInstanceType=OneSix\nname=DH NeoForge private verification\nOverrideJavaLocation=true\nJavaPath=/usr/lib/jvm/java-21-openjdk-amd64/bin/java\nOverrideJavaArgs=true\nJvmArgs=-XX:ActiveProcessorCount=4 -Dlss.rig.runId='+run.name+' -Dlss.rig.scenario='+a.scenario+' -Dlss.rig.expect='+a.expect+' -Dlss.rig.profile='+{'dh_support_15':'SUPPORT_15','official_15':'OFFICIAL_15','official_16':'OFFICIAL_16'}[a.profile]+' -Dlss.rig.boundaryExpect='+a.boundary_expect+' -Dlss.rig.movingBorder='+str(a.moving_border).lower()+' -Dlss.rig.slowConfig='+str(a.slow_config).lower()+' -Dlss.rig.nativePreferred='+str(a.scenario=='boundary' and a.terrain_source=='native').lower()+' -Dlss.rig.initialEndpoint=[::1]:25586 -Dlss.rig.captureDir='+str(run/'captures')+'\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc=3072\nOverrideWindow=true\nMinecraftWinWidth='+str(1280 if a.scenario in ['menu','updates'] else 960)+'\nMinecraftWinHeight='+str(720 if a.scenario in ['menu','updates'] else 540)+'\nLaunchMaximized=false\nOverrideCommands=true\nPreLaunchCommand=\nPostExitCommand=\nWrapperCommand=\n')
+(instance/'instance.cfg').write_text('[General]\nInstanceType=OneSix\nname=DH NeoForge private verification\nOverrideJavaLocation=true\nJavaPath=/usr/lib/jvm/java-21-openjdk-amd64/bin/java\nOverrideJavaArgs=true\nJvmArgs=-XX:ActiveProcessorCount=4 -Dlss.rig.runId='+run.name+' -Dlss.rig.scenario='+a.scenario+' -Dlss.rig.expect='+a.expect+' -Dlss.rig.profile='+{'dh_support_15':'SUPPORT_15','official_15':'OFFICIAL_15','official_16':'OFFICIAL_16'}[a.profile]+' -Dlss.rig.boundaryExpect='+a.boundary_expect+' -Dlss.rig.movingBorder='+str(a.moving_border).lower()+' -Dlss.rig.slowConfig='+str(a.slow_config).lower()+' -Dlss.rig.nativePreferred='+str(a.scenario=='boundary' and a.terrain_source=='native').lower()+' -Dlss.rig.initialEndpoint=[::1]:'+('25587' if a.scenario=='load' else '25586')+' -Dlss.rig.arm='+a.arm+' -Dlss.rig.coldSeconds='+str(a.cold_seconds)+' -Dlss.rig.warmSeconds='+str(a.warm_seconds)+(' -Xlog:gc:file='+str(run/'instances/dh-neoforge/minecraft/gc.log')+':uptime' if a.scenario=='movement' else '')+' -Dlss.rig.captureDir='+str(run/'captures')+'\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc=3072\nOverrideWindow=true\nMinecraftWinWidth='+str(1280 if a.scenario in ['menu','updates'] else 960)+'\nMinecraftWinHeight='+str(720 if a.scenario in ['menu','updates'] else 540)+'\nLaunchMaximized=false\nOverrideCommands=true\nPreLaunchCommand=\nPostExitCommand=\nWrapperCommand=\n')
 (game/'options.txt').write_text('maxFps:30\nrenderDistance:'+str(12 if a.scenario=='boundary' else 4)+'\nsimulationDistance:5\npauseOnLostFocus:false\nenableVsync:false\nguiScale:'+str(0 if a.scenario in ['menu','updates'] else 2)+'\nonboardAccessibility:false\n')
-client_settings=render_files({'lod.source':'lss' if a.scenario=='content' or a.scenario=='boundary' and a.terrain_source=='native' and not a.allow_dh else 'distant_horizons','lod.receive':True,'lod.dh.sync_on_load':True,'lod.dh.real_time_updates':a.scenario in ['menu','updates'],'lod.distance_chunks':40 if a.scenario=='absence' else 12 if a.scenario in ['content','service','race','rejoin','updates','boundary'] else 32,'integrations.xaero_map.enabled':False},side='client')
+client_settings=render_files({'lod.source':'lss' if a.scenario=='content' or a.scenario=='boundary' and a.terrain_source=='native' and not a.allow_dh or a.arm=='dh-off' else 'distant_horizons','lod.receive':True,'lod.dh.sync_on_load':True,'lod.dh.real_time_updates':a.scenario in ['menu','updates'],'lod.distance_chunks':a.load_range if a.scenario=='load' else 0 if a.arm=='dh-range128' else 40 if a.scenario=='absence' else 12 if a.scenario in ['content','service','race','rejoin','updates','boundary'] else 32,'integrations.xaero_map.enabled':False},side='client')
 (game/'config/lss-client-config.yaml').write_text(client_settings['main'])
+if a.scenario=='load' and a.arm=='official':
+ # Same LOD radius as the LSS arm; everything else stays at DH's shipped defaults.
+ (game/'config/DistantHorizons.toml').write_text('[client.advanced.graphics.quality]\nlodChunkRenderDistanceRadius = '+str(a.load_range)+'\n')
 if client_settings['sidecar'] is not None:(game/'config/lss-client-experimental.yaml').write_text(client_settings['sidecar'])
 (run/'server/eula.txt').write_text('eula=true\n')
 if a.scenario=='absence':

@@ -21,9 +21,34 @@ def sample_server():
   proc=Path('/proc')/str(server.pid)
   stat=(proc/'stat').read_text().rsplit(')',1)[1].split()
   status=dict(line.split(':',1) for line in (proc/'status').read_text().splitlines() if ':' in line)
-  resource_samples.append({'wall_monotonic':time.monotonic(),'cpu_seconds':(int(stat[11])+int(stat[12]))/os.sysconf('SC_CLK_TCK'),'rss_kib':int(status['VmRSS'].split()[0]),'peak_rss_kib':int(status['VmHWM'].split()[0])})
+  resource_samples.append({'wall_monotonic':time.monotonic(),'epoch_ms':int(time.time()*1000),'cpu_seconds':(int(stat[11])+int(stat[12]))/os.sysconf('SC_CLK_TCK'),'rss_kib':int(status['VmRSS'].split()[0]),'peak_rss_kib':int(status['VmHWM'].split()[0])})
  except (OSError,KeyError,ValueError):pass
 (run/'evidence/supervisor-owner.json').write_text(json.dumps(identity(os.getpid())))
+proxy_bytes={}  # epoch second -> [server_to_client, client_to_server]; load scenario only
+def start_counting_proxy():
+ import socket,threading
+ listener=socket.socket(socket.AF_INET6,socket.SOCK_STREAM);listener.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+ listener.bind(('::1',25587));listener.listen(4);lock=threading.Lock()
+ def pump(src,dst,index):
+  try:
+   while True:
+    data=src.recv(65536)
+    if not data:break
+    with lock:proxy_bytes.setdefault(int(time.time()),[0,0])[index]+=len(data)
+    dst.sendall(data)
+  except OSError:pass
+  finally:
+   for sock in (src,dst):
+    try:sock.shutdown(socket.SHUT_RDWR)
+    except OSError:pass
+ def accept():
+  while True:
+   try:client_sock,_=listener.accept()
+   except OSError:return
+   upstream=socket.create_connection(('::1',25586))
+   threading.Thread(target=pump,args=(upstream,client_sock,0),daemon=True).start()
+   threading.Thread(target=pump,args=(client_sock,upstream,1),daemon=True).start()
+ threading.Thread(target=accept,daemon=True).start();return listener
 def interrupted(signum,frame):raise KeyboardInterrupt()
 signal.signal(signal.SIGTERM,interrupted)
 try:
@@ -40,6 +65,7 @@ try:
  (run/'evidence/display.json').write_text(json.dumps({'display':display,'xvfb':identity(xvfb.pid)}))
  serverlog=(run/'server.log').open('w')
  runtime=json.loads((run/'runtime.json').read_text())
+ proxy=start_counting_proxy() if runtime['scenario']=='load' else None
  args=['/usr/lib/jvm/java-21-openjdk-amd64/bin/java','-Xms512M','-Xmx3G','-XX:ActiveProcessorCount=4']
  if runtime.get('slow_config'):args+=['-Dlss.rig.slowConfig=true']
  args+=['-jar','paper.jar','--nogui'] if runtime.get('server_family')=='support' else ['@libraries/net/neoforged/neoforge/21.1.248/unix_args.txt','nogui']
@@ -86,7 +112,7 @@ try:
  content=json.loads((run/'runtime.json').read_text())['scenario']=='content'
  race=json.loads((run/'runtime.json').read_text())['scenario'] in ['race','rejoin','updates','boundary']
  rejoin=runtime['scenario']=='rejoin';restarts=0
- deadline=time.monotonic()+(1860 if content else 1000 if rejoin else 660);positioned=False;handled=set();result=run/'instances/dh-neoforge/minecraft/dh-result.json'
+ deadline=time.monotonic()+(1860 if content or runtime['scenario'] in ['load','movement'] else 1000 if rejoin else 660);positioned=False;handled=set();result=run/'instances/dh-neoforge/minecraft/dh-result.json'
  while not result.exists():
   game=run/'instances/dh-neoforge/minecraft'
   latest=game/'logs/latest.log'
@@ -129,6 +155,7 @@ try:
 finally:
  sample_server()
  (run/'evidence/server-resources.json').write_text(json.dumps({'includes_boot_and_generation':True,'samples':resource_samples},indent=2)+'\n')
+ if proxy_bytes:(run/'evidence/proxy-bytes.json').write_text(json.dumps({'unit':'bytes per epoch second; [server_to_client, client_to_server]','seconds':{str(k):v for k,v in sorted(proxy_bytes.items())}})+'\n')
  if server is not None and server.poll() is None:
   try:server.stdin.write('stop\n');server.stdin.flush();server.wait(timeout=40)
   except (OSError,subprocess.TimeoutExpired):server.terminate()
