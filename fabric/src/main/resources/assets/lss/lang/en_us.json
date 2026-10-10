@@ -111,7 +111,7 @@
   "lss.settings.error_logged": "Technical details are recorded in the game log.",
   "lss.config.far_players.legacy_tab": "Players",
   "lss.config.lod_source": "Allow DH Server Terrain",
-  "lss.config.lod_source.tooltip": "Lets Voxy show terrain from servers running Distant Horizons that have no LSS. Native LSS always wins. Requires Voxy; do not use with the Distant Horizons client mod. Applies on reconnect (NeoForge: restart the game). DH terrain is a block-resolution approximation and may overwrite saved Voxy terrain.",
+  "lss.config.lod_source.tooltip": "Lets Voxy show terrain from servers running Distant Horizons that have no LSS. Native LSS always wins. Requires Voxy; do not use with the Distant Horizons client mod. Applies on reconnect. DH terrain is a block-resolution approximation and may overwrite saved Voxy terrain.",
   "lss.config.xaero_map_bridge.tooltip.native_only": "Writes native LSS terrain to Xaero's World Map. DH terrain goes to Voxy only; this option has no effect while using DH.",
   "lss.status.dh.source": "Source: Distant Horizons, %s — %s",
   "lss.status.dh.activity": "Activity: %s",
