@@ -409,8 +409,9 @@ public final class Probe {
             } else if(phase==2 && s!=previous && count(s,"tiles")>=2 && now-changed>10_000_000_000L) {
                 retired(previous);overworldPolicy=(DhSessionPolicy)field(s,"policy");originalConnection=mc.getConnection();
                 write("dh-reset.json","{\"pass\":true,\"old_budget\":"+observedRetiredBytes+",\"new_session\":true}");
-                settings(Map.of("lod.distance_chunks",8));
-                settings(Map.of("lod.dh.sync_on_load",false));phase=15;changed=now;
+                // One save: two back-to-back saves race the first asynchronous reload
+                // ("changed on disk"), and the second reload is then refused as busy.
+                settings(Map.of("lod.distance_chunks",8,"lod.dh.sync_on_load",false));phase=15;changed=now;
             } else if(phase==15 && !LSSClientConfig.CONFIG.snapshot().lod().dh().syncOnLoad()
                     && !(boolean)field(s,"sentSync")) {
                 // Observe the reloaded preference on a client tick before the

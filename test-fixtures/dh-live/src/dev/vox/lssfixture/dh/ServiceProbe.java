@@ -85,8 +85,17 @@ final class ServiceProbe {
                     case "conflict" -> { if(DhClientSession.running()||!DhClientSession.status().contains("Remove Distant Horizons"))return; }
                     case "no-service" -> { if(diag.state()!=dev.vox.lss.common.diagnostics.DhStatusSnapshot.State.NO_SERVICE
                             ||diag.reason()!=dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason.NO_DH_CHANNEL)return; }
-                    case "old-protocol" -> { if(session==null||(boolean)Probe.field(session,"active")
-                            ||diag.reason()!=dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason.OLD_DH_PROTOCOL)return; }
+                    // Official 3.2.x never answers a protocol-16 hello (no bytes at all), so it
+                    // cannot be told apart from disabled networking without the cut reconnect
+                    // trial: the client must sit idle as NO_SERVICE/NO_DH_REPLY. An explicit
+                    // protocol-15 advertisement (stop with OLD_DH_PROTOCOL) is also accepted.
+                    case "old-protocol" -> {
+                        boolean idle=diag.state()==dev.vox.lss.common.diagnostics.DhStatusSnapshot.State.NO_SERVICE
+                                &&diag.reason()==dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason.NO_DH_REPLY;
+                        boolean stoppedOld=session!=null&&!(boolean)Probe.field(session,"active")
+                                &&diag.reason()==dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason.OLD_DH_PROTOCOL;
+                        if(!idle&&!stoppedOld)return;
+                    }
                     default -> throw new IllegalStateException("Unknown expectation "+expectation);
                 }
                 if(session!=null&&((dev.vox.lss.common.dh.DhMemoryBudget)Probe.field(session,"budget")).used()!=0)return;
