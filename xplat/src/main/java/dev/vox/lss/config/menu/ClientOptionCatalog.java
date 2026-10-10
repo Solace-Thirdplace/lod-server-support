@@ -196,12 +196,13 @@ public final class ClientOptionCatalog {
                 .build();
 
         // Allow DH server terrain when native LSS is unavailable; reconnect applies it.
-        // Persisted in the experimental sidecar; sync/live preferences stay file-only there.
+        // ON by default (2026-10-10); the experimental sidecar persists only the opt-out.
+        // Sync/live preferences stay file-only there.
         var source = BoolSpec.builder(ID_LOD_SOURCE)
                 .name("lss.config.lod_source")
                 .tooltip("lss.config.lod_source.tooltip")
                 .impact(Impact.HIGH)
-                .defaultValue(false)
+                .defaultValue(true)
                 .bind(c -> "distant_horizons".equals(c.get("lod.source")),
                         (c, useDh) -> c.set("lod.source", useDh ? "distant_horizons" : "lss"))
                 .enabledBy(ID_RECEIVE_SERVER_LODS)

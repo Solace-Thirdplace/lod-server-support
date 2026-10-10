@@ -26,7 +26,9 @@ Invalid authoritative YAML never falls back to JSON. Reload does not write files
 Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`) live in a
 sidecar file beside the selected client file (`lss-client-experimental.yaml` or
 `vss-client-experimental.yaml`), so the main client file always stays readable by v0.16.0.
-The sidecar holds only nondefault values; deleting it restores the defaults. Older
+The sidecar holds only nondefault values; deleting it restores the defaults. Allow DH
+Server Terrain (`lod.source: distant_horizons`) is on by default, so turning it off
+writes `source: lss` to the sidecar. Older
 development builds wrote these keys into the main file: they are still honoured on read
 and the next save moves them into the sidecar (retired `lod.dh.refresh_seconds` and
 `lod.dh.profile` are removed). One reload reads both files.
@@ -482,7 +484,7 @@ paper:
 
 | YAML path | Type | Default | Range / units | Timing | Applicability |
 | --- | --- | --- | --- | --- | --- |
-| lod.source | string | "lss" |  | S | all |
+| lod.source | string | "distant_horizons" |  | S | all |
 | lod.dh.sync_on_load | boolean | true |  | H | all |
 | lod.dh.real_time_updates | boolean | true |  | H | all |
 | lod.voxy_border_fill | boolean | true |  | H | all |

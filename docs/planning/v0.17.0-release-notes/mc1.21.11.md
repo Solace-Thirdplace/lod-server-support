@@ -1,6 +1,6 @@
 ### New Features
 
-- **Experimental: terrain from Distant Horizons servers** — Fabric clients with Voxy can show distant terrain from servers running Distant Horizons 3.3.x or DH Support without LSS. Off by default; turn on "Allow DH Server Terrain" in the LSS settings.
+- **Experimental: terrain from Distant Horizons servers** — Fabric clients with Voxy can show distant terrain from servers running Distant Horizons 3.3.x or DH Support without LSS. On by default for Voxy players; turn off "Allow DH Server Terrain" in the LSS settings to disable it.
 - **Fast rejoins on DH servers** — The client remembers which DH terrain it already has, so rejoining downloads only what changed.
 
 ### Support and Compatibility
