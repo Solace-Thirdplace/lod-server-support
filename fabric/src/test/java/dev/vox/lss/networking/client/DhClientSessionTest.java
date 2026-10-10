@@ -136,6 +136,9 @@ class DhClientSessionTest {
             ClientTraceLog.stop();
             for(var s:sessions) invoke(s,"retire");
             DhClientSession.disconnect();
+            // Stopping a session queues a forced receipt save on RECEIPT_IO; let it land before
+            // JUnit deletes the @TempDir, or the deletion races the save's temp file (2026-10-10).
+            awaitReceiptIo();
             mainTasks.clear();
             if(cacheComponent!=null) ColumnCacheStore.clearForServers(List.of(cacheComponent));
         } finally {
