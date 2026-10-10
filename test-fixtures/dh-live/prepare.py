@@ -10,7 +10,7 @@ from settings_file import render_files
 p=argparse.ArgumentParser();p.add_argument('--artifact',required=True,type=Path);p.add_argument('--fixture',required=True,type=Path);p.add_argument('--dh',required=True,type=Path);p.add_argument('--base',required=True,type=Path);p.add_argument('--scenario',choices=['lifecycle','menu','absence','content','service','race','rejoin','updates','boundary'],default='lifecycle')
 p.add_argument('--server-family',choices=['official','support','vanilla'],default='official')
 p.add_argument('--profile',choices=['dh_support_15','official_15','official_16'],default='official_16')
-p.add_argument('--expect',choices=['ready','no-service','conflict','ocean'],default='ready')
+p.add_argument('--expect',choices=['ready','no-service','conflict','ocean','old-protocol'],default='ready')
 p.add_argument('--terrain-source',choices=['dh','native'],default='dh')
 p.add_argument('--moving-border',action='store_true')
 p.add_argument('--bounded-storage',action='store_true')

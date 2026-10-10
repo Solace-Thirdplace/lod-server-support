@@ -76,12 +76,20 @@ final class ServiceProbe {
         } else {
             if(now-joined>90_000_000_000L&&stopped==0)throw new IllegalStateException("DH adapter did not stop: "+DhClientSession.status());
             if(stopped==0) {
-                if(DhClientSession.running())return;
-                String status=DhClientSession.status();
-                if(expectation.equals("conflict")&&!status.contains("Remove Distant Horizons"))return;
-                if(!expectation.equals("conflict")&&(session==null||(boolean)Probe.field(session,"active")))return;
+                var diag=DhClientSession.diagnostics();
+                // Expected end states (2026-10-10 remediation): a server without the DH channel
+                // stays an idle NO_SERVICE session (nothing to stop); an official 3.2.x server
+                // stops with OLD_DH_PROTOCOL and no reconnect; a real DH client mod is a conflict.
+                switch(expectation) {
+                    case "conflict" -> { if(DhClientSession.running()||!DhClientSession.status().contains("Remove Distant Horizons"))return; }
+                    case "no-service" -> { if(diag.state()!=dev.vox.lss.common.diagnostics.DhStatusSnapshot.State.NO_SERVICE
+                            ||diag.reason()!=dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason.NO_DH_CHANNEL)return; }
+                    case "old-protocol" -> { if(session==null||(boolean)Probe.field(session,"active")
+                            ||diag.reason()!=dev.vox.lss.common.diagnostics.DhStatusSnapshot.Reason.OLD_DH_PROTOCOL)return; }
+                    default -> throw new IllegalStateException("Unknown expectation "+expectation);
+                }
                 if(session!=null&&((dev.vox.lss.common.dh.DhMemoryBudget)Probe.field(session,"budget")).used()!=0)return;
-                if(expectation.equals("no-service")) {
+                if(expectation.equals("no-service")||expectation.equals("old-protocol")) {
                     var method=dev.vox.lss.networking.client.ColumnCacheStore.class.getDeclaredMethod("cacheRoot");method.setAccessible(true);
                     Path root=(Path)method.invoke(null);
                     Path marker=root.resolve(dev.vox.lss.networking.client.CacheKeyAliases.addressComponent(Minecraft.getInstance().getCurrentServer().ip)).resolve("reset-confirm-guard.bin");
