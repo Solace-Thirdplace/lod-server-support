@@ -14,10 +14,12 @@ public class LSSClient implements ClientModInitializer {
         // Upgrade LSSMod's common LoaderServices install to the client-capable impl
         // (adds sendToServer) before any client networking runs.
         dev.vox.lss.platform.FabricClientLoaderServices.installProductionClient();
+        dev.vox.lss.networking.client.DhClientTransport.init();
         LSSClientNetworking.init();
         LSSClientCommands.init();
         dev.vox.lss.networking.client.FarPlayerRenderer.initRenderer();
         ModCompat.init();
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents.CHUNK_LOAD.register(ModCompat::vanillaChunkLoaded);
         BenchmarkBridge.initClient();
     }
 }
