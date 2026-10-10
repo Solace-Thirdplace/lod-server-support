@@ -21,6 +21,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.neoforged.neoforge.network.handling.IPayloadHandler;
 import net.neoforged.neoforge.network.registration.HandlerThread;
 
 /**
@@ -70,8 +71,11 @@ public final class DhClientTransport {
         try {
             // DH's NeoForge channel negotiation version is "1", independent of DH
             // wire profile 15/16. Optional keeps ordinary servers joinable.
-            event.registrar("1").optional().executesOn(HandlerThread.NETWORK)
-                    .playBidirectional(Payload.TYPE,Payload.CODEC,(payload,context)-> {
+            // 26.x NeoForge: the three-argument playBidirectional registers its handler
+            // for the SERVERBOUND flow only, and client startup then fails with "Some
+            // clientbound payloads are missing client-side handlers". Pass the handler
+            // for both flows; it ignores every non-clientbound frame itself.
+            IPayloadHandler<Payload> handler=(payload,context)-> {
                         synchronized(frames) {
                             try {
                                 if(context.flow()!=PacketFlow.CLIENTBOUND) return;
@@ -84,7 +88,9 @@ public final class DhClientTransport {
                                 }
                             } finally { payload.close(); }
                         }
-                    });
+                    };
+            event.registrar("1").optional().executesOn(HandlerThread.NETWORK)
+                    .playBidirectional(Payload.TYPE,Payload.CODEC,handler,handler);
         } catch(RuntimeException failure) {
             DhClientSession.installTransport(null,"DH channel registration failed: "+failure.getMessage());
             LSSLogger.warn("DH channel registration failed; native LSS remains available: "+failure.getMessage());
