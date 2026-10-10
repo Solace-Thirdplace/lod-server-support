@@ -21,8 +21,8 @@ Not done, deliberately:
 
 - **X-11** (let a disabled or denied native offer permit DH fallback) reverses a
   recorded user decision; native still always wins. User's call.
-- **Storage reserve.** `test-fixtures/dh-p4/bounded_storage.py` still uses the
-  40 GiB reserve for `dh-p4-2g-v2`. It needs the user's ratification or a revert to 50 GiB.
+- **Storage reserve.** The 40 GiB reserve for `dh-p4-2g-v2`
+  (`test-fixtures/dh-p4/bounded_storage.py`) was ratified by the user on 2026-10-10.
 - The X-16 process gates (outreach answer, S0 server-load ratio, movement-pause
   measurement per review §7) are still open.
 
