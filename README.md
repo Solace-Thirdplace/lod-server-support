@@ -28,7 +28,7 @@ Compatible with [AntiXray](https://modrinth.com/mod/anti-xray), [Moonrise](https
 
 For a Voxy player on an existing DH server, ask the admin to add LSS alongside DH. This provides native LSS terrain while preserving support for DH clients.
 
-**Experimental: terrain from Distant Horizons servers (Fabric client on MC 1.21.11).** A Voxy client can show distant terrain from a server that runs the official [Distant Horizons](https://modrinth.com/mod/distanthorizons) server mod but has no LSS. It is on by default; to turn it off, disable "Allow DH Server Terrain" on the LSS settings page (or set `lod.source: lss`). What to expect:
+**Experimental: terrain from Distant Horizons servers (Fabric client on MC 1.21.11).** A Voxy client can show distant terrain from a server that runs the official [Distant Horizons](https://modrinth.com/mod/distanthorizons) server mod but has no LSS. It is on by default. To turn it off, disable "Allow DH Server Terrain" on the LSS settings page, or set `lod.source: lss` in `lss-client-experimental.yaml`. For the best results, servers should still install LSS. What to expect:
 
 - Native LSS always wins. If the server offers LSS service (even disabled), the DH path stays idle.
 - Voxy is required, and the Distant Horizons *client* mod must not be installed.
