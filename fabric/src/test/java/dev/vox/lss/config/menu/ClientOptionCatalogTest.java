@@ -27,9 +27,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * in {@code en_us.json} (tooltips through {@link Tooltip#keys()}, labels over the whole
  * slider domain); each option's declared default EQUALS a fresh config's field value
  * (the v0.11/v0.12 pages duplicated defaults by hand with no pin); bindings round-trip;
- * {@code enabledBy} names a tick box on the SAME page; the far-player page pushes prefs
+ * {@code enabledBy} names a tick box in the shared catalog; the far-player page pushes prefs
  */
 class ClientOptionCatalogTest {
+    @Test
+    void menuApplyPreservesFileOnlySynchronizationAndDefersFallbackPermissionToTheNextPhysicalConnection() throws Exception {
+        var schema=SettingsSchema.client();
+        var store=new SettingsStore<>(temp,"lss",schema);
+        store.initialize();
+        store.saveDraft(store.read().hash(), java.util.Map.of("lod.dh.sync_on_load", false, "lod.dh.real_time_updates", false));
+        try(var handle=new dev.vox.lss.common.config.SettingsHandle<>(store)) {
+            Object connection=new Object();handle.beginSession(connection);
+            var reloads=new java.util.concurrent.atomic.AtomicInteger();
+            var cfg=new ClientSettingsEditSession(store,()->handle.state().effective(),()->handle.state().configured(),()->{
+                try { handle.commit(handle.prepareReload());reloads.incrementAndGet(); }
+                catch(IOException failure) { throw new AssertionError(failure); }
+            });
+            var source=(OptionSpec.BoolSpec)ClientOptionCatalog.find(ClientOptionCatalog.ID_LOD_SOURCE).orElseThrow();
+            assertTrue(source.defaultValue());assertTrue(source.getter().apply(cfg),"DH server terrain is allowed by default");
+            source.setter().accept(cfg,false);
+            assertTrue(cfg.apply());assertEquals(1,reloads.get());
+            assertEquals("lss",store.read().configured().lod().source());
+            assertEquals("distant_horizons",handle.state().effective().lod().source());
+            assertFalse(handle.state().effective().lod().dh().syncOnLoad());
+            assertFalse(handle.state().effective().lod().dh().realTimeUpdates());
+            assertEquals(Set.of("lod.source"),handle.state().pendingReconnect());
+            handle.beginSession(connection);assertEquals("distant_horizons",handle.state().effective().lod().source());
+            handle.endSession(connection);handle.beginSession(new Object());
+            assertEquals("lss",handle.state().effective().lod().source());
+            assertTrue(handle.state().pendingReconnect().isEmpty());
+        }
+    }
+
     @org.junit.jupiter.api.io.TempDir Path temp;
     private ClientSettingsEditSession draft() {
         try {
@@ -59,7 +88,8 @@ class ClientOptionCatalogTest {
         for (PageSpec p : ClientOptionCatalog.pages()) {
             assertTrue(pages.add(p.id()), "duplicate page id " + p.id());
         }
-        assertEquals(2, ClientOptionCatalog.pages().size(), "the main page and far players (n12 order)");
+        assertEquals(List.of(ClientOptionCatalog.PAGE_GENERAL, ClientOptionCatalog.PAGE_FAR_PLAYERS),
+                ClientOptionCatalog.pages().stream().map(PageSpec::id).toList());
         assertEquals(ClientOptionCatalog.PAGE_GENERAL, ClientOptionCatalog.pages().get(0).id(),
                 "the main LSS page comes first");
     }
@@ -136,34 +166,32 @@ class ClientOptionCatalogTest {
     }
 
     @Test
-    void enabledByNamesATickBoxOnTheSamePage() {
-        for (PageSpec p : ClientOptionCatalog.pages()) {
-            Set<String> ids = new HashSet<>();
-            p.options().forEach(o -> ids.add(o.id()));
-            for (OptionSpec o : p.options()) {
+    void enabledByNamesATickBoxOnTheSameOrAnEarlierPage() {
+        var pages = ClientOptionCatalog.pages();
+        for (int page = 0; page < pages.size(); page++) {
+            Set<String> available = new HashSet<>();
+            for (int earlier = 0; earlier <= page; earlier++)
+                pages.get(earlier).options().forEach(o -> available.add(o.id()));
+            for (OptionSpec o : pages.get(page).options()) {
                 if (o.enabledBy() == null) continue;
-                assertTrue(ids.contains(o.enabledBy()),
-                        o.id() + " depends on " + o.enabledBy() + " which is not on page " + p.id());
+                assertTrue(available.contains(o.enabledBy()), o.id() + ": dependency must be on this or an earlier page");
                 assertTrue(ClientOptionCatalog.find(o.enabledBy()).orElseThrow() instanceof OptionSpec.BoolSpec,
                         o.id() + ": enabledBy must name a tick box");
             }
         }
-        // The shipped shape: every main-page option except the master toggle hangs off it.
-        for (OptionSpec o : ClientOptionCatalog.pages().get(0).options()) {
-            if (o.id().equals(ClientOptionCatalog.ID_RECEIVE_SERVER_LODS)) continue;
-            assertEquals(ClientOptionCatalog.ID_RECEIVE_SERVER_LODS, o.enabledBy(), o.id());
+        // All General options follow the reception master, including DH fallback.
+        for (PageSpec page : pages.subList(0, 1)) {
+            for (OptionSpec o : page.options()) {
+                if (o.id().equals(ClientOptionCatalog.ID_RECEIVE_SERVER_LODS)) continue;
+                assertTrue(ClientOptionCatalog.enabledDependencies(o).contains(ClientOptionCatalog.ID_RECEIVE_SERVER_LODS), o.id());
+            }
         }
     }
 
     @Test
     void everyPageSavesOnlyADiskDraft() {
-        for (OptionSpec o : ClientOptionCatalog.pages().get(0).options()) {
-            assertEquals(SaveHook.SAVE, o.saveHook(), o.id());
-        }
-        for (OptionSpec o : ClientOptionCatalog.pages().get(1).options()) {
-            assertEquals(SaveHook.SAVE, o.saveHook(),
-                    o.id() + ": every page shares the disk-only transaction");
-        }
+        for (OptionSpec o : allOptions())
+            assertEquals(SaveHook.SAVE, o.saveHook(), o.id() + ": every page shares the disk-only transaction");
     }
 
     @Test
@@ -180,19 +208,19 @@ class ClientOptionCatalogTest {
     void theShippedShapeIsPinned() {
         // ids, in display order (the 0.8+ API keys per-option state by id — never renumber)
         assertEquals(List.of("lss:receive_server_lods", "lss:lod_distance", "lss:column_rate_limit",
-                        "lss:join_slow_start", "lss:xaero_map_bridge", "lss:far_players_enabled",
+                        "lss:join_slow_start", "lss:xaero_map_bridge", "lss:lod_source", "lss:far_players_enabled",
                         "lss:far_players_share_self", "lss:far_players_name_tags",
                         "lss:far_players_full_bright", "lss:far_players_render_distance"),
                 allOptions().stream().map(OptionSpec::id).toList());
         // group shape + titles
-        assertEquals(List.of(1, 1, 2, 1), ClientOptionCatalog.pages().get(0).groups().stream().map(g -> g.options().size()).toList());
+        assertEquals(List.of(1, 1, 2, 2), ClientOptionCatalog.pages().get(0).groups().stream().map(g -> g.options().size()).toList());
         assertEquals(List.of(5), ClientOptionCatalog.pages().get(1).groups().stream().map(g -> g.options().size()).toList());
         assertEquals("lss.config.page", ClientOptionCatalog.pages().get(0).titleKey());
         assertEquals("lss.config.far_players.page", ClientOptionCatalog.pages().get(1).titleKey());
         // impacts: HIGH on the master toggle, none on the LOD-distance slider, LOW elsewhere
         for (OptionSpec o : allOptions()) {
             Impact expected = switch (o.id()) {
-                case "lss:receive_server_lods" -> Impact.HIGH;
+                case "lss:receive_server_lods", "lss:lod_source" -> Impact.HIGH;
                 case "lss:lod_distance" -> null;
                 default -> Impact.LOW;
             };
@@ -240,6 +268,10 @@ class ClientOptionCatalogTest {
         var xaero = ClientOptionCatalog.find(ClientOptionCatalog.ID_XAERO_MAP_BRIDGE).orElseThrow();
         assertEquals("lss.config.xaero_map_bridge.tooltip", xaero.tooltip().resolve(new MenuContext(true, true, true)));
         assertEquals("lss.config.xaero_map_bridge.tooltip.not_installed", xaero.tooltip().resolve(new MenuContext(true, false, true)));
+        assertEquals("lss.config.xaero_map_bridge.tooltip.native_only", xaero.tooltip().resolve(new MenuContext(true, true, true, false)));
+        assertEquals("lss.config.xaero_map_bridge.tooltip.native_only", xaero.tooltip().resolve(new MenuContext(false, false, true, false)));
+        assertEquals("lss.config.join_slow_start.tooltip", slow.tooltip().resolve(new MenuContext(true, true, true, false)));
+        assertEquals(3, xaero.tooltip().keys().size());
         var fp = ClientOptionCatalog.find(ClientOptionCatalog.ID_FAR_PLAYERS_ENABLED).orElseThrow();
         assertEquals("lss.config.far_players_enabled.tooltip", fp.tooltip().resolve(new MenuContext(true, false, true)));
         assertEquals(2, slow.tooltip().keys().size());
@@ -257,6 +289,27 @@ class ClientOptionCatalogTest {
 
     private static List<OptionSpec> allOptions() {
         return ClientOptionCatalog.pages().stream().flatMap(p -> p.options().stream()).toList();
+    }
+
+    /** D-25: display-time resolution reads the current context for every context-dependent
+     *  tooltip and the registration context for fixed ones; both menu twins call it. */
+    @Test
+    void contextDependentTooltipsResolveAgainstTheCurrentContext() throws Exception {
+        var registered = new MenuContext(true, true, true, true);
+        var later = new MenuContext(false, true, true, false);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        for (var page : ClientOptionCatalog.pages()) for (var group : page.groups()) for (var option : group.options()) {
+            var tooltip = option.tooltip();
+            String shown = tooltip.resolveAtDisplay(registered, () -> { calls.incrementAndGet(); return later; });
+            assertEquals(tooltip.resolve(tooltip.resolvesAtDisplay() ? later : registered), shown, option.id());
+        }
+        assertTrue(calls.get() >= 2, "governor and native-only tooltips read the live context");
+        var xaero = ClientOptionCatalog.find(ClientOptionCatalog.ID_XAERO_MAP_BRIDGE).orElseThrow().tooltip();
+        assertTrue(xaero.resolvesAtDisplay());
+        assertEquals("lss.config.xaero_map_bridge.tooltip.native_only", xaero.resolveAtDisplay(registered, () -> later));
+        for (String twin : List.of("fabric/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
+                "neoforge/src/main/java/dev/vox/lss/config/LSSConfigMenu.java"))
+            assertTrue(Files.readString(locate(twin)).contains("resolveAtDisplay(ctx, MenuContext::current)"), twin);
     }
 
     static Path locate(String repoRelative) {

@@ -33,7 +33,7 @@ class ClientSettingsStatusTest {
                 ClientStatusSnapshot.Discovery.NEGOTIATED, ClientStatusSnapshot.Availability.DISABLED,
                 null, DiagnosticVersions.unknown(), accepted);
         String json = DiagnosticExport.clientJson(snapshot);
-        assertTrue(json.contains("\"schemaVersion\": 2"));
+        assertTrue(json.contains("\"schemaVersion\": 3"));
         assertTrue(json.contains("pendingReconnect"));
         assertFalse(json.contains("private.example")); assertFalse(json.contains("secret.example"));
         handle.endSession(connection);

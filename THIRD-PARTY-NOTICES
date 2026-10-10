@@ -9,6 +9,11 @@ META-INF/maven/org.xerial/sqlite-jdbc/LICENSE inside the private capsule
 dev/vox/lss/internal/jdbc/sqlite-jdbc.jar.bin (within nested common on Fabric).
 SQLite packages and JNI symbols remain unchanged; the capsule is not a loader mod.
 
+XZ for Java 1.10 (0BSD) is bundled with common and relocated privately to
+dev.vox.lss.internal.xz for the client-only Distant Horizons compatibility
+source. Its license is at META-INF/licenses/xz-java-0BSD.txt (inside Fabric's
+nested common jar, flattened on NeoForge). Paper jars do not contain XZ.
+
 ---------------------------------------------------------------------------
 zstd-jni — https://github.com/luben/zstd-jni
 ---------------------------------------------------------------------------
