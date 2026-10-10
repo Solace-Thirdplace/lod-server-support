@@ -33,8 +33,8 @@ no native LSS service. Native LSS always wins when advertised, including a disab
 native offer. Changing it needs a reconnect on Fabric and a game restart on NeoForge
 (the DH channel is registered at startup only when allowed). The protocol is automatic;
 there is no server-type selector. Official 16 and DH Support 15 are supported. An
-official 3.2.x (protocol 15) server is not used: `/lss diag` asks for a DH update and
-nothing reconnects. Reception still gates this checkbox before Apply; General and Far
+official 3.2.x (protocol 15) server is not used: it never answers the protocol-16 hello, so
+`/lss diag` shows "no DH reply" (older DH or networking off); nothing reconnects or is requested. Reception still gates this checkbox before Apply; General and Far
 Players share one save transaction. The DH keys are stored in
 `lss-client-experimental.yaml` beside the main client file.
 

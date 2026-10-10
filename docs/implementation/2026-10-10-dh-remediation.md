@@ -14,7 +14,7 @@ The user accepted the review's decision verdicts and chose:
 | Live updates (X-2) | **Keep, fix the fencing.** Timestamp fences are removed; ordering is arrival order on the one connection. |
 | DTO source cache (X-5) | **Replaced by timestamp receipts** (`DhReceiptStore`), checked against Voxy by a presence probe on rejoin. |
 | Packaging (X-6/X-7/X-8) | **Middle path.** DH channel registration gated on opt-in, the fringe pump has its own flag, Paper ships no DH/XZ code, the transfer mixin is deleted. No separate add-on mod. |
-| Official protocol 15 (X-4) | **Cut.** No forced reconnect. An official 3.2.x server is detected and reported (`OLD_DH_PROTOCOL`, "ask the admin to update to DH 3.3.x"). Supported: official 16 and DH Support 15. This is a feature cut on a best-effort line, recorded here as its dated decision. |
+| Official protocol 15 (X-4) | **Cut.** No forced reconnect. Supported: official 16 and DH Support 15. A live rig (2026-10-10) showed official 3.2.x sends nothing to a protocol-16 hello, so the client idles as "no DH reply" (which names 3.2.x as a likely cause) and sends nothing more; `OLD_DH_PROTOCOL` with a chat notice applies only when a server actually advertises protocol 15. This is a feature cut on a best-effort line, recorded here as its dated decision. |
 | DH outreach | Handled by the user. |
 
 Not done, deliberately:

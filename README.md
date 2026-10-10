@@ -33,7 +33,7 @@ For a Voxy player on an existing DH server, ask the admin to add LSS alongside D
 - Native LSS always wins. If the server offers LSS service (even disabled), the DH path stays idle.
 - Voxy is required, and the Distant Horizons *client* mod must not be installed.
 - Changing the option applies on reconnect on Fabric; on NeoForge restart the game (the network channel is registered at startup only when the option is on).
-- Supported servers: official DH 3.3.x (protocol 16) and DH Support 15. Older official DH (3.2.x) is detected and reported in `/lss diag` with a request to update; it is not used.
+- Supported servers: official DH 3.3.x (protocol 16) and DH Support 15. Older official DH (3.2.x) does not answer this client; `/lss diag` then shows "no DH reply" (the server may run DH 3.2.x or have DH networking off) and nothing further is sent.
 - DH sends a block-resolution approximation. It can overwrite more detailed Voxy terrain you built up nearby with vanilla, except chunks your client loaded with vanilla during the current connection.
 - Sync on load and live updates follow the server's settings and `lod.dh.sync_on_load` / `lod.dh.real_time_updates`. An edit missed while you are far away or the client is busy appears when that terrain comes back into view after the 20-minute load interval, after `/lss reset`, or on rejoin.
 - With sync on load available, the client keeps small per-server timestamp receipts, so an unchanged rejoin downloads nothing. Without it (sync turned off on the server or in `lod.dh.sync_on_load`), terrain is downloaded again on each connection. `/lss reset` clears receipts.
