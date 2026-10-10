@@ -18,6 +18,7 @@
   "client": [
     "IntegratedServerLanHook",
     "AccessorClientPacketListener",
+    "AccessorScreenWidgets",
     "AccessorLivingEntity",
     "AccessorBiomeManager",
     "SodiumDraftHook"

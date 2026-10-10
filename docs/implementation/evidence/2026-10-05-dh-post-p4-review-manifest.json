@@ -1,0 +1,694 @@
+{
+  "prepared_utc": "2026-10-05T19:35:35.407198+00:00",
+  "implementation_checkout": "/home/vox/projects/voxel-server-support/.worktrees/dh-client-p1",
+  "baseline": "/tmp/lss-dh-p4-claude-build.3iqSY2",
+  "baseline_description": "Independent Claude P4 review build copy; nine frozen P4 scope hashes and all fifteen subsequent fix-before hashes verified",
+  "baseline_scope_manifest_sha256": "98c07ebbd4466653f71ef63974577ddabe9a0908d076cc375531d77c9aea537c",
+  "baseline_fixes_manifest_sha256": "6998a6c873c1d1440c8ef494d0d27f6da15b110173dd76caf06d76a4e2b3c20d",
+  "current_build_snapshot": "/tmp/lss-dh-voxy-cache-20261005",
+  "scope": "All differing current repository-owned files discovered by git ls-files --cached --others --exclude-standard versus the last-review build copy. Runtime/build/ignored files excluded. Preparation outputs excluded. Current git status contains no tracked deletions. Historical evidence and baseline review report are inventoried but omitted from unified diff; binary inputs use hash summaries.",
+  "build_version": "0.16.0-dh-voxycache.dev20261005",
+  "production_input_manifest": {
+    "path": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/voxy-cache-reuse/source-manifest.json",
+    "sha256": "2d7aef35606697f3ba94819108c5793b21a1a4c0af3c88462ce18387660c0e83",
+    "entries": 377,
+    "all_current_hashes_match": true
+  },
+  "curated_test_fixture_manifest": {
+    "path": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/voxy-cache-reuse/test-source-manifest.json",
+    "sha256": "676e3af975da2047f067abb71f551f97cec43ef5207bd679dabc1a2e41c4cc67",
+    "entries": 72,
+    "all_current_hashes_match": true,
+    "coverage_note": "This is the existing curated manifest, not every repository test. All changed unit tests, including DhColumnConverterTest absent from that curated list, are independently hashed and matched to the final build snapshot below."
+  },
+  "counts": {
+    "production": 10,
+    "unit-test": 6,
+    "producer-corpus": 19,
+    "documentation": 11,
+    "baseline-review-reference": 1,
+    "historical-evidence": 6,
+    "private-fixture": 22
+  },
+  "diff_file": "docs/implementation/evidence/2026-10-05-dh-post-p4-review.diff",
+  "diff_sha256": "2077f5e6f32b62d84076c5d446c85863bb4d2c78b3fc48c830e0d0a6f4456502",
+  "files": [
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "227d78ec6832fc4e3ea617c43e74ae54066f2bd8cd9997d9df31ba46bf0eaa56",
+      "after_sha256": "68ffbb0b573e22ae01ca0730531bfbde17b57a8651b383e8b8e8e867efa8acf8",
+      "after_bytes": 8966,
+      "latest_build_snapshot_sha256": "68ffbb0b573e22ae01ca0730531bfbde17b57a8651b383e8b8e8e867efa8acf8"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "b3bc354946c0b71ff1aa46cad5b037919b87b42a16785c07cfb4848ecec1b6d7",
+      "after_sha256": "3c14c85b70e495ef3b803cf63f9494ee6d60ea9e6230c3bad77f46559c228d1c",
+      "after_bytes": 7182,
+      "latest_build_snapshot_sha256": "3c14c85b70e495ef3b803cf63f9494ee6d60ea9e6230c3bad77f46559c228d1c"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhTerrainCache.java",
+      "category": "production",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "5902ec1b1cfb64ddfcad541941ad35da4f5d112cac5ddfadf8689cb931978e54",
+      "after_bytes": 11448,
+      "latest_build_snapshot_sha256": "5902ec1b1cfb64ddfcad541941ad35da4f5d112cac5ddfadf8689cb931978e54"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhTerrainDecoder.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "4a9fd6a12bcb5ddee88ff7a2a9ed1baa68c7cb75e3b74cba9fa5b30d5826cd46",
+      "after_sha256": "575bce752e577ad5cc8431663e6e156ef163e06f20097c6c074193bedc49ccb6",
+      "after_bytes": 17847,
+      "latest_build_snapshot_sha256": "575bce752e577ad5cc8431663e6e156ef163e06f20097c6c074193bedc49ccb6"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "dc23e2c46562ace4931de90e02cd5c23c838de1fdc72bfc7b6edde658a60cdc1",
+      "after_sha256": "338488ca2b5ab9159313236413070e4f7f7b6409619f7c96db346cbffab66a6c",
+      "after_bytes": 13334,
+      "latest_build_snapshot_sha256": "338488ca2b5ab9159313236413070e4f7f7b6409619f7c96db346cbffab66a6c"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhTerrainCacheTest.java",
+      "category": "unit-test",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "ccd13615dbc82035c8e835d0523375b6ea93ad3bbe55a6c29f4a23f4bbaaf476",
+      "after_bytes": 7294,
+      "latest_build_snapshot_sha256": "ccd13615dbc82035c8e835d0523375b6ea93ad3bbe55a6c29f4a23f4bbaaf476"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhTerrainDecoderTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "0c316532b3f71beed6b7de68d33863d5f4965dea9978660c9434fed8e1012cfd",
+      "after_sha256": "26041ecc234feb436734984e9ddba361e1ccd2ea92ca86fd02ce850053e272de",
+      "after_bytes": 29318,
+      "latest_build_snapshot_sha256": "26041ecc234feb436734984e9ddba361e1ccd2ea92ca86fd02ce850053e272de"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-neoforge/README.md",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "4fba0231ae839c066a175092c9434ba270b8a070779036b309ff7208b00cb363",
+      "after_bytes": 764,
+      "latest_build_snapshot_sha256": "4fba0231ae839c066a175092c9434ba270b8a070779036b309ff7208b00cb363"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-neoforge/capture.json",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "f8febea9d81743239f2168b381db2c99f0cd969a9802db543ec19a0d14dc3105",
+      "after_bytes": 2979,
+      "latest_build_snapshot_sha256": "f8febea9d81743239f2168b381db2c99f0cd969a9802db543ec19a0d14dc3105"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-neoforge/received-0004.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "142c1d60f3a3dd3d94811e555c0d4b758e3535039512dcbb0cea2ef4bcac5503",
+      "after_bytes": 25014,
+      "latest_build_snapshot_sha256": "142c1d60f3a3dd3d94811e555c0d4b758e3535039512dcbb0cea2ef4bcac5503"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-neoforge/received-0005.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "99ea93e44e41b4eeb84076a548995d8d240f3c6310efc10e81a18add17bb1d3f",
+      "after_bytes": 24762,
+      "latest_build_snapshot_sha256": "99ea93e44e41b4eeb84076a548995d8d240f3c6310efc10e81a18add17bb1d3f"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-neoforge/received-0006.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "c330a807cf8f892110d59f8ede75322de42e5902b1a4f4981ddd4565d3cc458b",
+      "after_bytes": 17,
+      "latest_build_snapshot_sha256": "c330a807cf8f892110d59f8ede75322de42e5902b1a4f4981ddd4565d3cc458b"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/README.md",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "a7d1b62372584a1ffa27a8d8bb5376ff1f6e351baff5db9720d324205ff7bc3b",
+      "after_bytes": 866,
+      "latest_build_snapshot_sha256": "a7d1b62372584a1ffa27a8d8bb5376ff1f6e351baff5db9720d324205ff7bc3b"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/capture.json",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "953f617a3151015cc056f97648fb028209fdd6107726c13f7e27ab5eb9f5130b",
+      "after_bytes": 3507,
+      "latest_build_snapshot_sha256": "953f617a3151015cc056f97648fb028209fdd6107726c13f7e27ab5eb9f5130b"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/normalized.properties",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "fe7669afbc5eadbc51062ae132f9a9f9d67570e73b2de5f012f32b885b027c92",
+      "after_bytes": 160,
+      "latest_build_snapshot_sha256": "fe7669afbc5eadbc51062ae132f9a9f9d67570e73b2de5f012f32b885b027c92"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0001-request.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "d3bf39e1af181157370aec2003d7165874015f0686b16f6815c64ecb7500d28c",
+      "after_bytes": 42,
+      "latest_build_snapshot_sha256": "d3bf39e1af181157370aec2003d7165874015f0686b16f6815c64ecb7500d28c"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0002-split.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "c2f16c6551114a50c317ef433f56549e9b221b6643a3603230a2743804247b5f",
+      "after_bytes": 518,
+      "latest_build_snapshot_sha256": "c2f16c6551114a50c317ef433f56549e9b221b6643a3603230a2743804247b5f"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0003-response.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "943b3eb4569e433ced0008116ea0acd1a163776e2f1cbfbf95567f51d3aead49",
+      "after_bytes": 17,
+      "latest_build_snapshot_sha256": "943b3eb4569e433ced0008116ea0acd1a163776e2f1cbfbf95567f51d3aead49"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0004-request.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "8a81356e74defbef5d6d35582d9d63e5e828ea80a57c0d0621bc7421269a441d",
+      "after_bytes": 42,
+      "latest_build_snapshot_sha256": "8a81356e74defbef5d6d35582d9d63e5e828ea80a57c0d0621bc7421269a441d"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0005-response.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "8c3d90c7430e2697f9a540a49a774f9ef7f290e11b4516983c252187e8237da4",
+      "after_bytes": 9,
+      "latest_build_snapshot_sha256": "8c3d90c7430e2697f9a540a49a774f9ef7f290e11b4516983c252187e8237da4"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0006-request.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "08c29fbd66093264bb83e21b4eb53d6cca6d0eec64c7ac84f45fa277b3935dee",
+      "after_bytes": 42,
+      "latest_build_snapshot_sha256": "08c29fbd66093264bb83e21b4eb53d6cca6d0eec64c7ac84f45fa277b3935dee"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0007-split.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "9d7ba9df9d2abb79010ddfcab9e35c464cc5d61634b29e6b7ea022e0f1ad2356",
+      "after_bytes": 484,
+      "latest_build_snapshot_sha256": "9d7ba9df9d2abb79010ddfcab9e35c464cc5d61634b29e6b7ea022e0f1ad2356"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-content/target-0008-response.bin",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "e84d79115e59ffff30857cfd94d8eb1670bbe53472cb3db19b429f463b9d2d5f",
+      "after_bytes": 17,
+      "latest_build_snapshot_sha256": "e84d79115e59ffff30857cfd94d8eb1670bbe53472cb3db19b429f463b9d2d5f"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-ocean/README.md",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "aae231c34d9434ee3f7e414602c510d42b8edfedeb4a792f96c52cc9efe9ea77",
+      "after_bytes": 1211,
+      "latest_build_snapshot_sha256": "aae231c34d9434ee3f7e414602c510d42b8edfedeb4a792f96c52cc9efe9ea77"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-ocean/database-tile.dto",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "0420b6a95cccf2635709c4c4114616808403a6f0b3bb14900caf0f46ba4b98c5",
+      "after_bytes": 51367,
+      "latest_build_snapshot_sha256": "0420b6a95cccf2635709c4c4114616808403a6f0b3bb14900caf0f46ba4b98c5"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-official-3.3.3-neoforge-ocean/provenance.json",
+      "category": "producer-corpus",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "f670711ccba35797c0a5145ea1bc0dc91b5aa468f6c3cfc864add037ee8965f6",
+      "after_bytes": 731,
+      "latest_build_snapshot_sha256": "f670711ccba35797c0a5145ea1bc0dc91b5aa468f6c3cfc864add037ee8965f6"
+    },
+    {
+      "path": "docs/implementation/2026-09-30-dh-codec-p1.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "50d5e9fcc4ef3c73896aad299b9dfebebfbdb56205ce543944621f872ec64216",
+      "after_sha256": "ad57e4c7448703349091eb4859260be63ac46dc449007257dc9055e8dfb0826a",
+      "after_bytes": 7556
+    },
+    {
+      "path": "docs/implementation/2026-10-01-dh-p4-content-validation.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "c8c301bad1ad4e351bb8926c6d5198eef15987927fe70a7ab2187b43d47c948a",
+      "after_sha256": "a734567b2c285fef368f67e2ab7bbff05fe4755d3a9ca04a66d268e1c6a7a7c4",
+      "after_bytes": 8429
+    },
+    {
+      "path": "docs/implementation/2026-10-02-dh-p4-claude-review-briefing.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "a61507af19272568a0146f78def4189b4780d8352ea6531ebcf77133313d6c53",
+      "after_sha256": "958e914f504133d6f0a9649e80512943c735483124a953ac8355895462fc932e",
+      "after_bytes": 14677
+    },
+    {
+      "path": "docs/implementation/2026-10-02-dh-p4-claude-review.md",
+      "category": "baseline-review-reference",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "0b305cf1b7c5cfd81b6a6ee298ebc4f8f7e0f31b5583189c8640f08e4f24ae53",
+      "after_bytes": 23983
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-manual-test-guide.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "71968fb29a25f09c808bdf384e9352347a6399d7da3ff8bcb109bbd69c707213",
+      "after_bytes": 7266
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-ocean-lighting.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "c0a90b1732230d05dcb73fb5f6737dba64a15f60e259b8e44524990e582a27dd",
+      "after_bytes": 4703
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-p2-p4-continuation.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "3cebdfa12cfa53d27698d52418ec69c2473c0bfba093ec183ea22ecffe01adf6",
+      "after_bytes": 11082
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-p4-review-disposition.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "c858ea2d2a3ad9787b8c944952d664cff4765633596e23daf2221a1ff6de76eb",
+      "after_bytes": 15260
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-rejoin-cache.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "a15c8b3a9ee3ed6e112f559b677a15cef661a281525ec30be0f84b9ce1cbf359",
+      "after_bytes": 6564
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-voxy-cache-reuse.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "b7c8fcd03d2c2a09d12532d6e596ccf155075dd500d078ac840715f4b2e2020d",
+      "after_bytes": 5520
+    },
+    {
+      "path": "docs/implementation/2026-10-05-dh-voxy-commit-gap.md",
+      "category": "documentation",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "ecc5570c66808a103f96e4beb77b63a0deeb999fbe2a6ded36fc9cd1d2e4961e",
+      "after_bytes": 4077
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-05-dh-ocean-lighting-checkpoint.json",
+      "category": "historical-evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "b4688ad8237a9cda2e72ba9d08235bb85dede039d2f1e8723dc8786fa031639b",
+      "after_bytes": 3748
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-05-dh-p2-p4-checkpoint.json",
+      "category": "historical-evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "bfee736f906438b7dd32f77e232988dc529f118d38c0259f0bb24c211839f4b1",
+      "after_bytes": 10657
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-05-dh-p4-review-fixes.diff",
+      "category": "historical-evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "e1adaa2f3a85e8aa9e52d925ea4d59e47ada013073b4d237b4902cac325fba97",
+      "after_bytes": 73461
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-05-dh-p4-review-fixes.json",
+      "category": "historical-evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "6998a6c873c1d1440c8ef494d0d27f6da15b110173dd76caf06d76a4e2b3c20d",
+      "after_bytes": 3973
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-05-dh-rejoin-cache-checkpoint.json",
+      "category": "historical-evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "f5538872cfd25b83ae7e22f6c758a0c2b587ea274d3e234d5ef7dcff808a672d",
+      "after_bytes": 9920
+    },
+    {
+      "path": "docs/implementation/evidence/2026-10-05-dh-voxy-cache-reuse-checkpoint.json",
+      "category": "historical-evidence",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "f288ab897c02a8b0837d0d505c4ffad8bfba98efae5e90583ba1d0b0255b6467",
+      "after_bytes": 2593
+    },
+    {
+      "path": "docs/planning/2026-09-29-dh-client-compatibility-plan.md",
+      "category": "documentation",
+      "change": "modified",
+      "before_sha256": "3d0fd15dba59aaa5fe304fdf205d87560b170f817d0f1c3a5ce5d36333e125ec",
+      "after_sha256": "353684673657a2863a5b1620e31747f31251b302eea6ee9b5e1f73a295c02905",
+      "after_bytes": 83680
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/compat/VoxyTerrainCacheTest.java",
+      "category": "unit-test",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "13c11b647f921793f4984f440346fd5b665acd475a7444196a2a3716a4555c13",
+      "after_bytes": 4889,
+      "latest_build_snapshot_sha256": "13c11b647f921793f4984f440346fd5b665acd475a7444196a2a3716a4555c13"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "ccb1080637ed4f976e6597ab73f7bf7828649c20f6f8e2880b288bf8e0631204",
+      "after_sha256": "c898d8743c9e4a7258d0d570748461167df153641c1a706cc0c11de672eaaec7",
+      "after_bytes": 61889,
+      "latest_build_snapshot_sha256": "c898d8743c9e4a7258d0d570748461167df153641c1a706cc0c11de672eaaec7"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java",
+      "category": "unit-test",
+      "change": "modified",
+      "before_sha256": "41132bd46bba3ca0d7d779b7620ea0928269c6f41f88d64f3f605b0f2cae4325",
+      "after_sha256": "ac945a6bb1366efb047f9e88d8b43d25c99605a3001bae78dcccac9a2e30b044",
+      "after_bytes": 21763,
+      "latest_build_snapshot_sha256": "ac945a6bb1366efb047f9e88d8b43d25c99605a3001bae78dcccac9a2e30b044"
+    },
+    {
+      "path": "test-fixtures/dh-live/README.md",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "c4a03d1eec0b1399fdf15d426481dae677714db54a35839b86b14405cdee4880",
+      "after_sha256": "6add79dde8fff31bf5879cc40c9e2ec1aca0bd310702014740770e65a3fff2d7",
+      "after_bytes": 10591,
+      "latest_build_snapshot_sha256": "6add79dde8fff31bf5879cc40c9e2ec1aca0bd310702014740770e65a3fff2d7"
+    },
+    {
+      "path": "test-fixtures/dh-live/build.py",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "1359b240064e5ff2e79a145ec45832ee8aa06f58a0119e55aac0b4c7e6f66379",
+      "after_sha256": "f0933a15179bd7788f66030606dbc9209986b1ba202d3e2a3499a5fba7cc67f2",
+      "after_bytes": 4129,
+      "latest_build_snapshot_sha256": "f0933a15179bd7788f66030606dbc9209986b1ba202d3e2a3499a5fba7cc67f2"
+    },
+    {
+      "path": "test-fixtures/dh-live/classpath.gradle",
+      "category": "private-fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "21ea0ba4636d1d0dc4b6e27d8904d4c1551e6d256938d5918fce7a01a4b72f4c",
+      "after_bytes": 512,
+      "latest_build_snapshot_sha256": "21ea0ba4636d1d0dc4b6e27d8904d4c1551e6d256938d5918fce7a01a4b72f4c"
+    },
+    {
+      "path": "test-fixtures/dh-live/exercise.py",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "b93607d037c1d16925da30533222f6b7151b11674edf5608a2ab0c7ae26ccb27",
+      "after_sha256": "8b53bf6218ab59e00fb0f60f0d34c000f7f9c17ab1b8331631b06ccf0ecb3e46",
+      "after_bytes": 4136,
+      "latest_build_snapshot_sha256": "8b53bf6218ab59e00fb0f60f0d34c000f7f9c17ab1b8331631b06ccf0ecb3e46"
+    },
+    {
+      "path": "test-fixtures/dh-live/fixture-tests.gradle",
+      "category": "private-fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "7a3b9d2f309e2364f6b0249be61c8672a8f675139180cc704a1e619e1febcb68",
+      "after_bytes": 353,
+      "latest_build_snapshot_sha256": "7a3b9d2f309e2364f6b0249be61c8672a8f675139180cc704a1e619e1febcb68"
+    },
+    {
+      "path": "test-fixtures/dh-live/prepare.py",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "9cf91f9f7db230d563a7e2eb1fd7f5b3bbc24398d4988a8c11769eac9086ca00",
+      "after_sha256": "22d927d3cefb6a4012c276ab3b1822d0a2c6b4a0996212c528d4647861dc7011",
+      "after_bytes": 10437,
+      "latest_build_snapshot_sha256": "22d927d3cefb6a4012c276ab3b1822d0a2c6b4a0996212c528d4647861dc7011"
+    },
+    {
+      "path": "test-fixtures/dh-live/resources/lss-dh-fixture.mixins.json",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "4c316b72bba0a3216a053995a59009736dc23d354a24a8beb4a3215abcb0b1c7",
+      "after_sha256": "eabca34b2b062a58d3dfde6bf576fad61a3c3907c1217cd7d596178c995ca64a",
+      "after_bytes": 348,
+      "latest_build_snapshot_sha256": "eabca34b2b062a58d3dfde6bf576fad61a3c3907c1217cd7d596178c995ca64a"
+    },
+    {
+      "path": "test-fixtures/dh-live/run.py",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "ab36cfc472ae60c46e34f036b2198f4c1a56857205b86597135dafdda6a665ab",
+      "after_sha256": "95441a0de312476465ef8e039656c58cfc4cd35093dd16ed7b7fe45c004789e7",
+      "after_bytes": 10248,
+      "latest_build_snapshot_sha256": "95441a0de312476465ef8e039656c58cfc4cd35093dd16ed7b7fe45c004789e7"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "537ba37d57a02efac117efbe72cd59b5c085c5588b5faf90e8a1a1e93663b844",
+      "after_sha256": "2d71a0b2f12bc7cf11867f4e3774410425b067c7afcae1abfa9ad7b2ea7e3460",
+      "after_bytes": 23135,
+      "latest_build_snapshot_sha256": "2d71a0b2f12bc7cf11867f4e3774410425b067c7afcae1abfa9ad7b2ea7e3460"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/DhCacheProbe.java",
+      "category": "private-fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "bfe7d55beddca2d36d405277521bc5a0abfeb010e97637d4f88774b4a20134fa",
+      "after_bytes": 1540,
+      "latest_build_snapshot_sha256": "bfe7d55beddca2d36d405277521bc5a0abfeb010e97637d4f88774b4a20134fa"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/FixtureMixinPlugin.java",
+      "category": "private-fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "18311929947f845bad0835da463513bb607cef7fb845c76cab1ca2f622e8a30e",
+      "after_bytes": 987,
+      "latest_build_snapshot_sha256": "18311929947f845bad0835da463513bb607cef7fb845c76cab1ca2f622e8a30e"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/OceanLightProbe.java",
+      "category": "private-fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "04fec8687c0904a295a42e6c829beaefd47ecaefc16d69e396613952a5f641a5",
+      "after_bytes": 5857,
+      "latest_build_snapshot_sha256": "04fec8687c0904a295a42e6c829beaefd47ecaefc16d69e396613952a5f641a5"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "ff56f7569457bd227799c392c9b81fa62d0df359c872db14389b1395a780c60a",
+      "after_sha256": "65144aae8f30565ab52f2a58817618cb44e7d441ee7c313c0b117b35631decf6",
+      "after_bytes": 35285,
+      "latest_build_snapshot_sha256": "65144aae8f30565ab52f2a58817618cb44e7d441ee7c313c0b117b35631decf6"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/RaceProbe.java",
+      "category": "private-fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "1aaa0ff237d8c82564a3fe1aab02a66af87b91ba000ad15fa93022133e9938b9",
+      "after_bytes": 7564,
+      "latest_build_snapshot_sha256": "1aaa0ff237d8c82564a3fe1aab02a66af87b91ba000ad15fa93022133e9938b9"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/RejoinProbe.java",
+      "category": "private-fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "126a8299beabbdc0fa3df0889390eef82f4e77d4412575e1544e7f048f53e06b",
+      "after_bytes": 14508,
+      "latest_build_snapshot_sha256": "126a8299beabbdc0fa3df0889390eef82f4e77d4412575e1544e7f048f53e06b"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ServiceProbe.java",
+      "category": "private-fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "eb22a2a45bfb7e8422d8b0d822bc661b836e6178204e2afe8a862d5be2571cfd",
+      "after_bytes": 3761,
+      "latest_build_snapshot_sha256": "eb22a2a45bfb7e8422d8b0d822bc661b836e6178204e2afe8a862d5be2571cfd"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/ConverterMixin.java",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "173f454b601931c2fc5883cb3db5bdeabbec12b115e13359972134c45425d346",
+      "after_sha256": "c5c437c5423261b55ecbd50a5246d2e96af1fed16ebbf2b589714e2d5a22560e",
+      "after_bytes": 982,
+      "latest_build_snapshot_sha256": "c5c437c5423261b55ecbd50a5246d2e96af1fed16ebbf2b589714e2d5a22560e"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/ReceiveMixin.java",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "a37d4181934eb361d7ba4d179bcc25395b686e7e5914a7a5c534708e3fccc79a",
+      "after_sha256": "ce1a31c4092d3c932ea0a59f3717844b75b90838850fe463f34fb5efde732569",
+      "after_bytes": 1002,
+      "latest_build_snapshot_sha256": "ce1a31c4092d3c932ea0a59f3717844b75b90838850fe463f34fb5efde732569"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/SendMixin.java",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "33a587016966687afb19838e5938651fd391bd41852d71a2f42b77be45f30a0d",
+      "after_sha256": "308a55df99c08f3aa36fdd2e20945125587068ff17534b62044380bb93aaa3c1",
+      "after_bytes": 580,
+      "latest_build_snapshot_sha256": "308a55df99c08f3aa36fdd2e20945125587068ff17534b62044380bb93aaa3c1"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/TickMixin.java",
+      "category": "private-fixture",
+      "change": "modified",
+      "before_sha256": "fa928b77b6ccf0748654fa820631e32f12804f05258192fd239a783889d6656f",
+      "after_sha256": "b05523d8e84247eadb7a593b6e40d7216856f4cf62071e278e4413feef157200",
+      "after_bytes": 507,
+      "latest_build_snapshot_sha256": "b05523d8e84247eadb7a593b6e40d7216856f4cf62071e278e4413feef157200"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/VoxyIngestRaceMixin.java",
+      "category": "private-fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "8e90b7ac2e357457ce8f2969d02fddb5467c61a29398b0c9733bae45dfd46ee6",
+      "after_bytes": 1733,
+      "latest_build_snapshot_sha256": "8e90b7ac2e357457ce8f2969d02fddb5467c61a29398b0c9733bae45dfd46ee6"
+    },
+    {
+      "path": "test-fixtures/dh-live/tests/dev/vox/lssfixture/dh/ContentProbeTest.java",
+      "category": "private-fixture",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "d164511867e009d7690389610407b27e47108e1b6a6d49850f63fbe31eb01207",
+      "after_bytes": 3836,
+      "latest_build_snapshot_sha256": "d164511867e009d7690389610407b27e47108e1b6a6d49850f63fbe31eb01207"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/DhVoxyBridge.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "5970ba10ba78ecc3918c21c6e98d1a5e3ce66f6385803391bbc1f88305b4d2eb",
+      "after_sha256": "79ed30b16783e49c03ace49e3a12148ee04740360f789718c346349511b79acc",
+      "after_bytes": 846,
+      "latest_build_snapshot_sha256": "79ed30b16783e49c03ace49e3a12148ee04740360f789718c346349511b79acc"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/VoxyTerrainCache.java",
+      "category": "production",
+      "change": "added",
+      "before_sha256": null,
+      "after_sha256": "e147aeda38f284ab953f4553d3da88f26896176f17f7f1050b2bc595cb0043b5",
+      "after_bytes": 6027,
+      "latest_build_snapshot_sha256": "e147aeda38f284ab953f4553d3da88f26896176f17f7f1050b2bc595cb0043b5"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "31b1ed2cac1b35ce4854292f7679e430069390c01c6309ff929e5c84d101f30a",
+      "after_sha256": "33a6c69cf44c227a4422d9588aa357cff009a9f9b75e9dc32cffdf9c0d04a15c",
+      "after_bytes": 19146,
+      "latest_build_snapshot_sha256": "33a6c69cf44c227a4422d9588aa357cff009a9f9b75e9dc32cffdf9c0d04a15c"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ColumnCacheStore.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "b4836a4cd90bb4251dd779f615b005d238a077704475b25cea38ed534f584c47",
+      "after_sha256": "fe31446188963c1ef8dc54ca876801506b0ceb9053bfde7d79ae2bb4d1b08372",
+      "after_bytes": 36909,
+      "latest_build_snapshot_sha256": "fe31446188963c1ef8dc54ca876801506b0ceb9053bfde7d79ae2bb4d1b08372"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "e791156fdd6a178601260fc7be51bdf2e74a5abd858f13fa74e09848827292ad",
+      "after_sha256": "405df4f50c5480df059c9c0ff10b493fc3147c1dec33084aca39fb2e7fa15c6a",
+      "after_bytes": 40812,
+      "latest_build_snapshot_sha256": "405df4f50c5480df059c9c0ff10b493fc3147c1dec33084aca39fb2e7fa15c6a"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/DhColumnConverter.java",
+      "category": "production",
+      "change": "modified",
+      "before_sha256": "33afa2cfd2bb702d9b37f91d52c51b571a65053a885f75a51ebe95e21e893bbe",
+      "after_sha256": "cded75152860c6e80d60d7edcbf69cd90aab5c6cb2e3b159686a0ab164d8cc81",
+      "after_bytes": 6168,
+      "latest_build_snapshot_sha256": "cded75152860c6e80d60d7edcbf69cd90aab5c6cb2e3b159686a0ab164d8cc81"
+    }
+  ]
+}

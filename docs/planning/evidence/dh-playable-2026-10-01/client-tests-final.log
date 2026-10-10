@@ -1,0 +1,261 @@
+Note: /home/vox/projects/voxel-server-support/.worktrees/dh-client-p1/fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Created settings /tmp/dh-client-unit-12290296767892821480/lss-client-config.yaml
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 16) server — using v16 backward-compat wire (load-only: already-generated terrain)
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 16) server — using v16 backward-compat wire (load-only: already-generated terrain)
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 16) server — using v16 backward-compat wire (load-only: already-generated terrain)
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Establishing protocol 16 after the discovery ladder had advanced to v20 (slow echo) — re-announcing v16 so the server sheds the ladder's dialect mark before any column is served.
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 16) server — using v16 backward-compat wire (load-only: already-generated terrain)
+[00:11:39] [main/INFO]: Server session config received (protocol v19, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 19) server — native section bodies at the current frame layout (C3 ladder rung 19)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: false)
+[00:11:39] [main/INFO]: LSS disabled by the server mid-session — LOD session retired (cache saved); it re-arms automatically if the server re-enables this session.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: false)
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/WARN]: Server has incompatible LSS protocol version 16 (client: 20), LOD distribution disabled
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: LOD transfer governor engaged at 272 KB/s (link congestion: ping +1946 ms over baseline; LOD downloads now pace themselves below link capacity; logged once per session)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: false)
+[00:11:39] [main/INFO]: LSS disabled by the server mid-session — LOD session retired (cache saved); it re-arms automatically if the server re-enables this session.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v21, LOD distance: 0 chunks, enabled: false)
+[00:11:39] [main/WARN]: Server has incompatible LSS protocol version 21 (client: 20), LOD distribution disabled
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: LOD transfer governor engaged at 272 KB/s (link congestion: ping +1946 ms over baseline; LOD downloads now pace themselves below link capacity; logged once per session)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: false)
+[00:11:39] [main/INFO]: LSS disabled by the server mid-session — LOD session retired (cache saved); it re-arms automatically if the server re-enables this session.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v21, LOD distance: 0 chunks, enabled: false)
+[00:11:39] [main/WARN]: Server has incompatible LSS protocol version 21 (client: 20), LOD distribution disabled
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v19, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 19) server — native section bodies at the current frame layout (C3 ladder rung 19)
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Late protocol-16 session config on an established v19 session (a raced discovery reply, or a server plugin reload prompting us to re-attach) — re-announcing v19.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Establishing protocol 20 after the discovery ladder had advanced to v19 (slow echo) — re-announcing v20 so the server sheds the ladder's dialect mark before any column is served.
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Late protocol-16 session config on an established v20 session (a raced discovery reply, or a server plugin reload prompting us to re-attach) — re-announcing v20.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Establishing protocol 16 after the discovery ladder had advanced to v20 (slow echo) — re-announcing v16 so the server sheds the ladder's dialect mark before any column is served.
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 16) server — using v16 backward-compat wire (load-only: already-generated terrain)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v19, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/WARN]: Server has incompatible LSS protocol version 19 (client: 20), LOD distribution disabled
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 0 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: LOD transfer governor engaged at 272 KB/s (link congestion: ping +1946 ms over baseline; LOD downloads now pace themselves below link capacity; logged once per session)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v19, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Establishing protocol 19 after the discovery ladder had advanced to v16 (slow echo) — re-announcing v19 so the server sheds the ladder's dialect mark before any column is served.
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 19) server — native section bodies at the current frame layout (C3 ladder rung 19)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Establishing protocol 20 after the discovery ladder had advanced to v19 (slow echo) — re-announcing v20 so the server sheds the ladder's dialect mark before any column is served.
+[00:11:39] [main/INFO]: Server session config received (protocol v19, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Late protocol-19 session config on an established v20 session (a raced discovery reply, or a server plugin reload prompting us to re-attach) — re-announcing v20.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: false)
+[00:11:39] [main/INFO]: Late protocol-16 session config on an established v20 session (a raced discovery reply, or a server plugin reload prompting us to re-attach) — re-announcing v20.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Establishing protocol 20 after the discovery ladder had advanced to v16 (slow echo) — re-announcing v20 so the server sheds the ladder's dialect mark before any column is served.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 2147483647 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/ERROR]: Failed to send backpressure clear batch (1 send failure(s) since the last report; retried next halted tick)
+java.lang.IllegalStateException: temporarily unavailable
+	at dev.vox.lss.networking.client.ClientSessionGateTest.lambda$withheldWithdrawalRetriesOnlyWhileOff$3(ClientSessionGateTest.java:205) ~[client-tests/:?]
+	at dev.vox.lss.networking.client.LodRequestManager.sendClearBatch(LodRequestManager.java:541) ~[main/:?]
+	at dev.vox.lss.networking.client.LodRequestManager.withdrawWants(LodRequestManager.java:536) ~[main/:?]
+	at dev.vox.lss.networking.client.ClientSessionGate.reconcileReception(ClientSessionGate.java:147) ~[client-classes/:?]
+	at dev.vox.lss.networking.client.ClientSessionGateTest.withheldWithdrawalRetriesOnlyWhileOff(ClientSessionGateTest.java:207) ~[client-tests/:?]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[?:?]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[?:?]
+	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:767) ~[junit-platform-commons-1.11.4.jar:1.11.4]
+	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$8(TestMethodTestDescriptor.java:217) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:213) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:138) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:68) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:156) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596) ~[?:?]
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596) ~[?:?]
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:198) ~[junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:169) ~[junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:93) ~[junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:58) ~[junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:141) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:57) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:103) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:85) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:47) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.SessionPerRequestLauncher.execute(SessionPerRequestLauncher.java:63) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at RunClientTests.main(RunClientTests.java:18) [client-tests/:?]
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Establishing protocol 16 after the discovery ladder had advanced to v20 (slow echo) — re-announcing v16 so the server sheds the ladder's dialect mark before any column is served.
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 16) server — using v16 backward-compat wire (load-only: already-generated terrain)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Establishing protocol 20 after the discovery ladder had advanced to v16 (slow echo) — re-announcing v20 so the server sheds the ladder's dialect mark before any column is served.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Establishing protocol 20 after the discovery ladder had advanced to v16 (slow echo) — re-announcing v20 so the server sheds the ladder's dialect mark before any column is served.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v16, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Late protocol-16 session config on an established v20 session (a raced discovery reply, or a server plugin reload prompting us to re-attach) — re-announcing v20.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Establishing protocol 20 after the discovery ladder had advanced to v16 (slow echo) — re-announcing v20 so the server sheds the ladder's dialect mark before any column is served.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: false)
+[00:11:39] [main/INFO]: LSS disabled by the server mid-session — LOD session retired (cache saved); it re-arms automatically if the server re-enables this session.
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v19, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/WARN]: Server has incompatible LSS protocol version 19 (client: 20), LOD distribution disabled
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v20, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Server session config received (protocol v19, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 19) server — native section bodies at the current frame layout (C3 ladder rung 19)
+[00:11:39] [main/INFO]: Server session config received (protocol v19, LOD distance: 64 chunks, enabled: true)
+[00:11:39] [main/INFO]: Connected to a legacy (protocol 19) server — native section bodies at the current frame layout (C3 ladder rung 19)
+[00:11:39] [main/ERROR]: Voxy reset threw — treating as restart failure so the LSS flush still runs
+java.lang.IllegalStateException: mixin drift
+	at dev.vox.lss.networking.client.ResetCoordinatorTest.lambda$voxyHalfThrowStillRunsTheFlushAndFeedback$11(ResetCoordinatorTest.java:179) ~[client-tests/:?]
+	at dev.vox.lss.networking.client.ResetCoordinator.voxyResetContained(ResetCoordinator.java:197) ~[client-classes/:?]
+	at dev.vox.lss.networking.client.ResetCoordinator.run(ResetCoordinator.java:152) ~[client-classes/:?]
+	at dev.vox.lss.networking.client.ResetCoordinator.run(ResetCoordinator.java:99) ~[client-classes/:?]
+	at dev.vox.lss.networking.client.ResetCoordinatorTest.voxyHalfThrowStillRunsTheFlushAndFeedback(ResetCoordinatorTest.java:187) ~[client-tests/:?]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[?:?]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[?:?]
+	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:767) ~[junit-platform-commons-1.11.4.jar:1.11.4]
+	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$8(TestMethodTestDescriptor.java:217) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:213) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:138) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:68) ~[junit-jupiter-engine-5.11.4.jar:5.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:156) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596) ~[?:?]
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596) ~[?:?]
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54) ~[junit-platform-engine-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:198) ~[junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:169) ~[junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:93) ~[junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:58) ~[junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:141) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:57) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:103) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:85) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:47) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at org.junit.platform.launcher.core.SessionPerRequestLauncher.execute(SessionPerRequestLauncher.java:63) [junit-platform-launcher-1.11.4.jar:1.11.4]
+	at RunClientTests.main(RunClientTests.java:18) [client-tests/:?]
+
+Test run finished after 3243 ms
+[         4 containers found      ]
+[         0 containers skipped    ]
+[         4 containers started    ]
+[         0 containers aborted    ]
+[         4 containers successful ]
+[         0 containers failed     ]
+[        88 tests found           ]
+[         0 tests skipped         ]
+[        88 tests started         ]
+[         0 tests aborted         ]
+[        88 tests successful      ]
+[         0 tests failed          ]
+

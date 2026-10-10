@@ -1,0 +1,101 @@
+{
+  "pass": true,
+  "cases": [
+    {
+      "case": "official15",
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/private-official-15/attempt-1gq67clh",
+      "result": {
+        "pass": true,
+        "profile": "OFFICIAL_15",
+        "ordinary_connected": true,
+        "negotiation_reconnects": 1,
+        "requests": 43,
+        "tiles": 12,
+        "storage_samples": 18432,
+        "solid_samples": 13271,
+        "columns": 17
+      },
+      "result_sha256": "6599c112d9a3cbbaa2a7afed4d32f8822543df26cfb372b10ed7409c58490fd9"
+    },
+    {
+      "case": "support15",
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/private-support-15/attempt-2n_p4_ep",
+      "result": {
+        "pass": true,
+        "profile": "SUPPORT_15",
+        "ordinary_connected": true,
+        "negotiation_reconnects": 1,
+        "requests": 16,
+        "tiles": 14,
+        "storage_samples": 63744,
+        "solid_samples": 23213,
+        "columns": 32
+      },
+      "result_sha256": "f040537d135594cc00db67a31ec67da33d26f16991b23b92045b931b8928d98a"
+    },
+    {
+      "case": "native",
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/private-native-preferred/attempt-kbc_g5to",
+      "result": {
+        "source": "native",
+        "stationary": true,
+        "dh_fallback_enabled": true,
+        "dh_requests": 0,
+        "native_protocol": 20,
+        "requested_vanilla_radius": 12,
+        "effective_vanilla_radius": 8,
+        "loaded_outside_drawing": 71,
+        "sky_light_present": 71,
+        "missing_voxy_columns": 0,
+        "independent_stone_comparisons": 639,
+        "elapsed_seconds": 36.418124122,
+        "missing_columns": [],
+        "correctness_gate_passed": true,
+        "pass": true,
+        "report_only": false
+      },
+      "result_sha256": "7ca4483c412345ce1e949f6b238333af53295520c07a094cc1591643800def3d"
+    },
+    {
+      "case": "dh",
+      "pass": true,
+      "run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/automatic-selection/private-official-16-updates-menu/attempt-mgsa8p9u",
+      "result": {
+        "pass": true,
+        "source": "stock-official-DH-3.3.3",
+        "push_only_edits": true,
+        "live_disabled_retained_destination": true,
+        "air_removal_with_same_section_sentinel": true,
+        "same_connection_and_session": true,
+        "sync_hot_negotiation": true,
+        "independent_block_comparisons": 1200,
+        "unchanged_rejoin": true,
+        "rejoin_target_payloads": 0,
+        "rejoin_target_conversions": 0,
+        "edit_updates": 1,
+        "removal_updates": 1,
+        "terrain_requests_during_push_only": 0
+      },
+      "result_sha256": "bf3e6ea2588cfa86fbf1c25363c6e53c680b1cc6f5c74b45d09d132707d3c0cf"
+    }
+  ],
+  "menu": {
+    "pass": true,
+    "actual_sodium": true,
+    "gui_scale_setting": 0,
+    "gui_scale_actual": 3.0,
+    "lss_controls": 13,
+    "separate_dh_page": true,
+    "cross_page_reception_gate": true,
+    "source_checkbox": true,
+    "automatic_protocol": true,
+    "source_saved": "lss",
+    "synchronization_hot": true,
+    "diagnostics_export": true
+  },
+  "artifact_sha256": "c0713646df836d14a76eaddf59ea7a2139312eb7c9802f9653f2cf8e507a5893",
+  "scope": "Exact packaged NeoForge candidate on owned software-display rigs; no general performance or Voxy commit/persistence acknowledgement claim"
+}

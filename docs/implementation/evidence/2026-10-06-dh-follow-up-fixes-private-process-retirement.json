@@ -1,0 +1,223 @@
+{
+  "timestamp_utc": "2026-10-06T20:55:37.424682+00:00",
+  "private_owners": [
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-support-15/attempt-h2tjlmok/evidence/server-owner.json",
+      "owner": {
+        "pid": 242739,
+        "start": "13829953",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-support-15/attempt-h2tjlmok/evidence/supervisor-owner.json",
+      "owner": {
+        "pid": 242689,
+        "start": "13829763",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-support-15/attempt-h2tjlmok/evidence/client-owner.json",
+      "owner": {
+        "pid": 242858,
+        "start": "13831955",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-official-16-updates-menu/attempt-_zvc7wn1/evidence/server-owner.json",
+      "owner": {
+        "pid": 244182,
+        "start": "13851405",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-official-16-updates-menu/attempt-_zvc7wn1/evidence/supervisor-owner.json",
+      "owner": {
+        "pid": 244132,
+        "start": "13851216",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-official-16-updates-menu/attempt-_zvc7wn1/evidence/client-owner.json",
+      "owner": {
+        "pid": 244291,
+        "start": "13852557",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-slow-official-16/attempt-x9siqemr/evidence/server-owner.json",
+      "owner": {
+        "pid": 241285,
+        "start": "13811734",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-slow-official-16/attempt-x9siqemr/evidence/supervisor-owner.json",
+      "owner": {
+        "pid": 241234,
+        "start": "13811541",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-slow-official-16/attempt-x9siqemr/evidence/client-owner.json",
+      "owner": {
+        "pid": 241405,
+        "start": "13812836",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-official-15/attempt-x57ayz91/evidence/server-owner.json",
+      "owner": {
+        "pid": 241988,
+        "start": "13820897",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-official-15/attempt-x57ayz91/evidence/supervisor-owner.json",
+      "owner": {
+        "pid": 241939,
+        "start": "13820707",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-official-15/attempt-x57ayz91/evidence/client-owner.json",
+      "owner": {
+        "pid": 242111,
+        "start": "13821999",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-native-moving/attempt-5mdirti5/evidence/server-owner.json",
+      "owner": {
+        "pid": 243442,
+        "start": "13839711",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-native-moving/attempt-5mdirti5/evidence/supervisor-owner.json",
+      "owner": {
+        "pid": 243392,
+        "start": "13839519",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-native-moving/attempt-5mdirti5/evidence/client-owner.json",
+      "owner": {
+        "pid": 243552,
+        "start": "13840813",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-fabric-no-service/attempt-bnj8x17k/evidence/server-owner.json",
+      "owner": {
+        "pid": 240652,
+        "start": "13802875",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-fabric-no-service/attempt-bnj8x17k/evidence/supervisor-owner.json",
+      "owner": {
+        "pid": 240602,
+        "start": "13802673",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-fabric-no-service/attempt-bnj8x17k/evidence/client-owner.json",
+      "owner": {
+        "pid": 240732,
+        "start": "13803876",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-support-15/attempt-h2tjlmok/evidence/display.json",
+      "owner": {
+        "pid": 242697,
+        "start": "13829895",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-official-16-updates-menu/attempt-_zvc7wn1/evidence/display.json",
+      "owner": {
+        "pid": 244140,
+        "start": "13851347",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-slow-official-16/attempt-x9siqemr/evidence/display.json",
+      "owner": {
+        "pid": 241243,
+        "start": "13811675",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-official-15/attempt-x57ayz91/evidence/display.json",
+      "owner": {
+        "pid": 241946,
+        "start": "13820838",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-native-moving/attempt-5mdirti5/evidence/display.json",
+      "owner": {
+        "pid": 243400,
+        "start": "13839653",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    },
+    {
+      "record": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-06/follow-up-fixes/private-fabric-no-service/attempt-bnj8x17k/evidence/display.json",
+      "owner": {
+        "pid": 240610,
+        "start": "13802811",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      },
+      "alive": false
+    }
+  ],
+  "remaining_private_processes": [],
+  "pass": true
+}

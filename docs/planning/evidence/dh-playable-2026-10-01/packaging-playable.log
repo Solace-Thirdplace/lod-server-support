@@ -1,0 +1,6 @@
+dh-support-0.14.0-ocean: private XZ packaged decode PASS; peak_owned=34569698
+dh-support-0.14.0-meadow: private XZ packaged decode PASS; peak_owned=34774056
+common: relocated codec/XZ layout validation PASS
+fabric: relocated codec/XZ layout validation PASS
+paper: relocated codec/XZ layout validation PASS
+neoforge: relocated codec/XZ layout validation PASS

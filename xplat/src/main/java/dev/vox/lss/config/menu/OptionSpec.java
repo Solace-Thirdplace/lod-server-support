@@ -9,8 +9,7 @@ import java.util.function.IntFunction;
 /**
  * One option of the in-game settings page as DATA (sodium-options-page-generations-plan.md
  * D1): everything a renderer needs to build the widget on ANY Sodium generation, and
- * nothing renderer-specific. Two kinds today — a tick box and an integer slider; an
- * enum kind is deliberately absent until an enum option exists.
+ * nothing renderer-specific. Tick boxes, numeric sliders use the matching Sodium controls.
  *
  * <p>Bindings are over a stable disk-draft session:
  * the legacy Sodium API hands the storage's data object to the binding, and the tests

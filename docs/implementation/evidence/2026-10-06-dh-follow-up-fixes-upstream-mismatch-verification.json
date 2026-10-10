@@ -1,0 +1,36 @@
+{
+  "stock_mismatch_16_log": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-final/profile-mismatch-runs/attempt-sw6_py54/server.log",
+  "log_sha256": "345fe8b1931319493bf358f7372c59a813d3d381ea77a63d7b95af415ca02245",
+  "class_whole_byte_identity_claim": false,
+  "method_inspection": "Debug logging precedes handleMessage; logger braces trigger IllegalArgumentException, repeated error logging precedes close(e).",
+  "inspected": [
+    {
+      "profile": "official-15",
+      "jar": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-completion/official-15-runs/attempt-n2p837js/server/mods/DistantHorizons-3.2.0-b-1.21.1-fabric-neoforge.jar",
+      "jar_sha256": "d6a7a963f794501678113e2545d8b25c90e123ef6b9256bb5716907d059e1ef5",
+      "class": "com.seibel.distanthorizons.core.logging.DhLogger",
+      "javap_sha256": "ea71a522814bf29d228b5b780ab681f7cb5d1fff32ab34e85a90bfd8e44cdc57"
+    },
+    {
+      "profile": "official-15",
+      "jar": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p2-p4-completion/official-15-runs/attempt-n2p837js/server/mods/DistantHorizons-3.2.0-b-1.21.1-fabric-neoforge.jar",
+      "jar_sha256": "d6a7a963f794501678113e2545d8b25c90e123ef6b9256bb5716907d059e1ef5",
+      "class": "com.seibel.distanthorizons.core.network.session.NetworkSession",
+      "javap_sha256": "84e90e6d1723137090dbf174a0be233f4030cbc9f4ce1a4dfea3af17afbada86"
+    },
+    {
+      "profile": "official-16",
+      "jar": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/mods/DistantHorizons-3.3.3-1.21.1-fabric-neoforge.jar",
+      "jar_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+      "class": "com.seibel.distanthorizons.core.logging.DhLogger",
+      "javap_sha256": "b19c03498c55970911cf97e51d4e6a0fdc2ae3cc007fb911f7f1c6856e2e1c8d"
+    },
+    {
+      "profile": "official-16",
+      "jar": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/mods/DistantHorizons-3.3.3-1.21.1-fabric-neoforge.jar",
+      "jar_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+      "class": "com.seibel.distanthorizons.core.network.session.NetworkSession",
+      "javap_sha256": "4175c4ed56a4fa031301495f2efdd7dfa078abc2a0df8ead1a3e4744f851a646"
+    }
+  ]
+}

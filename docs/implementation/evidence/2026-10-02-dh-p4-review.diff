@@ -1,0 +1,608 @@
+--- a/common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java
++++ b/common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java
+@@ -23,6 +23,8 @@
+     private boolean snapshot(DhPosition p) { var r=receipts.get(p); return r!=null && r.snapshot; }
+     private boolean held(DhPosition p) { var r=receipts.get(p); return r!=null && r.held; }
+     public boolean due(DhPosition p, long now) { var r=receipts.get(p); return r==null || !r.held && r.due <= now; }
++    /** Deadline ordering prevents near tiles from taking every refresh slot. */
++    public long dueNanos(DhPosition p) { var r=receipts.get(p); return r==null ? Long.MAX_VALUE : r.due; }
+     public long timestamp(DhPosition p) { var r=receipts.get(p); return r==null ? 0 : r.timestamp; }
+     /** Server timestamps remain in server milliseconds; failed/partial attempts require full data. */
+     public long refreshTimestamp(DhPosition p) {
+--- a/xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java
++++ b/xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java
+@@ -317,47 +317,63 @@
+             int range=effectiveRange();
+             int cx=Math.floorDiv(player.x,4),cz=Math.floorDiv(player.z,4),rings=(range+3)/4;
+             // Bound retry preference while retaining the untouched frontier's first priority.
+-            for(int priority:retryBurst>=3?new int[]{0,2,1}:new int[]{0,1,2})
+-            for(int ring=0;ring<=rings;ring++) for(int dx=-ring;dx<=ring;dx++) for(int dz=-ring;dz<=ring;dz++) {
+-                if(Math.max(Math.abs(dx),Math.abs(dz))!=ring) continue;
+-                var p=new DhPosition(6,cx+dx,cz+dz);
+-                policy.reconcileGeneration(p,generationAvailable(p,player),now);
+-                // A missing sync result is acquisition work, so let its bounded
+-                // generation join the frontier instead of waiting for every miss.
+-                int acquisitionPriority=policy.acquisitionPriority(p);
+-                if((priority==2 && now-lastRefresh<10_000_000_000L) || acquisitionPriority!=priority || !policy.due(p,now) || pending.values().stream().anyMatch(r->r.position.equals(p))) continue;
+-                int x=p.x()*4,z=p.z()*4;
+-                if(Math.max(Math.abs(x+2-player.x),Math.abs(z+2-player.z))>range) continue;
+-                if(!DhSessionPolicy.inBorder(profile,p,config.centerX(),config.centerZ(),config.borderRadius())) continue;
+-                boolean any=false;
+-                for(int ox=0;ox<4;ox++) for(int oz=0;oz<4;oz++) any|=policy.eligible(x+ox,z+oz);
+-                if(!any) continue;
+-                if(!policy.refreshAllowed(p,config.synchronize(),config.syncRate())) continue;
+-                boolean gen=profile.support() || !config.synchronize() || policy.generationNeeded(p);
+-                if(gen && (!generationAvailable(p,player)
+-                        || pending.values().stream().anyMatch(Pending::generation))) {
+-                    if(!profile.support() && policy.generationNeeded(p)
+-                            && (config.plan()==DhMessage.GeneratorPlan.DISABLED || config.generationRate()==0
+-                            || Math.max(Math.abs(x+2-player.x),Math.abs(z+2-player.z))>Math.min(32,config.generationDistance())))
+-                        policy.absent(p,now,false);
+-                    continue;
+-                }
+-                int rate=gen?config.generationRate():config.syncRate();
+-                if(rate==0 || pending.size()>=Math.min(2,rate) || now-lastRequest<1_000_000_000L/Math.max(1,rate)) continue;
+-                int id=IDS.incrementAndGet();
+-                if(id<=0) { fail("DH request ID space exhausted; restart client"); return; }
+-                long stamp=priority==2?policy.refreshTimestamp(p):0;
+-                pending.put(id,new Pending(p,gen,now,stamp)); lastRequest=now; if(priority==2) lastRefresh=now;
+-                if(priority==1) retryBurst=Math.min(3,retryBurst+1); else retryBurst=0;
+-                requested.incrementAndGet();
+-                try { worker.execute(() -> {
+-                    try {
+-                        if(!active) return; assembly.expect(id,p);
+-                        main(() -> send(new DhMessage.Request(id,levelKey,p,gen && stamp==0?null:stamp)));
+-                    } catch(Exception e) { fail(e.getMessage()); }
+-                }); } catch(RejectedExecutionException e) { fail("DH worker queue full"); }
+-                return;
+-            }
++            for(int priority:retryBurst>=3?new int[]{0,2,1}:new int[]{0,1,2}) {
++                if(priority==2 && now-lastRefresh<10_000_000_000L) continue;
++                DhPosition oldest=null;long oldestDue=Long.MAX_VALUE;
++                for(int ring=0;ring<=rings;ring++) for(int dx=-ring;dx<=ring;dx++) for(int dz=-ring;dz<=ring;dz++) {
++                    if(Math.max(Math.abs(dx),Math.abs(dz))!=ring) continue;
++                    var p=new DhPosition(6,cx+dx,cz+dz);
++                    policy.reconcileGeneration(p,generationAvailable(p,player),now);
++                    // A missing sync result is acquisition work, so let its bounded
++                    // generation join the frontier instead of waiting for every miss.
++                    int acquisitionPriority=policy.acquisitionPriority(p);
++                    if(acquisitionPriority!=priority || !policy.due(p,now) || pending.values().stream().anyMatch(r->r.position.equals(p))) continue;
++                    int x=p.x()*4,z=p.z()*4;
++                    if(Math.max(Math.abs(x+2-player.x),Math.abs(z+2-player.z))>range) continue;
++                    if(!DhSessionPolicy.inBorder(profile,p,config.centerX(),config.centerZ(),config.borderRadius())) continue;
++                    boolean any=false;
++                    for(int ox=0;ox<4;ox++) for(int oz=0;oz<4;oz++) any|=policy.eligible(x+ox,z+oz);
++                    if(!any) continue;
++                    if(!policy.refreshAllowed(p,config.synchronize(),config.syncRate())) continue;
++                    boolean gen=profile.support() || !config.synchronize() || policy.generationNeeded(p);
++                    if(gen && (!generationAvailable(p,player)
++                            || pending.values().stream().anyMatch(Pending::generation))) {
++                        if(!profile.support() && policy.generationNeeded(p)
++                                && (config.plan()==DhMessage.GeneratorPlan.DISABLED || config.generationRate()==0
++                                || Math.max(Math.abs(x+2-player.x),Math.abs(z+2-player.z))>Math.min(32,config.generationDistance())))
++                            policy.absent(p,now,false);
++                        continue;
++                    }
++                    int rate=gen?config.generationRate():config.syncRate();
++                    if(rate==0 || pending.size()>=Math.min(2,rate) || now-lastRequest<1_000_000_000L/Math.max(1,rate)) continue;
++                    // A minimum interval shorter than a sweep must still service
++                    // every due tile. Stable ring order breaks equal-deadline ties;
++                    // renewal then moves the tile behind older outstanding work.
++                    if(priority==2) {
++                        long due=policy.dueNanos(p);
++                        if(oldest==null || due<oldestDue) { oldest=p;oldestDue=due; }
++                        continue;
++                    }
++                    request(p,priority,gen,now);return;
++                }
++                if(oldest!=null) {
++                    request(oldest,priority,profile.support() || !config.synchronize() || policy.generationNeeded(oldest),now);return;
++                }
++            }
++        }
++        void request(DhPosition p,int priority,boolean gen,long now) {
++            int id=IDS.incrementAndGet();
++            if(id<=0) { fail("DH request ID space exhausted; restart client"); return; }
++            long stamp=priority==2?policy.refreshTimestamp(p):0;
++            pending.put(id,new Pending(p,gen,now,stamp)); lastRequest=now; if(priority==2) lastRefresh=now;
++            if(priority==1) retryBurst=Math.min(3,retryBurst+1); else retryBurst=0;
++            requested.incrementAndGet();
++            try { worker.execute(() -> {
++                try {
++                    if(!active) return; assembly.expect(id,p);
++                    main(() -> send(new DhMessage.Request(id,levelKey,p,gen && stamp==0?null:stamp)));
++                } catch(Exception e) { fail(e.getMessage()); }
++            }); } catch(RejectedExecutionException e) { fail("DH worker queue full"); }
+         }
+         void main(Runnable task) { Minecraft.getInstance().execute(() -> { if(active && session==this && Minecraft.getInstance().level==level) task.run(); }); }
+         void receive(byte[] bytes,long arrivalNanos) throws Exception {
+--- a/fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java
++++ b/fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java
+@@ -218,6 +218,32 @@
+             capture(codec(s).encode(new DhMessage.Response(request.requestId(),null,List.of())),System.nanoTime()).receive();
+             pumpUntil(()->pendingMap(s).isEmpty()&&frameCount(s)==0,"fairness response did not settle");
+         }
++    }
++
++    @Test void everyDueTileRefreshesEvenWhenNearTilesBecomeDueAgainBeforeTheSweepFinishes() throws Exception {
++        var s=session();long origin=System.nanoTime();var player=new ChunkPos(2,2);
++        write(s,SESSION,"config",new DhMessage.SessionConfig(DhMessage.GeneratorPlan.DISABLED,0,0,0,0,0,false,0,true,8,50,500));
++        write(s,SESSION,"levelKey","test-world");write(s,SESSION,"refreshNanos",30_000_000_000L);
++        var wanted=new HashSet<DhPosition>();
++        for(int x=-2;x<=2;x++)for(int z=-2;z<=2;z++) {
++            var p=new DhPosition(6,x,z);wanted.add(p);
++            policy(s).accepted(p,1,1,123,origin-31_000_000_000L,30_000_000_000L);
++        }
++        var visited=new HashSet<DhPosition>();
++        for(int attempt=0;attempt<25;attempt++) {
++            long now=origin+attempt*10_000_000_000L;int before=sent.size();
++            invoke(s,"requestNext",new Class<?>[]{long.class,ChunkPos.class},now,player);
++            pumpUntil(()->sent.size()>before,"due refresh was not sent");
++            var request=(DhMessage.Request)codec(s).decode(sent.getLast());
++            assertEquals(123L,request.timestamp());
++            assertTrue(visited.add(request.position()),"Near tile refreshed twice before a farther due tile: "+request.position());
++            // This scanner test owns a monotonic clock. Complete the same owned
++            // unchanged receipt at that time, rather than mixing synthetic scan
++            // time with the inbound handler's real wall-clock timestamps.
++            assembly(s).cancel(request.requestId());pendingMap(s).remove(request.requestId());
++            assertTrue(policy(s).unchanged(request.position(),request.timestamp(),now,30_000_000_000L));
++        }
++        assertEquals(wanted,visited);assertTrue(active(s));assertEquals(0,budget(s).used());
+     }
+ 
+     @Test void aConnectionAuthorityBlockReportsReconnectRequiredWithoutBlamingVoxy() {
+--- a/test-fixtures/dh-live/README.md
++++ b/test-fixtures/dh-live/README.md
+@@ -34,3 +34,40 @@
+ and `--base` to `exercise.py` to bind a new candidate and retain separate attempts.
+ The final P3 receipts are under `build/dh-neoforge/2026-10-01/p3/`; do not overwrite
+ the original playable proof or merge test fixtures into a shipping jar.
++
++The P3 review follow-up is under `p3-review-fixes/`. Its lifecycle scenario uses
++actual Sodium Apply while connected, exports READY-state diagnostics, and disables
++refresh with successful receipts due within a 45-second observation window. It
++checks beyond the ten-second limiter and verifies that receipt timers are held.
++Budget values, no-sky sample counts and the llvmpipe renderer check are observations;
++other boolean pass fields summarize assertions in the fixture.
++
++`--scenario absence` uses sync range 40 with the real official server's generation
++distance limited to 8. It observes empty replies beyond generation reach, rejects
++repeat full requests to those positions, waits for acquisition to settle with
++refresh Off, then enables refresh through Sodium and requires conditional/unchanged
++replies. These private attempts have a deadline and never alter the manual server's
++configuration or world. Pass `--build <isolated-build>` so settings staging uses the
++matching common jar rather than the historical build copy.
++
++`--scenario content` stages the same candidate on both the NeoForge server and
++client, alongside official DH on the server. A private datapack defines a world
++from -128 through 383. Console commands seed a 64×64 slab at Y=350 and another at
++Y=-118, including the four corners of a negative-coordinate tile outside vanilla
++view. Generation and unsolicited DH updates are disabled.
++
++The scenario first receives native LSS columns and warms a cache bucket with real
++server stamps, reconnects with DH selected, verifies both slabs in actual Voxy
++storage and checks that the native bucket was cleared. It removes the upper slab,
++enables refresh through actual Sodium Apply, and requires a changed conditional
++reply, a newer receipt and actual air storage while the lower slab remains. Finally
++it reconnects with native LSS selected and requires native negotiation and column
++delivery with no new DH requests. Each phase has a deadline. Known-tile terrain
++frames are retained separately, with a 64-frame cap and no control identities.
++
++The first content run against the P3 review artifact passes custom height and
++cache invalidation, then fails its removal deadline because refresh repeatedly
++selects nearby tiles. It is retained as failure evidence, not a passed scenario.
++The P4 fix selects the oldest due eligible refresh. The packaged rerun remains
++pending while the session sandbox blocks local sockets. Standalone Java tests are
++supplementary and do not replace the normal build or private live gates.
+--- a/test-fixtures/dh-live/exercise.py
++++ b/test-fixtures/dh-live/exercise.py
+@@ -8,9 +8,10 @@
+ p.add_argument('--fixture',type=Path,default=setup/'lss-dh-live-fixture-test-only.jar')
+ p.add_argument('--dh',type=Path,default=setup/'DistantHorizons-3.3.3-1.21.1-fabric-neoforge.jar')
+ p.add_argument('--base',type=Path,default=setup/'private-tests')
+-p.add_argument('--scenario',choices=['lifecycle','menu'],default='lifecycle')
++p.add_argument('--scenario',choices=['lifecycle','menu','absence','content'],default='lifecycle')
++p.add_argument('--build',type=Path,default=Path('/tmp/lss-dh-neo-build'))
+ a=p.parse_args()
+-cp='/tmp/lss-dh-neo-build/common/build/libs/common-0.16.0.jar'
++cp=str(a.build/'common/build/libs/common-0.16.0.jar')
+ for module in ['org.slf4j/slf4j-api','com.google.code.gson/gson']:
+  cp+=':'+str(next((Path('/home/vox/.gradle/caches/modules-2/files-2.1')/module).rglob('*.jar')))
+ env=os.environ.copy();env['LSS_SETTINGS_CLASSPATH']=cp;env['JAVA_HOME']='/usr/lib/jvm/java-21-openjdk-amd64'
+--- a/test-fixtures/dh-live/prepare.py
++++ b/test-fixtures/dh-live/prepare.py
+@@ -7,12 +7,13 @@
+ import storage_guard
+ from prepare_prism import launcher_inputs
+ from settings_file import render
+-p=argparse.ArgumentParser();p.add_argument('--artifact',required=True,type=Path);p.add_argument('--fixture',required=True,type=Path);p.add_argument('--dh',required=True,type=Path);p.add_argument('--base',required=True,type=Path);p.add_argument('--scenario',choices=['lifecycle','menu'],default='lifecycle');a=p.parse_args()
++p=argparse.ArgumentParser();p.add_argument('--artifact',required=True,type=Path);p.add_argument('--fixture',required=True,type=Path);p.add_argument('--dh',required=True,type=Path);p.add_argument('--base',required=True,type=Path);p.add_argument('--scenario',choices=['lifecycle','menu','absence','content'],default='lifecycle');a=p.parse_args()
+ source=Path('/home/vox/projects/lss-multi-test/servers/neoforge-1.21.1')
+ context=Path('/home/vox/.local/share/lss-rig-prism-auth')
+ clientmods=Path('/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/lss-astra-validation-neoforge-1.21.1/minecraft/mods')
+ inputs=[(f,'server/libraries/'+str(f.relative_to(source/'libraries'))) for f in (source/'libraries').rglob('*') if f.is_file()]
+ inputs+=[(a.dh,'server/mods/'+a.dh.name),(a.artifact,'instances/dh-neoforge/minecraft/mods/lod-server-support-neoforge.jar'),(a.fixture,'instances/dh-neoforge/minecraft/mods/'+a.fixture.name)]
++if a.scenario=='content':inputs.append((a.artifact,'server/mods/lod-server-support-neoforge.jar'))
+ for pattern in ['connector-*-full.jar','ConnectorExtras-*.jar','forgified-fabric-api-*.jar','sodium-neoforge-*.jar','voxy-0.2.15-beta-sodium0.8.12.jar','xaeroworldmap-neoforge-1.21.1-1.45.0.jar']:
+  matches=list(clientmods.glob(pattern))
+  if len(matches)!=1:raise ValueError('Expected exactly one tested dependency: '+pattern)
+@@ -30,7 +31,23 @@
+ (instance/'mmc-pack.json').write_text(json.dumps({'formatVersion':1,'components':profile['components']}))
+ (instance/'instance.cfg').write_text('[General]\nInstanceType=OneSix\nname=DH NeoForge private verification\nOverrideJavaLocation=true\nJavaPath=/usr/lib/jvm/java-21-openjdk-amd64/bin/java\nOverrideJavaArgs=true\nJvmArgs=-XX:ActiveProcessorCount=4 -Dlss.rig.runId='+run.name+' -Dlss.rig.scenario='+a.scenario+' -Dlss.rig.initialEndpoint=[::1]:25586 -Dlss.rig.captureDir='+str(run/'captures')+'\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc=3072\nOverrideWindow=true\nMinecraftWinWidth=960\nMinecraftWinHeight=540\nLaunchMaximized=false\nOverrideCommands=true\nPreLaunchCommand=\nPostExitCommand=\nWrapperCommand=\n')
+ (game/'options.txt').write_text('maxFps:30\nrenderDistance:4\nsimulationDistance:5\npauseOnLostFocus:false\nenableVsync:false\nguiScale:2\nonboardAccessibility:false\n')
+-(game/'config/lss-client-config.yaml').write_text(render({'lod.source':'distant_horizons','lod.receive':True,'lod.dh.profile':'official_16','lod.dh.refresh_seconds':0,'lod.distance_chunks':32,'integrations.xaero_map.enabled':False},side='client'))
++(game/'config/lss-client-config.yaml').write_text(render({'lod.source':'lss' if a.scenario=='content' else 'distant_horizons','lod.receive':True,'lod.dh.profile':'official_16','lod.dh.refresh_seconds':0,'lod.distance_chunks':40 if a.scenario=='absence' else 32,'integrations.xaero_map.enabled':False},side='client'))
+ (run/'server/eula.txt').write_text('eula=true\n')
++if a.scenario=='absence':
++ (run/'server/config').mkdir(exist_ok=True)
++ (run/'server/config/DistantHorizons.toml').write_text('_version = 5\n[server]\nmaxGenerationRequestDistance = 8\n')
++if a.scenario=='content':
++ # Vanilla 1.21.1 overworld type, extended both below and above the standard range.
++ pack=run/'server/world/datapacks/lss-content-fixture'
++ (pack/'data/lssfixture/dimension_type').mkdir(parents=True)
++ (pack/'data/lssfixture/dimension').mkdir(parents=True)
++ (pack/'pack.mcmeta').write_text(json.dumps({'pack':{'pack_format':48,'description':'Private DH height/removal fixture'}}))
++ dimension_type={'ambient_light':0.0,'bed_works':True,'coordinate_scale':1.0,'effects':'minecraft:overworld','has_ceiling':False,'has_raids':False,'has_skylight':True,'height':512,'infiniburn':'#minecraft:infiniburn_overworld','logical_height':512,'min_y':-128,'monster_spawn_block_light_limit':0,'monster_spawn_light_level':{'type':'minecraft:uniform','max_inclusive':7,'min_inclusive':0},'natural':True,'piglin_safe':False,'respawn_anchor_works':False,'ultrawarm':False}
++ (pack/'data/lssfixture/dimension_type/tall.json').write_text(json.dumps(dimension_type))
++ (pack/'data/lssfixture/dimension/tall.json').write_text(json.dumps({'type':'lssfixture:tall','generator':{'type':'minecraft:flat','settings':{'biome':'minecraft:plains','lakes':False,'features':False,'layers':[{'block':'minecraft:bedrock','height':1},{'block':'minecraft:stone','height':7}], 'structure_overrides':[]}}}))
++ (run/'server/config').mkdir(exist_ok=True)
++ # Synchronization remains enabled; explicit conditional refresh, not unsolicited
++ # updates, must deliver the edit. No ambient generation competes with the fixture.
++ (run/'server/config/DistantHorizons.toml').write_text('_version = 5\n[server]\nenableRealTimeUpdates = false\nmaxGenerationRequestDistance = 0\n[common.worldGenerator]\ngeneratorPlan = "DISABLED"\n')
+ (run/'server/server.properties').write_text('server-ip=::1\nserver-port=25586\nonline-mode=false\nlevel-seed=8675309\ngamemode=creative\nview-distance=4\nsimulation-distance=4\nspawn-protection=0\nallow-flight=true\nenforce-secure-profile=false\nmax-tick-time=120000\n')
+ print(run)
+--- a/test-fixtures/dh-live/run.py
++++ b/test-fixtures/dh-live/run.py
+@@ -33,6 +33,12 @@
+   if time.monotonic()>deadline:raise TimeoutError('Server readiness')
+   monitor.check();time.sleep(.5)
+  server.stdin.write('gamerule doMobSpawning false\ntime set noon\nweather clear\n');server.stdin.flush()
++ if json.loads((run/'runtime.json').read_text())['scenario']=='content':
++  server.stdin.write('execute in lssfixture:tall run forceload add -192 0 -129 63\nexecute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:red_concrete\nexecute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:blue_concrete\nsave-all flush\n');server.stdin.flush()
++  deadline=time.monotonic()+60
++  while 'Successfully filled 8192 block(s)' not in (run/'server.log').read_text(errors='replace'):
++   if server.poll() is not None or time.monotonic()>deadline:raise TimeoutError('Custom-height terrain seeding')
++   monitor.check();time.sleep(.5)
+  clientlog=(run/'client.log').open('w')
+  client=subprocess.Popen([sys.executable,str(ROOT/'tools/rig/launch_prism.py'),'--context','/home/vox/.local/share/lss-rig-prism-auth','--run',str(run),'--java','/usr/lib/jvm/java-21-openjdk-amd64/bin/java','--prism','/home/vox/.local/bin/prismlauncher','--instance','dh-neoforge'],cwd=run/'client',env=env,stdout=clientlog,stderr=subprocess.STDOUT,start_new_session=True);children.append(client)
+  (run/'evidence/client-owner.json').write_text(json.dumps(identity(client.pid)))
+--- /dev/null
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java
+@@ -0,0 +1,180 @@
++package dev.vox.lssfixture.dh;
++
++import dev.vox.lss.api.LSSApi;
++import dev.vox.lss.api.VoxelColumnData;
++import dev.vox.lss.common.dh.*;
++import dev.vox.lss.config.LSSClientConfig;
++import dev.vox.lss.networking.client.*;
++import net.minecraft.client.Minecraft;
++import net.minecraft.client.gui.screens.TitleScreen;
++import net.minecraft.client.gui.screens.ConnectScreen;
++import net.minecraft.client.multiplayer.ServerData;
++import net.minecraft.client.multiplayer.resolver.ServerAddress;
++import net.minecraft.core.BlockPos;
++import net.minecraft.resources.ResourceKey;
++import net.minecraft.resources.ResourceLocation;
++import net.minecraft.core.registries.Registries;
++import net.minecraft.world.level.Level;
++import net.minecraft.world.level.block.Blocks;
++import net.minecraft.world.level.block.state.BlockState;
++import java.lang.reflect.Method;
++import java.util.*;
++import java.util.concurrent.*;
++import java.util.concurrent.atomic.*;
++import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
++
++/** Independent known blocks at both ends of a custom height; storage reads are test-only. */
++public final class ContentProbe {
++    static final ResourceKey<Level> DIM=ResourceKey.create(Registries.DIMENSION,ResourceLocation.parse("lssfixture:tall"));
++    static final DhPosition TILE=new DhPosition(6,-3,0);
++    static final List<BlockPos> SAMPLES=new ArrayList<>();
++    static { for(int x=-192;x<=-129;x+=7)for(int z=0;z<=63;z+=7)SAMPLES.add(new BlockPos(x,350,z)); }
++    static final Set<Long> nativeColumns=ConcurrentHashMap.newKeySet();
++    static final AtomicLong nativeDeliveries=new AtomicLong(),targetConditional=new AtomicLong(),targetChanged=new AtomicLong();
++    static final Map<Integer,Long> targetRequests=new ConcurrentHashMap<>();
++    static final Set<Integer> captureBuffers=ConcurrentHashMap.newKeySet();
++    static final AtomicInteger captureSequence=new AtomicInteger();
++    static final AtomicReference<Throwable> callbackFailure=new AtomicReference<>();
++    static int phase; static long changed=System.nanoTime(),oldStamp,newStamp,nativeBaseline,dhBaseline,lastStatus;
++    static Object dhEpoch,firstConnection;
++    static String bucket;
++    static CompletableFuture<?> saved;
++    static long warmedEntries,emptyEntries;
++    static boolean registered;
++
++    public static void sent(DhMessage message) {
++        if(message instanceof DhMessage.Request r && r.position().equals(TILE) && r.timestamp()!=null && r.timestamp()>0) {
++            targetConditional.incrementAndGet();targetRequests.put(r.requestId(),r.timestamp());
++        }
++    }
++    public static void received(byte[] bytes) throws Exception {
++        // Retain only this known tile's terrain frames, excluding opaque control
++        // identities. Selection reads the first DTO position; it does not decode
++        // or allocate a second copy of every incoming terrain message.
++        if(Minecraft.getInstance().level!=null && Minecraft.getInstance().level.dimension().equals(DIM)
++                && bytes.length>=13 && bytes[2]==0 && bytes[3]==10) {
++            var raw=java.nio.ByteBuffer.wrap(bytes);int buffer=raw.getInt(4),length=raw.getInt(8);
++            if(length>=8 && length==bytes.length-13 && bytes[bytes.length-1]==1 && raw.getLong(12)==TILE.packed())captureBuffers.add(buffer);
++            if(captureBuffers.contains(buffer))capture(bytes);
++        }
++        if(bytes.length<4 || bytes[2]!=0 || bytes[3]!=8)return;
++        var response=(DhMessage.Response)new DhProtocolCodec(DhProfile.OFFICIAL_16,DhLimits.DEFAULT).decode(bytes);
++        if(response.bufferId()!=null && captureBuffers.remove(response.bufferId()))capture(bytes);
++        if(targetRequests.remove(response.requestId())!=null && response.bufferId()!=null)targetChanged.incrementAndGet();
++    }
++    static void capture(byte[] bytes) throws Exception {
++        int sequence=captureSequence.incrementAndGet();
++        if(sequence>64)throw new IllegalStateException("Known-tile capture bound exceeded");
++        java.nio.file.Files.write(java.nio.file.Path.of(System.getProperty("lss.rig.captureDir"),String.format("target-%04d.bin",sequence)),bytes);
++    }
++    static void nativeColumn(net.minecraft.client.multiplayer.ClientLevel level,ResourceKey<Level> dimension,int x,int z,VoxelColumnData data) {
++        try {
++            if(DhClientSession.selected())throw new IllegalStateException("Native column delivered while DH owns the connection");
++            if(dimension.equals(DIM) && x>=-12 && x<=-9 && z>=0 && z<=3) {
++                nativeDeliveries.incrementAndGet();nativeColumns.add(net.minecraft.world.level.ChunkPos.asLong(x,z));
++            }
++        } catch(Throwable e) { callbackFailure.compareAndSet(null,e); }
++    }
++    static void reconnect() {
++        var mc=Minecraft.getInstance();mc.level.disconnect();mc.disconnect();
++        String addr=System.getProperty("lss.rig.initialEndpoint");
++        ConnectScreen.startConnecting(new TitleScreen(),mc,ServerAddress.parseString(addr),new ServerData("DH content test",addr,ServerData.Type.OTHER),false,null);
++    }
++    static void teleport() { Minecraft.getInstance().getConnection().sendCommand("execute in lssfixture:tall run tp @s 0 100 0"); }
++    static boolean knownBlocks(boolean removed) throws Exception {
++        var mc=Minecraft.getInstance();
++        if(!mc.level.dimension().equals(DIM))return false;
++        if(mc.level.getMinBuildHeight()!=-128 || mc.level.getHeight()!=512)throw new IllegalStateException("Custom height was not negotiated");
++        var s=Probe.field(DhClientSession.class,"session");
++        if(DhClientSession.selected()) {
++            if(s==null || ((DhSessionPolicy)Probe.field(s,"policy")).timestamp(TILE)<=0)return false;
++            var policy=(DhSessionPolicy)Probe.field(s,"policy");
++            for(BlockPos p:SAMPLES)if(!policy.eligible(p.getX()>>4,p.getZ()>>4))throw new IllegalStateException("Fixture column has vanilla authority");
++        }
++        Class<?> identifier=Class.forName("me.cortex.voxy.commonImpl.WorldIdentifier");
++        Object engine=identifier.getMethod("getNullable").invoke(identifier.getMethod("of",Level.class).invoke(null,mc.level));
++        if(engine==null)return false;
++        Class<?> ec=Class.forName("me.cortex.voxy.common.world.WorldEngine"),sc=Class.forName("me.cortex.voxy.common.world.WorldSection"),mapperType=Class.forName("me.cortex.voxy.common.world.other.Mapper");
++        Object mapper=ec.getMethod("getMapper").invoke(engine);
++        Method acquire=ec.getMethod("acquireIfExists",int.class,int.class,int.class,int.class),copy=sc.getMethod("copyData"),release=sc.getMethod("release"),getId=mapperType.getMethod("getBlockId",long.class),getState=mapperType.getMethod("getBlockStateFromBlockId",int.class);
++        Map<String,long[]> snapshots=new HashMap<>();
++        for(BlockPos high:SAMPLES)for(int y:new int[]{350,-118}) {
++            BlockPos p=new BlockPos(high.getX(),y,high.getZ());
++            String key=(p.getX()>>5)+":"+(y>>5)+":"+(p.getZ()>>5);
++            long[] values=snapshots.get(key);
++            if(values==null) {
++                Object section=acquire.invoke(engine,0,p.getX()>>5,y>>5,p.getZ()>>5);
++                if(section==null)values=new long[32768];
++                else { try { values=(long[])copy.invoke(section); }finally {release.invoke(section);} }
++                snapshots.put(key,values);
++            }
++            long value=values[((y&31)<<10)|((p.getZ()&31)<<5)|(p.getX()&31)];
++            BlockState actual=(BlockState)getState.invoke(mapper,(int)getId.invoke(null,value));
++            BlockState want=y==-118?Blocks.BLUE_CONCRETE.defaultBlockState():removed?Blocks.AIR.defaultBlockState():Blocks.RED_CONCRETE.defaultBlockState();
++            if(actual!=want)return false;
++        }
++        return true;
++    }
++    public static void tick(long now) throws Exception {
++        var mc=Minecraft.getInstance();
++        if(now-lastStatus>1_000_000_000L) {
++            lastStatus=now;Probe.write("dh-content-status.txt",phase+" "+DhClientSession.status()+"; native="+nativeDeliveries+" target refresh="+targetConditional+" changed="+targetChanged);
++        }
++        if(now-changed>240_000_000_000L)throw new IllegalStateException("Content phase "+phase+" timed out; "+DhClientSession.status());
++        if(callbackFailure.get()!=null)throw new IllegalStateException("Native observer failure",callbackFailure.get());
++        if(!registered) { LSSApi.registerColumnConsumer(ContentProbe::nativeColumn);registered=true; }
++        mc.player.getAbilities().flying=true;mc.player.onUpdateAbilities();mc.player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
++        if(phase==0 && ClientNetGlue.hasReceivedSessionConfig()) {
++            if(DhClientSession.selected() || Probe.requests.get()!=0)throw new IllegalStateException("Initial native connection sent DH work");
++            firstConnection=mc.getConnection();teleport();phase=1;changed=now;
++        } else if(phase==1 && nativeColumns.size()==16 && now-changed>5_000_000_000L && knownBlocks(false)) {
++            // Preserve real native server stamps, then prove DH invalidates that warm disk bucket.
++            var manager=ClientNetGlue.getRequestManager();bucket=(String)Probe.field(manager,"serverAddress");
++            var stamps=new Long2LongOpenHashMap();
++            for(long p:nativeColumns) {
++                long stamp=manager.getColumnTimestamp((int)p,(int)(p>>32));
++                if(stamp<=0)return;stamps.put(p,stamp);
++            }
++            saved=CompletableFuture.runAsync(()->ColumnCacheStore.save(bucket,DIM,stamps));
++            phase=2;changed=now;
++        } else if(phase==2 && saved.isDone()) {
++            saved.join();warmedEntries=ColumnCacheStore.load(bucket,DIM).size();
++            if(warmedEntries<16)throw new IllegalStateException("Warm native cache premise failed");
++            nativeBaseline=nativeDeliveries.get();Probe.sodiumApply(Map.of("lss:lod_source",1));
++            if(DhClientSession.selected())throw new IllegalStateException("Source changed before reconnect");
++            reconnect();phase=3;changed=now;
++        } else if(phase==3 && DhClientSession.selected() && mc.getConnection()!=firstConnection) {
++            if(ClientNetGlue.hasReceivedSessionConfig() || ClientNetGlue.getRequestManager()!=null)throw new IllegalStateException("DH joined native terrain pipeline");
++            teleport();phase=4;changed=now;
++        } else if(phase==4 && now-changed>5_000_000_000L && knownBlocks(false)) {
++            dhEpoch=Probe.field(DhClientSession.class,"session");
++            var limits=(DhMessage.SessionConfig)Probe.field(dhEpoch,"config");
++            if(limits.plan()!=DhMessage.GeneratorPlan.DISABLED || limits.updates() || limits.generationDistance()!=0)
++                throw new IllegalStateException("Content proof requires disabled generation and unsolicited updates");
++            var policy=(DhSessionPolicy)Probe.field(dhEpoch,"policy");oldStamp=policy.timestamp(TILE);
++            emptyEntries=ColumnCacheStore.load(bucket,DIM).size();
++            if(emptyEntries!=0 || nativeDeliveries.get()!=nativeBaseline)throw new IllegalStateException("DH did not isolate/invalidate native stamps");
++            Probe.write("dh-custom-height.json","{\"pass\":true,\"min_y\":-128,\"height\":512,\"high_y\":350,\"low_y\":-118,\"block_comparisons\":"+(2*SAMPLES.size())+",\"warm_native_entries\":"+warmedEntries+",\"entries_after_dh\":"+emptyEntries+"}");
++            Probe.sodiumApply(Map.of("lss:dh_refresh",1));
++            mc.getConnection().sendCommand("execute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:air");
++            mc.getConnection().sendCommand("save-all flush");phase=5;changed=now;
++        } else if(phase==5) {
++            var s=Probe.field(DhClientSession.class,"session");
++            if(s!=dhEpoch || mc.getConnection()==null)throw new IllegalStateException("Removal proof crossed a session boundary");
++            newStamp=((DhSessionPolicy)Probe.field(s,"policy")).timestamp(TILE);
++            if(newStamp<=oldStamp || targetChanged.get()==0 || now-changed<3_000_000_000L || !knownBlocks(true))return;
++            Probe.write("dh-removal.json","{\"pass\":true,\"block_comparisons\":"+(2*SAMPLES.size())+",\"conditional_requests\":"+targetConditional+",\"changed_conditional_replies\":"+targetChanged+",\"old_timestamp\":"+oldStamp+",\"new_timestamp\":"+newStamp+",\"elapsed_ms\":"+(now-changed)/1_000_000L+",\"same_session\":true,\"low_terrain_retained\":true}");
++            nativeColumns.clear();dhBaseline=Probe.requests.get();
++            Probe.sodiumApply(Map.of("lss:lod_source",0));
++            if(!DhClientSession.selected())throw new IllegalStateException("Source switched without reconnect");
++            reconnect();phase=6;changed=now;
++        } else if(phase==6 && !DhClientSession.selected() && ClientNetGlue.hasReceivedSessionConfig()) {
++            Probe.retired(dhEpoch);teleport();phase=7;changed=now;
++        } else if(phase==7 && nativeColumns.size()==16 && now-changed>5_000_000_000L && knownBlocks(true)) {
++            if(Probe.requests.get()!=dhBaseline || Probe.field(DhClientSession.class,"session")!=null)throw new IllegalStateException("DH work continued in native mode");
++            Probe.write("dh-native-switch.json","{\"pass\":true,\"native_protocol\":"+ClientNetGlue.getSessionVersion()+",\"native_columns\":"+nativeColumns.size()+",\"new_native_deliveries\":"+(nativeDeliveries.get()-nativeBaseline)+",\"retired_budget\":"+Probe.observedRetiredBytes+",\"dh_requests_stopped\":true,\"native_storage_comparisons\":"+(2*SAMPLES.size())+"}");
++            Probe.write("dh-result.json","{\"pass\":true,\"custom_height\":true,\"refresh_after_removal\":true,\"warm_native_cache_invalidated\":true,\"native_lss_reconnect_and_terrain\":true}");
++            Probe.done=true;mc.stop();
++        }
++    }
++}
+--- a/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java
++++ b/test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java
+@@ -38,6 +38,31 @@
+     static Object sodiumConfig;
+     static Map<String,Object> menuOptions;
+     static long disabledDueReceipts;
++    static volatile long lastTerrainRequest;
++    static final Map<Integer,DhPosition> missingCandidates=new java.util.concurrent.ConcurrentHashMap<>();
++    static final Map<DhPosition,Long> missingTiles=new java.util.concurrent.ConcurrentHashMap<>();
++    static long offRequests,offObservedMillis;
++    static long observedRetiredBytes,noSkyBaseline;
++    static final AtomicLong noSkySamples=new AtomicLong();
++    static void absence(Object session,long now) throws Exception {
++        var config=(DhMessage.SessionConfig)field(session,"config");
++        if(config==null)return;
++        if(config.generationDistance()>=40 || DhClientSession.diagnostics().effectiveRange()!=40)
++            throw new IllegalStateException("Missing-terrain premise needs sync range 40 beyond generation reach");
++        if(phase==0 && count(session,"tiles")>=3 && missingTiles.size()>=8 && now-lastTerrainRequest>30_000_000_000L
++                && now-Collections.min(missingTiles.values())>130_000_000_000L) {
++            if(LSSClientConfig.CONFIG.snapshot().lod().dh().refreshSeconds()!=0)throw new IllegalStateException("Off control was not Off");
++            offRequests=requests.get();offObservedMillis=(now-Collections.min(missingTiles.values()))/1_000_000L;
++            sodiumApply(Map.of("lss:dh_refresh",1));phase=1;changed=now;
++        } else if(phase==1 && conditionalRequests.get()>0 && unchangedReplies.get()>0 && now-changed>40_000_000_000L) {
++            write("dh-absence.json","{\"pass\":true,\"effective_range\":"+DhClientSession.diagnostics().effectiveRange()
++                    +",\"server_generation_distance\":"+config.generationDistance()+",\"parked_missing_tiles\":"+missingTiles.size()
++                    +",\"off_requests\":"+offRequests+",\"off_observation_ms\":"+offObservedMillis
++                    +",\"conditional_requests\":"+conditionalRequests+",\"unchanged_replies\":"+unchangedReplies+"}");
++            write("dh-result.json","{\"pass\":true,\"unreachable_absence\":true,\"refresh_not_starved\":true}");
++            done=true;Minecraft.getInstance().stop();
++        }
++    }
+     static void sodiumApply(Map<String,Integer> values) throws Exception {
+         var mc=Minecraft.getInstance();
+         if(mc.level==null || mc.getConnection()==null)throw new IllegalStateException("In-session Sodium Apply requires a live connection");
+@@ -110,23 +135,39 @@
+         }
+     }
+     public static void sent(DhMessage message) {
++        if(System.getProperty("lss.rig.scenario","").equals("content")) ContentProbe.sent(message);
+         if(message instanceof DhMessage.Request r) {
+             requests.incrementAndGet();
++            lastTerrainRequest=System.nanoTime();
++            if(System.getProperty("lss.rig.scenario","").equals("absence") && r.timestamp()!=null && r.timestamp()==0) {
++                if(missingTiles.containsKey(r.position()))throw new IllegalStateException("Unreachable empty tile was re-polled: "+r.position());
++                try {
++                    var s=field(DhClientSession.class,"session");
++                    var cfg=(DhMessage.SessionConfig)field(s,"config");var player=Minecraft.getInstance().player.chunkPosition();
++                    if(Math.max(Math.abs(r.position().x()*4+2-player.x),Math.abs(r.position().z()*4+2-player.z))>Math.min(32,cfg.generationDistance()))
++                        missingCandidates.put(r.requestId(),r.position());
++                } catch(ReflectiveOperationException e) {throw new IllegalStateException(e);}
++                catch(Exception e) {throw new IllegalStateException(e);}
++            }
+             if(r.timestamp()!=null && r.timestamp()>0) {conditionalRequests.incrementAndGet();conditional.put(r.requestId(),r.timestamp());}
+         } else if(message instanceof DhMessage.Cancel c) conditional.remove(c.requestId());
+     }
+     public static void received(byte[] bytes) throws Exception {
++        if(System.getProperty("lss.rig.scenario","").equals("content")) ContentProbe.received(bytes);
+         // Inspect only responses, avoiding duplicate terrain-fragment allocations.
+         if(bytes.length<4 || bytes[2]!=0 || bytes[3]!=8) return;
+         var response=(DhMessage.Response)new DhProtocolCodec(DhProfile.OFFICIAL_16,DhLimits.DEFAULT).decode(bytes);
+         if(conditional.remove(response.requestId())!=null && response.bufferId()==null) unchangedReplies.incrementAndGet();
++        var missing=missingCandidates.remove(response.requestId());
++        if(missing!=null && response.bufferId()==null)missingTiles.put(missing,System.nanoTime());
+     }
+     static void settings(Map<String,Object> values) throws Exception {
+         var cfg=LSSClientConfig.CONFIG;var store=cfg.store();store.saveDraft(store.read().hash(),values);
+         cfg.reload(ignored->{});
+     }
+     static void retired(Object s) throws Exception {
+-        if((boolean)field(s,"active") || ((DhMemoryBudget)field(s,"budget")).used()!=0)
++        observedRetiredBytes=((DhMemoryBudget)field(s,"budget")).used();
++        if((boolean)field(s,"active") || observedRetiredBytes!=0)
+             throw new IllegalStateException("Retired epoch retained DH memory/work");
+     }
+     static synchronized void aimAtDistantColumn(Object s) throws Exception {
+@@ -143,7 +184,7 @@
+         if(best<36) throw new IllegalStateException("No sufficiently distant accepted solid column for view");
+         double dx=bx*16+8,dz=bz*16+8;
+         viewYaw=(float)Math.toDegrees(Math.atan2(-dx,dz));viewPitch=(float)Math.toDegrees(Math.atan2(40,Math.hypot(dx,dz)));
+-        write("dh-view.json","{\"player\":[0,100,0],\"target_chunk\":["+bx+","+bz+"],\"vanilla_authority\":false,\"yaw\":"+viewYaw+",\"pitch\":"+viewPitch+"}");
++        write("dh-view.json","{\"player\":[0,100,0],\"target_chunk\":["+bx+","+bz+"],\"vanilla_authority\":"+!policy.eligible(bx,bz)+",\"yaw\":"+viewYaw+",\"pitch\":"+viewPitch+"}");
+     }
+     static void rendering(boolean enabled) throws Exception {
+         // Voxy's config flag is consulted at renderer creation, not each draw.
+@@ -156,7 +197,10 @@
+         int[] visible=(int[])stats.getField("visibleSections").get(null);
+         long total=0; for(int q:quads) total+=q;
+         if(total<=0) throw new IllegalStateException("No rendered Voxy quads after settling");
+-        write("dh-render.json","{\"quads\":"+total+",\"quad_counts\":"+Arrays.toString(quads)+",\"visible_sections\":"+Arrays.toString(visible)+",\"software_control\":true}");
++        String renderer=org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER);
++        boolean software=renderer!=null && renderer.toLowerCase(Locale.ROOT).contains("llvmpipe");
++        if(!software)throw new IllegalStateException("Private render control is not llvmpipe");
++        write("dh-render.json","{\"quads\":"+total+",\"quad_counts\":"+Arrays.toString(quads)+",\"visible_sections\":"+Arrays.toString(visible)+",\"software_control\":"+software+"}");
+     }
+     static Object field(Object o,String name) throws Exception {
+         Field f=(o instanceof Class<?> c?c:o.getClass()).getDeclaredField(name); f.setAccessible(true);
+@@ -169,8 +213,11 @@
+     public static synchronized void converted(DhTerrainTile tile,int c,VoxelColumnData data) {
+         if(done) return;
+         if(!tile.world().sky()) for(var section:data.sections())
+-            for(int y=0;y<16;y++) if(section.skyLight()==null || section.skyLight().get(2,y,2)!=0)
+-                throw new IllegalStateException("No-sky dimension carried skylight");
++            for(int y=0;y<16;y++) {
++                if(section.skyLight()==null || section.skyLight().get(2,y,2)!=0)
++                    throw new IllegalStateException("No-sky dimension carried skylight");
++                noSkySamples.incrementAndGet();
++            }
+         int cx=tile.position().x()*4+c/4,cz=tile.position().z()*4+c%4;
+         long key=(cx & 0xffffffffL)|((long)cz<<32);
+         // Later generation may legitimately refine a prior sync snapshot. Keep
+@@ -241,6 +288,7 @@
+             }
+             if(now-logged>1_000_000_000L) { logged=now; write("dh-status.txt",phase+" "+DhClientSession.status()); }
+             if(mc.level==null || mc.player==null) return;
++            if(System.getProperty("lss.rig.scenario","").equals("content")) {ContentProbe.tick(now);return;}
+             if(!positioned) {
+                 positioned=true; changed=now; mc.options.hideGui=true;
+                 mc.player.getAbilities().flying=true; mc.player.onUpdateAbilities();
+@@ -255,6 +303,7 @@
+             Object s=field(DhClientSession.class,"session");
+             if(s!=null && !DhClientSession.running()) throw new IllegalStateException(DhClientSession.status());
+             if(s==null && phase!=8 && phase!=14) return;
++            if(System.getProperty("lss.rig.scenario","").equals("absence")) {absence(s,now);return;}
+             if(phase==0 && now-changed>55_000_000_000L && count(s,"tiles")>=3 && DhVoxyBridge.backlog()==0) {
+                 int[] r=readback(s);
+                 write("dh-readback.json","{\"samples\":"+r[0]+",\"solid_samples\":"+r[1]+",\"columns\":"+r[2]+",\"sections\":"+r[3]+"}");
+@@ -279,7 +328,7 @@
+                 phase=2; changed=now;
+             } else if(phase==2 && s!=previous && count(s,"tiles")>=2 && now-changed>10_000_000_000L) {
+                 retired(previous);overworldPolicy=(DhSessionPolicy)field(s,"policy");originalConnection=mc.getConnection();
+-                write("dh-reset.json","{\"pass\":true,\"old_budget\":0,\"new_session\":true}");
++                write("dh-reset.json","{\"pass\":true,\"old_budget\":"+observedRetiredBytes+",\"new_session\":true}");
+                 settings(Map.of("lod.distance_chunks",8));
+                 sodiumApply(Map.of("lss:dh_refresh",1));phase=6;changed=now;
+             } else if(phase==6 && LSSClientConfig.CONFIG.snapshot().lod().dh().refreshSeconds()==30
+@@ -313,14 +362,16 @@
+                 settings(Map.of("lod.receive",true));phase=9;changed=now;
+             } else if(phase==9 && s!=previous && field(s,"levelKey")!=null && now-changed>3_000_000_000L) {
+                 if(field(s,"policy")!=overworldPolicy)throw new IllegalStateException("Receive toggle lost session receipts");
+-                write("dh-reception.json","{\"pass\":true,\"retired_budget\":0,\"receipt_policy_retained\":true,\"ordinary_connected\":true}");
+-                previous=s;mc.getConnection().sendCommand("execute in minecraft:the_nether run tp @s 0 100 0");phase=10;changed=now;
++                write("dh-reception.json","{\"pass\":true,\"retired_budget\":"+observedRetiredBytes+",\"receipt_policy_retained\":true,\"ordinary_connected\":true}");
++                noSkyBaseline=noSkySamples.get();previous=s;mc.getConnection().sendCommand("execute in minecraft:the_nether run tp @s 0 100 0");phase=10;changed=now;
+             } else if(phase==10 && mc.level.dimension()==Level.NETHER && s!=previous && count(s,"tiles")>=1) {
+                 retired(previous);if(field(s,"policy")==overworldPolicy)throw new IllegalStateException("Nether reused Overworld receipts");
+-                write("dh-nether.json","{\"pass\":true,\"tiles\":"+count(s,"tiles")+",\"old_budget\":0,\"zero_sky\":true}");
+-                previous=s;mc.getConnection().sendCommand("execute in minecraft:the_end run tp @s 0 100 0");phase=11;changed=now;
++                long samples=noSkySamples.get()-noSkyBaseline;if(samples<=0)throw new IllegalStateException("No actual Nether sky samples");
++                write("dh-nether.json","{\"pass\":true,\"tiles\":"+count(s,"tiles")+",\"old_budget\":"+observedRetiredBytes+",\"zero_sky_samples\":"+samples+"}");
++                noSkyBaseline=noSkySamples.get();previous=s;mc.getConnection().sendCommand("execute in minecraft:the_end run tp @s 0 100 0");phase=11;changed=now;
+             } else if(phase==11 && mc.level.dimension()==Level.END && s!=previous && count(s,"tiles")>=1) {
+-                retired(previous);write("dh-end.json","{\"pass\":true,\"tiles\":"+count(s,"tiles")+",\"old_budget\":0,\"zero_sky\":true}");
++                retired(previous);long samples=noSkySamples.get()-noSkyBaseline;if(samples<=0)throw new IllegalStateException("No actual End sky samples");
++                write("dh-end.json","{\"pass\":true,\"tiles\":"+count(s,"tiles")+",\"old_budget\":"+observedRetiredBytes+",\"zero_sky_samples\":"+samples+"}");
+                 previous=s;mc.getConnection().sendCommand("execute in minecraft:overworld run tp @s 512 100 0");phase=12;changed=now;
+             } else if(phase==12 && mc.level.dimension()==Level.OVERWORLD && s!=previous && field(s,"levelKey")!=null && now-changed>3_000_000_000L) {
+                 retired(previous);if(field(s,"policy")!=overworldPolicy)throw new IllegalStateException("Portal return lost Overworld authority");

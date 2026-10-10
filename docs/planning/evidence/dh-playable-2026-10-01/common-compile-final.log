@@ -1,0 +1,3 @@
+Note: /home/vox/projects/voxel-server-support/.worktrees/dh-client-p1/common/src/main/java/dev/vox/lss/common/config/LegacySettingsMigration.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+All 120 common production Java sources compiled on Java 21, with no MC/loader dependency.

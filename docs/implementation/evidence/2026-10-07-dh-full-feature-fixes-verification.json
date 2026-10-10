@@ -1,0 +1,507 @@
+{
+  "kind": "DH full-feature review fixes, source checkpoint",
+  "recorded_utc": "2026-10-07T23:20:45.709364+00:00",
+  "checkout": "/home/vox/projects/voxel-server-support/.worktrees/dh-client-p1",
+  "base": "/tmp/lss-dh-p4-20261007-r5",
+  "head": "6677fe93dfc35b8ca1e158972d4cf58eb9703bd2",
+  "normal_build_passed": false,
+  "new_shipping_artifact_created": false,
+  "new_artifact_deployed": false,
+  "new_live_game_tests": false,
+  "new_performance_runs": false,
+  "release_ready": false,
+  "source_manifest_sha256": "0d25a253b9f3fc79aa35c15a3f1af7376fbc625066c8e62c81b475728872deb3",
+  "test_source_manifest_sha256": "8539939b72345b614073ca5d1c366484a5bb454977278b6fc81b68b387473328",
+  "source_inputs": 451,
+  "test_tool_inputs": 850,
+  "changes_from_r5": [
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/config/SettingsSchema.java",
+      "before_sha256": "3fbadac16eea204ca9c8dcbc3efe1f246173162b9b0065fb9a2975a3faa8f53f",
+      "after_sha256": "17a48a9ab3159e0bfae3c8af32b144128ee80e3ee589d5e9a0d58e6082bc3c15"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/config/YamlSettingsCodec.java",
+      "before_sha256": "6a5c4104691064e36337a88c85fcfc767fb8b7ab5e9eeb388ae2ff421d4b5804",
+      "after_sha256": "b7b4a94aa0d54e79115fdf1bccdb551532853c057105a6501837ccc3d06d6f6a"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java",
+      "before_sha256": "37270ee31b380fd6dfa53867565fd96bc4287f5773ce8ef2b86963ae711c5b34",
+      "after_sha256": "724af5365bb6f8edb952bb6ea9f234b91b06499a20b6d35e535e2329bc19c031"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java",
+      "before_sha256": "dc2920925cf5ca8229ccfa261d66ef1b71e4ee4a7864548dbd51e549664a00f6",
+      "after_sha256": "00ea6406774e62af942d6bb5c092719b656eccfd17b08b0023d88d7fe8de868d"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhTerrainCache.java",
+      "before_sha256": "851e6a73f2e7117c2f9e8b48fd316859ddb01ec8b55460b7d0927f91fe1635e2",
+      "after_sha256": "5d474a9ee09006d2f41b72cfa81037478c31a3ee62d80761a466f2bbbe45debc"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/diagnostics/ClientStatusSnapshot.java",
+      "before_sha256": "1aa8132ed78ebe7137b82ba553d69970e87a4f1b95eddc0fb86deafd0f9b41a9",
+      "after_sha256": "b468a25eef03ceac1c47f85ae288e3db042623686e6f3ccf789ad682a02b45bb"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/diagnostics/ClientStatusText.java",
+      "before_sha256": "f178e76e004d93482ec8b0089c45dbe36abf26bfa42767ce4065decdf05faa22",
+      "after_sha256": "f6feb1a6b0809d8306dde123f3ca1ffe26d882f802f277cd885dc9dffd2c1637"
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/diagnostics/DhStatusSnapshot.java",
+      "before_sha256": "8572a2f5bd261918cd6df035daddc589006e248e9dde17793632e52097b1cc0c",
+      "after_sha256": "ca33c5b90e332b4951115c981a09a69723127b05af2f21d40b158953c516e14c"
+    },
+    {
+      "path": "common/src/main/resources/dev/vox/lss/settings/client.yaml",
+      "before_sha256": "226ed494d1c23a2061fcea15fe265c36aedfec14117c2901d65f58828474c02a",
+      "after_sha256": "07e05746d739932d388237425929a8b5edffb4915703a3a963801b9e0b812703"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/config/DhDefaultDowngradeTest.java",
+      "before_sha256": null,
+      "after_sha256": "4fda16a67357f942abcb1f7e7eb1245ee1423523ca5462860f8e135e54e6b5d1"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhCaptureIntegrityTest.java",
+      "before_sha256": null,
+      "after_sha256": "8924f65fb0c688ab17a62bd9a06c99736276bbc6627b72ad5c1598d7073e8a80"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhLegacyEvidenceTest.java",
+      "before_sha256": null,
+      "after_sha256": "7d5072a928f492320644bb17ae754f7f6c12003709c7eefb616d0313c92a23b8"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java",
+      "before_sha256": "06bb3ba26ef0806c02f2a86b38a1276e5d3735bd43c1d5bcf3231682a15e7662",
+      "after_sha256": "44251e63b52441a80b0dc1d0c6ee800022e7187a69cff8de2675239cdb593519"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhTerrainCacheTest.java",
+      "before_sha256": "a21f98672953fc5cf13b6dd2d4dd8852e80ff08572c79ca943b67ac19af34e8b",
+      "after_sha256": "ab592fafbf23bd83497c76678fd952e1456068182131ff9631557785028311cc"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/diagnostics/ClientStatusTextTest.java",
+      "before_sha256": "ca165e6ea3093fdda48a9f7658f9d5626052816f45c1d4e8253152d98118716c",
+      "after_sha256": "4faaf97bd73c120f4cb1815473bbc92f6d77cb162fcef097746517dbac5fe8ea"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/diagnostics/DiagnosticPrivacyTest.java",
+      "before_sha256": "f9f54a6689174f3e95517a72115edb0d30830806fbcc747ec5c012d19030f554",
+      "after_sha256": "92783969412e49f672c58df561fd0b82d610729945bd637a2954e740c8d415bc"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/capture-sha256.json",
+      "before_sha256": null,
+      "after_sha256": "671d3a350b9575630aab285ef0db3291543888b7f2cfb81eeb816609b43f986b"
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean.dto",
+      "before_sha256": "01f2af0befab075570b49e7ce182c5ecdda61bb7d1a6b81db43cc7be03abe538",
+      "after_sha256": null
+    },
+    {
+      "path": "docs/reference/settings-schema.json",
+      "before_sha256": "b0e57652411ccd81a06745dded6cfe68d93fa46e7e166d3019d08af3d2acd0ad",
+      "after_sha256": "53bd4e3b1347dc34450d6464741237dae961fe3dd8aecabf06e8ecedfb5834c2"
+    },
+    {
+      "path": "docs/reference/settings.md",
+      "before_sha256": "39e6132ca69e3b050a66c0c23429d4d4416b689d95fcaf21ffd1803a8456139f",
+      "after_sha256": "0044eefee0a575b089575005c7ca6d8710b1f974550475e6c8d78cb487cf3f50"
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
+      "before_sha256": "163dbfad75ac6129ca18e09f8380a6682b9b856b6bf4d81658bc6a85a4bfe0d5",
+      "after_sha256": "c04084e3b06ca3075bb4446a3859a25d28f94c0d71df436fc25cc2606178b96c"
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java",
+      "before_sha256": "ee786266ebe590ac379d5f894b243abad94e9aa414710f22ec1dfa048b9879c7",
+      "after_sha256": "177aedb5503f84512fae4d15bb8839367a4f62c2f70158c32d5f5e47530dcc89"
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/config/menu/SodiumDraftRefresh.java",
+      "before_sha256": "95dd0176430d3a5fe48bc7da5447e4ce2d22f6ed1cd1324a2084c71918f608e8",
+      "after_sha256": "b762f9c91435f10d8d05451c4258bd8743cc72aa95224c41be8a2fa40d230f30"
+    },
+    {
+      "path": "fabric/src/main/resources/assets/lss/lang/en_us.json",
+      "before_sha256": "ed32afb7eb162f2b48c9a01dbb84680285e490534ff213dd3b83edb47701870f",
+      "after_sha256": "075b3936ae0da5856617260b7f13fd7b3d86e11fbe07a04a715bdb9a8ad47eb1"
+    },
+    {
+      "path": "fabric/src/main/resources/assets/lss/lang/zh_cn.json",
+      "before_sha256": "a26e0838c4c46aadff54ea39287b29b49e938998a51ec4284f92e1724fe07bd7",
+      "after_sha256": "a48293fdf687a6940ce60a84ddc1fa3df737dcccc70e3d1595e948dd454349e6"
+    },
+    {
+      "path": "fabric/src/main/resources/assets/lss/lang/zh_tw.json",
+      "before_sha256": "5e355b3fe511e0bdd4a96a28c22cd207f370426268239ef75dc20fd132c95c17",
+      "after_sha256": "048d757d19f14cf562638cfed47ef50b51c2b94415ea521e5edb656ba8bdfcb3"
+    },
+    {
+      "path": "fabric/src/main/resources/lss.mixins.json",
+      "before_sha256": "82505420887635dfe6578a41c3d411bd8df729c38731f7d314afb1d7022c5c35",
+      "after_sha256": "53fde9b1199e02a7e5e50e93160680a4e72a5ee04be17a41745d97391dfb884c"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/compat/VoxyVanillaCoverageTest.java",
+      "before_sha256": "1fee681d9385329380d463ce0d4b52eec57e6479bb03e7f50d04d35c989241f3",
+      "after_sha256": "204c920d754fb0b08bf0f4e570261e1b26f70e18e9a4074f2420797b2b35a1f4"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/config/LSSConfigMenuTest.java",
+      "before_sha256": "628d237e72e6894d1cf5a878574e602ea22244772d38e81fbef65069acf9ee5a",
+      "after_sha256": "ba96e14c0a98641c159569bf36393c66c85277ec63f920f92188ea348e432828"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java",
+      "before_sha256": "80ece0c762b85c5edbd3de3be32f99de8ed77c90b56689c01dee831a54408e83",
+      "after_sha256": "99b8d127c24aca580e631a98b00a9805c4e179589c00b1643dcd2e2db9b6c0b7"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/config/menu/LegacySodiumPageTest.java",
+      "before_sha256": "1d195ee5b222e2c2aa118f67f9bf7f77606ecfba7100cb3baa83055c1cfd288d",
+      "after_sha256": "61b58bb1a92545e941cab9ff9f662f7f674d9e27295a7284e1d2d10076f4126b"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/ColumnCacheStoreTest.java",
+      "before_sha256": "6639e4a049e6b950996cb8955b034a0544838e4b79e41e4dca07beca3d426164",
+      "after_sha256": "27594d1754ad2b8a9acf1bfcb9c081a87c64dcdec4c429bf3991d6af88c22f1b"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java",
+      "before_sha256": "d9fabe16b8ec404cd56aa8d422f6a19013c9fa6e3241c955f240036c0651c8e8",
+      "after_sha256": "48baa6ff5cab13071f705e9d48b2c80cf9c3604e8523843e90dd403dca883e7e"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java",
+      "before_sha256": "426e051652a85fa46d8dcd847d2e90135c9f50b91705133388843793116892fc",
+      "after_sha256": "9d47185aed7923a143b2a20c26f6466a793421afa9af912e4c9aedf77ee1a129"
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/ConfigBuilder.java",
+      "before_sha256": "34319c91edc7e52c95e5957a19064259916934f5caba896817906439a06b2bd3",
+      "after_sha256": "b8306f2e31bea6a7e7c8725538508953a47bf7135d31188cfeb023c9fd2b2365"
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/EnumOptionBuilder.java",
+      "before_sha256": "353145035313e677c1b0cb7a4b82f52088c22e0ee062d13df0cab46c552d845a",
+      "after_sha256": null
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/RecordedEnum.java",
+      "before_sha256": "cb2916a475e05992c8522fc10eda62f5b4b7849c651258f6d7e338092358872a",
+      "after_sha256": null
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/RecordingConfigBuilder.java",
+      "before_sha256": "bf0a38819b9823236ec681bf3ee8e89c9f34493592b76482c7724f304f970b88",
+      "after_sha256": "96c160b914f3b2d53fe9dc5e9f1a0795816d27c9c9eccfd5623e7f04d6936785"
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/client/gui/options/control/CyclingControl.java",
+      "before_sha256": "82903db7c1e1faf9adfa768965697bc16c3aae92c1ecc328f31d0176ee26d0d7",
+      "after_sha256": null
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
+      "before_sha256": "8bc669e24a3528d00a9f8a21ab1b4607dd01e8821111ec34d0ac32efa09c03dc",
+      "after_sha256": "2740b43553932ca15359dfda6d4f4f3391615d77d73ff68bd86342f46e0b4253"
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java",
+      "before_sha256": "ee786266ebe590ac379d5f894b243abad94e9aa414710f22ec1dfa048b9879c7",
+      "after_sha256": "177aedb5503f84512fae4d15bb8839367a4f62c2f70158c32d5f5e47530dcc89"
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/config/menu/SodiumDraftRefresh.java",
+      "before_sha256": "95dd0176430d3a5fe48bc7da5447e4ce2d22f6ed1cd1324a2084c71918f608e8",
+      "after_sha256": "b762f9c91435f10d8d05451c4258bd8743cc72aa95224c41be8a2fa40d230f30"
+    },
+    {
+      "path": "neoforge/src/main/java/net/caffeinemc/mods/sodium/api/config/structure/ConfigBuilder.java",
+      "before_sha256": "00f034d139da5e6ce9340633cfe569a5dac2289e031cd7aec4d79f36b74c0790",
+      "after_sha256": "1150e0d32a8aababaf273fa10594b3f7411421c08a08257b11a4ae1e3cf28688"
+    },
+    {
+      "path": "neoforge/src/main/java/net/caffeinemc/mods/sodium/api/config/structure/EnumOptionBuilder.java",
+      "before_sha256": "353145035313e677c1b0cb7a4b82f52088c22e0ee062d13df0cab46c552d845a",
+      "after_sha256": null
+    },
+    {
+      "path": "neoforge/src/main/resources/lss.neoforge.mixins.json",
+      "before_sha256": "82505420887635dfe6578a41c3d411bd8df729c38731f7d314afb1d7022c5c35",
+      "after_sha256": "53fde9b1199e02a7e5e50e93160680a4e72a5ee04be17a41745d97391dfb884c"
+    },
+    {
+      "path": "scripts/release_check.py",
+      "before_sha256": "bc9bfca3c6eea31018f8f0cd7960ee1f98d02c2348656972d8d5007c7f1a60e2",
+      "after_sha256": "a07925739a692fd5a3aa91e34e2f8fa70f4d6bab6c43ec4bea2f7ea74f671896"
+    },
+    {
+      "path": "test-fixtures/dh-live/README.md",
+      "before_sha256": "546aab30b5de5190009f34a9b2e281b6b1105342fb9c2b0012c3366f7e0f8a10",
+      "after_sha256": "d518b835c2229e9671d2e582ed340e712efc48d4506882e9076ef587c643a8f2"
+    },
+    {
+      "path": "test-fixtures/dh-live/exercise.py",
+      "before_sha256": "5a94bcdbacb19666e1ed1c2097dbaa722a6931423ac60dd6fe62d6004a1afd7b",
+      "after_sha256": "c74adab2401bb3eb459af3683a16dcbf8778897208b0bf81f70035e2740600a8"
+    },
+    {
+      "path": "test-fixtures/dh-live/prepare.py",
+      "before_sha256": "3ebc0080608b78bde01e6a58dc35df6a9f7eb48b39e8ce752f2fb1f8e9b2fa15",
+      "after_sha256": "cad22c39e2cd818675db0eca98b26d24be5990dab09716c28b715612c2f447f6"
+    },
+    {
+      "path": "test-fixtures/dh-live/resources/lss-dh-fixture.mixins.json",
+      "before_sha256": "28688de0f1c1f0527445ea3c15fcb57ee064a7e6036f409a119636b2d25552e4",
+      "after_sha256": "a211a75cfd834295cf86db36a1343c0743de880b343f2a2324ba10a379fc48b4"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/FixtureMixinPlugin.java",
+      "before_sha256": "7ea63299aa984b2cbdee5473f1a4401ccbdd6fc4c9321bd41f4380ea19a9bf2e",
+      "after_sha256": "18311929947f845bad0835da463513bb607cef7fb845c76cab1ca2f622e8a30e"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/SlowConfigMixin.java",
+      "before_sha256": "78b9117f69e35a7f3bcfdc4e5961cd076c56695ced5535a20a8e69454b114666",
+      "after_sha256": null
+    },
+    {
+      "path": "test-fixtures/dh-p4/README.md",
+      "before_sha256": "717548a68fc424cb59fea74c20f03f3bc70c846340fc12c62f4f7dcc521b8b42",
+      "after_sha256": "52451eff953c2a4ac01f7f6d74961b60b2076c4e88222a661ae397f4315a020e"
+    },
+    {
+      "path": "test-fixtures/dh-p4/prepare.py",
+      "before_sha256": "a042644ba12116fe975803d1a79618104d9c67307d1b4f74409eb70fa7b801eb",
+      "after_sha256": "681ea956fc39de2348b2976af4117b28f9148b9f798dab40d874cf759d865681"
+    },
+    {
+      "path": "test-fixtures/dh-p4/run.py",
+      "before_sha256": "f41dfbfea49a121baf2b5b906c17ca9a3c200d626e5b586483045f4fdde17cb8",
+      "after_sha256": "8f4e188f926e2711c5d6f8f82312a1fe76379848c65ea25dedc4874de53afa71"
+    },
+    {
+      "path": "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/CachePressure.java",
+      "before_sha256": "6abe13f2fa814a9ba962dec34b4c435f97ec1b409984c8a01719a5b30a919157",
+      "after_sha256": "6f7b44347349e0a52ed649be6688aa3cc3a3335fb532c500c6408de7d7901dbe"
+    },
+    {
+      "path": "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ContentOracle.java",
+      "before_sha256": "73d31e4d7f3874e438d4f7df962d6f53b0c7cff3e808d097bfe716cdf66b9c24",
+      "after_sha256": "144374f9abc3d9ee76c0fa18ccd05ecdd50ee3d47447128a949b68483b7b2247"
+    },
+    {
+      "path": "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/FrameMetrics.java",
+      "before_sha256": "863d89d0ae8f64f5c275d15016acc1da2e12d530aad2ddb25f54d4e2199f9bf0",
+      "after_sha256": "ac3576ace44365f7e917fcf3be4d0b6d03953fc46a13f50aad581d431530d414"
+    },
+    {
+      "path": "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/NtfsCacheBenchmark.java",
+      "before_sha256": "c4269d7d90fbe5c15c0730b858653b4937014d16ed6aa86e6a98413a8df2b53c",
+      "after_sha256": "c8b55be5e4d6cbc2cc1c20c027db27d51d783034ae31ae08fc5ea9243d47174a"
+    },
+    {
+      "path": "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/P4Probe.java",
+      "before_sha256": "e262a1440ddb109fdab2fe5a82ae69f63e7db41f3cff8abd8465a2a2a44c97dd",
+      "after_sha256": "ad43aee8772b702d92b80968252a7298b8a0cb21fddce72734e5323d11db2c7e"
+    },
+    {
+      "path": "test-fixtures/dh-p4/summarize.py",
+      "before_sha256": "f4264f1c880b23c80394c656742a8f05766c68016bd02321718b235d647593b8",
+      "after_sha256": "ddfc89feb357b9483b60dc34e6df07fc473e9a75fb2dc50a3cedc469f9daa4ba"
+    },
+    {
+      "path": "tools/settings/reference.py",
+      "before_sha256": "9592788f938d93816622f686727aa37cf9a91a796f10e589e96fce9b99c1c95d",
+      "after_sha256": "04351475571fb090f12bc04aca23b617aa7fbe96b21d7fd59c7eecea716ce722"
+    },
+    {
+      "path": "tools/tests/test_dh_release_gate.py",
+      "before_sha256": null,
+      "after_sha256": "1bea19a80265c65ca8f4b3422017a40274ad6594ac8fc0b405b62a1049a1fa3a"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/ModCompat.java",
+      "before_sha256": "5c78e29d372b422a33e68ed5f837782be90cf5c40983b2c319f792da0875341b",
+      "after_sha256": "8f01587627000cb133d23f477d296eaba9648073679c3a8e80163d28a1f84057"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/VoxyCompat.java",
+      "before_sha256": "1b108e6f4bbce14c2d7c1d7984c8b9a32afc88e8f9ce4ba233ae5efa72076e65",
+      "after_sha256": "81ce699cfeb1efde67946aaa947af3693b3a56130338b4617f583018ff70cbfb"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/VoxyVanillaCoverage.java",
+      "before_sha256": "fd6f6478b53c938f175392cadd5b84f85907e1fd2b1e692efe137b1438e16080",
+      "after_sha256": "6263ef5069a9871cf4cb8ae838e3ffc2bf92acf4038ea75a717670bad1965d49"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java",
+      "before_sha256": "f4471833435de49ccfa54cf51664de84e8e822ad2f62631ea33df06f1e9a9686",
+      "after_sha256": "26065881595acc0d4ea223e00d2eaa390ed470e6b4c9e5984122df709f2fa5a2"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/config/menu/OptionSpec.java",
+      "before_sha256": "98f2e91d74ed443781dcb991ce7cf952cd59cfc83fbba1aba15f7de27c4d6b87",
+      "after_sha256": "483a8053f78ce1821f7f221bda347b7a2b0e1a708453de72f59acd8afd26410e"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/mixin/AccessorScreenWidgets.java",
+      "before_sha256": null,
+      "after_sha256": "3b837fcb2ffb8486723a464af2f1962a2458f5e976358cb22d40177805abad29"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/mixin/ClientTransferHook.java",
+      "before_sha256": null,
+      "after_sha256": "95b1dcdfa7ac99799400037232633077e42ee26b1fff696ef2d056d64717d704"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java",
+      "before_sha256": "eaf4a051b1f58cd5bc0096999867559ccd44298c99404bbfcb11c07ea990037c",
+      "after_sha256": "e495ca3eb914668a9ad7a83077916c3ebd6b275397f86ffb7fa09e0541983f15"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientIdentityResolver.java",
+      "before_sha256": "d2eb54c9d54bbb406d97bc2b2ff2e881935377a389e9fced54c429a74b24d427",
+      "after_sha256": "0f1963bd39518acffb4dce3c01d22d9deb83728d7f649ea2294bead543a74752"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientStatus.java",
+      "before_sha256": "84c10bf6bc47abdee43000408d4d16fcbc5363888c675fb85d639cbf98481e3f",
+      "after_sha256": "e85de73645b01e78f702397bc21a1ed75b242c6051ba08f66897415709cada12"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java",
+      "before_sha256": "bf3b2e0262964a20a3b2bc8caebf4e26c43dcdc49d079d89b1b3df2de749c2f7",
+      "after_sha256": "0c6542c18229040b9ed512b235bb537d7a84bcece6995e0a969007caeda4f942"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/DhColumnConverter.java",
+      "before_sha256": "8a05244e98daa85f823eec09138799b6537388d2fd22742e7fb9ea83724b65da",
+      "after_sha256": "16317587655b1f533c67bdfb246201b6f829f5e5a24232b947b65693cb53b4b0"
+    }
+  ],
+  "direct_java": [
+    {
+      "log": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/full-review-fixes/logs/lss-dh-full-review-fixes-common-tests-final-3.log",
+      "sha256": "37942966ba653918e3369ee18c184395195f2b6714446527b7d1e188966a5b0d",
+      "found": 1026,
+      "successful": 1026,
+      "failed": 0,
+      "aborted": 0
+    },
+    {
+      "log": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/full-review-fixes/logs/lss-dh-full-review-fixes-fabric-all-tests-4.log",
+      "sha256": "668108cee838c84a202ef868fe573d84c739e1407f8b5a6bdb32a961ebf48e32",
+      "found": 1780,
+      "successful": 1776,
+      "failed": 0,
+      "aborted": 4
+    },
+    {
+      "log": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/full-review-fixes/logs/lss-dh-full-review-fixes-neoforge-tests-final.log",
+      "sha256": "3293a98057080d62dcd8f1b8fa652ffc638fc1e3d0511269d8faacc2a9348114",
+      "found": 23,
+      "successful": 23,
+      "failed": 0,
+      "aborted": 0
+    }
+  ],
+  "four_optional_fabric_experiments_aborted": true,
+  "python_unit_tests": {
+    "release_mutations_owned_grace_sqlite": 15,
+    "p4_guard_metrics": 8
+  },
+  "release_selftest_cases": 126,
+  "historical_r5_six_jars_under_current_checker_passed": true,
+  "known_gate": "I1: queued Voxy writes cannot be revoked/fenced; completion/persistence unavailable",
+  "manual_server": "Stopped through known owned console; all dimensions saved",
+  "prism": "unchanged r5 dev jar",
+  "limitations": [
+    "Direct javac uses -proc:none; normal Gradle, remapping, mixin/refmap/game gates are still owed",
+    "Default Gradle cache was read-only; writable private Gradle home still failed for no usable wildcard IP",
+    "Range physical-rejoin and narrower all-page legacy observers prepared but unrun",
+    "No new measurement supports a scheduler speedup",
+    "Old cleanup receipts cannot retroactively establish an inactive-process check"
+  ],
+  "first_failure_evidence_preserved": true,
+  "evidence": {
+    "compiled-class-manifest.json": "7d09e73e4a0f6e63b79bb458d4b7b235b433abeddbf727b33248c14efdd9ca04",
+    "runtime-dependency-manifest.json": "2a0be9b528ab10131bd5c1a4f25f00f430b05acbe8d3e91d154f5bc09d1ff908",
+    "performance-corrections.json": "32f064bcb6df694a48cea5f03a8b7a0b83beefac898d14849c28b3dc54adedea",
+    "support-dummy-palette-replay.json": "39d63a491088d8fd926e1d15b70d8c81f83728bbc88ac20e66a1a84a9dedfa6e",
+    "owned-console-stop-request.json": "b01693375dc9c3b60f825858d0929a708826c8290d03adf735d6081e5751d509",
+    "local-bind-check.json": "ce0c51f4d6e7842e76e136fba82b62fe3e09784810d653f7c814cd3144ef267f",
+    "logs/lss-dh-full-review-fixes-common-compile-2.log": "cadd9efac58aa9c0dff2d3cae9f5f505838789ecdf7ec8d346b92512600bfe0d",
+    "logs/lss-dh-full-review-fixes-common-compile-3.log": "a45f84120d8707acf75466c6133ae7fb51d0eec42ddbb706a32c82310eab5c89",
+    "logs/lss-dh-full-review-fixes-common-compile-4.log": "a45f84120d8707acf75466c6133ae7fb51d0eec42ddbb706a32c82310eab5c89",
+    "logs/lss-dh-full-review-fixes-common-compile.log": "1760669e198e12ca4c0b932a55ff176d58ced4751f88a6bdc122a89bc01b79fe",
+    "logs/lss-dh-full-review-fixes-common-javac-final-2.log": "a45f84120d8707acf75466c6133ae7fb51d0eec42ddbb706a32c82310eab5c89",
+    "logs/lss-dh-full-review-fixes-common-javac-final.log": "a45f84120d8707acf75466c6133ae7fb51d0eec42ddbb706a32c82310eab5c89",
+    "logs/lss-dh-full-review-fixes-common-tests-2.log": "f5ce7db4c00010afecdc75eb8bbe6636215f0cae303e8c98dab82184aac2216c",
+    "logs/lss-dh-full-review-fixes-common-tests-compile-2.log": "85c41331e0cd993323a8e5afddcd1e84f2b6c8a820f2348c4ed7906a21035a7a",
+    "logs/lss-dh-full-review-fixes-common-tests-compile.log": "85c41331e0cd993323a8e5afddcd1e84f2b6c8a820f2348c4ed7906a21035a7a",
+    "logs/lss-dh-full-review-fixes-common-tests-final-2.log": "15de14b6a3a8c2715365ce932ae31926969ceadbcbbf100706ed3333b6332d74",
+    "logs/lss-dh-full-review-fixes-common-tests-final-3.log": "37942966ba653918e3369ee18c184395195f2b6714446527b7d1e188966a5b0d",
+    "logs/lss-dh-full-review-fixes-common-tests-final.log": "258f101ccdb15ab358393b167916bddeede47823474113c574c464f397b4937e",
+    "logs/lss-dh-full-review-fixes-common-tests.log": "bbab8ce7edb990d9896f4d0aebcdbb9fbd033d4a6f9d0ed34b8b964056bb31cf",
+    "logs/lss-dh-full-review-fixes-dummy-replay-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-dummy-replay-compile-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-dummy-replay-compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-dummy-replay.log": "cec755681188142205793f58dad67afd6ee4699f6ac402bbf890a67ff1f5846c",
+    "logs/lss-dh-full-review-fixes-fabric-all-tests-2.log": "a4e8ac49f9fa18d3eaab4b5f311b2b8148a0f8e86a15ff6a76167983473bfa84",
+    "logs/lss-dh-full-review-fixes-fabric-all-tests-3.log": "f8598282accbfa8d4cfb4fc478acc01b5952a41d670672aeaf490b4b026671cb",
+    "logs/lss-dh-full-review-fixes-fabric-all-tests-4.log": "668108cee838c84a202ef868fe573d84c739e1407f8b5a6bdb32a961ebf48e32",
+    "logs/lss-dh-full-review-fixes-fabric-all-tests.log": "ea72139902374db4a8f35e0653279e8773739168cd3625352dfb481440e46344",
+    "logs/lss-dh-full-review-fixes-fabric-compile-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-fabric-compile-3.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-fabric-compile-4.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-fabric-compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-fabric-main-final-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-fabric-main-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-fabric-tests-2.log": "9bca9a9142dff6b912b5d05359c8bfed93b51e0a6da4cfa98ff10f57c9496e85",
+    "logs/lss-dh-full-review-fixes-fabric-tests-3.log": "e32d31dfc35f28521517439d95d2bd07a8b24ee8fbb1ff0d3e34b159b2b3519c",
+    "logs/lss-dh-full-review-fixes-fabric-tests-4.log": "29c05cbe8a7de82ebc010a225b9a43e68c539b55ab379de9726a3ffd47b3e419",
+    "logs/lss-dh-full-review-fixes-fabric-tests-5.log": "7b902ca504e23e3b61a387d94a0f06417136e35d804633e399e1a6aad030e4ea",
+    "logs/lss-dh-full-review-fixes-fabric-tests-6.log": "a494379a266f86c204162528e7ba139c09c84110805b8089adfdb376291ba9e5",
+    "logs/lss-dh-full-review-fixes-fabric-tests-7.log": "6b6255dd03ca2a3dc5537de4366aa2c55db6ff98ed83d1cc44adc45cddb00444",
+    "logs/lss-dh-full-review-fixes-fabric-tests-8.log": "8354356969d5091982d19ae8c92197fde3f87201b937f9b97079561978b263f4",
+    "logs/lss-dh-full-review-fixes-fabric-tests-compile-2.log": "210d78c41e74dfa3a86474de645731f756c3211a8de9552576ee15bdd1b47f89",
+    "logs/lss-dh-full-review-fixes-fabric-tests-compile-3.log": "026608506dd3be326bd8dc47d72ea9acf6d9405f700007102157db26750c97ca",
+    "logs/lss-dh-full-review-fixes-fabric-tests-compile-4.log": "026608506dd3be326bd8dc47d72ea9acf6d9405f700007102157db26750c97ca",
+    "logs/lss-dh-full-review-fixes-fabric-tests-compile-5.log": "026608506dd3be326bd8dc47d72ea9acf6d9405f700007102157db26750c97ca",
+    "logs/lss-dh-full-review-fixes-fabric-tests-compile.log": "8589a0bf8377a1b66f4a34ecfe1e9dc36a728f5e751b9d0005fe54da8c4b1258",
+    "logs/lss-dh-full-review-fixes-fabric-tests-final-2.log": "026608506dd3be326bd8dc47d72ea9acf6d9405f700007102157db26750c97ca",
+    "logs/lss-dh-full-review-fixes-fabric-tests-final-3.log": "026608506dd3be326bd8dc47d72ea9acf6d9405f700007102157db26750c97ca",
+    "logs/lss-dh-full-review-fixes-fabric-tests-final.log": "026608506dd3be326bd8dc47d72ea9acf6d9405f700007102157db26750c97ca",
+    "logs/lss-dh-full-review-fixes-fabric-tests.log": "d7b0a3ce11be211edf14faf1f7098364f6356aaa447d6933fdb74b0e83cbd9c8",
+    "logs/lss-dh-full-review-fixes-fixtures-final-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-fixtures-final-3.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "logs/lss-dh-full-review-fixes-fixtures-final.log": "dd00261389e8e6f51adc3cfd019b97afcc14b12ff33ac85826e6208c57a2fb95",
+    "logs/lss-dh-full-review-fixes-legacy-evidence.log": "35c6f7487fe697bbcf3311366fafe13db017f580885fa832b8aeab6dad681a3d",
+    "logs/lss-dh-full-review-fixes-neoforge-main-final-2.log": "2a4be5690ce45ecc7e8c02eb51d3a3e042337fd1f5cd5204ed1c094ae5f38259",
+    "logs/lss-dh-full-review-fixes-neoforge-main-final.log": "2a4be5690ce45ecc7e8c02eb51d3a3e042337fd1f5cd5204ed1c094ae5f38259",
+    "logs/lss-dh-full-review-fixes-neoforge-tests-final.log": "3293a98057080d62dcd8f1b8fa652ffc638fc1e3d0511269d8faacc2a9348114",
+    "logs/lss-dh-full-review-fixes-p4-python-final.log": "75ff54e727b57e4bd7b88956ed0c92c4b9a416e6f0976707e8fb54aa385ac0bd",
+    "logs/lss-dh-full-review-fixes-p4-python.log": "785b957b4d5cbd017a9e8e70ce0ecf69fd9e1d963e774f835f685b0354cc198e",
+    "logs/lss-dh-full-review-fixes-python-regressions-final.log": "56939a934b76f18df07313179b9d48bbcd7be871dc55a5bfc65a21be70969aa6",
+    "logs/lss-dh-full-review-fixes-python-regressions.log": "4fdecb73476ea9214c75cd2fced1a8ea4ed5b1450fc1aa161d4cb702277e378d",
+    "logs/lss-dh-full-review-fixes-release-r5-current-checker-final.log": "ec3667513907f2b2f6977ef97ddb5d4f08ee8b64d6332ae07e0e4e76f7fff386",
+    "logs/lss-dh-full-review-fixes-release-selftest-2.log": "f0665a3b61ddc9115c8f99fe0e79b907e9ba8a1ef43526ea1f53e0f4fa89f808",
+    "logs/lss-dh-full-review-fixes-release-selftest-final.log": "0ad96c44040c710f1a9281fd8f76b6fe0adcf42616b1a157c6356619a52212a0",
+    "logs/lss-dh-full-review-fixes-release-selftest.log": "5f78dd00ff9c4947b6148414508249f5cfe240eab2f205d4332ec69871dc80b4",
+    "logs/lss-dh-full-review-fixes-targeted-2.log": "4f315eb4a81fd442224bff2964dfab42f7f53b46ab7205100595fcb907247202",
+    "logs/lss-dh-full-review-fixes-targeted-3.log": "b923b22f9b2dce0956645550f8933bd85cc1f4a37b8021396d4c7aad9e19b430",
+    "logs/lss-dh-full-review-fixes-targeted.log": "0181c2ab5966a0d5170d1e35b088ae8da1900368d8c53b89c20e2f163cf30e8d"
+  }
+}

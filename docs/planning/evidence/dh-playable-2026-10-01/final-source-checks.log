@@ -1,0 +1,5 @@
+['python3', 'tools/settings/inventory.py', '--check'] exit=0
+['python3', 'tools/settings/reference.py', '--check'] exit=0
+{"lines": 5, "profiles": 13, "latest_exact_identity_records": 27}
+['python3', 'tools/compat/catalog.py', 'validate'] exit=0
+['git', 'diff', '--check'] exit=0

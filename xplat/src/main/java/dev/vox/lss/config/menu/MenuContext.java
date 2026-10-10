@@ -30,7 +30,11 @@ import dev.vox.lss.platform.LoaderServices;
  *                                 always shows)
  */
 public record MenuContext(boolean governorOn, boolean xaeroPresent,
-                          boolean farPlayerRenderAvailable) {
+                          boolean farPlayerRenderAvailable, boolean nativeTerrain) {
+
+    public MenuContext(boolean governorOn, boolean xaeroPresent, boolean farPlayerRenderAvailable) {
+        this(governorOn, xaeroPresent, farPlayerRenderAvailable, true);
+    }
 
     /** Every fact ON: the default for tests and the tooltip-key enumeration. */
     public static MenuContext all() {
@@ -53,6 +57,16 @@ public record MenuContext(boolean governorOn, boolean xaeroPresent,
         } catch (Throwable t) {
             xaero = false;
         }
-        return new MenuContext(governor, xaero, FarPlayerRenderer.RENDER_AVAILABLE);
+        boolean nativeTerrain;
+        try {
+            // DH terrain is in use only on a live connection that selected it. With Allow DH
+            // Server Terrain on by default, selected() alone is also true with no connection
+            // (title screen), where the native-only tooltips would claim DH is in use.
+            var mc = net.minecraft.client.Minecraft.getInstance();
+            nativeTerrain = mc == null || mc.getConnection() == null
+                    || !dev.vox.lss.networking.client.DhClientSession.selected();
+        }
+        catch (Throwable unavailable) { nativeTerrain = true; }
+        return new MenuContext(governor, xaero, FarPlayerRenderer.RENDER_AVAILABLE, nativeTerrain);
     }
 }

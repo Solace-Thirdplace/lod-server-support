@@ -31,6 +31,8 @@ public final class VoxelIngestService {
 
     public static final List<IngestCall> calls = Collections.synchronizedList(new ArrayList<>());
 
+    public static final List<IngestCall> committed = Collections.synchronizedList(new ArrayList<>());
+    public static volatile boolean commitImmediately=true;
     public static volatile IngestBehavior behavior = call -> true;
 
     public static boolean rawIngest(WorldIdentifier worldId, LevelChunkSection section,
@@ -38,7 +40,9 @@ public final class VoxelIngestService {
                                     DataLayer blockLight, DataLayer skyLight) {
         var call = new IngestCall(worldId, section, chunkX, sectionY, chunkZ, blockLight, skyLight);
         calls.add(call);
-        return behavior.ingest(call);
+        boolean accepted=behavior.ingest(call);
+        if(accepted && commitImmediately)committed.add(call);
+        return accepted;
     }
 
     /** Value returned by the instance {@link #getTaskCount()} (the backlog-probe terminal). */
@@ -55,7 +59,7 @@ public final class VoxelIngestService {
     }
 
     public static void reset() {
-        calls.clear();
+        calls.clear();committed.clear();commitImmediately=true;
         behavior = call -> true;
         taskCount = 0;
         taskCountThrow = null;

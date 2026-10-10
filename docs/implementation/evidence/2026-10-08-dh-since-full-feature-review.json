@@ -1,0 +1,991 @@
+{
+  "baseline": "r5 last Claude full-feature review",
+  "before_build": "/tmp/lss-dh-p4-20261007-r5",
+  "after_build": "/tmp/lss-dh-followups-20261008-r1",
+  "source_manifest_sha256": "345ed9b8d557ead55cdafab8f1cb69c288979e0256556c5ec50103eadd548c85",
+  "test_source_manifest_sha256": "d0ba1430cd162186cf540dbd9b6045794b73f82e25d1971bc2ab44b3938da23c",
+  "changed_inputs": [
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/config/SettingsSchema.java",
+      "before_sha256": "3fbadac16eea204ca9c8dcbc3efe1f246173162b9b0065fb9a2975a3faa8f53f",
+      "after_sha256": "17a48a9ab3159e0bfae3c8af32b144128ee80e3ee589d5e9a0d58e6082bc3c15",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/config/YamlSettingsCodec.java",
+      "before_sha256": "6a5c4104691064e36337a88c85fcfc767fb8b7ab5e9eeb388ae2ff421d4b5804",
+      "after_sha256": "b7b4a94aa0d54e79115fdf1bccdb551532853c057105a6501837ccc3d06d6f6a",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhAcquisition.java",
+      "before_sha256": null,
+      "after_sha256": "5083fa3652c636f85da0ec021ffe62e7a43e4a6518f99e0fa98774697ee2bb3f",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhAssembly.java",
+      "before_sha256": "37270ee31b380fd6dfa53867565fd96bc4287f5773ce8ef2b86963ae711c5b34",
+      "after_sha256": "fb028c6a54e3aa4e5553256677a4dcbcdb8900fb85a5ecd9a08a52e7d6515212",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhBandwidthRamp.java",
+      "before_sha256": null,
+      "after_sha256": "7df22804562a8a69ede02a90313af7b19ba784d873f39e23c9fc0b731d4a74f5",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhLimits.java",
+      "before_sha256": "42094d6d1d64b64eb3d818d04d341be1f12995f7ae471ccda6b09e073b14ae3d",
+      "after_sha256": "aa34fdabc482e1af6e5a6fcd8214834369f07223461187fefe3ee4cadf5967c6",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhMessage.java",
+      "before_sha256": "bff1660f9bc02c173c04c88a2b820037dc5da49421ee2390e278c5f404971e9b",
+      "after_sha256": "7cb6d72dc97dfc6ab20146546fd3829bf76ce2dfdadee5387f486ec67d4101a0",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java",
+      "before_sha256": "dc2920925cf5ca8229ccfa261d66ef1b71e4ee4a7864548dbd51e549664a00f6",
+      "after_sha256": "b69414948d0a849a3c75664989447884b860e0ce847fbbb52bea06e1e533441a",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhTerrainCache.java",
+      "before_sha256": "851e6a73f2e7117c2f9e8b48fd316859ddb01ec8b55460b7d0927f91fe1635e2",
+      "after_sha256": "5d474a9ee09006d2f41b72cfa81037478c31a3ee62d80761a466f2bbbe45debc",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/diagnostics/ClientStatusSnapshot.java",
+      "before_sha256": "1aa8132ed78ebe7137b82ba553d69970e87a4f1b95eddc0fb86deafd0f9b41a9",
+      "after_sha256": "b468a25eef03ceac1c47f85ae288e3db042623686e6f3ccf789ad682a02b45bb",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/diagnostics/ClientStatusText.java",
+      "before_sha256": "f178e76e004d93482ec8b0089c45dbe36abf26bfa42767ce4065decdf05faa22",
+      "after_sha256": "7bc87cadb27e73cd95ab1680ab11d2ec3e9ddd2f7f09eac43ac10b37e5a5352f",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/diagnostics/DhStatusSnapshot.java",
+      "before_sha256": "8572a2f5bd261918cd6df035daddc589006e248e9dde17793632e52097b1cc0c",
+      "after_sha256": "152f2f5fb8fa96118f9318596f624a68d0f6aff883954d1ce966cc3b560875d7",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/main/resources/dev/vox/lss/settings/client.yaml",
+      "before_sha256": "226ed494d1c23a2061fcea15fe265c36aedfec14117c2901d65f58828474c02a",
+      "after_sha256": "e2161bc310533e98f3e1c01f0df60d1df8c2d3e1995150888b67a749f5a3445b",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/config/DhDefaultDowngradeTest.java",
+      "before_sha256": null,
+      "after_sha256": "4fda16a67357f942abcb1f7e7eb1245ee1423523ca5462860f8e135e54e6b5d1",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhAcquisitionTest.java",
+      "before_sha256": null,
+      "after_sha256": "d8dd67b5272f8950b7e34f6c11adc647103ed531c9528ebd2920797ce8bf8da1",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhAssemblyTest.java",
+      "before_sha256": "c24214cba472dde39b1109110497b71ec0e40306611163676252666792310025",
+      "after_sha256": "6fd8fd4d500275d6cbf8c70229ffe011443c777585d827ac6c5deefd41f35aeb",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhBandwidthRampTest.java",
+      "before_sha256": null,
+      "after_sha256": "39987b550013953be1806527c6dd4cec497a4360f78c009f503fc6b478f3cb3b",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhCaptureIntegrityTest.java",
+      "before_sha256": null,
+      "after_sha256": "8924f65fb0c688ab17a62bd9a06c99736276bbc6627b72ad5c1598d7073e8a80",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhLegacyEvidenceTest.java",
+      "before_sha256": null,
+      "after_sha256": "7d5072a928f492320644bb17ae754f7f6c12003709c7eefb616d0313c92a23b8",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java",
+      "before_sha256": "06bb3ba26ef0806c02f2a86b38a1276e5d3735bd43c1d5bcf3231682a15e7662",
+      "after_sha256": "dc3f691504370789384fa57ed023b8c349d91f6a927d8f5c06386f9078edcf59",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhTerrainCacheTest.java",
+      "before_sha256": "a21f98672953fc5cf13b6dd2d4dd8852e80ff08572c79ca943b67ac19af34e8b",
+      "after_sha256": "ab592fafbf23bd83497c76678fd952e1456068182131ff9631557785028311cc",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/diagnostics/ClientStatusTextTest.java",
+      "before_sha256": "ca165e6ea3093fdda48a9f7658f9d5626052816f45c1d4e8253152d98118716c",
+      "after_sha256": "0de1fea2ea2fb1e109a8198ec666aa6926f3e5cbfc7fb1a481aca33ccb5c1e94",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/diagnostics/DiagnosticPrivacyTest.java",
+      "before_sha256": "f9f54a6689174f3e95517a72115edb0d30830806fbcc747ec5c012d19030f554",
+      "after_sha256": "0a2dd0a1b28bf95eac4c88a86efc40e6d230e81bd643cd5a0b913055a131bb86",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/capture-sha256.json",
+      "before_sha256": null,
+      "after_sha256": "671d3a350b9575630aab285ef0db3291543888b7f2cfb81eeb816609b43f986b",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "common/src/test/resources/dh-corpus/dh-support-0.14.0-ocean.dto",
+      "before_sha256": "01f2af0befab075570b49e7ce182c5ecdda61bb7d1a6b81db43cc7be03abe538",
+      "after_sha256": null,
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "docs/reference/settings-schema.json",
+      "before_sha256": "b0e57652411ccd81a06745dded6cfe68d93fa46e7e166d3019d08af3d2acd0ad",
+      "after_sha256": "d42ee6cc1100da3fab49de90fc9f1cf88e04afa36fdbd00b8162605b7a1202cb",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "docs/reference/settings.md",
+      "before_sha256": "39e6132ca69e3b050a66c0c23429d4d4416b689d95fcaf21ffd1803a8456139f",
+      "after_sha256": "a2934a432295cd884fe1f9b8892df85f4a5fdbd8f7303e4a4b197cebdf8f19a1",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
+      "before_sha256": "163dbfad75ac6129ca18e09f8380a6682b9b856b6bf4d81658bc6a85a4bfe0d5",
+      "after_sha256": "c04084e3b06ca3075bb4446a3859a25d28f94c0d71df436fc25cc2606178b96c",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java",
+      "before_sha256": "ee786266ebe590ac379d5f894b243abad94e9aa414710f22ec1dfa048b9879c7",
+      "after_sha256": "177aedb5503f84512fae4d15bb8839367a4f62c2f70158c32d5f5e47530dcc89",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/config/menu/SodiumDraftRefresh.java",
+      "before_sha256": "95dd0176430d3a5fe48bc7da5447e4ce2d22f6ed1cd1324a2084c71918f608e8",
+      "after_sha256": "b762f9c91435f10d8d05451c4258bd8743cc72aa95224c41be8a2fa40d230f30",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java",
+      "before_sha256": "6da7800fe63bec25f54aa63a4d969bc3d867951f7b4a2cba0bc8df7f6473db1a",
+      "after_sha256": "53c0b344718d7f8328e294b52dafb7353d98ec7abf69aad4094c3a60ca9da8c9",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/main/java/dev/vox/lss/networking/client/LSSClientCommands.java",
+      "before_sha256": "4856bc134e2d1f7a446d0a7862703f7b3eedf2a8d21c8c4d8ea8f4d3836d42db",
+      "after_sha256": "ba5778badf9fe3a1de49386fe2de697c70324f8d9d7ce4a54bb79cc319ea7aaa",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/main/resources/assets/lss/lang/en_us.json",
+      "before_sha256": "ed32afb7eb162f2b48c9a01dbb84680285e490534ff213dd3b83edb47701870f",
+      "after_sha256": "c7c40832d90a420fcd846f7e1d1558d4dbda5c0a4824730db95f551e9264fc83",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/main/resources/assets/lss/lang/zh_cn.json",
+      "before_sha256": "a26e0838c4c46aadff54ea39287b29b49e938998a51ec4284f92e1724fe07bd7",
+      "after_sha256": "c61310e6041ee779036aee1f292b5dae0b17d9ebe0a2fb5f20a2ee560ab838c5",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/main/resources/assets/lss/lang/zh_tw.json",
+      "before_sha256": "5e355b3fe511e0bdd4a96a28c22cd207f370426268239ef75dc20fd132c95c17",
+      "after_sha256": "f6d77b1be49bead7eb5fd1064b19ab5abc78ccea667b8d83ef9b1c8ea30d5ee4",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/main/resources/lss.mixins.json",
+      "before_sha256": "82505420887635dfe6578a41c3d411bd8df729c38731f7d314afb1d7022c5c35",
+      "after_sha256": "53fde9b1199e02a7e5e50e93160680a4e72a5ee04be17a41745d97391dfb884c",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/compat/VoxyVanillaCoverageTest.java",
+      "before_sha256": "1fee681d9385329380d463ce0d4b52eec57e6479bb03e7f50d04d35c989241f3",
+      "after_sha256": "cdd32e8309b1bb4139e89ae6ed32a808122fbb66a63ff366d141462a7a03663e",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/config/LSSConfigMenuTest.java",
+      "before_sha256": "628d237e72e6894d1cf5a878574e602ea22244772d38e81fbef65069acf9ee5a",
+      "after_sha256": "ba96e14c0a98641c159569bf36393c66c85277ec63f920f92188ea348e432828",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java",
+      "before_sha256": "80ece0c762b85c5edbd3de3be32f99de8ed77c90b56689c01dee831a54408e83",
+      "after_sha256": "cc94ba62122010159268559c25b381e87b7657afbb045ab49fb0a2f943fbba7d",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/config/menu/LegacySodiumPageTest.java",
+      "before_sha256": "1d195ee5b222e2c2aa118f67f9bf7f77606ecfba7100cb3baa83055c1cfd288d",
+      "after_sha256": "61b58bb1a92545e941cab9ff9f662f7f674d9e27295a7284e1d2d10076f4126b",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/ColumnCacheStoreTest.java",
+      "before_sha256": "6639e4a049e6b950996cb8955b034a0544838e4b79e41e4dca07beca3d426164",
+      "after_sha256": "27594d1754ad2b8a9acf1bfcb9c081a87c64dcdec4c429bf3991d6af88c22f1b",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java",
+      "before_sha256": "d9fabe16b8ec404cd56aa8d422f6a19013c9fa6e3241c955f240036c0651c8e8",
+      "after_sha256": "e452eb04d1ed0855a05ef4d2370f89dd36a162510e117428f3b06561f43fe310",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java",
+      "before_sha256": "426e051652a85fa46d8dcd847d2e90135c9f50b91705133388843793116892fc",
+      "after_sha256": "9d47185aed7923a143b2a20c26f6466a793421afa9af912e4c9aedf77ee1a129",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/ConfigBuilder.java",
+      "before_sha256": "34319c91edc7e52c95e5957a19064259916934f5caba896817906439a06b2bd3",
+      "after_sha256": "b8306f2e31bea6a7e7c8725538508953a47bf7135d31188cfeb023c9fd2b2365",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/EnumOptionBuilder.java",
+      "before_sha256": "353145035313e677c1b0cb7a4b82f52088c22e0ee062d13df0cab46c552d845a",
+      "after_sha256": null,
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/RecordedEnum.java",
+      "before_sha256": "cb2916a475e05992c8522fc10eda62f5b4b7849c651258f6d7e338092358872a",
+      "after_sha256": null,
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/api/config/structure/RecordingConfigBuilder.java",
+      "before_sha256": "bf0a38819b9823236ec681bf3ee8e89c9f34493592b76482c7724f304f970b88",
+      "after_sha256": "96c160b914f3b2d53fe9dc5e9f1a0795816d27c9c9eccfd5623e7f04d6936785",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "fabric/src/test/java/net/caffeinemc/mods/sodium/client/gui/options/control/CyclingControl.java",
+      "before_sha256": "82903db7c1e1faf9adfa768965697bc16c3aae92c1ecc328f31d0176ee26d0d7",
+      "after_sha256": null,
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/config/LSSConfigMenu.java",
+      "before_sha256": "8bc669e24a3528d00a9f8a21ab1b4607dd01e8821111ec34d0ac32efa09c03dc",
+      "after_sha256": "2740b43553932ca15359dfda6d4f4f3391615d77d73ff68bd86342f46e0b4253",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java",
+      "before_sha256": "ee786266ebe590ac379d5f894b243abad94e9aa414710f22ec1dfa048b9879c7",
+      "after_sha256": "177aedb5503f84512fae4d15bb8839367a4f62c2f70158c32d5f5e47530dcc89",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/config/menu/SodiumDraftRefresh.java",
+      "before_sha256": "95dd0176430d3a5fe48bc7da5447e4ce2d22f6ed1cd1324a2084c71918f608e8",
+      "after_sha256": "b762f9c91435f10d8d05451c4258bd8743cc72aa95224c41be8a2fa40d230f30",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/neoforge/LSSNeoClientBootstrap.java",
+      "before_sha256": "efa0096c94cd409a745dc0b12d8dc22a0127b28681e0c4f9ca1f9a7f4235293b",
+      "after_sha256": "b95347004e34b4a06f07366068bc950a88c0d3a64b78d7e4dcc949a1f87ac77d",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "neoforge/src/main/java/dev/vox/lss/networking/client/DhClientTransport.java",
+      "before_sha256": "b4917e4e13f97a499f7621d7456fe0bd5d095c64526536cc400742cedaae3914",
+      "after_sha256": "b6a36972f5653f3c95645da3412de5b7b83e8fd323dad729f5235fc1791a366a",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "neoforge/src/main/java/net/caffeinemc/mods/sodium/api/config/structure/ConfigBuilder.java",
+      "before_sha256": "00f034d139da5e6ce9340633cfe569a5dac2289e031cd7aec4d79f36b74c0790",
+      "after_sha256": "1150e0d32a8aababaf273fa10594b3f7411421c08a08257b11a4ae1e3cf28688",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "neoforge/src/main/java/net/caffeinemc/mods/sodium/api/config/structure/EnumOptionBuilder.java",
+      "before_sha256": "353145035313e677c1b0cb7a4b82f52088c22e0ee062d13df0cab46c552d845a",
+      "after_sha256": null,
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "neoforge/src/main/resources/lss.neoforge.mixins.json",
+      "before_sha256": "82505420887635dfe6578a41c3d411bd8df729c38731f7d314afb1d7022c5c35",
+      "after_sha256": "53fde9b1199e02a7e5e50e93160680a4e72a5ee04be17a41745d97391dfb884c",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "scripts/release_check.py",
+      "before_sha256": "bc9bfca3c6eea31018f8f0cd7960ee1f98d02c2348656972d8d5007c7f1a60e2",
+      "after_sha256": "a07925739a692fd5a3aa91e34e2f8fa70f4d6bab6c43ec4bea2f7ea74f671896",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "test-fixtures/dh-live/README.md",
+      "before_sha256": "546aab30b5de5190009f34a9b2e281b6b1105342fb9c2b0012c3366f7e0f8a10",
+      "after_sha256": "a6e3d593119f451f9f8cfbcb42706ca12f817f7802e421e512676d516b5986f6",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-live/exercise.py",
+      "before_sha256": "5a94bcdbacb19666e1ed1c2097dbaa722a6931423ac60dd6fe62d6004a1afd7b",
+      "after_sha256": "e0ca887f02ead6e5249c0d74dd31a77888b003b86407af1eaf03d4e12e717917",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-live/prepare.py",
+      "before_sha256": "3ebc0080608b78bde01e6a58dc35df6a9f7eb48b39e8ce752f2fb1f8e9b2fa15",
+      "after_sha256": "18c698e75cea89f74cf917720395a0335bd10b2c862ce854f4ebd53f4b7888d2",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-live/resources/lss-dh-fixture.mixins.json",
+      "before_sha256": "28688de0f1c1f0527445ea3c15fcb57ee064a7e6036f409a119636b2d25552e4",
+      "after_sha256": "c707db992c42488f377e30ab609d210fa4a083b63c8c3be6ccd092e35521f9fc",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-live/run.py",
+      "before_sha256": "d025f44187658687feb6ccb2c3500bc587ee64335de8f03abb18bf4f45128b4f",
+      "after_sha256": "20a36ab87b352197781ace9298ac6d37ac86ce65f947dc146ece2b5e5110c954",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/FixtureMixinPlugin.java",
+      "before_sha256": "7ea63299aa984b2cbdee5473f1a4401ccbdd6fc4c9321bd41f4380ea19a9bf2e",
+      "after_sha256": "18311929947f845bad0835da463513bb607cef7fb845c76cab1ca2f622e8a30e",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java",
+      "before_sha256": "3abff1a9d4adcd9368f0c47a4a09252ac92dad9723ab7783edd017458b4e85d5",
+      "after_sha256": "70719af4bfdf4d6296a4e84526d1846853aebb21de48f30cc05803e0562c3655",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ServiceProbe.java",
+      "before_sha256": "0748b92b4e8d16458754a8768998938494178c01d9cc576f9ca6ccd610ec97da",
+      "after_sha256": "49fdeece36cef064ab5a42df00f8e40d7a91896af8caa08836786d508719a2fc",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/UpdatesProbe.java",
+      "before_sha256": "e5ef8ab0c1c8012dfb5dc1154294a8a05a83aaffb13dadc3d999d37edd7dd93e",
+      "after_sha256": "1c0ee771342d4569ca394fe0b32150bf8251279cb14a896ea804e0551716ea9b",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/CaptureMixin.java",
+      "before_sha256": null,
+      "after_sha256": "d3c76774db657394215925332b7a883207c0b846e75605b8fad1643853f123ed",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/SlowConfigMixin.java",
+      "before_sha256": "78b9117f69e35a7f3bcfdc4e5961cd076c56695ced5535a20a8e69454b114666",
+      "after_sha256": null,
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/README.md",
+      "before_sha256": "717548a68fc424cb59fea74c20f03f3bc70c846340fc12c62f4f7dcc521b8b42",
+      "after_sha256": "8b1f5184fae65fa95b6e30b33d3bf53e2a88a4c1cd45a3a2ddaf02b3cd488a2b",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/bounded_storage.py",
+      "before_sha256": "e402893fadd40752f8f69d1b48260e2941f9fefdaac8c8e4a516ea241d01afaa",
+      "after_sha256": "83bfe638f6197598ea4d3daf54095d67d9049aa2d1137fa131a7deccb4eef528",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/prepare.py",
+      "before_sha256": "a042644ba12116fe975803d1a79618104d9c67307d1b4f74409eb70fa7b801eb",
+      "after_sha256": "681ea956fc39de2348b2976af4117b28f9148b9f798dab40d874cf759d865681",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/run.py",
+      "before_sha256": "f41dfbfea49a121baf2b5b906c17ca9a3c200d626e5b586483045f4fdde17cb8",
+      "after_sha256": "8f4e188f926e2711c5d6f8f82312a1fe76379848c65ea25dedc4874de53afa71",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/CachePressure.java",
+      "before_sha256": "6abe13f2fa814a9ba962dec34b4c435f97ec1b409984c8a01719a5b30a919157",
+      "after_sha256": "6f7b44347349e0a52ed649be6688aa3cc3a3335fb532c500c6408de7d7901dbe",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ContentOracle.java",
+      "before_sha256": "73d31e4d7f3874e438d4f7df962d6f53b0c7cff3e808d097bfe716cdf66b9c24",
+      "after_sha256": "144374f9abc3d9ee76c0fa18ccd05ecdd50ee3d47447128a949b68483b7b2247",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/FrameMetrics.java",
+      "before_sha256": "863d89d0ae8f64f5c275d15016acc1da2e12d530aad2ddb25f54d4e2199f9bf0",
+      "after_sha256": "ac3576ace44365f7e917fcf3be4d0b6d03953fc46a13f50aad581d431530d414",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/NtfsCacheBenchmark.java",
+      "before_sha256": "c4269d7d90fbe5c15c0730b858653b4937014d16ed6aa86e6a98413a8df2b53c",
+      "after_sha256": "c8b55be5e4d6cbc2cc1c20c027db27d51d783034ae31ae08fc5ea9243d47174a",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/P4Probe.java",
+      "before_sha256": "e262a1440ddb109fdab2fe5a82ae69f63e7db41f3cff8abd8465a2a2a44c97dd",
+      "after_sha256": "ad43aee8772b702d92b80968252a7298b8a0cb21fddce72734e5323d11db2c7e",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/summarize.py",
+      "before_sha256": "f4264f1c880b23c80394c656742a8f05766c68016bd02321718b235d647593b8",
+      "after_sha256": "ddfc89feb357b9483b60dc34e6df07fc473e9a75fb2dc50a3cedc469f9daa4ba",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "test-fixtures/dh-p4/tests/test_bounded_storage.py",
+      "before_sha256": "ab5d41c548c77017c33ee66bb01b03ff8013a3da64ce9a788d8050e761125c22",
+      "after_sha256": "0a10c4685833358e484f96ceb14ee8846de844b666a7e81e1ac7abb407143beb",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "tools/dh/DhFragmentAllocationProbe.java",
+      "before_sha256": null,
+      "after_sha256": "7d3efeace94990a52b92491492339212c14e03781ecfb7a88a0f728714f6c10f",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "tools/rig/windows_java_fixture.py",
+      "before_sha256": "b68c094ee879bea3cf6d5b8d478740036bd0670b90b904998ebeb98c5950cf90",
+      "after_sha256": "447993d84d1dee43ce9758ffec56f3e99778de80b3f37f73193a5c31a6a5ada5",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "tools/settings/reference.py",
+      "before_sha256": "9592788f938d93816622f686727aa37cf9a91a796f10e589e96fce9b99c1c95d",
+      "after_sha256": "04351475571fb090f12bc04aca23b617aa7fbe96b21d7fd59c7eecea716ce722",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "tools/tests/test_dh_release_gate.py",
+      "before_sha256": null,
+      "after_sha256": "1bea19a80265c65ca8f4b3422017a40274ad6594ac8fc0b405b62a1049a1fa3a",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/ModCompat.java",
+      "before_sha256": "5c78e29d372b422a33e68ed5f837782be90cf5c40983b2c319f792da0875341b",
+      "after_sha256": "8f01587627000cb133d23f477d296eaba9648073679c3a8e80163d28a1f84057",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/VoxyCompat.java",
+      "before_sha256": "1b108e6f4bbce14c2d7c1d7984c8b9a32afc88e8f9ce4ba233ae5efa72076e65",
+      "after_sha256": "81ce699cfeb1efde67946aaa947af3693b3a56130338b4617f583018ff70cbfb",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/compat/VoxyVanillaCoverage.java",
+      "before_sha256": "fd6f6478b53c938f175392cadd5b84f85907e1fd2b1e692efe137b1438e16080",
+      "after_sha256": "6263ef5069a9871cf4cb8ae838e3ffc2bf92acf4038ea75a717670bad1965d49",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java",
+      "before_sha256": "f4471833435de49ccfa54cf51664de84e8e822ad2f62631ea33df06f1e9a9686",
+      "after_sha256": "96bc7833db53a9bcf7f367add118f987ee996b8e2e7105b31119c0800bf1e5ef",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/config/menu/MenuContext.java",
+      "before_sha256": "94accc2d4627e4c5e26491ec4a575147c20238bcfaeb15afa1041f7c07a5fdee",
+      "after_sha256": "2f6ad7d01a31940fbb3e30ca99d8a9b0f85409f0b091512f97a0d4e8c881099b",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/config/menu/OptionSpec.java",
+      "before_sha256": "98f2e91d74ed443781dcb991ce7cf952cd59cfc83fbba1aba15f7de27c4d6b87",
+      "after_sha256": "483a8053f78ce1821f7f221bda347b7a2b0e1a708453de72f59acd8afd26410e",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/config/menu/Tooltip.java",
+      "before_sha256": "036a9d407fc915ac6a09b8ee9bfdd08e686882a3115dd4ab5f89460dfbc968bb",
+      "after_sha256": "772b28130aeb1283e8fddf005c0ef9f870592734e73a1ffdfbc5702923d953c1",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/mixin/AccessorScreenWidgets.java",
+      "before_sha256": null,
+      "after_sha256": "3b837fcb2ffb8486723a464af2f1962a2458f5e976358cb22d40177805abad29",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/mixin/ClientTransferHook.java",
+      "before_sha256": null,
+      "after_sha256": "95b1dcdfa7ac99799400037232633077e42ee26b1fff696ef2d056d64717d704",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java",
+      "before_sha256": "eaf4a051b1f58cd5bc0096999867559ccd44298c99404bbfcb11c07ea990037c",
+      "after_sha256": "ae43bff22185f6665f8b560dd1a1402555ab74713f49d85c1ba7c7dc3c3254ea",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientIdentityResolver.java",
+      "before_sha256": "d2eb54c9d54bbb406d97bc2b2ff2e881935377a389e9fced54c429a74b24d427",
+      "after_sha256": "0f1963bd39518acffb4dce3c01d22d9deb83728d7f649ea2294bead543a74752",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientNetTrace.java",
+      "before_sha256": "dd378619b75ce56f848024d38b266b87ae474427f5be33425c42affe27a1a2da",
+      "after_sha256": "f3fbdbab0925a9c6cd12763391a2594b6033608ceac4bb74740c64180d68aa61",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientStatus.java",
+      "before_sha256": "84c10bf6bc47abdee43000408d4d16fcbc5363888c675fb85d639cbf98481e3f",
+      "after_sha256": "e85de73645b01e78f702397bc21a1ed75b242c6051ba08f66897415709cada12",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/ClientTraceLog.java",
+      "before_sha256": "6b01a0ca449eb60557240f7adfd1acd8dc126c3f0972b4d08615e1d99090a07e",
+      "after_sha256": "5d4502716301b64ae6dc5e9ca584b55e38a4403bad49aab56c1e8aa253eafa52",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java",
+      "before_sha256": "bf3b2e0262964a20a3b2bc8caebf4e26c43dcdc49d079d89b1b3df2de749c2f7",
+      "after_sha256": "28dc41f004cfd36bb5591db67cdc968828f2daf0d96f1ea6a9063c5621ee3bac",
+      "baseline_original_manifest_bound": true
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/DhClientTrace.java",
+      "before_sha256": null,
+      "after_sha256": "8ba77c548621cac631ecea0f95fa444d60f5ee540623a87d5feb1d754fc3a81d",
+      "baseline_original_manifest_bound": false
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/DhColumnConverter.java",
+      "before_sha256": "8a05244e98daa85f823eec09138799b6537388d2fd22742e7fb9ea83724b65da",
+      "after_sha256": "16317587655b1f533c67bdfb246201b6f829f5e5a24232b947b65693cb53b4b0",
+      "baseline_original_manifest_bound": true
+    }
+  ],
+  "patch_lines": 6015,
+  "retained_r5_inputs_missing_original_manifest": [
+    ".github/workflows/build.yml",
+    ".github/workflows/catalog.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/settings.yml",
+    "LICENSE",
+    "branding/vss/icon.png",
+    "common/src/testFixtures/java/dev/vox/lss/common/region/RegionSummaryServiceFixture.java",
+    "docs/reference/settings-schema.json",
+    "docs/reference/settings.md",
+    "gradle/c2me-dev-runtime.gradle",
+    "gradle/sqlite-runtime.gradle",
+    "gradle/sqlite-runtime.properties",
+    "gradle/wrapper/gradle-wrapper.jar",
+    "gradle/wrapper/gradle-wrapper.properties",
+    "scripts/lib/HARNESS.md",
+    "scripts/lib/benchmark-results.py",
+    "scripts/lib/harness-lock.sh",
+    "scripts/lib/mc-run.sh",
+    "scripts/lib/proc_sampler.sh",
+    "scripts/lib/settings.sh",
+    "scripts/release_check.py",
+    "test-fixtures/README.md",
+    "test-fixtures/client-preset-tools/README.md",
+    "test-fixtures/client-preset-tools/checks.py",
+    "test-fixtures/client-preset-tools/drive.py",
+    "test-fixtures/client-preset-tools/finalize.py",
+    "test-fixtures/client-preset-tools/test_portability.py",
+    "test-fixtures/client-preset-tools/verify.py",
+    "test-fixtures/client-timing/build.py",
+    "test-fixtures/client-timing/src/dev/vox/lssfixture/frames/FrameAgent.java",
+    "test-fixtures/client-timing/src/dev/vox/lssfixture/frames/FrameRecorder.java",
+    "test-fixtures/concurrent-client/build.py",
+    "test-fixtures/concurrent-client/resources/fabric.mod.json",
+    "test-fixtures/concurrent-client/resources/lss-rig-concurrent.mixins.json",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/AcceptancePolicy.java",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/BridgeObservation.java",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/ClientProbe.java",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/IdentityCaptures.java",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/OracleJournal.java",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/PendingAcceptance.java",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/RejectionTelemetry.java",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/mixin/DecodeWireMixin.java",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/mixin/FrameMixin.java",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/mixin/TickMixin.java",
+    "test-fixtures/concurrent-client/src/dev/vox/lssfixture/concurrent/mixin/WireMixin.java",
+    "test-fixtures/concurrent-client/test_oracle.py",
+    "test-fixtures/concurrent-client/tests/dev/vox/lssfixture/concurrent/AcceptancePolicySelfTest.java",
+    "test-fixtures/concurrent-client/tests/dev/vox/lssfixture/concurrent/IdentityCapturesTest.java",
+    "test-fixtures/concurrent-client/tests/dev/vox/lssfixture/concurrent/OracleJournalSelfTest.java",
+    "test-fixtures/concurrent-client/tests/dev/vox/lssfixture/concurrent/PendingAcceptanceSelfTest.java",
+    "test-fixtures/concurrent-client/tests/dev/vox/lssfixture/concurrent/RejectionTelemetrySelfTest.java",
+    "test-fixtures/concurrent-server-core/README.md",
+    "test-fixtures/concurrent-server-core/debt-bound.md",
+    "test-fixtures/concurrent-server-core/src/dev/vox/lssfixture/concurrent/DiagnosticGuard.java",
+    "test-fixtures/concurrent-server-core/src/dev/vox/lssfixture/concurrent/MeasuredSchedule.java",
+    "test-fixtures/concurrent-server-core/src/dev/vox/lssfixture/concurrent/NativeSaveSetup.java",
+    "test-fixtures/concurrent-server-core/src/dev/vox/lssfixture/concurrent/OwnerObservation.java",
+    "test-fixtures/concurrent-server-core/src/dev/vox/lssfixture/concurrent/OwnerRevisions.java",
+    "test-fixtures/concurrent-server-core/src/dev/vox/lssfixture/concurrent/PendingDiagnostics.java",
+    "test-fixtures/concurrent-server-core/src/dev/vox/lssfixture/concurrent/SourceWorkload.java",
+    "test-fixtures/concurrent-server-core/test/dev/vox/lssfixture/concurrent/MeasuredScheduleTest.java",
+    "test-fixtures/concurrent-server-core/test/dev/vox/lssfixture/concurrent/NativeSaveSetupTest.java",
+    "test-fixtures/concurrent-server-core/test/dev/vox/lssfixture/concurrent/OwnerObservationTest.java",
+    "test-fixtures/concurrent-server-core/test/dev/vox/lssfixture/concurrent/OwnerRevisionsTest.java",
+    "test-fixtures/concurrent-server-core/test/dev/vox/lssfixture/concurrent/PendingDiagnosticsTest.java",
+    "test-fixtures/concurrent-server-core/test/dev/vox/lssfixture/concurrent/SourceEditHandoffTest.java",
+    "test-fixtures/concurrent-server-core/test/dev/vox/lssfixture/concurrent/SourcePreparationTest.java",
+    "test-fixtures/concurrent-server-core/test/dev/vox/lssfixture/concurrent/SourceReconnectTest.java",
+    "test-fixtures/concurrent-server-core/test_sources.py",
+    "test-fixtures/elytra-live-fixture/README.md",
+    "test-fixtures/elytra-live-fixture/build.gradle",
+    "test-fixtures/elytra-live-fixture/settings.gradle",
+    "test-fixtures/elytra-live-fixture/test_validate_packaging.py",
+    "test-fixtures/elytra-live-fixture/validate_packaging.py",
+    "test-fixtures/export-lifecycle-fixture/build.gradle",
+    "test-fixtures/export-lifecycle-fixture/neoforge-resources/META-INF/neoforge.mods.toml",
+    "test-fixtures/export-lifecycle-fixture/neoforge-resources/lss-export-lifecycle-fixture.mixins.json",
+    "test-fixtures/export-lifecycle-fixture/settings.gradle",
+    "test-fixtures/fabric-concurrent/build.py",
+    "test-fixtures/fabric-concurrent/resources/fabric.mod.json",
+    "test-fixtures/fabric-concurrent/src/dev/vox/lssfixture/concurrent/FabricSourceProbe.java",
+    "test-fixtures/fabric-concurrent/src/dev/vox/lssfixture/metrics/RigFabricMetrics.java",
+    "test-fixtures/folia-region/build.py",
+    "test-fixtures/folia-region/plugin.yml",
+    "test-fixtures/folia-region/src/dev/vox/lssfixture/metrics/RigPaperMetrics.java",
+    "test-fixtures/folia-region/src/dev/vox/lssfixture/regions/RegionProbe.java",
+    "test-fixtures/folia-source-concurrent/README.md",
+    "test-fixtures/folia-source-concurrent/build.py",
+    "test-fixtures/folia-source-concurrent/plugin.yml",
+    "test-fixtures/folia-source-concurrent/src/dev/vox/lssfixture/concurrent/FoliaSourceProbe.java",
+    "test-fixtures/folia-source-concurrent/src/dev/vox/lssfixture/concurrent/SubjectPlayers.java",
+    "test-fixtures/folia-source-concurrent/test/dev/vox/lssfixture/concurrent/SubjectPlayersTest.java",
+    "test-fixtures/folia-timing/build.py",
+    "test-fixtures/folia-timing/src/dev/vox/lssfixture/timing/TimingAgent.java",
+    "test-fixtures/folia-timing/src/dev/vox/lssfixture/timing/TimingRecorder.java",
+    "test-fixtures/native-paper-prefill/build.py",
+    "test-fixtures/native-paper-prefill/plugin.yml",
+    "test-fixtures/native-paper-prefill/src/dev/vox/lssfixture/prefill/PaperPrefill.java",
+    "test-fixtures/paper-concurrent/build.py",
+    "test-fixtures/paper-concurrent/plugin.yml",
+    "test-fixtures/paper-concurrent/src/dev/vox/lss/paper/PaperSourceProbe.java",
+    "test-fixtures/server-preset-tools/README.md",
+    "test-fixtures/server-preset-tools/drive.py",
+    "test-fixtures/server-preset-tools/verify.py",
+    "test-fixtures/server-smoke-client/build.gradle",
+    "test-fixtures/server-smoke-client/settings.gradle",
+    "test-fixtures/settings-observer/build.py",
+    "test-fixtures/settings-observer/checks/ObserverChecks.java",
+    "test-fixtures/settings-observer/src/dev/vox/lssfixture/settings/SettingsAgent.java",
+    "test-fixtures/settings-observer/src/dev/vox/lssfixture/settings/SettingsRecorder.java",
+    "test-fixtures/wi5-live-fixture/build.gradle",
+    "test-fixtures/wi5-live-fixture/neoforge-resources/META-INF/neoforge.mods.toml",
+    "test-fixtures/wi5-live-fixture/neoforge-resources/lss-wi5-fixture.mixins.json",
+    "test-fixtures/wi5-live-fixture/settings.gradle",
+    "test-fixtures/wi6-transport-fixture/build.gradle",
+    "test-fixtures/wi6-transport-fixture/neoforge-resources/META-INF/neoforge.mods.toml",
+    "test-fixtures/wi6-transport-fixture/neoforge-resources/lss-wi6-fixture.mixins.json",
+    "test-fixtures/wi6-transport-fixture/settings.gradle",
+    "test-fixtures/wi9-live-fixture/README.md",
+    "test-fixtures/wi9-live-fixture/build.gradle",
+    "test-fixtures/wi9-live-fixture/neoforge-resources/META-INF/neoforge.mods.toml",
+    "test-fixtures/wi9-live-fixture/neoforge-resources/lss-wi9-fixture.mixins.json",
+    "test-fixtures/wi9-live-fixture/settings.gradle",
+    "test-fixtures/xaero-map-live-fixture/build.gradle",
+    "test-fixtures/xaero-map-live-fixture/native_close_subprocess_control.py",
+    "test-fixtures/xaero-map-live-fixture/neoforge-resources/META-INF/neoforge.mods.toml",
+    "test-fixtures/xaero-map-live-fixture/neoforge-resources/lss-xaero-map-fixture.mixins.json",
+    "test-fixtures/xaero-map-live-fixture/settings.gradle",
+    "test-fixtures/xaero-map-live-fixture/test_validate_packaging.py",
+    "test-fixtures/xaero-map-live-fixture/validate_packaging.py",
+    "tools/dh/assemble_playable.py",
+    "tools/packaging/classfile.py",
+    "tools/packaging/sqlite_capsule.py",
+    "tools/packaging/test_sqlite_capsule.py",
+    "tools/rig/acquire_neo_installers.py",
+    "tools/rig/assemble_metrics.py",
+    "tools/rig/assemble_platform_recipe.py",
+    "tools/rig/assemble_run.py",
+    "tools/rig/assets.py",
+    "tools/rig/bind_endpoints.py",
+    "tools/rig/build_required_target.py",
+    "tools/rig/c2me-runtime.init.gradle",
+    "tools/rig/check_client_ui.py",
+    "tools/rig/check_concurrent_sources.py",
+    "tools/rig/check_conservative_native.py",
+    "tools/rig/check_debt.py",
+    "tools/rig/check_elytra.py",
+    "tools/rig/check_elytra_run.py",
+    "tools/rig/check_elytra_strict.py",
+    "tools/rig/check_export_lifecycle.py",
+    "tools/rig/check_measured_schedule.py",
+    "tools/rig/check_packaging.py",
+    "tools/rig/check_prefill.py",
+    "tools/rig/check_receive_lifecycle.py",
+    "tools/rig/check_receive_run.py",
+    "tools/rig/check_regions.py",
+    "tools/rig/check_seated_draw.py",
+    "tools/rig/check_seated_run.py",
+    "tools/rig/check_send_admission.py",
+    "tools/rig/check_send_admission_run.py",
+    "tools/rig/check_server_smoke.py",
+    "tools/rig/check_server_smoke_report.py",
+    "tools/rig/check_source_run.py",
+    "tools/rig/check_source_seed.py",
+    "tools/rig/check_workload.py",
+    "tools/rig/check_xaero_map.py",
+    "tools/rig/check_xaero_map_run.py",
+    "tools/rig/check_xaero_progress.py",
+    "tools/rig/check_yaml_reload.py",
+    "tools/rig/client-runtime.init.gradle",
+    "tools/rig/client_ui_steps.py",
+    "tools/rig/commands.py",
+    "tools/rig/conservative_native.py",
+    "tools/rig/drive_elytra.py",
+    "tools/rig/drive_export_lifecycle.py",
+    "tools/rig/drive_receive_lifecycle.py",
+    "tools/rig/drive_seated_draw.py",
+    "tools/rig/drive_send_admission.py",
+    "tools/rig/drive_xaero_map.py",
+    "tools/rig/drive_yaml_reload.py",
+    "tools/rig/elytra-runtime.init.gradle",
+    "tools/rig/elytra_camera.py",
+    "tools/rig/elytra_contract.py",
+    "tools/rig/elytra_input.py",
+    "tools/rig/elytra_phase_barrier.py",
+    "tools/rig/experiment.py",
+    "tools/rig/finalize_client_ui.py",
+    "tools/rig/fixture_controller.py",
+    "tools/rig/launch_journal.py",
+    "tools/rig/launch_prism.py",
+    "tools/rig/materialize_paper_cache.py",
+    "tools/rig/mca_fixture.py",
+    "tools/rig/measure.py",
+    "tools/rig/measured_regions.py",
+    "tools/rig/measurement_inputs.py",
+    "tools/rig/metric-schema.json",
+    "tools/rig/metrics.py",
+    "tools/rig/named_gametest_target.py",
+    "tools/rig/named_project_component.py",
+    "tools/rig/native_save_setup.py",
+    "tools/rig/native_sessions.py",
+    "tools/rig/native_window.py",
+    "tools/rig/neo-runtime.init.gradle",
+    "tools/rig/normalize_workload.py",
+    "tools/rig/performance.py",
+    "tools/rig/prepare_c2me.py",
+    "tools/rig/prepare_concurrent_server.py",
+    "tools/rig/prepare_elytra_target.py",
+    "tools/rig/prepare_fabric_bootstrap.py",
+    "tools/rig/prepare_fabric_concurrent.py",
+    "tools/rig/prepare_folia.py",
+    "tools/rig/prepare_folia_sources.py",
+    "tools/rig/prepare_native_client.py",
+    "tools/rig/prepare_neo_bootstrap.py",
+    "tools/rig/prepare_neo_captured.py",
+    "tools/rig/prepare_paper_concurrent.py",
+    "tools/rig/prepare_player_starts.py",
+    "tools/rig/prepare_prefill.py",
+    "tools/rig/prepare_prism.py",
+    "tools/rig/prepare_replacement.py",
+    "tools/rig/prepare_seated_targets.py",
+    "tools/rig/prepare_seed_from_prefill.py",
+    "tools/rig/prepare_server_smoke.py",
+    "tools/rig/prepare_source_seed.py",
+    "tools/rig/prepare_xaero_map.py",
+    "tools/rig/prepare_xaero_recipe.py",
+    "tools/rig/prepare_yaml_reload.py",
+    "tools/rig/private_input.py",
+    "tools/rig/probe_input.py",
+    "tools/rig/proof.py",
+    "tools/rig/required-matrix.json",
+    "tools/rig/required_matrix_status.py",
+    "tools/rig/required_row_match.py",
+    "tools/rig/review_state.py",
+    "tools/rig/rig",
+    "tools/rig/rig.py",
+    "tools/rig/rig_settings.py",
+    "tools/rig/run_claim.py",
+    "tools/rig/run_server_gametests.py",
+    "tools/rig/run_server_smoke.py",
+    "tools/rig/runtime_trees.py",
+    "tools/rig/scenarios/c2me-save-read.json",
+    "tools/rig/scenarios/client-ui-no-consumer.json",
+    "tools/rig/scenarios/elytra.json",
+    "tools/rig/scenarios/export-lifecycle.json",
+    "tools/rig/scenarios/folia-concurrent.json",
+    "tools/rig/scenarios/native-server-store-smoke.json",
+    "tools/rig/scenarios/receive-lifecycle.json",
+    "tools/rig/scenarios/seated-draw.json",
+    "tools/rig/scenarios/send-admission.json",
+    "tools/rig/scenarios/server-smoke.json",
+    "tools/rig/scenarios/ui-apply.json",
+    "tools/rig/scenarios/xaero-map.json",
+    "tools/rig/server_control_smoke.py",
+    "tools/rig/source_client_natives.py",
+    "tools/rig/source_schema.py",
+    "tools/rig/storage_guard.py",
+    "tools/rig/store_witness.py",
+    "tools/rig/supplemental_metrics.py",
+    "tools/rig/swap_native_neo_server.py",
+    "tools/rig/target_intervals.py",
+    "tools/rig/test_admission_setup.py",
+    "tools/rig/test_assemble_metrics.py",
+    "tools/rig/test_assemble_run.py",
+    "tools/rig/test_assets.py",
+    "tools/rig/test_bind_endpoints.py",
+    "tools/rig/test_client_ui.py",
+    "tools/rig/test_client_ui_finalize.py",
+    "tools/rig/test_client_ui_negotiated.py",
+    "tools/rig/test_commands.py",
+    "tools/rig/test_concurrent_sources.py",
+    "tools/rig/test_conservative_native.py",
+    "tools/rig/test_debt.py",
+    "tools/rig/test_durable_write.py",
+    "tools/rig/test_elytra.py",
+    "tools/rig/test_elytra_camera.py",
+    "tools/rig/test_elytra_hud_focus.py",
+    "tools/rig/test_elytra_input.py",
+    "tools/rig/test_elytra_options.py",
+    "tools/rig/test_elytra_phase_barrier.py",
+    "tools/rig/test_elytra_run.py",
+    "tools/rig/test_elytra_strict.py",
+    "tools/rig/test_experiment.py",
+    "tools/rig/test_export_lifecycle.py",
+    "tools/rig/test_failed_slot.py",
+    "tools/rig/test_launch_environment.py",
+    "tools/rig/test_launch_journal.py",
+    "tools/rig/test_map_stream.py",
+    "tools/rig/test_materialize_paper_cache.py",
+    "tools/rig/test_mca_fixture.py",
+    "tools/rig/test_measure.py",
+    "tools/rig/test_measured_regions.py",
+    "tools/rig/test_measured_schedule.py",
+    "tools/rig/test_measurement_inputs.py",
+    "tools/rig/test_metric_schema.py",
+    "tools/rig/test_metrics.py",
+    "tools/rig/test_named_gametest_target.py",
+    "tools/rig/test_named_project_component.py",
+    "tools/rig/test_native_client_assets.py",
+    "tools/rig/test_native_save_setup.py",
+    "tools/rig/test_native_server_swap.py",
+    "tools/rig/test_native_sessions.py",
+    "tools/rig/test_neo_capture.py",
+    "tools/rig/test_normalize_workload.py",
+    "tools/rig/test_performance.py",
+    "tools/rig/test_player_starts.py",
+    "tools/rig/test_prefill.py",
+    "tools/rig/test_preparation.py",
+    "tools/rig/test_prepare_concurrent_server.py",
+    "tools/rig/test_prepare_prism.py",
+    "tools/rig/test_prepare_replacement.py",
+    "tools/rig/test_preset_tool_identity.py",
+    "tools/rig/test_prism_context.py",
+    "tools/rig/test_private_display_context.py",
+    "tools/rig/test_private_input.py",
+    "tools/rig/test_receive_lifecycle.py",
+    "tools/rig/test_receive_report.py",
+    "tools/rig/test_receive_run.py",
+    "tools/rig/test_regions.py",
+    "tools/rig/test_required_composition.py",
+    "tools/rig/test_required_target.py",
+    "tools/rig/test_review_regressions.py",
+    "tools/rig/test_review_runner.py",
+    "tools/rig/test_review_state.py",
+    "tools/rig/test_rig.py",
+    "tools/rig/test_run_claim.py",
+    "tools/rig/test_runner.py",
+    "tools/rig/test_runtime_settings_identity.py",
+    "tools/rig/test_runtime_trees.py",
+    "tools/rig/test_scenario_scope.py",
+    "tools/rig/test_seated_captures.py",
+    "tools/rig/test_seated_draw.py",
+    "tools/rig/test_seated_run.py",
+    "tools/rig/test_seated_runtime.py",
+    "tools/rig/test_send_admission.py",
+    "tools/rig/test_server_control_smoke.py",
+    "tools/rig/test_server_gametest_runner.py",
+    "tools/rig/test_server_proof.py",
+    "tools/rig/test_server_smoke.py",
+    "tools/rig/test_server_smoke_identity.py",
+    "tools/rig/test_server_smoke_report.py",
+    "tools/rig/test_smoke_dispatch.py",
+    "tools/rig/test_source_client_natives.py",
+    "tools/rig/test_source_run.py",
+    "tools/rig/test_source_schema.py",
+    "tools/rig/test_source_seed.py",
+    "tools/rig/test_storage_guard.py",
+    "tools/rig/test_store_witness.py",
+    "tools/rig/test_supervisor_stop.py",
+    "tools/rig/test_supplemental_metrics.py",
+    "tools/rig/test_sustained_progress.py",
+    "tools/rig/test_target_intervals.py",
+    "tools/rig/test_toolchain.py",
+    "tools/rig/test_ui_snapshot_wait.py",
+    "tools/rig/test_workload.py",
+    "tools/rig/test_world_snapshot.py",
+    "tools/rig/test_xaero_map.py",
+    "tools/rig/test_xaero_map_input.py",
+    "tools/rig/test_xaero_map_native_fix.py",
+    "tools/rig/test_xaero_map_recipe.py",
+    "tools/rig/test_xaero_map_shutdown.py",
+    "tools/rig/test_xaero_progress.py",
+    "tools/rig/test_xaero_recipe.py",
+    "tools/rig/test_yaml_reload.py",
+    "tools/rig/toolchain.py",
+    "tools/rig/ui_snapshot_wait.py",
+    "tools/rig/world_snapshot.py",
+    "tools/rig/xaero_map_input.py",
+    "tools/rig/xaero_map_shutdown.py",
+    "tools/rig/xaero_map_terrain.py",
+    "tools/rig/xaero_map_viewport.py",
+    "tools/settings/inventory.py",
+    "tools/settings/reference.py",
+    "tools/settings/settings_file.py",
+    "tools/tests/check_artifacts.py",
+    "tools/tests/inventory.py",
+    "tools/tests/test_artifacts.py",
+    "tools/tests/test_inventory.py"
+  ],
+  "qualification": "Original r5-bound hashes verified. Other files use separately identified retained snapshot bytes; new binding coverage is not counted as a code change."
+}

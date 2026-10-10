@@ -1,0 +1,82 @@
+{
+  "baseline": "/tmp/lss-dh-p4-claude-build.3iqSY2",
+  "scope": "P4 review correction implementation; docs excluded",
+  "diff_sha256": "e1adaa2f3a85e8aa9e52d925ea4d59e47ada013073b4d237b4902cac325fba97",
+  "files": [
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java",
+      "before_sha256": "b3bc354946c0b71ff1aa46cad5b037919b87b42a16785c07cfb4848ecec1b6d7",
+      "after_sha256": "822af58504e2cbe31aa4843412ccc1c760235203499d3942ac5b8f0dc725bdd8"
+    },
+    {
+      "path": "common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java",
+      "before_sha256": "dc23e2c46562ace4931de90e02cd5c23c838de1fdc72bfc7b6edde658a60cdc1",
+      "after_sha256": "9a837ab04e5bb28027a97907cb54f7dbd2676eebb6d1fffc05976d994c62584e"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java",
+      "before_sha256": "ccb1080637ed4f976e6597ab73f7bf7828649c20f6f8e2880b288bf8e0631204",
+      "after_sha256": "ff8ec82de9043dcc2a25b4264a0eb0b609784a429cea4ca4b887722fc4e24de2"
+    },
+    {
+      "path": "test-fixtures/dh-live/README.md",
+      "before_sha256": "c4a03d1eec0b1399fdf15d426481dae677714db54a35839b86b14405cdee4880",
+      "after_sha256": "8dbf54eda7d18b62a9645a513e2d1f6a87501c05b9cc4bf3246f4cd55bd96aa8"
+    },
+    {
+      "path": "test-fixtures/dh-live/build.py",
+      "before_sha256": "1359b240064e5ff2e79a145ec45832ee8aa06f58a0119e55aac0b4c7e6f66379",
+      "after_sha256": "bfeed2c414c1489d0c12505b22ccaa4a25ea21ece2f8f0c4a76a07c3fdc2ba9a"
+    },
+    {
+      "path": "test-fixtures/dh-live/classpath.gradle",
+      "before_sha256": null,
+      "after_sha256": "974d7d1bffa34e174f873873a78dbd4e805330f395278ab27df7b976da0f2dd0"
+    },
+    {
+      "path": "test-fixtures/dh-live/exercise.py",
+      "before_sha256": "b93607d037c1d16925da30533222f6b7151b11674edf5608a2ab0c7ae26ccb27",
+      "after_sha256": "39ca4e373ce782154e494744e0ba3ea9f066a9a768efc90bfb1f209980496d8d"
+    },
+    {
+      "path": "test-fixtures/dh-live/fixture-tests.gradle",
+      "before_sha256": null,
+      "after_sha256": "7a3b9d2f309e2364f6b0249be61c8672a8f675139180cc704a1e619e1febcb68"
+    },
+    {
+      "path": "test-fixtures/dh-live/prepare.py",
+      "before_sha256": "9cf91f9f7db230d563a7e2eb1fd7f5b3bbc24398d4988a8c11769eac9086ca00",
+      "after_sha256": "397ce685f9f329264e895cc5b033c1f60a73aba20970a6c38dc5a35db526477d"
+    },
+    {
+      "path": "test-fixtures/dh-live/run.py",
+      "before_sha256": "ab36cfc472ae60c46e34f036b2198f4c1a56857205b86597135dafdda6a665ab",
+      "after_sha256": "0800b80b4ad56f4bd960fbd037f2c7a0dc13d4d8e3bacff0892889d960192121"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java",
+      "before_sha256": "537ba37d57a02efac117efbe72cd59b5c085c5588b5faf90e8a1a1e93663b844",
+      "after_sha256": "1aeaf04f6e99341bd398b5256d26cd4be1babda23b594a4db46aaf3f03bf5464"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java",
+      "before_sha256": "ff56f7569457bd227799c392c9b81fa62d0df359c872db14389b1395a780c60a",
+      "after_sha256": "10c2d59268791820bd90b273094b55a556da9ddbcc96a72e191e2826d13ee1b7"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/ReceiveMixin.java",
+      "before_sha256": "a37d4181934eb361d7ba4d179bcc25395b686e7e5914a7a5c534708e3fccc79a",
+      "after_sha256": "74fecdd5f5830cbd89554eff57c834e94b0697c6b1da8abaa9af78f8272a8304"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/mixin/SendMixin.java",
+      "before_sha256": "33a587016966687afb19838e5938651fd391bd41852d71a2f42b77be45f30a0d",
+      "after_sha256": "308a55df99c08f3aa36fdd2e20945125587068ff17534b62044380bb93aaa3c1"
+    },
+    {
+      "path": "test-fixtures/dh-live/tests/dev/vox/lssfixture/dh/ContentProbeTest.java",
+      "before_sha256": null,
+      "after_sha256": "d164511867e009d7690389610407b27e47108e1b6a6d49850f63fbe31eb01207"
+    }
+  ]
+}

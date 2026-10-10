@@ -1,0 +1,39 @@
+{
+  "status": "first-playable-local-test-artifact",
+  "artifact": "/home/vox/projects/voxel-server-support/build/dh-playable/2026-10-01/lod-server-support-fabric-dh-playable-mc1.21.1.jar",
+  "artifact_sha256": "090ef71d0514571bc45b489413675e944ff2c5a44c1483ef56c37823d02d28e9",
+  "tests": {
+    "codec_and_policy": 46,
+    "settings": 148,
+    "native_session_reset_converter": 88,
+    "failures": 0,
+    "skips": 0
+  },
+  "release_check_selftest": 124,
+  "sqlite_helpers": 9,
+  "common_sources_compiled": 120,
+  "scheduler_simulation": {
+    "eligible": 240,
+    "acquired": 240,
+    "untouched": 0
+  },
+  "baseline_ref": "6677fe93dfc35b8ca1e158972d4cf58eb9703bd2",
+  "branch": "feat/dh-codec-p1-mc1.21.1",
+  "source_workspace": "/home/vox/projects/voxel-server-support/.worktrees/dh-client-p1",
+  "implementation_patch_sha256": "28c28b832c81f726934136b2d1d4bd286f1ce401e7512ce67443fcda1a4af8e5",
+  "normal_gradle_gate": "pending: sandbox socket service",
+  "live_gate": "pending: sandbox forbids loopback bind",
+  "outreach": "pending; local only",
+  "logs": {
+    "codec-playable.log": "3e94fa9ceec89f0ea0e20ee628bd69727ed832c01f68a1b69d16a94a53602aaa",
+    "client-tests-final.log": "acfa484e1649735c91b9eede5c63958fabefced5e9a05a273619c18cbba29a1e",
+    "common-compile-final.log": "0decab82d7f0319bac12d92a9059ca97d1f91c6f016f7c3ee0d6be6574c69aed",
+    "client-compile-final.log": "9ed57c6925c8ddfe62eebb8e887c36f976ecdd8e38bcc2a3022f34073f34523a",
+    "release-selftest-playable.log": "0f396b526201273a52b9970a0ccd5e128ae80b45158804774cd84692e872e34a",
+    "assemble-playable-final.log": "c8a4596cd2c40c1ca7ac348aacef7c6ab14ba93679aacd9c3b6c6ba8caa11168",
+    "packaging-playable.log": "20a03f6e4d43590d3ddb3cc6f5fcc5cb409681cc215bfe35a2fede34a610265d",
+    "final-source-checks.log": "c6fa2769fa9b0860e3fd893f1ecbd1467d4306d23217d65387823c2dbfba3b3a",
+    "settings-tests-final.log": "62f43548887516a8056cb6c85659d921b8a7c59af18df71edfc23a718a43228f"
+  },
+  "patch_applies_to_published_baseline": true
+}

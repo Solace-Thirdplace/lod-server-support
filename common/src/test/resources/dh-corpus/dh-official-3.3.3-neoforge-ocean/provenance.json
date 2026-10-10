@@ -1,0 +1,21 @@
+{
+  "file": "database-tile-4--3.dto",
+  "x": 4,
+  "z": -3,
+  "sha256": "0420b6a95cccf2635709c4c4114616808403a6f0b3bb14900caf0f46ba4b98c5",
+  "format": 2,
+  "compression": 4,
+  "kind": "Frozen exact upstream FullData database DTO reconstruction, not a network capture",
+  "producer": "Official Distant Horizons 3.3.3 MC1.21.1 Fabric/NeoForge",
+  "producer_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+  "dto_file": "database-tile.dto",
+  "world_min_y": -64,
+  "world_height": 384,
+  "skylight": true,
+  "position": {
+    "detail": 6,
+    "x": 4,
+    "z": -3
+  },
+  "source_evidence": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/ocean-lighting/database-tile-manifest.json"
+}

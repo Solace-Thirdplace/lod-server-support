@@ -1,0 +1,54 @@
+{
+  "prepared_date": "2026-10-02",
+  "previous_isolated_source": "/tmp/lss-dh-p3-fixes.7gigtl56",
+  "implementation_checkout": "/home/vox/projects/voxel-server-support/.worktrees/dh-client-p1",
+  "scope": "P4 increment since the tested P3 review corrections; docs/brief excluded",
+  "files": [
+    {
+      "path": "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java",
+      "before_sha256": "f42fd5f22d144e09bf0c2175edc52758f2398c4e0793bae506b6de7c529aa0f2",
+      "after_sha256": "b3bc354946c0b71ff1aa46cad5b037919b87b42a16785c07cfb4848ecec1b6d7"
+    },
+    {
+      "path": "xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java",
+      "before_sha256": "b6d3e631bcaee68cdcda8be2addf23fee9ede293a2452f31eb8ccb9e7f4e83a2",
+      "after_sha256": "e791156fdd6a178601260fc7be51bdf2e74a5abd858f13fa74e09848827292ad"
+    },
+    {
+      "path": "fabric/src/test/java/dev/vox/lss/networking/client/DhClientSessionTest.java",
+      "before_sha256": "a54a68536f5ff9ab2abd734302db30eaa14476d746cf695925564f83a2b6d20b",
+      "after_sha256": "ccb1080637ed4f976e6597ab73f7bf7828649c20f6f8e2880b288bf8e0631204"
+    },
+    {
+      "path": "test-fixtures/dh-live/README.md",
+      "before_sha256": "46b1072ff3b7e25f979e0be34c8390756e116f0c804f53cbf82ebc39e9adbf3c",
+      "after_sha256": "c4a03d1eec0b1399fdf15d426481dae677714db54a35839b86b14405cdee4880"
+    },
+    {
+      "path": "test-fixtures/dh-live/exercise.py",
+      "before_sha256": "1c1652a6929e88c4b34e5621c929b639c381c6ad4cbd4f28eaacf5f65dd74f3d",
+      "after_sha256": "b93607d037c1d16925da30533222f6b7151b11674edf5608a2ab0c7ae26ccb27"
+    },
+    {
+      "path": "test-fixtures/dh-live/prepare.py",
+      "before_sha256": "f918f0048988ac19dfa346fdea695b357522e0b85bde09c2eb018aee6c112b66",
+      "after_sha256": "9cf91f9f7db230d563a7e2eb1fd7f5b3bbc24398d4988a8c11769eac9086ca00"
+    },
+    {
+      "path": "test-fixtures/dh-live/run.py",
+      "before_sha256": "5d046f3ad2535e199914619905f045926b731e629bde80ff5ae07c299c739761",
+      "after_sha256": "ab36cfc472ae60c46e34f036b2198f4c1a56857205b86597135dafdda6a665ab"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/ContentProbe.java",
+      "before_sha256": null,
+      "after_sha256": "537ba37d57a02efac117efbe72cd59b5c085c5588b5faf90e8a1a1e93663b844"
+    },
+    {
+      "path": "test-fixtures/dh-live/src/dev/vox/lssfixture/dh/Probe.java",
+      "before_sha256": "7d4478b6e28b1688ff65af4d1a4e91fb29fb33fc7177471a5af25c1329ab71a4",
+      "after_sha256": "ff56f7569457bd227799c392c9b81fa62d0df359c872db14389b1395a780c60a"
+    }
+  ],
+  "diff_sha256": "34344489cf0bf03ec78739ded5fb9f7ed4325b4acb1f56ee88e475ab5a44c24d"
+}

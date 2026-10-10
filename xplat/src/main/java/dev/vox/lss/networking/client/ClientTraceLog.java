@@ -56,6 +56,7 @@ final class ClientTraceLog {
     static synchronized void stop() {
         if (!enabled && writer == null) return;
         enabled = false;
+        ClientNetTrace.reset();DhClientTrace.reset();
         if (writer != null) {
             try {
                 writer.close();
@@ -79,6 +80,7 @@ final class ClientTraceLog {
     static synchronized Toggle toggle() {
         if (enabled) {
             enabled = false;
+            ClientNetTrace.reset();DhClientTrace.reset();
             try {
                 writer.close();
             } catch (IOException e) {
@@ -107,13 +109,23 @@ final class ClientTraceLog {
             startMs = System.currentTimeMillis();
             lastFlushMs = startMs;
             charsWritten = 0;
+            // An idle connection or terrain source without events must still leave
+            // proof that the trace opened. Flush it before reporting success.
+            String start = "{\"t\":\"trace_start\",\"ms\":0,\"format\":1}\n";
+            writer.write(start);
+            writer.flush();
+            charsWritten = start.length();
             // Drop the net-event rate baselines: the first sample of a new trace must not
             // report a byte rate averaged over the gap since the previous one.
             ClientNetTrace.reset();
+            DhClientTrace.reset();
             enabled = true;
             return new Toggle(path, false);
         } catch (IOException e) {
             LSSLogger.error("Failed to open " + Brand.shortName() + " trace at " + path, e);
+            if (writer != null) {
+                try { writer.close(); } catch (IOException ignored) { /* original failure is logged */ }
+            }
             writer = null;
             return new Toggle(null, true);
         }

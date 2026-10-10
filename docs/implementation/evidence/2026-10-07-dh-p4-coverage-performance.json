@@ -1,0 +1,298 @@
+{
+  "timestamp_utc": "2026-10-07T08:41:22.069073+00:00",
+  "local_only": true,
+  "release_ready": false,
+  "report": "docs/implementation/2026-10-07-dh-p4-coverage-performance.md",
+  "artifacts": {
+    "neoforge": "f165513dab605962683a9641b884ae4633e07eb3c53a86259da479d86c8fc94d",
+    "fabric": "27fa74531138f3030488bcf62d7680d915b54d2876883617a740d57b464b70b7"
+  },
+  "normal_tests": {
+    "unit_observer_passes": 3345,
+    "production_unit_passes": 3341,
+    "fixture_observer_passes": 4,
+    "fabric_server_tests": 78,
+    "neoforge_server_tests": 8,
+    "python_guard_metric_tests": 8
+  },
+  "r4_independent_comparisons": 10785024,
+  "r5_independent_comparisons": 2396672,
+  "performance_runs": 12,
+  "performance_artifact_sha256": "80518508d7b964d54d962129a7f2657e192cedbb15351463d22ee93d46b5b67f",
+  "performance_scope": "Same nine complete terrain tiles; requested1280x720/120fps cap, steady camera after loading. Later warm idle window unconfirmed. Not uncapped throughput or loading-frame qualification.",
+  "strict_I1_closed": false,
+  "outreach_pending": true,
+  "manual_setup": {
+    "status": "ready-for-manual-test",
+    "timestamp_utc": "2026-10-07T08:38:57.235201+00:00",
+    "artifact_sha256": "f165513dab605962683a9641b884ae4633e07eb3c53a86259da479d86c8fc94d",
+    "prism_installation": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/r5-final/prism-installation.json",
+    "instance": "/mnt/c/Users/Ian/AppData/Roaming/PrismLauncher/instances/LSS dev \u2014 1.21.1 NeoForge - Copy For Far Testing",
+    "endpoint": "[::1]:25585",
+    "server_owner": {
+      "pid": 414965,
+      "start": "17940761",
+      "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+    },
+    "current_liveness": {
+      "checked_utc": "2026-10-07T08:38:55.818090+00:00",
+      "owner_alive": true,
+      "endpoint": "[::1]:25585",
+      "tcp_reachable": true,
+      "ready": true,
+      "problem": null,
+      "recorded_owner": {
+        "pid": 414965,
+        "start": "17940761",
+        "boot": "6dc82308-cb22-40e9-a916-d0d474c437f6"
+      }
+    },
+    "minecraft_status": {
+      "name": "1.21.1",
+      "protocol": 767
+    },
+    "windows_ipv6_tcp": true,
+    "existing_world_resumed": true,
+    "world": "dh-neoforge-playable",
+    "server_lss": false,
+    "server_dh_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+    "private_tests_passed": true,
+    "private_cells": 6,
+    "private_ui_status": "native legacy0.6.13 Auto3 checks and screenshot inspected",
+    "client_foreground_launched": false,
+    "client_preferences_preserved": true,
+    "generation": {
+      "max_distance_chunks": 32,
+      "plan": "SURFACE_THEN_CHUNKS",
+      "sync_on_load": true,
+      "unsolicited_updates": true
+    },
+    "test_player_op_preserved": true,
+    "console_fifo_tested": true,
+    "server_survived_launcher_exit": true,
+    "storage_preflight": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/r5-final/manual-storage-preflight.json",
+    "storage_health": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-01/server/evidence/storage-health.json"
+  },
+  "evidence_sha256": {
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/r5-final/verification.json": "ffd6e577e923b8a5ec7bd9004a0f948dbe5285351f7834d4a231d80f20fc3073",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/r5-final/prism-installation.json": "afe12ea06a62c49ac75eb4d72f43ddffbc4af9c683203c0c636314e21fa50d0a",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/r5-final/test-setup-completed.json": "7c6c850c01c8fe3afaea7683a9569408185726afdef15644be6c4805369ce8cc",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/r5-final/source-manifest.json": "e18cccb4a7e565d573ebd3e9d4c7da005029c8eabebf4eedaa295f38fb9ce7eb",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/r5-final/test-source-manifest.json": "83c2e23f9f4f81b2ee5a75360fe9e080a0f3cc3a2cc96844b5458f3fc300a3f2",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/paired-summary.json": "af652db55c765f030458e8dd43133f180885094f6924535a05a6e13b964bb3c0",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/paired-measurements.csv": "2ddc268d3f23c3b31c5b1f82392437a4c1c68b89f764d736c635f01de34283b0",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/ntfs-cost-summary.json": "bc6ad9dfb21cf62aec83e00793161c1b9092aa136c95c3fe23d6c96a07fcc5ee",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/private-process-retirement.json": "91b6af3d627185cf323c5ad2db0ba7ebfb956ce33b1e9c5270103dc714a7433d",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/cleanup-receipt.json": "27ac85bd5ec088a89f5f957078ef0886fe059865e63904bd19d027842d84bca4",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/windows-cache-cleanup-receipt.json": "4c4b4c6494866f21eb458155eb3ab414265cb223c7a70d904115bf8f2bf6f29a",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/obsolete-windows-library-copies-cleanup.json": "ae42e0a96d139670d8743e6edc4ae2aad7ed816443a0858c02b04035339ea7bb",
+    "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/obsolete-versioned-test-cache-cleanup.json": "4de94f51f96da7c67fed01ab33981cae7b0c95b8701b66ec257a51d11786394e"
+  },
+  "incremental_source_changes": {
+    "common/src/main/java/dev/vox/lss/common/dh/DhTerrainDecoder.java": {
+      "before_sha256": "575bce752e577ad5cc8431663e6e156ef163e06f20097c6c074193bedc49ccb6",
+      "after_sha256": "92cd38c432470e6625726e1df26bc866bfe6adc4e7377071a3ada09b3f5d49f4"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhTerrainDecoderTest.java": {
+      "before_sha256": "26041ecc234feb436734984e9ddba361e1ccd2ea92ca86fd02ce850053e272de",
+      "after_sha256": "c4d86dcbd074723d9c149a738260a36eafab559c8076eff753178a6220b9a5d1"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/README.md": {
+      "before_sha256": null,
+      "after_sha256": "b9579738cd67e1899a18deeb7cef1fdcb7b59517ff917b46f118657248be6690"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/capture.json": {
+      "before_sha256": null,
+      "after_sha256": "257b692bb4bd5b74cd2e8f56f2a1b4e8adfa220f07013a096fd554055b7311b8"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/received-0003.bin": {
+      "before_sha256": null,
+      "after_sha256": "97fe81dd8735e1e082c4c88435b945bdac92cce2e8d7c27a2563e3e20fba40d2"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.2.0-b-ceiling-sentinel/received-0004.bin": {
+      "before_sha256": null,
+      "after_sha256": "7bc5a62998814f55dda23fdafc6c7e2fce98376d6a8f4ecb4be22863f75d294f"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/README.md": {
+      "before_sha256": null,
+      "after_sha256": "d6d4021a6d7047c5b306b65ffa6d40f597fadc4ccb816cdfcac6a1a35081f2f4"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/capture.json": {
+      "before_sha256": null,
+      "after_sha256": "7c26237996805ecb44235c01c8b32c902fa5dc581adb04a4219a358f7e6b5367"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/received-0009.bin": {
+      "before_sha256": null,
+      "after_sha256": "989b3b1e4c88ff1d9e110fbd1e191ab58ab00677f9074689b657e312c9387868"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-ceiling-sentinel/received-0010.bin": {
+      "before_sha256": null,
+      "after_sha256": "9b9e3da3cc0985d81d82b9dbb7eb03ff27c7c1898492c0ba295a35eac071f168"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/provenance.json": {
+      "before_sha256": null,
+      "after_sha256": "08b170c71b6802ad9ea6039aaed198b6f9cdb2d74eb3cda5203dca2b3ce9e15c"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/received-0003.bin": {
+      "before_sha256": null,
+      "after_sha256": "26cdd843f4284e553c21aab4d6811df61b0dfae21832ea405643fc8034dd70e5"
+    },
+    "common/src/test/resources/dh-corpus/dh-official-3.3.3-surface-only-ceiling/received-0004.bin": {
+      "before_sha256": null,
+      "after_sha256": "8c8ee4f2ce6baedd4a610ba81da9015504d297a2f3c83a39ff2e1b0c08a11de6"
+    },
+    "fabric/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java": {
+      "before_sha256": "05dbc3cd0ea8448099ed7dc3753d39447b65c8518ca443bc131d494fd3dd7339",
+      "after_sha256": "ee786266ebe590ac379d5f894b243abad94e9aa414710f22ec1dfa048b9879c7"
+    },
+    "fabric/src/main/java/dev/vox/lss/mixin/sodium/SodiumLegacyOptionsHook.java": {
+      "before_sha256": "3ab11b1ecd546ea7e13c06673276419b9208668559407f457e790a3a2b624815",
+      "after_sha256": "7482de7b2afb37789b15cef35cbf45b30f7f0fde6ed39e5c89835ad937d6ad4a"
+    },
+    "fabric/src/main/resources/assets/lss/lang/en_us.json": {
+      "before_sha256": "4781cffe3a22c82a702ccf5569324ca15ac6289a4bcd910062e61adbb5fafbe0",
+      "after_sha256": "ed32afb7eb162f2b48c9a01dbb84680285e490534ff213dd3b83edb47701870f"
+    },
+    "fabric/src/main/resources/assets/lss/lang/zh_cn.json": {
+      "before_sha256": "2bdfd1ff09d37269b133f8655a19defeeda794d6c22c4faf8534da907d125530",
+      "after_sha256": "a26e0838c4c46aadff54ea39287b29b49e938998a51ec4284f92e1724fe07bd7"
+    },
+    "fabric/src/main/resources/assets/lss/lang/zh_tw.json": {
+      "before_sha256": "85eab8f95f14b5cad3544c4443ea50f60f3671acafca100c1808037d4326a366",
+      "after_sha256": "5e355b3fe511e0bdd4a96a28c22cd207f370426268239ef75dc20fd132c95c17"
+    },
+    "fabric/src/test/java/dev/vox/lss/config/menu/SodiumLegacyHookContractTest.java": {
+      "before_sha256": "02d280b770bbc5e2c04a54b7258c1749e597c18a9844c728a6706e174b5fd140",
+      "after_sha256": "9f9bb332e8672963a35c874fbd9190977eb7f4c5bcf1560b55328a006dae6d58"
+    },
+    "fabric/src/test/java/dev/vox/lss/config/menu/SodiumLegacySurfaceResolvesTest.java": {
+      "before_sha256": "151cbd733889558ad8ba04274b6d42190d17bd3dc831d35072e3df3bb79829e5",
+      "after_sha256": "3bb6287ce4992b3969cd58bd0986586f4157f36d8a297574179864136df395cf"
+    },
+    "neoforge/src/main/java/dev/vox/lss/config/menu/LegacySodiumPage.java": {
+      "before_sha256": "05dbc3cd0ea8448099ed7dc3753d39447b65c8518ca443bc131d494fd3dd7339",
+      "after_sha256": "ee786266ebe590ac379d5f894b243abad94e9aa414710f22ec1dfa048b9879c7"
+    },
+    "neoforge/src/main/java/dev/vox/lss/mixin/sodium/SodiumLegacyOptionsHook.java": {
+      "before_sha256": "3ab11b1ecd546ea7e13c06673276419b9208668559407f457e790a3a2b624815",
+      "after_sha256": "7482de7b2afb37789b15cef35cbf45b30f7f0fde6ed39e5c89835ad937d6ad4a"
+    },
+    "test-fixtures/dh-p4/README.md": {
+      "before_sha256": null,
+      "after_sha256": "717548a68fc424cb59fea74c20f03f3bc70c846340fc12c62f4f7dcc521b8b42"
+    },
+    "test-fixtures/dh-p4/bounded_storage.py": {
+      "before_sha256": null,
+      "after_sha256": "e402893fadd40752f8f69d1b48260e2941f9fefdaac8c8e4a516ea241d01afaa"
+    },
+    "test-fixtures/dh-p4/build.py": {
+      "before_sha256": null,
+      "after_sha256": "da7aa90b9bc7fe575ebc17b3b6603c6b8b47b4b8380360c00e98cefdcc2f344d"
+    },
+    "test-fixtures/dh-p4/fixed_area_metrics.py": {
+      "before_sha256": null,
+      "after_sha256": "868e945217c05bac0a85a4bb476a37fca1e89502f72134f2d79cd28ea9db2ced"
+    },
+    "test-fixtures/dh-p4/prepare.py": {
+      "before_sha256": null,
+      "after_sha256": "a042644ba12116fe975803d1a79618104d9c67307d1b4f74409eb70fa7b801eb"
+    },
+    "test-fixtures/dh-p4/run.py": {
+      "before_sha256": null,
+      "after_sha256": "f41dfbfea49a121baf2b5b906c17ca9a3c200d626e5b586483045f4fdde17cb8"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/BenchmarkClient.java": {
+      "before_sha256": null,
+      "after_sha256": "6d9f6b6ac1bc947437c3c7ce274a784675b2d975ee9252de34fcdc22b53ab4b9"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/CachePressure.java": {
+      "before_sha256": null,
+      "after_sha256": "6abe13f2fa814a9ba962dec34b4c435f97ec1b409984c8a01719a5b30a919157"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/CapturedTerrainSummary.java": {
+      "before_sha256": null,
+      "after_sha256": "4a101da9e7e4cbc390f7ed30c2bf2a86181624dfb39e44d3ef9ac0fa548f9f0b"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ConfigurationProbe.java": {
+      "before_sha256": null,
+      "after_sha256": "9c17d56f927244715ca48525671985fa5649fca2297e47cf8cfc933119040ce5"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/ContentOracle.java": {
+      "before_sha256": null,
+      "after_sha256": "73d31e4d7f3874e438d4f7df962d6f53b0c7cff3e808d097bfe716cdf66b9c24"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/FrameMetrics.java": {
+      "before_sha256": null,
+      "after_sha256": "863d89d0ae8f64f5c275d15016acc1da2e12d530aad2ddb25f54d4e2199f9bf0"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/NtfsCacheBenchmark.java": {
+      "before_sha256": null,
+      "after_sha256": "c4269d7d90fbe5c15c0730b858653b4937014d16ed6aa86e6a98413a8df2b53c"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/P4Probe.java": {
+      "before_sha256": null,
+      "after_sha256": "e262a1440ddb109fdab2fe5a82ae69f63e7db41f3cff8abd8465a2a2a44c97dd"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/VoxyDrawStats.java": {
+      "before_sha256": null,
+      "after_sha256": "9cae46ecb67812517031e431ba2fba117672192fa69878ec9cdeeb9b00f548f3"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/BenchmarkArea.java": {
+      "before_sha256": null,
+      "after_sha256": "f198580f67cc9d8511f6f5abedb76cd8585e23953cfa13c831005ba2a51eec05"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/ClientTick.java": {
+      "before_sha256": null,
+      "after_sha256": "6ac278d5dce9309f071fce9635f7f6b704228b0db43a35267f5bbf27129295c5"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/DecodedSource.java": {
+      "before_sha256": null,
+      "after_sha256": "fc430ed5af744e7f6f69ef5e67f93ab6b5b628c0c4b35651a078e877adf0df4a"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/Frames.java": {
+      "before_sha256": null,
+      "after_sha256": "9d8173c8e604918d6f09a08affde3a79893deec9fda94ad46f71c365ac489db9"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/MouseGuard.java": {
+      "before_sha256": null,
+      "after_sha256": "e8d8b14f385059e540e3ca0b00d73dab6240d45e40c8e70a8e4e519d309e0b45"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/RawCapture.java": {
+      "before_sha256": null,
+      "after_sha256": "953f8de382501f17c5b7afe1a05e73b269f4c0619a2d00e6ef1d0ed965fbb9ee"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/SourceCapture.java": {
+      "before_sha256": null,
+      "after_sha256": "2e0952ea20c8b104ebc8e48e62f6ee3a421b46ba8759e7d234ab9d1d1c538e3a"
+    },
+    "test-fixtures/dh-p4/src/dev/vox/lssfixture/p4/mixin/VoxyDraw.java": {
+      "before_sha256": null,
+      "after_sha256": "9e53ed726f2d72a431bbfde35e759b3c72b3af82309579ccfb48fb6aaf598e93"
+    },
+    "test-fixtures/dh-p4/summarize.py": {
+      "before_sha256": null,
+      "after_sha256": "f4264f1c880b23c80394c656742a8f05766c68016bd02321718b235d647593b8"
+    },
+    "test-fixtures/dh-p4/tests/test_bounded_storage.py": {
+      "before_sha256": null,
+      "after_sha256": "ab5d41c548c77017c33ee66bb01b03ff8013a3da64ce9a788d8050e761125c22"
+    },
+    "test-fixtures/dh-p4/tests/test_dh_p4_metrics.py": {
+      "before_sha256": null,
+      "after_sha256": "220a3b18c65f462a6362ba3c8fe1ed95dd00c4b2db5fa110305c4a7ede4b8110"
+    },
+    "tools/rig/OwnedJavaBootstrap.java": {
+      "before_sha256": null,
+      "after_sha256": "065fa427061d3f4426787b1b5b5c919977760b125055cfefa4824ebde222d084"
+    },
+    "tools/rig/windows_java_fixture.py": {
+      "before_sha256": null,
+      "after_sha256": "b68c094ee879bea3cf6d5b8d478740036bd0670b90b904998ebeb98c5950cf90"
+    },
+    "tools/rig/windows_private_desktop.ps1": {
+      "before_sha256": null,
+      "after_sha256": "fa00f10ab95e6438ca77802ddfa7858a40d963e2367bea6cc0a521cd79fab496"
+    }
+  },
+  "scoped_diff_sha256": "ef385c0d5d6eede6b17b8744d1d6bbf1817cca6aba15cb3b083ef980896fa1ae"
+}

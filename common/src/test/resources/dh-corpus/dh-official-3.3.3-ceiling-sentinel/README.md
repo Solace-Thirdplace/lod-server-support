@@ -1,0 +1,1 @@
+Stock DH 3.3.3, official protocol 16, original response from a local owned 512-height world. The exclusive-ceiling air sentinel caused the pre-fix production decoder to reject the tile. Only inbound split/response frames are retained; no account or world identifier was copied. See capture.json for exact producer and frame hashes.
