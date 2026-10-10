@@ -1,0 +1,14 @@
+modLoader="lowcodefml"
+loaderVersion="[1,)"
+license="MIT"
+[[mods]]
+modId="lss_dh_fixture"
+version="1.0.0-test-only"
+displayName="LSS DH private live verification"
+[[dependencies.lss_dh_fixture]]
+modId="lss"
+type="required"
+versionRange="[0.16.0,)"
+side="CLIENT"
+[[mixins]]
+config="lss-dh-fixture.mixins.json"

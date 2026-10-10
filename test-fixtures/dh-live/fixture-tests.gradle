@@ -1,0 +1,7 @@
+// Separate observer tests; these sources never enter production jars.
+gradle.projectsEvaluated {
+    def fabric = gradle.rootProject.project(':fabric')
+    def fixture = new File(initscript.sourceFile.parentFile, '.')
+    fabric.sourceSets.test.java.srcDir(new File(fixture, 'src'))
+    fabric.sourceSets.test.java.srcDir(new File(fixture, 'tests'))
+}
