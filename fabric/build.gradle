@@ -120,9 +120,9 @@ dependencies {
         sodiumModernGolden "maven.modrinth:sodium:${sodium_version}"
     }
     // The real JourneyMap jars (All Rights Reserved — downloaded, never redistributed) the
-    // map-ingestion bridge binds by reflection: JourneyMapBindingSurfaceTest resolves the
-    // bindings against both loaders' builds, JourneyMapDecoderParityTest decodes the
-    // encoder's bytes with JourneyMap's own reader. PLAIN configurations loaded in a
+    // map-ingestion bridge binds by reflection — on this line the 6.0.0-beta.58 builds, which
+    // JourneyMapBindingSurfaceTest pins as UNSUPPORTED (no snapshot layer; no decoder-parity
+    // test exists here). PLAIN configurations loaded in a
     // child-first class loader — never on a compile or test classpath (the Tier-1 stubs
     // own the journeymap.* names there). Offline = the tests skip; CI=true fails instead.
     journeymapGoldenFabric "maven.modrinth:journeymap:${journeymap_golden_fabric}"

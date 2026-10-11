@@ -5,27 +5,27 @@
     {
       "anchor": 1,
       "at": 2,
-      "cmd": "gamerule minecraft:random_tick_speed 0"
+      "cmd": "gamerule randomTickSpeed 0"
     },
     {
       "anchor": 1,
       "at": 2,
-      "cmd": "gamerule minecraft:spawn_mobs false"
+      "cmd": "gamerule doMobSpawning false"
     },
     {
       "anchor": 1,
       "at": 2,
-      "cmd": "gamerule minecraft:mob_griefing false"
+      "cmd": "gamerule mobGriefing false"
     },
     {
       "anchor": 1,
       "at": 3,
-      "cmd": "gamerule minecraft:fire_spread_radius_around_player 0"
+      "cmd": "gamerule doFireTick false"
     },
     {
       "anchor": 1,
       "at": 3,
-      "cmd": "gamerule minecraft:advance_time false"
+      "cmd": "gamerule doDaylightCycle false"
     },
     {
       "anchor": 1,

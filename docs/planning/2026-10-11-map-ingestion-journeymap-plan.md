@@ -707,3 +707,28 @@ against the decompiled sources.
 | NIT: JourneyMap's heap hold survived pumps that never reached the belt | Fixed: cleared at the top of every pump |
 | NIT: JourneyMap's server-side surface cap is not consulted by the edge sweep | Accepted: the LOD columns themselves are mapped regardless of any radius; the server's "mapping not allowed" switch is honoured |
 | Test gaps (neighbour presence, look-ahead release, edge lookups, latch size, trickle, reservations, invisible roof) | Pinned |
+
+### 11.4 J6 ports (2026-10-11)
+
+One commit per line on `feat/journeymap-mc{26.1,1.21.11,1.21.10,1.21.1}`, bases = the v0.17.0
+merges (26.1 `cf7f9907` and 1.21.11 `4b5e0fd9` on the `-v0.14` support branches, 1.21.10
+`7801aea3`, 1.21.1 `b550cfa4`). Method: per-file 3-way merge of 26.2's change onto each line
+(files whose line base equals 26.2's base copied verbatim), hand-resolved conflicts, then line
+flavor: `JourneyMapLineSurface` heights/identifier, the test columns' biome-registry seam
+(1.21.1), the binding-surface test (exact on 26.x; intermediary Fabric arm with Minecraft types
+erased and `isMappingSuspended` pinned absent on 1.21.11 / present on 1.21.1; the beta jars
+pinned unsupported on 1.21.10, which has no decoder-parity test), the frame-throttle event,
+nested-jar dev-runtime levers (1.21.x), per-line JourneyMap/Xaero pins (§6.1), `suggests`
+(absent on 1.21.10), lang texts (1.21.10 says JourneyMap is unsupported), and the soak
+scenarios' gamerule ids (camelCase on 1.21.10/1.21.1). Port-fidelity review: 2 Opus (26.1 +
+1.21.11; 1.21.10 + 1.21.1), every Modrinth id and bound member checked against the real jars.
+
+| Finding | Disposition |
+|---|---|
+| MAJOR (1.21.1; also 1.21.10): the new soak scenarios used the 26.x gamerule ids — rejected by the soak driver (the scenario-gamerule gametest red on both lines; the 1.21.1 L1 smoke would fail) | Fixed: the lines' camelCase ids |
+| MINOR (from 26.2): production on 1.21.11 (JourneyMap 6.0.0) always takes the null `isMappingSuspended` branch, which no Tier-1 test reached | Fixed: a 6.0.0-shaped client stub + session test, on every line |
+| MINOR: the height-expression pin could not catch an added `+1` (no closing token) | Fixed: pins the closing `);` |
+| MINOR (1.21.10): CLAUDE.md named JourneyMap as a target without the unsupported note | Fixed |
+| NITs: stale comments (binding-surface wording, parity-test mentions on 1.21.10, the 1.21.1 parity message's "inclusive max"), the smoke script on 1.21.10 | Fixed; the smoke script refuses to start on 1.21.10 |
+| NIT: 1.21.10 users with the JourneyMap beta see "needs JourneyMap 6.0.0 or newer", which does not exist for 1.21.10 | Accepted (shared text by design, §3.1); the tooltips say JourneyMap is unsupported on this version |
+| (also) `JourneyMapSessionTest` failed to initialize when run alone (a static `Level` constant before the bootstrap) | Fixed: bootstrap in a static block first |

@@ -19,6 +19,10 @@ case "$MODE" in
     client|world-id) ;;
     *) echo "usage: $0 [client|world-id]" >&2; exit 2 ;;
 esac
+# LINE FLAVOR (1.21.10): only JourneyMap 6.0.0-beta.58 exists here and map ingestion does not
+# support it (map-ingestion plan D5) — there is no map for this smoke to judge.
+echo "[jm-smoke] JourneyMap is unsupported on the 1.21.10 line (only the 6.0.0 beta exists); nothing to smoke" >&2
+exit 2
 
 echo "[jm-smoke] Staging the soak client's settings (integrations.map_ingestion.enabled=true)"
 mkdir -p "$(dirname "$CLIENT_CONFIG")"
