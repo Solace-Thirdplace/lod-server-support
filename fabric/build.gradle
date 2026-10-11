@@ -103,6 +103,17 @@ dependencies {
     if ((findProperty('benchmark.c2me') ?: 'false').toString() == 'true') {
         localRuntime "maven.modrinth:c2me-fabric:${c2me_modrinth_version}"
     }
+    // Map-ingestion live gates (map-ingestion plan §6.4): -Plss.journeymapRuntime=true puts
+    // JourneyMap (All Rights Reserved; downloaded from Modrinth, never redistributed) on the
+    // dev client runtime for the JourneyMap smoke; -Plss.xaeroRuntime=true does the same for
+    // Xaero's World Map (the memory gate). Runtime-only: release jars are unaffected
+    // (release_check rejects journeymap/ and xaero/ entries).
+    if ((findProperty('lss.journeymapRuntime') ?: 'false').toString() == 'true') {
+        localRuntime "maven.modrinth:journeymap:${journeymap_dev_version}"
+    }
+    if ((findProperty('lss.xaeroRuntime') ?: 'false').toString() == 'true') {
+        localRuntime "maven.modrinth:xaeros-world-map:${xaero_dev_version}"
+    }
 }
 
 test {

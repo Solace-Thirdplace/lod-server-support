@@ -34,7 +34,7 @@ public final class ClientOptionCatalog {
     public static final String ID_LOD_DISTANCE = "lss:lod_distance";
     public static final String ID_COLUMN_RATE_LIMIT = "lss:column_rate_limit";
     public static final String ID_JOIN_SLOW_START = "lss:join_slow_start";
-    public static final String ID_XAERO_MAP_BRIDGE = "lss:xaero_map_bridge";
+    public static final String ID_MAP_INGESTION = "lss:map_ingestion";
     public static final String ID_FAR_PLAYERS_ENABLED = "lss:far_players_enabled";
     public static final String ID_FAR_PLAYERS_SHARE_SELF = "lss:far_players_share_self";
     public static final String ID_FAR_PLAYERS_NAME_TAGS = "lss:far_players_name_tags";
@@ -74,7 +74,7 @@ public final class ClientOptionCatalog {
             case "lod.distance_chunks" -> ID_LOD_DISTANCE;
             case "lod.download.max_columns_per_second" -> ID_COLUMN_RATE_LIMIT;
             case "lod.download.slow_start_on_join" -> ID_JOIN_SLOW_START;
-            case "integrations.xaero_map.enabled" -> ID_XAERO_MAP_BRIDGE;
+            case "integrations.map_ingestion.enabled" -> ID_MAP_INGESTION;
             case "far_players.enabled" -> ID_FAR_PLAYERS_ENABLED;
             case "far_players.sharing.enabled" -> ID_FAR_PLAYERS_SHARE_SELF;
             case "far_players.name_tags" -> ID_FAR_PLAYERS_NAME_TAGS;
@@ -180,18 +180,19 @@ public final class ClientOptionCatalog {
                 .enabledBy(ID_RECEIVE_SERVER_LODS)
                 .build();
 
-        // Xaero's World Map bridge (issue #223, xaero-map-bridge-plan.md §2.9): write
-        // received LODs into Xaero's map. Apply reloads, then reconnect activates it; with
-        // Xaero absent the toggle is inert — say so where the user is looking.
-        var xaero = BoolSpec.builder(ID_XAERO_MAP_BRIDGE)
-                .name("lss.config.xaero_map_bridge")
-                .tooltip(Tooltip.conditional(Condition.XAERO_PRESENT,
-                        "lss.config.xaero_map_bridge.tooltip",
-                        "lss.config.xaero_map_bridge.tooltip.not_installed")
-                        .nativeOnly("lss.config.xaero_map_bridge.tooltip.native_only"))
+        // Map ingestion (map-ingestion plan §2.5): write received LODs into installed map
+        // mods (Xaero's World Map, JourneyMap). Apply reloads, then reconnect activates it;
+        // on for new settings files. With no supported map mod the toggle is inert — say so
+        // where the user is looking.
+        var maps = BoolSpec.builder(ID_MAP_INGESTION)
+                .name("lss.config.map_ingestion")
+                .tooltip(Tooltip.conditional(Condition.MAP_MOD_SUPPORTED,
+                        "lss.config.map_ingestion.tooltip",
+                        "lss.config.map_ingestion.tooltip.not_installed")
+                        .nativeOnly("lss.config.map_ingestion.tooltip.native_only"))
                 .impact(Impact.LOW)
-                .defaultValue(false)
-                .bind(c -> c.bool("integrations.xaero_map.enabled"), (c, v) -> c.set("integrations.xaero_map.enabled", v))
+                .defaultValue(true)
+                .bind(c -> c.bool("integrations.map_ingestion.enabled"), (c, v) -> c.set("integrations.map_ingestion.enabled", v))
                 .enabledBy(ID_RECEIVE_SERVER_LODS)
                 .build();
 
@@ -212,7 +213,7 @@ public final class ClientOptionCatalog {
                 GroupSpec.of(receive),
                 GroupSpec.of(distance),
                 GroupSpec.of(rate, slowStart),
-                GroupSpec.of(xaero, source));
+                GroupSpec.of(maps, source));
     }
 
     /** Include ancestors so source-specific controls also follow the reception master. */

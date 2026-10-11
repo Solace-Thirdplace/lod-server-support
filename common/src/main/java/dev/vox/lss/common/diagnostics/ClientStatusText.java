@@ -67,6 +67,6 @@ public final class ClientStatusText {
     private static Object paths(List<String> paths) { return paths.isEmpty() ? text("none") : String.join(", ", paths); }
     private static Message settingsValues(String key, ClientSettingsStatus.Values v) {
         return text(key, onOff(v.receptionEnabled()), v.distanceChunks(), v.maxColumnsPerSecond(),
-                onOff(v.xaeroMapEnabled()), onOff(v.sharingEnabled()));
+                onOff(v.mapIngestionEnabled()), onOff(v.sharingEnabled()));
     }
 }

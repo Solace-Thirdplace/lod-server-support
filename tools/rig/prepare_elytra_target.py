@@ -73,7 +73,7 @@ for value in json.loads(index.read_text())['objects'].values():
  stage(asset,'target-assets/'+relative);asset_hashes[relative]=hashfile(asset)
 d.setdefault('immutable_trees',{})['target-assets']=asset_hashes
 d['generated_files']['elytra-target/options.txt']='maxFps:30\nrenderDistance:6\nsimulationDistance:5\npauseOnLostFocus:false\nenableVsync:false\nonboardAccessibility:false\ntoggleCrouch:false\n'
-d['generated_files']['elytra-target/config/lss-client-config.yaml']=render({'lod.receive':True,'integrations.xaero_map.enabled':False,'lod.distance_chunks':32,'far_players.enabled':True,'far_players.sharing.enabled':True},side='client')
+d['generated_files']['elytra-target/config/lss-client-config.yaml']=render({'lod.receive':True,'integrations.map_ingestion.enabled':False,'lod.distance_chunks':32,'far_players.enabled':True,'far_players.sharing.enabled':True},side='client')
 java=d['java']
 components={c['uid']:c['version'] for c in json.loads((capture/'target-components.json').read_text())};mc=components['net.minecraft']
 if mc not in ('1.21.10','1.21.11') or components.get('net.fabricmc.fabric-loader')!='0.19.3' or components.get('java')!='21':raise ValueError('target requires captured supported MC/Fabric0.19.3/Java21 closure')

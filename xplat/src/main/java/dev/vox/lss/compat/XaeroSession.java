@@ -311,7 +311,7 @@ final class XaeroSession {
         try {
             var h = XaeroBindings.resolve(resolver);
             var bridge = new XaeroSession(h, PRODUCTION_LEVEL_OPS,
-                    () -> LSSClientConfig.CONFIG.enableXaeroMapBridge(),
+                    () -> LSSClientConfig.CONFIG.mapIngestionEnabled(),
                     LSSApi::isServerEnabled,
                     LSSApi::registerColumnConsumer, LSSApi::removeColumnConsumer,
                     // §12.2: the bridge switch COMPOSES UNDER the global #71 switch —
@@ -320,14 +320,14 @@ final class XaeroSession {
                     // MAJOR: an armed reporter with no taper behind it restores the
                     // §18.1 churn regime).
                     () -> LSSClientConfig.CONFIG.enableIngestBackpressure()
-                            && LSSClientConfig.CONFIG.enableXaeroMapBackpressure(),
+                            && LSSClientConfig.CONFIG.mapIngestionBackpressure(),
                     XaeroSession::reportDroppedProduction);
             bridge.maybeRegister();
             instance = bridge;
-            LSSLogger.info(LSSClientConfig.CONFIG.enableXaeroMapBridge()
+            LSSLogger.info(LSSClientConfig.CONFIG.mapIngestionEnabled()
                     ? "Xaero's World Map detected — LOD map bridge active"
                     : "Xaero's World Map detected — LOD map bridge ready"
-                            + " (disabled by enableXaeroMapBridge)");
+                            + " (map ingestion is disabled in the client settings)");
             return true;
         } catch (ClassNotFoundException | NoSuchMethodException | NoSuchFieldException
                  | IllegalAccessException e) {
@@ -372,7 +372,7 @@ final class XaeroSession {
      *  latter two) — the alias corroboration's gate input (cache-alias-keying plan
      *  §2.2): while the bridge can write map tiles, the cache must stay per-address. */
     static boolean isArmed() {
-        return instance != null && LSSClientConfig.CONFIG.enableXaeroMapBridge();
+        return instance != null && LSSClientConfig.CONFIG.mapIngestionEnabled();
     }
 
     /** The conditional {@code /lss diag} line, or null when Xaero was never detected. */
@@ -413,7 +413,7 @@ final class XaeroSession {
     final java.util.function.Consumer<VoxelColumnConsumer> registrar;
     final java.util.function.Consumer<VoxelColumnConsumer> deregistrar;
     /** The §12 backpressure kill switch (client config
-     *  {@code enableXaeroMapBackpressure}); composes UNDER the global
+     *  {@code integrations.map_ingestion.backpressure}); composes UNDER the global
      *  {@code enableIngestBackpressure} (#71 owns the signal path manager-side). */
     final BooleanSupplier backpressureEnabled;
     /** Reports a dropped position back to LSS for its bounded re-serve — test seam. */

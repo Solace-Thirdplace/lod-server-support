@@ -95,7 +95,7 @@ public final class ClientStatus {
                 : "unknown".equals(xaero.resolution()) ? ClientStatusSnapshot.Availability.UNKNOWN
                 : "absent".equals(xaero.resolution()) ? ClientStatusSnapshot.Availability.ABSENT
                 : "unavailable".equals(xaero.resolution()) ? ClientStatusSnapshot.Availability.UNAVAILABLE
-                : !cfg.enableXaeroMapBridge() ? ClientStatusSnapshot.Availability.DISABLED
+                : !cfg.mapIngestionEnabled() ? ClientStatusSnapshot.Availability.DISABLED
                 : ClientStatusSnapshot.Availability.AVAILABLE;
         if (DhClientSession.selected()) {
             // DH mode: native fields describe the (idle) native path truthfully; DH

@@ -17,8 +17,8 @@ class ClientSettingsValidationTest {
         var store = new SettingsStore<>(directory, "lss", schema);
         var initial = store.initialize();
         assertTrue(initial.normalized().lod().receive());
-        assertFalse(initial.normalized().integrations().xaeroMap().enabled());
-        assertTrue(initial.normalized().integrations().xaeroMap().backpressure());
+        assertTrue(initial.normalized().integrations().mapIngestion().enabled());
+        assertTrue(initial.normalized().integrations().mapIngestion().backpressure());
         assertTrue(initial.normalized().compatibility().protocols().v16());
         assertTrue(initial.normalized().compatibility().protocols().v19());
         assertTrue(initial.normalized().compatibility().v16Generation());

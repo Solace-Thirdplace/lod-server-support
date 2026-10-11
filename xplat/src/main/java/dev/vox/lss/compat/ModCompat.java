@@ -72,6 +72,12 @@ public final class ModCompat {
         return XaeroMapCompat.isArmed();
     }
 
+    /** Whether an installed JourneyMap resolved its internals, so map ingestion can write
+     *  to it (the menu's "supported map mod" fact; the 1.21.10 beta never resolves). */
+    public static boolean isJourneyMapSupported() {
+        return false;
+    }
+
     /** The conditional {@code /lss diag} Xaero line, or null when Xaero is not
      *  installed (a detected-but-unresolvable Xaero renders {@code state=unavailable}
      *  — the drift case must be visible, not mistaken for "not installed"). */

@@ -59,7 +59,7 @@ def prepare(source,output,client,server,observer,platform,port):
         'generation.timeout_ticks':1200,'lod.distance.default_chunks':16,'lod.distance.by_dimension':{},'storage.lod_store.enabled':True,
         'storage.lod_store.max_size_mib':256,'storage.lod_store.backfill.enabled':False}
     generated[config]=render(changes,platform='mod' if platform=='fabric' else 'paper')
-    for subject in 'AB':generated['client-'+subject+'/config/lss-client-config.yaml']=render({'lod.receive':True,'lod.distance_chunks':16,'integrations.xaero_map.enabled':True,'lod.download.max_columns_per_second':40},side='client')
+    for subject in 'AB':generated['client-'+subject+'/config/lss-client-config.yaml']=render({'lod.receive':True,'lod.distance_chunks':16,'integrations.map_ingestion.enabled':True,'lod.download.max_columns_per_second':40},side='client')
     props=generated['server/server.properties']
     # Folia rechecks pending login reservations; two clients need admission headroom.
     login_capacity=4 if platform=='folia' else 2

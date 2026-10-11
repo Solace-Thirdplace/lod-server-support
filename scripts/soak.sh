@@ -628,7 +628,7 @@ trap 'kill "$SAMPLER_PID" 2>/dev/null || true; mc_cleanup' EXIT
 # Step 10: Client runs (the server kicks the client between runs / halts at scenario end)
 for (( run=1; run<=CLIENT_RUNS; run++ )); do
     echo "[soak] Client run $run/$CLIENT_RUNS"
-    mc_start_client "$RUN_RESULTS_DIR/client-run$run.log" :fabric:runSoakClient ${CLIENT_EXTRA_ARGS[@]+"${CLIENT_EXTRA_ARGS[@]}"}
+    mc_start_client "$RUN_RESULTS_DIR/client-run$run.log" :fabric:runSoakClient ${CLIENT_EXTRA_ARGS[@]+"${CLIENT_EXTRA_ARGS[@]}"} ${SOAK_CLIENT_GRADLE_ARGS:-}
     while kill -0 "$CLIENT_PID" 2>/dev/null; do
         soak_check_deadline
         sleep 1

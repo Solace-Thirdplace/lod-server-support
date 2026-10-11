@@ -10,7 +10,8 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
         int effectiveDistance, long receivedColumns, long receivedBytes, int queuedColumns,
         int ingestBacklog, long ingestFailures, int rateCap, long rateGatedTicks,
         int xaeroPendingRebuilds, Discovery discovery, Availability xaeroAvailability, ClientDiagnosticSnapshot details, DiagnosticVersions versions, ClientSettingsStatus settings, DhStatusSnapshot dh) {
-    public static final int SCHEMA_VERSION = 3;
+    /** 4: settings.mapIngestionEnabled (was xaeroMapEnabled) and the JourneyMap fields. */
+    public static final int SCHEMA_VERSION = 4;
     /** Native snapshot constructor preserves the existing field meanings. */
     public ClientStatusSnapshot(int schemaVersion, long lifecycle, long capturedAtMillis,
             boolean connected, boolean negotiated, boolean receptionEnabled, boolean serverEnabled,

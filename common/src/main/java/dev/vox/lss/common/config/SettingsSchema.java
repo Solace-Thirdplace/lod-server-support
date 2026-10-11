@@ -24,6 +24,14 @@ public final class SettingsSchema<T> {
     private final Function<T,Map<String,Object>> getter;
     private final Map<String,Descriptor> descriptors;
     private final Map<String,Object> defaults;
+    private final Map<String,String> aliases;
+
+    /** Renamed client groups (map-ingestion plan §2.2): the old group is accepted wherever a
+     *  document is read or a change set is applied, and the next save that changes something
+     *  rewrites it under the canonical name with the template's comments. Startup never
+     *  rewrites it, so a downgrade before any save still reads an upgraded file. */
+    public static final Map<String,String> CLIENT_ALIAS_GROUPS =
+            Map.of("integrations.xaero_map", "integrations.map_ingestion");
 
     public static SettingsSchema<ServerSettings> server(boolean paper) { return new SettingsSchema<>(false,paper,ServerSettings::fromValues,ServerSettings::values); }
     public static SettingsSchema<ClientSettings> client() { return new SettingsSchema<>(true,false,ClientSettings::fromValues,ClientSettings::values); }
@@ -63,6 +71,11 @@ public final class SettingsSchema<T> {
                     range==null?null:range[0],range==null?null:range[1],range!=null&&range[2]==1,inline,spec.path().equals("lod.source")?"lss.config.lod_source":"lss.settings."+spec.path()));
         }
         defaults=Collections.unmodifiableMap(defs); descriptors=Collections.unmodifiableMap(descs);
+        var leafAliases=new LinkedHashMap<String,String>();
+        if (client) CLIENT_ALIAS_GROUPS.forEach((alias,canonical)->{
+            for (String path:descs.keySet()) if (path.startsWith(canonical+".")) leafAliases.put(alias+path.substring(canonical.length()),path);
+        });
+        aliases=Collections.unmodifiableMap(leafAliases);
     }
     public boolean isClient() { return client; }
     public boolean isPaper() { return paper; }
@@ -73,6 +86,21 @@ public final class SettingsSchema<T> {
     public Map<String,Descriptor> descriptorsByPath() { return descriptors; }
     public Map<String,Object> values(T settings) { return getter.apply(settings); }
     public Map<String,Object> defaultValues() { return defaults; }
+    /** Alias leaf path → canonical path (client only; empty for server schemas). */
+    public Map<String,String> aliases() { return aliases; }
+    public String canonicalPath(String path) { return aliases.getOrDefault(path,path); }
+    /** Canonical change set for every write boundary: alias keys map to their canonical path,
+     *  an alias and its canonical path in one change set conflict, unknown paths fail. */
+    public Map<String,Object> canonicalChanges(Map<String,Object> changes) {
+        var out=new LinkedHashMap<String,Object>();
+        for (var entry:changes.entrySet()) {
+            String path=canonicalPath(entry.getKey());
+            if (!descriptors.containsKey(path)) throw new SettingsException("Unknown settings path: "+entry.getKey());
+            if (out.containsKey(path)) throw new SettingsException("Conflicting settings paths: "+entry.getKey()+" and "+path);
+            out.put(path,entry.getValue());
+        }
+        return out;
+    }
     /** Strict flattened-map entry point used by UI drafts and immutable snapshot merges. */
     public Decoded<T> fromValues(Map<String,Object> values) {
         var configured=new LinkedHashMap<>(defaults);
@@ -109,15 +137,25 @@ public final class SettingsSchema<T> {
         Object version=tree.get("config_version");
         if (!(version instanceof Number n) || version instanceof BigDecimal || version instanceof Double || version instanceof Float || decimal(n,"config_version").compareTo(BigDecimal.ONE)!=0) throw new SettingsException("config_version must be the integer 1; newer versions are not supported");
         var flat=new LinkedHashMap<String,Object>();
-        flatten(tree,"",flat);
+        var aliased=new LinkedHashMap<String,Object>();
+        flatten(tree,"",flat,aliased);
         flat.remove("config_version");
+        // An alias yields to its canonical path when both are present; the note repeats on
+        // every reload until the next save canonicalizes the document.
+        var notes=new ArrayList<Normalization>();
+        for (var entry:aliased.entrySet()) {
+            String canonical=aliases.get(entry.getKey());
+            if (flat.containsKey(canonical)) notes.add(new Normalization(entry.getKey(),entry.getValue(),flat.get(canonical)));
+            else flat.put(canonical,entry.getValue());
+        }
         var parsed=fromValues(flat);
         var inactive=new ArrayList<String>();
         for (String path:flat.keySet()) if (!applicable(descriptors.get(path))) inactive.add(path);
-        return new Decoded<>(parsed.configured(),parsed.normalized(),parsed.normalizations(),List.copyOf(inactive));
+        notes.addAll(parsed.normalizations());
+        return new Decoded<>(parsed.configured(),parsed.normalized(),List.copyOf(notes),List.copyOf(inactive));
     }
     public boolean applicable(Descriptor d) { return client || d.platform()==Platform.ALL || (paper?d.platform()==Platform.PAPER:d.platform()==Platform.MOD); }
-    private void flatten(Map<String,Object> tree,String prefix,Map<String,Object> out) {
+    private void flatten(Map<String,Object> tree,String prefix,Map<String,Object> out,Map<String,Object> aliased) {
         for (var e:tree.entrySet()) {
             // Dots belong to the programmatic path API, not YAML group keys.
             // Dynamic maps are descriptor leaves and never recurse through this method.
@@ -127,12 +165,14 @@ public final class SettingsSchema<T> {
             // Local DH timer retirement: tolerate its existing YAML without restoring a runtime setting.
             if (client && (p.equals("lod.dh.refresh_seconds") || p.equals("lod.dh.profile"))) continue;
             if (p.equals("config_version")||descriptors.containsKey(p)) out.put(p,e.getValue());
+            else if (aliases.containsKey(p)) aliased.put(p,e.getValue());
             else {
-                boolean knownGroup=descriptors.keySet().stream().anyMatch(k->k.startsWith(p+"."));
+                boolean knownGroup=descriptors.keySet().stream().anyMatch(k->k.startsWith(p+"."))
+                        ||aliases.keySet().stream().anyMatch(k->k.startsWith(p+"."));
                 if (!knownGroup) throw new SettingsException("Unknown settings path: "+p);
                 if (!(e.getValue() instanceof Map<?,?> m)) throw new SettingsException("Mapping required at "+p);
                 @SuppressWarnings("unchecked") var nested=(Map<String,Object>)m;
-                flatten(nested,p,out);
+                flatten(nested,p,out,aliased);
             }
         }
     }

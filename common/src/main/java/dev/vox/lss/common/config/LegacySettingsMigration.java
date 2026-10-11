@@ -98,6 +98,13 @@ public final class LegacySettingsMigration {
                 if(schema.isPaper()&&duplicated)warnings.add("lod.distance: preserved exact world and dimension interpretations");
             }
         }
+        if(schema.isClient()) {
+            // Fresh files enable map ingestion; migration preserves the old behaviour, where an
+            // absent enableXaeroMapBridge meant off (the storage.lod_store.enabled precedent).
+            Object bridge=old.get("enableXaeroMapBridge");
+            values.put("integrations.map_ingestion.enabled",bridge==null?Boolean.FALSE
+                    :primitive(bridge,SettingsSchema.Kind.BOOLEAN,"integrations.map_ingestion.enabled"));
+        }
         var decoded=schema.fromValues(values);
         // Migration intentionally emits normalized values; source bytes and backup retain originals.
         var normalized=schema.values(decoded.normalized());
