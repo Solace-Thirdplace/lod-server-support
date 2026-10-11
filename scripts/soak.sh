@@ -87,6 +87,11 @@ FABRIC_PHASE_SCENARIOS=(evicted-tscache-rejoin stamp-heal-rejoin stamp-heal-prim
 # the store's periodic resweep (lodStoreResweepSeconds) can catch the edit — the
 # unfired-event staleness-bound gate (lod-store-implementation-plan.md Phase 2).
 PAPER_SCENARIOS+=(paper-store-unfired-event)
+# SOAK_PLATFORM=sponge (sponge-support-plan.md §5.4): the minimal soak for the
+# experimental SpongeVanilla plugin — generation backfill + the dirty pipeline through
+# the Sponge save/load hooks. The driver is the fabric driver's twin and the exporter is
+# the shared server half, so the checker and its schema are unchanged.
+SPONGE_SCENARIOS=(fresh-backfill dirty-broadcast)
 # Scenarios that run on a fresh (deleted) world; everything else copies the base world.
 FRESH_WORLD_SCENARIOS="fresh-backfill rate-limit-storm generation-disabled generation-capacity-stress hybrid-boundary"
 LOG_PREFIX="soak"
@@ -122,8 +127,18 @@ case "$SOAK_PLATFORM" in
         # run-paper downloads the Folia server jar inside the gradle task on first run
         SERVER_READY_TIMEOUT=240
         ;;
+    sponge)
+        SERVER_RUN_DIR="$PROJECT_ROOT/sponge/build/run/soak-server"
+        SERVER_GRADLE_TASK=":sponge:runSoakServer"
+        # The shared config root (LoaderServices.configDir = Sponge's sharedRoot dir)
+        SERVER_CONFIG_DIR="$SERVER_RUN_DIR/config"
+        BASE_WORLD_DIR="$WORLDS_DIR/base-sponge"
+        PLATFORM_TAG="sponge-"
+        # SpongeVanilla downloads + remaps vanilla on its first boot (cached afterwards)
+        SERVER_READY_TIMEOUT=300
+        ;;
     *)
-        echo "[soak] ERROR: Unknown SOAK_PLATFORM '$SOAK_PLATFORM' (want fabric, paper or folia)"
+        echo "[soak] ERROR: Unknown SOAK_PLATFORM '$SOAK_PLATFORM' (want fabric, paper, folia or sponge)"
         exit 1
         ;;
 esac
@@ -139,10 +154,11 @@ WORLD_VERSION_MARKER="$BASE_WORLD_DIR/mc-version"
 source "$PROJECT_ROOT/scripts/lib/mc-run.sh"
 
 usage() {
-    echo "Usage: [SOAK_PLATFORM=fabric|paper|folia] $0 <scenario>|all"
+    echo "Usage: [SOAK_PLATFORM=fabric|paper|folia|sponge] $0 <scenario>|all"
     echo "  fabric scenarios: ${ALL_SCENARIOS[*]}"
     echo "  paper scenarios:  ${PAPER_SCENARIOS[*]}"
     echo "  folia scenarios:  ${FOLIA_SCENARIOS[*]}"
+    echo "  sponge scenarios: ${SPONGE_SCENARIOS[*]}"
 }
 
 if [[ -z "$SCENARIO" ]]; then
@@ -159,6 +175,10 @@ if [[ "$SCENARIO" == "all" ]]; then
         done
     elif [[ "$SOAK_PLATFORM" == "folia" ]]; then
         for s in "${FOLIA_SCENARIOS[@]}"; do
+            harness_run_script "$SELF" "$s"
+        done
+    elif [[ "$SOAK_PLATFORM" == "sponge" ]]; then
+        for s in "${SPONGE_SCENARIOS[@]}"; do
             harness_run_script "$SELF" "$s"
         done
     else
@@ -205,6 +225,11 @@ if [[ "$SOAK_PLATFORM" == "paper" && " ${PAPER_SCENARIOS[*]} ${PHASE_SCENARIOS[*
 fi
 if [[ "$SOAK_PLATFORM" == "folia" && " ${FOLIA_SCENARIOS[*]} ${STORE_STANDALONE_SCENARIOS[*]} " != *" $SCENARIO "* ]]; then
     echo "[soak] ERROR: Scenario '$SCENARIO' is not ported to SOAK_PLATFORM=folia"
+    usage
+    exit 1
+fi
+if [[ "$SOAK_PLATFORM" == "sponge" && " ${SPONGE_SCENARIOS[*]} " != *" $SCENARIO "* ]]; then
+    echo "[soak] ERROR: Scenario '$SCENARIO' is not ported to SOAK_PLATFORM=sponge"
     usage
     exit 1
 fi
@@ -344,7 +369,7 @@ DEADLINE_EPOCH=0
 
 SCENARIO_JSON="$SCENARIOS_DIR/$SCENARIO.json"
 SCENARIO_CONFIG="$SCENARIOS_DIR/$SCENARIO-config.yaml"
-if [[ "$SOAK_PLATFORM" != fabric && -f "$SCENARIOS_DIR/$SCENARIO-config.paper.yaml" ]]; then
+if [[ ( "$SOAK_PLATFORM" == paper || "$SOAK_PLATFORM" == folia ) && -f "$SCENARIOS_DIR/$SCENARIO-config.paper.yaml" ]]; then
     SCENARIO_CONFIG="$SCENARIOS_DIR/$SCENARIO-config.paper.yaml"
 fi
 for f in "$SCENARIO_JSON" "$SCENARIO_CONFIG"; do
@@ -413,6 +438,8 @@ cd "$PROJECT_ROOT"
 harness_gradle :fabric:build -x test -x runGameTest --quiet
 if [[ "$SOAK_PLATFORM" == "paper" || "$SOAK_PLATFORM" == "folia" ]]; then
     harness_gradle :paper:soakShadowJar --quiet
+elif [[ "$SOAK_PLATFORM" == "sponge" ]]; then
+    harness_gradle :sponge:shadowJar :sponge:soakJar --quiet
 fi
 
 # Step 4: Prepare run + results directories

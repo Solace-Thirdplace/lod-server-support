@@ -1,6 +1,7 @@
 package dev.vox.lss.sponge;
 
 import dev.vox.lss.common.LSSLogger;
+import dev.vox.lss.common.LogThrottle;
 import dev.vox.lss.networking.payloads.BatchChunkRequestC2SPayload;
 import dev.vox.lss.networking.payloads.BatchResponseS2CPayload;
 import dev.vox.lss.networking.payloads.ClientInfoC2SPayload;
@@ -37,7 +38,7 @@ import java.util.function.BiConsumer;
  * loaders. Vanilla's {@code DiscardedPayload} drops unknown payload bytes, so frames
  * cannot go out as plain NMS custom-payload packets; each channel carries EXACTLY the
  * bytes the payload's own {@link StreamCodec} writes, which is what Fabric and NeoForge
- * put on the wire (wire compatibility is never tiered — SpongeWireParityTest). Registering
+ * put on the wire (wire compatibility is never tiered — SpongeChannelsTest.framesCarryExactlyTheCodecBytes). Registering
  * also makes Sponge announce the channels in {@code minecraft:register}, which Fabric
  * clients check before sending.
  *
@@ -45,12 +46,15 @@ import java.util.function.BiConsumer;
  * the server thread (the xplat receivers assume it). {@code sendTo} ends in
  * {@code Connection.send}, safe off-main (the processing thread and the summary lane send).
  *
- * <p>Send contract = Fabric's: a peer that never registered the channel is a SILENT
- * no-op. Sponge does not throw there — it fails the returned future and logs through the
- * channel's exception handler — so the adapter checks {@code isSupportedBy} first (saving
- * the encode) and installs a handler that leaves a failed send to its future. A
- * connection-level failure after that check is recorded as sent, exactly like Fabric's
- * fire-and-forget send.
+ * <p>Send contract = Fabric's {@code ServerPlayNetworking.send}: NO registered-channel
+ * pre-check. Fabric's client fires {@code JOIN} (where LSS sends its handshake) BEFORE it
+ * sends its own {@code minecraft:register}, and Sponge runs the handshake handler at once —
+ * an {@code isSupportedBy} gate here dropped every SessionConfig reply, and each client
+ * fell down its discovery ladder to protocol 19 ~10 s later (the first Sponge soak's
+ * session-version red; pinned by {@code SpongeChannelsTest}). Sponge's {@code sendTo} only
+ * checks the play phase. LSS sends only to peers that spoke an LSS channel first, and a
+ * peer without the channel discards the payload, exactly as on Fabric. A failed send
+ * stays on its own future (the installed handler suppresses it).
  */
 public final class SpongeChannels {
 
@@ -78,6 +82,10 @@ public final class SpongeChannels {
 
         void receive(ServerPlayer player, byte[] bytes) {
             handler.accept(decode(bytes), player);
+        }
+
+        void handle(T payload, ServerPlayer player) {
+            handler.accept(payload, player);
         }
 
         @SuppressWarnings("unchecked")
@@ -131,18 +139,46 @@ public final class SpongeChannels {
                 channel.play().addHandler(ServerConnectionState.Game.class, (data, state) -> {
                     if (!receiving) return;
                     var player = (ServerPlayer) (Object) state.player();
-                    try {
-                        entry.receive(player, data.readBytes(data.available()));
-                    } catch (RuntimeException e) {
-                        // A malformed frame must not escape into Sponge's channel dispatch.
-                        LSSLogger.warn("Dropped malformed " + entry.id() + " frame from "
-                                + player.getName().getString() + ": " + e);
-                    }
+                    receive(entry, player, data.readBytes(data.available()));
                 });
             }
             BY_TYPE.put(entry.type(), entry);
             CHANNELS.put(entry.type(), channel);
         }
+    }
+
+    // A hostile or buggy peer must not flood the log: one line per minute per kind, with
+    // the suppressed count. A decode failure and a handler failure are told apart so a
+    // service bug is never diagnosed as a malformed frame.
+    private static final LogThrottle MALFORMED_WARN = new LogThrottle(60_000);
+    private static final LogThrottle HANDLER_WARN = new LogThrottle(60_000);
+
+    /** Decode, then dispatch; neither failure escapes into Sponge's channel dispatch. */
+    static <T extends CustomPacketPayload> void receive(Entry<T> entry, ServerPlayer player, byte[] bytes) {
+        T payload;
+        try {
+            payload = entry.decode(bytes);
+        } catch (RuntimeException e) {
+            long n = MALFORMED_WARN.recordAndTryAcquire(System.nanoTime() / 1_000_000);
+            if (n > 0) {
+                LSSLogger.warn("Dropped malformed " + entry.id() + " frame from "
+                        + name(player) + " (" + n + " since last report): " + e);
+            }
+            return;
+        }
+        try {
+            entry.handle(payload, player);
+        } catch (RuntimeException e) {
+            long n = HANDLER_WARN.recordAndTryAcquire(System.nanoTime() / 1_000_000);
+            if (n > 0) {
+                LSSLogger.error("Handler for " + entry.id() + " failed for " + name(player)
+                        + " (" + n + " since last report)", e);
+            }
+        }
+    }
+
+    private static String name(ServerPlayer player) {
+        return player == null ? "<unknown>" : player.getName().getString();
     }
 
     /** Set while the service runs: frames outside that window are dropped. */
@@ -155,14 +191,13 @@ public final class SpongeChannels {
         return CHANNELS.size();
     }
 
-    /** Silent no-op for an unknown type, a dropped connection or a peer that never
-     *  registered the channel (the Fabric send contract — see the class javadoc). */
+    /** Silent no-op for an unknown type or a dropped connection. No registered-channel
+     *  check — see the class javadoc for why that gate broke every v20 session. */
     public static void send(ServerPlayer player, CustomPacketPayload payload) {
         var entry = BY_TYPE.get(payload.type());
         var channel = CHANNELS.get(payload.type());
         if (entry == null || channel == null || player.connection == null) return;
         var spongePlayer = (org.spongepowered.api.entity.living.player.server.ServerPlayer) (Object) player;
-        if (!channel.play().isSupportedBy(spongePlayer.connection())) return;
         byte[] bytes = entry.encode(payload);
         channel.play().sendTo(spongePlayer, buf -> buf.writeBytes(bytes));
     }

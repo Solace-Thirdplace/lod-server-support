@@ -1657,6 +1657,16 @@ def check_sponge_jar(jar, problems):
                         "(the headless serializer's PalettedContainer widening would be absent)")
     if not any(n.startswith("dev/vox/lss/common/") and n.endswith(".class") for n in names):
         problems.append(f"{base}: shaded jar missing the shared common/ classes")
+    # shadowJar shades the whole runtimeClasspath; the server provides all of these.
+    for leak in SPONGE_PROVIDED_LEAKS:
+        if any(n.startswith(leak) and n.endswith(".class") for n in names):
+            problems.append(f"{base}: {leak} classes leaked into the shadow jar — the shade "
+                            "configuration must never include the server's own classpath")
+
+
+# Packages SpongeVanilla itself provides; a shaded copy would shadow or clash with them.
+SPONGE_PROVIDED_LEAKS = ("net/minecraft/", "com/mojang/", "org/spongepowered/", "net/kyori/",
+                         "com/google/inject/", "io/netty/")
 
 
 def check_vss_sponge_identity(jar, problems):
@@ -3346,6 +3356,10 @@ def _selftest_fixtures():
                 ("fabric-style-dh", {"extra": dict({DH_CODEC: b"\xca\xfe\xba\xbe\x00\x00\x00\x41"},
                                                    **{x: b"\xca\xfe\xba\xbe\x00\x00\x00\x34" for x in XZ_REQUIRED})},
                  "Sponge must not carry the client-only DH codec"),
+                ("leaked-minecraft", {"extra": {"net/minecraft/server/MinecraftServer.class": "x"}},
+                 "net/minecraft/ classes leaked"),
+                ("leaked-sponge-api", {"extra": {"org/spongepowered/api/Sponge.class": "x"}},
+                 "org/spongepowered/ classes leaked"),
                 ("no-common", {"drop": tuple(k for k in _sponge_entries(_sponge_meta(), BRAND_LSS)
                                              if k.startswith("dev/vox/lss/common/") and k.endswith(".class"))},
                  "common/ classes")):

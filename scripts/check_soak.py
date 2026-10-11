@@ -50,6 +50,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Platforms whose server reads the PAPER settings schema (plugin data folder, no
+# backfill). Sponge runs the xplat server path, so its settings platform is "mod"
+# (sponge-support-plan.md §5.4).
+BUKKIT_PLATFORMS = ("paper", "folia")
+
 SCENARIO_DIR = Path(__file__).resolve().parent / "soak-scenarios"
 SKEW_MS = 3000  # max |server.wallMs - client.wallMs| for a quiescence join
 DEFAULT_DIRTY_BROADCAST_TICKS = 200  # schema default; scenario files normally pin this explicitly
@@ -3514,7 +3519,7 @@ def validate_scenario(name, platform="fabric"):
     scen_path = SCENARIO_DIR / f"{name}.json"
     cfg_path = SCENARIO_DIR / f"{name}-config.yaml"
     paper_path = SCENARIO_DIR / f"{name}-config.paper.yaml"
-    if platform != "fabric" and paper_path.is_file():
+    if platform in BUKKIT_PLATFORMS and paper_path.is_file():
         cfg_path = paper_path
     scen, cfg = None, None
     for path, label in ((scen_path, "scenario"), (cfg_path, "config")):
@@ -3523,7 +3528,7 @@ def validate_scenario(name, platform="fabric"):
             continue
         try:
             data = (json.loads(path.read_text(encoding="utf-8")) if label == "scenario"
-                    else settings_values(path, platform="paper" if platform != "fabric" or name.startswith("paper-") else "mod", normalized=True))
+                    else settings_values(path, platform="paper" if platform in BUKKIT_PLATFORMS or name.startswith("paper-") else "mod", normalized=True))
         except (json.JSONDecodeError, OSError, RuntimeError) as e:
             errors.append(f"{label} file {path.name} does not parse: {e}")
             continue
@@ -3748,12 +3753,12 @@ def run_checker(results_dir, scenario, expect_session_version=None, platform="fa
     if not cfg_path.is_file():
         cfg_path = SCENARIO_DIR / f"{scenario}-config.yaml"
         paper_path = SCENARIO_DIR / f"{scenario}-config.paper.yaml"
-        if platform != "fabric" and paper_path.is_file():
+        if platform in BUKKIT_PLATFORMS and paper_path.is_file():
             cfg_path = paper_path
     config = {}
     if cfg_path.is_file():
         try:
-            config = settings_values(cfg_path, platform="paper" if platform != "fabric" or scenario.startswith("paper-") else "mod", normalized=True)
+            config = settings_values(cfg_path, platform="paper" if platform in BUKKIT_PLATFORMS or scenario.startswith("paper-") else "mod", normalized=True)
         except (json.JSONDecodeError, OSError, RuntimeError) as e:
             warnings.append(f"{cfg_path.name} unreadable ({e}); using defaults")
     else:
@@ -5314,7 +5319,7 @@ def main(argv=None):
                         metavar="N", help="assert every established client session is "
                         "protocol N (soak.sh passes SOAK_DIALECT or the native version)")
     parser.add_argument("--platform", default="fabric",
-                        help="SOAK_PLATFORM of the recording (fabric/paper/folia) — "
+                        help="SOAK_PLATFORM of the recording (fabric/paper/folia/sponge) — "
                         "platform-conditional checks key on this")
     parser.add_argument("args", nargs="*", metavar="RESULTS_DIR SCENARIO",
                         help="results directory and scenario name")

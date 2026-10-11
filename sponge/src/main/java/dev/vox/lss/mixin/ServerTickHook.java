@@ -20,6 +20,6 @@ public abstract class ServerTickHook {
 
     @Inject(method = "tickServer", at = @At("TAIL"))
     private void lss$onServerTickEnd(BooleanSupplier hasTimeLeft, CallbackInfo ci) {
-        dev.vox.lss.networking.server.LSSServerNetworking.onServerTick();
+        dev.vox.lss.networking.server.LSSServerNetworking.onServerTick((MinecraftServer) (Object) this);
     }
 }
