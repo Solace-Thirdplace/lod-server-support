@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -78,6 +79,15 @@ class FabricModJsonContractTest {
         assertEquals("*",
                 modJson.getAsJsonObject("suggests").get("xaeroworldmap").getAsString(),
                 "suggests.xaeroworldmap must be the literal any-version wildcard");
+    }
+
+    @Test
+    void doesNotSuggestJourneyMapOnThisLine() {
+        // LINE FLAVOR (1.21.10): only JourneyMap 6.0.0-beta.58 exists for this version and it
+        // lacks the snapshot layer map ingestion binds (state=unsupported), so suggesting it
+        // would point players at a map LSS cannot fill (map-ingestion plan D5).
+        assertFalse(modJson.getAsJsonObject("suggests").has("journeymap"),
+                "suggests.journeymap must stay absent on 1.21.10");
     }
 
     @Test

@@ -72,6 +72,12 @@ ANOMALY_OPT_INS = {
     "warm-rejoin": frozenset({"saturated"}),
     "dimension-trip": frozenset({"saturated"}),
     "dirty-broadcast": frozenset(),
+    # The JourneyMap smoke (map-ingestion plan §6.4): a dirty-broadcast-shaped base-world
+    # resync whose client also feeds JourneyMap; the map paces nothing at this size.
+    "journeymap-map": frozenset({"saturated"}),
+    # Map pacing measurement: a real-terrain lod-128 disk-read fill.
+    "map-throughput": frozenset({"saturated"}),
+    "xaero-memory": frozenset({"saturated"}),
     "rate-limit-storm": frozenset({"saturated"}),
     "disk-saturation": frozenset({"saturated"}),
     "generation-disabled": frozenset({"saturated"}),
@@ -132,6 +138,11 @@ MIN_CLIENT_WINDOWS = {
     "warm-rejoin": {(1, 0): 8, (2, 0): 5},
     "dimension-trip": {(1, 0): 2, (1, 1): 6, (1, 2): 4},
     "dirty-broadcast": {(1, 0): 5},
+    "journeymap-map": {(1, 0): 5},
+    "map-throughput": {(1, 0): 3},
+    # The memory gate's verdict is the xaero group's heap/window series; the fill may still
+    # be pacing when the run ends, so only its converged tail (if any) feeds the laws.
+    "xaero-memory": {(1, 0): 1},
     "rate-limit-storm": {(1, 0): 3},
     "disk-saturation": {(1, 0): 3},
     # K=1 on degraded WSL2 IO can spend ~4-5 min converging the annulus (healthy IO:
@@ -380,7 +391,10 @@ KNOWN_CLIENT_KEYS = {
                  # Region summaries (region-summary-sync-plan.md §8): the client half's
                  # attributability group — presence-optional like the other late
                  # additions (older recordings predate it); all-zero on every gated soak.
-                 "summary"},
+                 "summary",
+                 # Map ingestion (map-ingestion plan §3.8/§4.4): present only when the
+                 # client runs with Xaero's World Map / JourneyMap installed.
+                 "xaero", "journeymap"},
     # One scripted client-side action (-Dlss.soak.clientActionAt); resets the request
     # metrics, so the loader treats it as a client segment boundary.
     "action": {"event", "wallMs", "action", "atSeconds"},
@@ -3395,6 +3409,13 @@ CHECKS = {
                         check_dirty_resave_quiet,
                         make_handshake_check("dirty-broadcast"),
                         make_disc_completeness("dirty-broadcast")],
+    # The map verdict itself is check_journeymap_smoke.py (journeymap_smoke.sh runs it
+    # after this checker): here the run must stay a lawful, complete resync.
+    "journeymap-map": [make_handshake_check("journeymap-map"),
+                       make_disc_completeness("journeymap-map")],
+    "xaero-memory": [make_handshake_check("xaero-memory")],
+    "map-throughput": [make_handshake_check("map-throughput"),
+                       make_disc_completeness("map-throughput")],
     "rate-limit-storm": [check_rate_limit_storm,
                          make_handshake_check("rate-limit-storm"),
                          make_disc_completeness("rate-limit-storm")],

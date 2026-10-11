@@ -73,19 +73,19 @@ class ClientSettingsEditSessionTest {
         var store=new SettingsStore<>(directory,"lss",SettingsSchema.client());
         var handle=new SettingsHandle<>(store);Object physical=new Object();handle.beginSession(physical);
         var before=handle.state().effective();
-        store.saveDraft(store.read().hash(),Map.of("scan.region_order",false,"cache.address_aliases",List.of(List.of("a.example.com","b.example.com")),"integrations.xaero_map.enabled",true,"lod.receive",false));
+        store.saveDraft(store.read().hash(),Map.of("scan.region_order",false,"cache.address_aliases",List.of(List.of("a.example.com","b.example.com")),"integrations.map_ingestion.enabled",false,"lod.receive",false));
         var accepted=handle.commit(handle.prepareReload());
         assertFalse(accepted.effective().lod().receive());
         assertEquals(before.cache(),accepted.effective().cache());
         assertEquals(before.scan(),accepted.effective().scan());
-        assertFalse(accepted.effective().integrations().xaeroMap().enabled());
+        assertTrue(accepted.effective().integrations().mapIngestion().enabled());
         handle.beginSession(physical); // play/configuration/play uses this same transport
         assertEquals(before.cache(),handle.state().effective().cache());
-        assertFalse(handle.state().effective().integrations().xaeroMap().enabled());
+        assertTrue(handle.state().effective().integrations().mapIngestion().enabled());
         handle.endSession(physical);
         Files.writeString(store.path(),"broken disk edit must not be re-read at reconnect");
         handle.beginSession(new Object());
-        assertTrue(handle.state().effective().integrations().xaeroMap().enabled());
+        assertFalse(handle.state().effective().integrations().mapIngestion().enabled());
         assertEquals(List.of(List.of("a.example.com","b.example.com")),handle.state().effective().cache().addressAliases());
     }
 }

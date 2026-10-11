@@ -5,7 +5,7 @@ import java.util.Map;
 
 /** Only named component versions are admissible; arbitrary loader metadata/logs are not. */
 public record DiagnosticVersions(Map<Component, String> components) {
-    public enum Component { LSS, MINECRAFT, LOADER, SODIUM, XAERO, VOXY, CONNECTOR, C2ME }
+    public enum Component { LSS, MINECRAFT, LOADER, SODIUM, XAERO, VOXY, CONNECTOR, C2ME, JOURNEYMAP }
     public DiagnosticVersions {
         var sanitized = new EnumMap<Component, String>(Component.class);
         for (var component : Component.values()) {

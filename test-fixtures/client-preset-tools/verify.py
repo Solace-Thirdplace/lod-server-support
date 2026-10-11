@@ -31,7 +31,7 @@ def verify(root,repo):
  b=r['configs']['baseline']
  allowed_change(b,r['configs']['saved-only'],{'lod.receive':True})
  allowed_change(b,r['configs']['hot-reloaded'],{'lod.receive':True})
- allowed_change(b,r['configs']['session-saved'],{'lod.receive':True,'integrations.xaero_map.enabled':True})
+ allowed_change(b,r['configs']['session-saved'],{'lod.receive':True,'integrations.map_ingestion.enabled':True})
  allowed_change(b,r['configs']['restored'],{})
  invalid=e/'rejected-config.yaml'
  if hashlib.sha256(invalid.read_bytes()).hexdigest()!=r['rejected_document_sha256']:raise ValueError('rejected YAML evidence changed')
