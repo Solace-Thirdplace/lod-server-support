@@ -625,3 +625,23 @@ J0 1.5 d · J1 1 d · J2 3 d · J3 3 d · J4 1.5 d · J5 1 d · J6 3 d · J7 1.5
 | Validation M4: 1.21.1 smoke cannot boot JM via `localRuntime` | §6.4 nested-jar pattern; J0 spike first |
 | Validation M5: heap backstop never tested live | §6.4 L2 with the OOM reproduction A/B |
 | Validation minors (descriptor namespaces + pinned version ids; Modrinth suggests on 1.21.10; smoke plumbing; Xaero suite accessor + rig lane; NeoForge/worldId/Voxy arms; docs list; effort) | §6.1 table, §6.4, §7, §9 |
+
+## 11. As-built record (J1-J3, 26.2, 2026-10-11)
+
+Deviations from the reviewed text above, each deliberate; the implementation review (J5)
+judges them:
+
+| Plan text | As built | Why |
+|---|---|---|
+| §4.1 `N = clamp(heap / 160 MiB, 8, 32)` | `N = clamp(heap / 96 MiB, 12, 64)` (`XaeroSession.openRegionCapFor`, lever unchanged) | At 1000 col/s the focused fill keeps ~58 regions open between parks; 160 MiB/8-32 would throttle a focused client, which was never the target. The unfocused OOM is still bounded (6 GB → 64 regions ≈ 770 MB of source data) and the heap belt is the backstop |
+| §4.2 D(i) bounded keep-visited (K = 4 frames) | Not built; keep-visited unchanged | Letting owed regions park re-opens the retained-texture hazard the rebuild scheduler exists for; the window already bounds how many regions can be visited. D(iii) (grants count against the window) is built |
+| §3.5 optional `MAPPING_EVENT` subscription | Poll-only (≤ 1 Hz identity poll incl. the task-controller identity) | The batch re-checks the controller, level, dimension and directory on JourneyMap's own thread before and after rendering; a missed restart between polls is caught there and re-served |
+| §3.6 `chunks += md.getChunk()` strong refs | Not kept; `SnapshotChunkMD(…, forceRetain = true)` | With `forceRetain` the wrapper itself holds its `LevelChunk` until it leaves the cache; `getChunk` is no longer bound |
+| §3.6 time box per column in the decode loop | Time box in the RENDER loop | Decoding is cheap; rendering is the cost the box exists to bound. Columns past the box are requeued (a newer delivery of the same position wins) |
+| §3.6 `RegionCoord` once per region | Once per map type | `fromChunkPos` takes the map type |
+| §3.8 `avg_ms_per_column` | `encode_us_per_column`, `render_us_per_column`, plus `context=` | Separates decode-thread cost from JourneyMap-thread cost for the J4 throughput arm |
+| §3.4 inert drop of queued columns | Other-dimension columns are REPORTED when a dimension-scoped inert state (ceiling, not allowed) clears the queue | Client stamps persist per dimension; a silent drop there is a permanent hole on the way back |
+| §3.6 context cache keyed by position | Keyed by position, tagged with the map (dimension + directory) it was rendered into | A batch racing an identity change must never lend one map's terrain to another as context |
+| §6.1 binding surface "resolve against the real jars" | Classfile-level check of every bound member, the expected surface CRACKED from the bindings resolved against the stubs (`MethodHandles.reflectAs`) | The real classes cannot link in a plain test JVM (JourneyMap subclasses `NativeImage`, final without JourneyMap's access widener), and resolving them through LSS's lookup records loader constraints that poison the stub-backed suites in the same JVM. The decoder parity test does load the real reader (reflection only, no constraints) |
+| (new) | `release_check` forbids `journeymap/` and `xaero/` entries in every shipped jar | The Tier-1 stubs carry All Rights Reserved package names; they must never ship |
+| (new) | The JourneyMap session gains a `SnapshotDecoder` seam | Tier 1 cannot construct a `ClientLevel`; the real decode path is the parity test's |

@@ -97,6 +97,13 @@ public final class ClientStatus {
                 : "unavailable".equals(xaero.resolution()) ? ClientStatusSnapshot.Availability.UNAVAILABLE
                 : !cfg.mapIngestionEnabled() ? ClientStatusSnapshot.Availability.DISABLED
                 : ClientStatusSnapshot.Availability.AVAILABLE;
+        var journeyMap = dev.vox.lss.compat.ModCompat.cachedJourneyMapStatus();
+        var journeyMapAvailability = journeyMap.failed() ? ClientStatusSnapshot.Availability.FAILED
+                : "unknown".equals(journeyMap.resolution()) ? ClientStatusSnapshot.Availability.UNKNOWN
+                : "absent".equals(journeyMap.resolution()) ? ClientStatusSnapshot.Availability.ABSENT
+                : "unavailable".equals(journeyMap.resolution()) ? ClientStatusSnapshot.Availability.UNAVAILABLE
+                : !cfg.mapIngestionEnabled() ? ClientStatusSnapshot.Availability.DISABLED
+                : ClientStatusSnapshot.Availability.AVAILABLE;
         if (DhClientSession.selected()) {
             // DH mode: native fields describe the (idle) native path truthfully; DH
             // acquisition lives in the dh block. Nothing is faked.
@@ -107,7 +114,7 @@ public final class ClientStatus {
                     dev.vox.lss.compat.DhVoxyBridge.backlog(), 0, cfg.lodColumnsPerSecondLimit(), 0,
                     xaero.pendingRebuilds(), ClientNetGlue.discoveryStatus(), availability, null,
                     dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(), cfg.diagnosticSettings(),
-                    DhClientSession.diagnostics()));
+                    DhClientSession.diagnostics(), journeyMapAvailability, 0));
             return;
         }
         var snapshot = new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION, lifecycle, System.currentTimeMillis(),
@@ -123,7 +130,8 @@ public final class ClientStatus {
                 cfg.lodColumnsPerSecondLimit(), Math.max(0, rateGated - lastRateGated),
                 xaero.pendingRebuilds(), ClientNetGlue.discoveryStatus(), availability,
                 active ? captureDetails(manager) : null,
-                dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(), cfg.diagnosticSettings(),DhClientSession.fallbackEnabled()?DhClientSession.diagnostics():null);
+                dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(), cfg.diagnosticSettings(),DhClientSession.fallbackEnabled()?DhClientSession.diagnostics():null,
+                journeyMapAvailability, journeyMap.pendingColumns());
         lastRateGated = rateGated;
         CACHE.publish(lifecycle, snapshot);
     }
@@ -177,7 +185,8 @@ public final class ClientStatus {
                 manager.describeCacheKey(),
                 farActive ? tracker.diagLine() : null,
                 farActive && FarPlayerRenderer.RENDER_AVAILABLE ? FarPlayerRenderer.diagLine() : null,
-                dev.vox.lss.compat.ModCompat.xaeroDiagLine());
+                dev.vox.lss.compat.ModCompat.xaeroDiagLine(),
+                dev.vox.lss.compat.ModCompat.journeyMapDiagLine());
     }
     private ClientStatus() {}
 }

@@ -380,7 +380,10 @@ KNOWN_CLIENT_KEYS = {
                  # Region summaries (region-summary-sync-plan.md §8): the client half's
                  # attributability group — presence-optional like the other late
                  # additions (older recordings predate it); all-zero on every gated soak.
-                 "summary"},
+                 "summary",
+                 # Map ingestion (map-ingestion plan §3.8/§4.4): present only when the
+                 # client runs with Xaero's World Map / JourneyMap installed.
+                 "xaero", "journeymap"},
     # One scripted client-side action (-Dlss.soak.clientActionAt); resets the request
     # metrics, so the loader treats it as a client segment boundary.
     "action": {"event", "wallMs", "action", "atSeconds"},

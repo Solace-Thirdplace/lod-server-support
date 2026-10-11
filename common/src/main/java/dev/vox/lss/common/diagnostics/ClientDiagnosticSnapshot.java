@@ -49,4 +49,5 @@ public record ClientDiagnosticSnapshot(
         String describeCacheKey,
         String farPlayersLine,
         String farRendererLine,
-        String xaeroDiagLine) {}
+        String xaeroDiagLine,
+        String journeyMapDiagLine) {}

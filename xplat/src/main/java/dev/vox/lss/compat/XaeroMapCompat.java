@@ -11,6 +11,7 @@ final class XaeroMapCompat {
     static void retireClientAcquisition() { XaeroSession.retireClientAcquisition(); }
     static boolean isArmed() { return XaeroSession.isArmed(); }
     static String diagLine() { return XaeroSession.diagLine(); }
+    static java.util.Map<String, Object> metrics() { return XaeroSession.metrics(); }
     static ModCompat.XaeroStatus cachedStatus(boolean discoveryComplete) {
         return XaeroSession.cachedStatus(discoveryComplete);
     }

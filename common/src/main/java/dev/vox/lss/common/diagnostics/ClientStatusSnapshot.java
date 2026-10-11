@@ -9,9 +9,24 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
         boolean consumerAvailable, boolean rendererAvailable, int protocol, int serverDistance,
         int effectiveDistance, long receivedColumns, long receivedBytes, int queuedColumns,
         int ingestBacklog, long ingestFailures, int rateCap, long rateGatedTicks,
-        int xaeroPendingRebuilds, Discovery discovery, Availability xaeroAvailability, ClientDiagnosticSnapshot details, DiagnosticVersions versions, ClientSettingsStatus settings, DhStatusSnapshot dh) {
+        int xaeroPendingRebuilds, Discovery discovery, Availability xaeroAvailability, ClientDiagnosticSnapshot details, DiagnosticVersions versions, ClientSettingsStatus settings, DhStatusSnapshot dh,
+        Availability journeyMapAvailability, int journeyMapPending) {
     /** 4: settings.mapIngestionEnabled (was xaeroMapEnabled) and the JourneyMap fields. */
     public static final int SCHEMA_VERSION = 4;
+    /** Callers with no JourneyMap observation (JourneyMap UNKNOWN, nothing pending). */
+    public ClientStatusSnapshot(int schemaVersion, long lifecycle, long capturedAtMillis,
+            boolean connected, boolean negotiated, boolean receptionEnabled, boolean serverEnabled,
+            boolean consumerAvailable, boolean rendererAvailable, int protocol, int serverDistance,
+            int effectiveDistance, long receivedColumns, long receivedBytes, int queuedColumns,
+            int ingestBacklog, long ingestFailures, int rateCap, long rateGatedTicks,
+            int xaeroPendingRebuilds, Discovery discovery, Availability xaeroAvailability,
+            ClientDiagnosticSnapshot details, DiagnosticVersions versions, ClientSettingsStatus settings,
+            DhStatusSnapshot dh) {
+        this(schemaVersion,lifecycle,capturedAtMillis,connected,negotiated,receptionEnabled,serverEnabled,
+                consumerAvailable,rendererAvailable,protocol,serverDistance,effectiveDistance,receivedColumns,
+                receivedBytes,queuedColumns,ingestBacklog,ingestFailures,rateCap,rateGatedTicks,xaeroPendingRebuilds,
+                discovery,xaeroAvailability,details,versions,settings,dh,Availability.UNKNOWN,0);
+    }
     /** Native snapshot constructor preserves the existing field meanings. */
     public ClientStatusSnapshot(int schemaVersion, long lifecycle, long capturedAtMillis,
             boolean connected, boolean negotiated, boolean receptionEnabled, boolean serverEnabled,
@@ -53,7 +68,8 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
     }
     public enum Reason {
         NOT_CONNECTED, AWAITING_NEGOTIATION, RECEPTION_OFF, NO_CONSUMER,
-        SERVER_DISABLED, PROTOCOL_REJECTED, HANDSHAKE_SEND_FAILED, LOCAL_RATE_CAP, DECODE_QUEUE_PENDING, INGEST_QUEUE_PENDING, XAERO_UNAVAILABLE, XAERO_FAILED, XAERO_REBUILDS
+        SERVER_DISABLED, PROTOCOL_REJECTED, HANDSHAKE_SEND_FAILED, LOCAL_RATE_CAP, DECODE_QUEUE_PENDING, INGEST_QUEUE_PENDING, XAERO_UNAVAILABLE, XAERO_FAILED, XAERO_REBUILDS,
+        JOURNEYMAP_UNAVAILABLE, JOURNEYMAP_FAILED, JOURNEYMAP_PENDING
     }
     public List<Reason> reasons() {
         var reasons = new ArrayList<Reason>();
@@ -71,6 +87,9 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
         if (xaeroAvailability == Availability.UNAVAILABLE) reasons.add(Reason.XAERO_UNAVAILABLE);
         if (xaeroAvailability == Availability.FAILED) reasons.add(Reason.XAERO_FAILED);
         if (xaeroPendingRebuilds > 0) reasons.add(Reason.XAERO_REBUILDS);
+        if (journeyMapAvailability == Availability.UNAVAILABLE) reasons.add(Reason.JOURNEYMAP_UNAVAILABLE);
+        if (journeyMapAvailability == Availability.FAILED) reasons.add(Reason.JOURNEYMAP_FAILED);
+        if (journeyMapPending > 0) reasons.add(Reason.JOURNEYMAP_PENDING);
         return List.copyOf(reasons);
     }
     public List<String> lines() {
@@ -89,11 +108,13 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
                 "Reception: " + (receptionEnabled ? "ON" : "OFF") + "; consumer: " + (consumerAvailable ? "available" : "none"),
                 "Server: " + (discovery == Discovery.PROTOCOL_REJECTED ? "protocol rejected" : !negotiated ? "unknown" : serverEnabled ? "available" : "explicitly disabled"),
                 "Xaero integration: " + xaeroAvailability,
+                "JourneyMap integration: " + journeyMapAvailability,
                 "Far-player renderer: " + (rendererAvailable ? "available" : "unavailable on this loader/line"),
                 "Observed conditions (queue presence alone does not establish a bottleneck): " + reasons(),
                 "Progress since this world status began: " + receivedColumns + " columns, " + receivedBytes + " bytes; distance " + effectiveDistance + "/" + serverDistance,
                 "Rate gate events in this sample: " + rateGatedTicks + "; configured manual cap " + rateCap + " columns/s (0 unlimited; adaptive cap may also bind)",
-                "Queues: decode=" + queuedColumns + ", ingest=" + ingestBacklog + ", Xaero rebuild=" + xaeroPendingRebuilds,
+                "Queues: decode=" + queuedColumns + ", ingest=" + ingestBacklog + ", Xaero rebuild=" + xaeroPendingRebuilds
+                        + ", JourneyMap=" + journeyMapPending,
                 "Remote limiting cause: unknown; ask an operator for server-local diagnostics.",
                 "Versions: " + versions.components(),
                 "Snapshot age: " + Math.max(0, System.currentTimeMillis() - capturedAtMillis) + " ms"));
