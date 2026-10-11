@@ -11,6 +11,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.chunk.LevelChunkSection;
@@ -48,8 +49,11 @@ final class JourneyMapSnapshotEncoder {
     static final int MAX_SECTIONS = 255;
     /** JourneyMap's day, topography and biome maps read down from the surface through water
      *  and transparent blocks to the first opaque floor, never deeper: sections wholly more
-     *  than this many blocks below the column's LOWEST surface are left out (deep-ocean
-     *  floors sit well inside it). Decoding is half of JourneyMap's per-column cost (J4). */
+     *  than this many blocks below the column's LOWEST VISIBLE surface are left out
+     *  (deep-ocean floors sit well inside it). Decoding is half of JourneyMap's per-column
+     *  cost (J4). Visible, not {@code WORLD_SURFACE}: JourneyMap walks down through invisible
+     *  blocks (a barrier or light-block roof), so measuring from such a roof would cull the
+     *  very ground it renders (re-review). */
     static final int SURFACE_DEPTH_BLOCKS = 64;
 
     private JourneyMapSnapshotEncoder() {}
@@ -70,8 +74,7 @@ final class JourneyMapSnapshotEncoder {
             if (section.blockLight() != null && !allZero(section.blockLight())) light[index] = section.blockLight();
         }
         int[] offsets = worldSurface(blocks, level);
-        int lowest = Integer.MAX_VALUE;
-        for (int offset : offsets) if (offset > 0) lowest = Math.min(lowest, offset);
+        int lowest = lowestVisibleSurface(blocks, level);
         if (lowest != Integer.MAX_VALUE) {
             int floorY = level.minY() + lowest - SURFACE_DEPTH_BLOCKS;
             for (int i = 0; i < count; i++) {
@@ -144,6 +147,36 @@ final class JourneyMapSnapshotEncoder {
             }
         }
         return offsets;
+    }
+
+    /** The lowest per-column visible surface (offset from the minimum build height, one past
+     *  the top block JourneyMap does not skip), over columns that have one; MAX_VALUE when
+     *  none does. Skipped like JourneyMap's surface walk: air and invisible-shaped blocks
+     *  (barrier, light, structure void, block-entity-drawn blocks) unless they hold a fluid.
+     *  Skipping more only lowers the floor — the safe direction (less culled). */
+    static int lowestVisibleSurface(LevelChunkSection[] blocks, JourneyMapLineSurface.LevelFacts level) {
+        int lowest = Integer.MAX_VALUE;
+        int unresolved = 256;
+        boolean[] done = new boolean[256];
+        for (int index = blocks.length - 1; index >= 0 && unresolved > 0; index--) {
+            var section = blocks[index];
+            if (section == null) continue;
+            int baseY = (level.minSectionY() + index) * 16;
+            for (int y = 15; y >= 0 && unresolved > 0; y--) {
+                for (int z = 0; z < 16; z++) {
+                    for (int x = 0; x < 16; x++) {
+                        int column = x + z * 16;
+                        if (done[column]) continue;
+                        BlockState state = section.getBlockState(x, y, z);
+                        if (state.getRenderShape() == RenderShape.INVISIBLE && state.getFluidState().isEmpty()) continue;
+                        done[column] = true;
+                        lowest = Math.min(lowest, baseY + y + 1 - level.minY());
+                        unresolved--;
+                    }
+                }
+            }
+        }
+        return lowest;
     }
 
     private static void writeBlockStates(DataOutputStream out, LevelChunkSection section) throws IOException {

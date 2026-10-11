@@ -688,3 +688,22 @@ judges them:
 | T MINOR: the production decode path (bound handles) never runs in Tier 1 | Accepted: it cannot link in a plain JVM; L1 exercises it |
 | T MINOR: Xaero suite runs mostly without the window | Partly: new window/heap tests run with it armed |
 | T MINOR/NITs (world-id dir match, RGB path, parity loader, cold base world) | Fixed |
+
+### 11.3 J5 focused re-review of the fold (1 Opus, 2026-10-11) — dispositions
+
+No MAJOR. Every fold was confirmed; JourneyMap's real neighbour lookups, Xaero's load states
+(1 loading, 2 loaded, 3 releasing, 4 released) and the window's slot accounting were checked
+against the decompiled sources.
+
+| Finding | Disposition |
+|---|---|
+| MINOR: an invisible roof (barrier, light block) 64+ blocks up made the depth cull drop the ground JourneyMap walks down to — the day map refused the column | Fixed: the cull floor uses the lowest VISIBLE surface (air and invisible-shaped non-fluid blocks skipped, as JourneyMap's walk does); the written `WORLD_SURFACE` heightmap is unchanged |
+| MINOR: `commits == 0` made a trickle into open regions read as a stuck writer and wedge | Fixed: window-bound = held work back AND turned over within the pace window |
+| MINOR: a low JourneyMap surface cap made the edge band thousands of chunks wide, flushing JourneyMap's cache and re-rendering every sweep | Fixed: "already drawn" keys on the client's own `LevelChunk` (weakly held, read from the client level — no JourneyMap lookup), and at most 256 new lookups per sweep |
+| MINOR: east/south batch neighbours were no longer cached at render time (topography slope/shore, biome blending) | Fixed: each column's east, south-west, south and south-east batch neighbours are decoded one step ahead; a look-ahead the box cuts off is released and requeued |
+| MINOR: five failing one-column batches latched the session dead | Fixed: the streak also needs 32 failed columns (a thrown batch counts as 32) |
+| NIT: a column whose wrapper is always evicted requeued forever | Fixed: reported for a re-serve after 8 null lookups |
+| NITs: Xaero reservations (expired reservation counted as turnover; a load queued past its reservation no longer counted against grants; no refresh; a grant onto a committed region stayed committed) | Fixed: turnover only on a committed region or a parked/released state; in-flight loads outside the window reduce the grant budget; grants always restamp |
+| NIT: JourneyMap's heap hold survived pumps that never reached the belt | Fixed: cleared at the top of every pump |
+| NIT: JourneyMap's server-side surface cap is not consulted by the edge sweep | Accepted: the LOD columns themselves are mapped regardless of any radius; the server's "mapping not allowed" switch is honoured |
+| Test gaps (neighbour presence, look-ahead release, edge lookups, latch size, trickle, reservations, invisible roof) | Pinned |

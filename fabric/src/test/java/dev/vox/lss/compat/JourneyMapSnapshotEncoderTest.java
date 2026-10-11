@@ -174,6 +174,35 @@ class JourneyMapSnapshotEncoderTest {
     }
 
     @Test
+    void anInvisibleRoofDoesNotCullTheGroundUnderIt() throws IOException {
+        // A barrier (or light-block) roof 64+ blocks up: WORLD_SURFACE counts it, but
+        // JourneyMap's surface walk passes through it to the ground — measuring the cull from
+        // the roof left that walk nothing to draw (re-review).
+        var ground = JourneyMapTestColumns.empty();
+        for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) ground.setBlockState(x, 3, z, Blocks.STONE.defaultBlockState());
+        var roof = JourneyMapTestColumns.empty();
+        for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) roof.setBlockState(x, 2, z, Blocks.BARRIER.defaultBlockState());
+        var column = JourneyMapTestColumns.column(
+                new JourneyMapTestColumns.Spec(0, ground, null), new JourneyMapTestColumns.Spec(8, roof, null));
+        var in = open(JourneyMapSnapshotEncoder.encode(0, 0, column, OVERWORLD)).payload();
+        in.skipNBytes(4 + 1 + 12);
+        assertEquals(2, in.readUnsignedByte(), "the ground section under the roof stays");
+        assertEquals(4, in.readUnsignedByte(), "section y 0 is index 4");
+        var sections = sectionsOf(column, OVERWORLD);
+        assertEquals(130 + 1 - OVERWORLD.minY(), JourneyMapSnapshotEncoder.worldSurface(sections, OVERWORLD)[0],
+                "the written WORLD_SURFACE heightmap still counts the roof, as vanilla's does");
+        assertEquals(3 + 1 - OVERWORLD.minY(), JourneyMapSnapshotEncoder.lowestVisibleSurface(sections, OVERWORLD));
+    }
+
+    @Test
+    void anAllInvisibleColumnCullsNothing() {
+        var roof = JourneyMapTestColumns.empty();
+        roof.setBlockState(0, 0, 0, Blocks.BARRIER.defaultBlockState());
+        var column = JourneyMapTestColumns.column(new JourneyMapTestColumns.Spec(8, roof, null));
+        assertEquals(Integer.MAX_VALUE, JourneyMapSnapshotEncoder.lowestVisibleSurface(sectionsOf(column, OVERWORLD), OVERWORLD));
+    }
+
+    @Test
     void moreThan255SectionsCannotBeExpressed() {
         assertNull(JourneyMapSnapshotEncoder.encode(0, 0, JourneyMapTestColumns.column(),
                 new JourneyMapLineSurface.LevelFacts(0, 256, 0, 4096)));

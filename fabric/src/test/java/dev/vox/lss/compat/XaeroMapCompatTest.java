@@ -3496,7 +3496,7 @@ class XaeroMapCompatTest {
         this.bridge.pump();
         assertEquals(2, this.bridge.counterForTest("written"));
         assertEquals(1, this.bridge.queuedForTest(), "the third region's tile stays queued, not dropped");
-        assertFalse(this.bridge.windowBound, "this pump still committed: not window-bound yet");
+        assertTrue(this.bridge.windowBound, "the window held work back while it filled: pacing");
         assertTrue(this.bridge.windowWaits.get() > 0);
         this.bridge.pump();
         assertTrue(this.bridge.windowBound, "only the window holds the stream now");
@@ -3619,6 +3619,57 @@ class XaeroMapCompatTest {
         this.clockMillis += XaeroSession.BP_PACE_HOLD_MILLIS + 1;
         this.bridge.pump();
         assertFalse(this.bridge.windowBound, "no region left the window for a whole pace window");
+    }
+
+    @Test
+    void aTrickleIntoOpenRegionsIsStillPacingNotAStuckWriter() {
+        // The window holds most of the queue back while a few tiles commit into regions it
+        // already holds: occupancy cannot recede, and the 7 s box would wedge a fill the
+        // window is merely pacing (re-review).
+        this.bridge.openRegionCap = 1;
+        offer(0, 0);
+        this.bridge.pump(); // region (0,0) fills the window
+        offer(64, 0);       // held back
+        offer(1, 1);        // region (0,0): commits
+        this.bridge.pump();
+        assertEquals(2, this.bridge.counterForTest("written"));
+        assertTrue(this.bridge.windowBound);
+        assertEquals(Math.max(XaeroSession.BP_PACE_HOLD_MILLIS, this.bridge.bpHaltWedgeMillis), this.bridge.wedgeMillis());
+    }
+
+    @Test
+    void aGrantRestampsItsReservationEvenOntoACommittedRegion() {
+        this.bridge.openRegionCap = 2;
+        this.bridge.admitToWindow(7L, 0L);
+        assertEquals(0L, this.bridge.openRegions.get(7L));
+        this.bridge.admitToWindow(7L, 500L);
+        assertEquals(500L, this.bridge.openRegions.get(7L), "its reload is in flight: held as a reservation (re-review)");
+        this.bridge.admitToWindow(7L, 900L);
+        assertEquals(900L, this.bridge.openRegions.get(7L), "a re-grant refreshes");
+        this.bridge.admitToWindow(7L, 0L);
+        assertEquals(0L, this.bridge.openRegions.get(7L), "a commit makes it a committed slot again");
+        this.bridge.admitToWindow(7L, 0L);
+        assertEquals(1, this.bridge.openRegions.size());
+    }
+
+    @Test
+    void aLoadQueuedPastItsReservationStillCountsAndIsNotTurnover() {
+        this.bridge.openRegionCap = 2;
+        this.processor.createdRegionLoadState = 0;
+        offer(64, 0); // region (2,0)
+        this.bridge.pump();
+        assertEquals(1, this.bridge.counterForTest("load_requests"));
+        long progress = this.bridge.windowProgressMillis;
+        region(2, 0).canRequestReload = false; // queued in Xaero's loader: in flight at state 0
+        this.clockMillis += XaeroSession.GRANT_RESERVE_MILLIS + 1;
+        this.bridge.pump();
+        assertFalse(this.bridge.openRegions.containsKey(2L << 32), "the expired reservation leaves the window");
+        assertEquals(progress, this.bridge.windowProgressMillis, "but its load never started: not turnover (re-review)");
+        offer(96, 0);
+        offer(128, 0);
+        this.bridge.pump();
+        assertEquals(2, this.bridge.counterForTest("load_requests"),
+                "one grant: the still-queued load keeps occupying the other slot");
     }
 
     @Test

@@ -76,6 +76,17 @@ final class JourneyMapSession {
     /** The edge sweep's cadence and reach beyond JourneyMap's own mapping range (chunks). */
     static final long EDGE_SWEEP_MILLIS = 2000;
     static final int EDGE_BAND_CHUNKS = 3;
+    /** JourneyMap cache lookups one edge sweep may make for chunks it has not drawn yet: each
+     *  lookup can add an entry to JourneyMap's bounded chunk cache, and a low surface cap makes
+     *  the band thousands of chunks wide — pace the first fill instead of flushing its working
+     *  set every sweep (re-review). */
+    static final int EDGE_LOOKUPS_PER_SWEEP = 256;
+    /** Consecutive null cache lookups (our wrapper evicted before its render) a column survives
+     *  before it is reported for a re-serve instead of requeued again. */
+    static final int NULL_LOOKUP_LIMIT = 8;
+    /** A failed-batch streak also needs this many failed columns before it latches: steady-state
+     *  batches are often one or two dirty re-serves (re-review). */
+    static final int DEATH_LATCH_MIN_COLUMNS = 32;
 
     static final LogThrottle FAILURE_WARN = new LogThrottle(60_000);
 
@@ -89,6 +100,9 @@ final class JourneyMapSession {
         boolean hasCeiling(Object level);
         /** The player's packed chunk position, or {@link Long#MIN_VALUE} without a player. */
         long playerChunk();
+        /** The client's loaded chunk at a position (the stable {@code LevelChunk}), or null —
+         *  read from the client level, never through JourneyMap's cache. */
+        Object liveChunk(Object level, int chunkX, int chunkZ);
     }
 
     /** Encoded snapshot bytes → a {@code SnapshotChunkMD}, or null when JourneyMap refuses the
@@ -121,6 +135,11 @@ final class JourneyMapSession {
             var mc = Minecraft.getInstance();
             var player = mc == null ? null : mc.player;
             return player == null ? Long.MIN_VALUE : packed(player.getBlockX() >> 4, player.getBlockZ() >> 4);
+        }
+
+        @Override public Object liveChunk(Object level, int chunkX, int chunkZ) {
+            return ((ClientLevel) level).getChunkSource().getChunk(chunkX, chunkZ,
+                    net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false);
         }
     };
 
@@ -302,6 +321,7 @@ final class JourneyMapSession {
     volatile boolean sessionEndPending;
     boolean heapHolding; // main thread only
     int consecutiveFailedBatches; // main thread only
+    int consecutiveFailedColumns; // main thread only
 
     // ---- identity + batches (main thread) ----
     Identity observed;
@@ -346,8 +366,9 @@ final class JourneyMapSession {
     final AtomicLong edgeRendered = new AtomicLong();
     volatile long lastBatchMillis;
     long lastEdgeSweepMillis; // main thread
-    /** Live chunks the edge sweep rendered, by position → the ChunkMD instance (JM thread). */
-    final java.util.HashMap<Long, Object> edgeDone = new java.util.HashMap<>();
+    /** Live chunks the edge sweep rendered, by position → the client's LevelChunk instance,
+     *  held weakly so a disconnect never pins the old level (JM thread). */
+    final java.util.HashMap<Long, java.lang.ref.WeakReference<Object>> edgeDone = new java.util.HashMap<>();
     Identity edgeIdentity; // JM thread
 
     JourneyMapSession(JourneyMapBindings h, Host host, BooleanSupplier enabled, BooleanSupplier sessionActive,
@@ -376,6 +397,7 @@ final class JourneyMapSession {
         final int chunkZ;
         final byte[] bytes;
         final Receipt receipt;
+        int nullLookups; // JourneyMap's task thread only (batches run there one at a time)
 
         Entry(ResourceKey<Level> dimension, int chunkX, int chunkZ, byte[] bytes, Receipt receipt) {
             this.dimension = dimension;
@@ -485,6 +507,7 @@ final class JourneyMapSession {
         this.heapHolding = false;
         this.dead = false; // the death latch is session-scoped
         this.consecutiveFailedBatches = 0;
+        this.consecutiveFailedColumns = 0;
         this.lastRegionKey = Long.MIN_VALUE;
         this.replay.clear();
         synchronized (this.context) {
@@ -642,6 +665,9 @@ final class JourneyMapSession {
 
     void pumpInner() throws Throwable {
         reconcileInFlight();
+        // Set again below only if this pump reaches the heap check: a stale hold must not
+        // keep the long pace box while the session waits on something else (re-review).
+        this.heapHolding = false;
         long now = now();
         Object client = this.h.getInstance.invoke();
         Object level = this.host.level();
@@ -940,9 +966,10 @@ final class JourneyMapSession {
         // toward the death latch: a renderer refusing wholesale would otherwise re-serve
         // the whole disc forever (review).
         if (r.rendered.isEmpty() && (!r.decodeFailures.isEmpty() || !r.renderFailed.isEmpty())) {
-            noteBatchFailure(null);
+            noteBatchFailure(null, r.decodeFailures.size() + r.renderFailed.size());
         } else if (!r.rendered.isEmpty()) {
             this.consecutiveFailedBatches = 0;
+            this.consecutiveFailedColumns = 0;
         }
     }
 
@@ -963,9 +990,16 @@ final class JourneyMapSession {
         }
     }
 
+    /** A thrown batch: systemic, so it counts as a full minimum of failed columns. */
     void noteBatchFailure(Throwable failure) {
+        noteBatchFailure(failure, DEATH_LATCH_MIN_COLUMNS);
+    }
+
+    void noteBatchFailure(Throwable failure, int failedColumns) {
         if (failure != null) warn("a map batch failed", failure);
-        if (++this.consecutiveFailedBatches >= DEATH_LATCH && !this.dead) {
+        this.consecutiveFailedColumns += failedColumns;
+        if (++this.consecutiveFailedBatches >= DEATH_LATCH
+                && this.consecutiveFailedColumns >= DEATH_LATCH_MIN_COLUMNS && !this.dead) {
             this.dead = true;
             clearQueue();
             LSSLogger.error("JourneyMap map ingestion: " + DEATH_LATCH + " consecutive failed map batches —"
@@ -1115,50 +1149,61 @@ final class JourneyMapSession {
         // One column at a time — decode, add, render — under ONE time box: decoding real
         // terrain costs as much as rendering it, so a decode-everything-first batch spent the
         // whole box decoding and requeued the rest, forever (the throughput live gate). North
-        // and west first: their wrappers stay in JourneyMap's cache for the batch, so slope
-        // shading and biome blending of later columns see them.
+        // and west first, and each column's east and south batch neighbours decoded one step
+        // ahead: their wrappers stay in JourneyMap's cache for the batch, so day slopes (north
+        // and west), topography's slope and shore checks (south and east) and biome blending
+        // (all around) see them. A look-ahead the box cuts off is released with the rest.
         var ordered = new ArrayList<>(batch.entries);
         ordered.sort(java.util.Comparator.comparingInt((Entry e) -> e.chunkZ).thenComparingInt(e -> e.chunkX));
         var batchKeys = new java.util.HashSet<Long>();
-        for (var e : ordered) batchKeys.add(e.key());
+        var byKey = new java.util.HashMap<Long, Entry>();
+        for (var e : ordered) {
+            batchKeys.add(e.key());
+            byKey.put(e.key(), e);
+        }
         var present = new java.util.HashSet<Long>();
         var ours = new ArrayList<Object>();
         var oursKeys = new ArrayList<Long>();
+        var prepared = new java.util.HashMap<Long, Object>();
+        var work = new Prepare(id, dataCache, batchKeys, present, ours, oursKeys, prepared, r);
         try {
             for (var e : ordered) {
                 if (!this.sessionActive.getAsBoolean() || now() > deadline) {
-                    // JourneyMap's own pacing: one renderDelay of work per batch, then the
-                    // pump idles it at least as long. A finished session's receipts close.
+                    // JourneyMap's own pacing: about one renderDelay of work per batch, then the
+                    // pump idles it. A finished session's receipts close.
                     r.requeued.add(e);
                     continue;
                 }
                 long key = mcChunkKey(e.chunkX, e.chunkZ);
                 try {
-                    Object live = this.h.getChunkMD.invoke(dataCache, key);
-                    if (live != null && (boolean) this.h.hasLevelChunk.invoke(live)) {
+                    Object md = prepare(e, work);
+                    if (md == PREPARED_LIVE) {
                         r.skippedLive.add(e); // JourneyMap maps its live chunks itself
                         continue;
                     }
-                    long t0 = System.nanoTime();
-                    addContext(e, id, dataCache, batchKeys, present, ours, oursKeys, r);
-                    Object md = this.decoder.decode(e.bytes, id.level());
-                    long t1 = System.nanoTime();
-                    r.decodeNanos += t1 - t0;
-                    r.decoded++;
-                    if (md == null) {
+                    if (md == PREPARED_FAILED) {
                         r.decodeFailures.add(e);
                         continue;
                     }
-                    this.h.addChunkMD.invoke(dataCache, md);
-                    ours.add(md);
-                    oursKeys.add(key);
-                    present.add(e.key());
+                    for (int[] d : AHEAD) {
+                        var next = byKey.get(packed(e.chunkX + d[0], e.chunkZ + d[1]));
+                        if (next == null) continue;
+                        try {
+                            prepare(next, work);
+                        } catch (Throwable t) {
+                            if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
+                            // its own turn retries the decode and classifies the failure
+                        }
+                    }
+                    long t1 = System.nanoTime();
                     Object current = this.h.getChunkMDWithIntent.invoke(dataCache, key, allowCached);
                     if (current != md) {
                         // A live chunk replaced ours (JourneyMap owns it), or JourneyMap's cache
                         // dropped our wrapper already (an invalidation, its size cap): requeue
-                        // — a null here is never "live" (review MAJOR).
-                        (current != null ? r.skippedLive : r.requeued).add(e);
+                        // — a null here is never "live" (review MAJOR) — a bounded number of
+                        // times, then report it for a re-serve (re-review).
+                        if (current != null) r.skippedLive.add(e);
+                        else (++e.nullLookups >= NULL_LOOKUP_LIMIT ? r.columnFailures : r.requeued).add(e);
                         continue;
                     }
                     boolean ok = renderTypes(controller, id, types, e.chunkX, e.chunkZ, md, r);
@@ -1191,6 +1236,45 @@ final class JourneyMapSession {
                 }
             }
         }
+    }
+
+    /** East, south-west, south and south-east: the batch neighbours a column's render reads
+     *  that the (z, x) order has not reached yet. */
+    private static final int[][] AHEAD = {{1, 0}, {-1, 1}, {0, 1}, {1, 1}};
+    private static final Object PREPARED_LIVE = new Object();
+    private static final Object PREPARED_FAILED = new Object();
+
+    /** One batch's decode state (JourneyMap's task thread). */
+    private record Prepare(Identity id, Object dataCache, java.util.Set<Long> batchKeys, java.util.Set<Long> present,
+                           List<Object> ours, List<Long> oursKeys, java.util.Map<Long, Object> prepared, Result r) {}
+
+    /** Decodes and adds one batch column (with its context) once: its wrapper, or
+     *  {@link #PREPARED_LIVE} when JourneyMap holds a live chunk there, or
+     *  {@link #PREPARED_FAILED} when JourneyMap refused the bytes. */
+    private Object prepare(Entry e, Prepare w) throws Throwable {
+        Object done = w.prepared().get(e.key());
+        if (done != null) return done;
+        long key = mcChunkKey(e.chunkX, e.chunkZ);
+        Object live = this.h.getChunkMD.invoke(w.dataCache(), key);
+        if (live != null && (boolean) this.h.hasLevelChunk.invoke(live)) {
+            w.prepared().put(e.key(), PREPARED_LIVE);
+            return PREPARED_LIVE;
+        }
+        long t0 = System.nanoTime();
+        addContext(e, w.id(), w.dataCache(), w.batchKeys(), w.present(), w.ours(), w.oursKeys(), w.r());
+        Object md = this.decoder.decode(e.bytes, w.id().level());
+        w.r().decodeNanos += System.nanoTime() - t0;
+        w.r().decoded++;
+        if (md == null) {
+            w.prepared().put(e.key(), PREPARED_FAILED);
+            return PREPARED_FAILED;
+        }
+        this.h.addChunkMD.invoke(w.dataCache(), md);
+        w.ours().add(md);
+        w.oursKeys().add(key);
+        w.present().add(e.key());
+        w.prepared().put(e.key(), md);
+        return md;
     }
 
     /** Decodes and adds the column's north, north-west and west neighbours from recent renders
@@ -1242,7 +1326,8 @@ final class JourneyMapSession {
      * ring between JourneyMap's area and the LOD disc (live smoke). Every
      * {@value #EDGE_SWEEP_MILLIS} ms, while an LSS session is active, this renders
      * JourneyMap's OWN live chunks in the {@value #EDGE_BAND_CHUNKS}-chunk band past its range
-     * — its data, its renderer, its thread — each live chunk instance once.
+     * — its data, its renderer, its thread — each client chunk instance once, at most
+     * {@value #EDGE_LOOKUPS_PER_SWEEP} new ones per sweep.
      */
     void renderEdge(Batch batch, Result r, Object client, Object controller, List<Object> types) throws Throwable {
         Identity id = batch.identity;
@@ -1263,27 +1348,35 @@ final class JourneyMapSession {
         double inside = range + 0.5; // JourneyMap's own circle test (RenderSpec.inRange)
         Object dataCache = this.h.dataCache.invoke();
         long deadline = batch.startedAtMillis + batch.timeBoxMillis;
-        var keep = new java.util.HashMap<Long, Object>();
+        var keep = new java.util.HashMap<Long, java.lang.ref.WeakReference<Object>>();
+        int lookups = 0;
         for (int dz = -reach; dz <= reach; dz++) {
             for (int dx = -reach; dx <= reach; dx++) {
                 if (Math.sqrt(dx * dx + dz * dz) <= inside) continue;
                 int x = px + dx, z = pz + dz;
                 long key = packed(x, z);
+                // The client's own chunk decides "already drawn": a done chunk costs no
+                // JourneyMap cache lookup, so a wide band (a low surface cap) neither re-renders
+                // nor flushes JourneyMap's cache every sweep (re-review).
+                Object chunk = this.host.liveChunk(id.level(), x, z);
+                if (chunk == null) continue;
+                var done = this.edgeDone.get(key);
+                if (done != null && done.get() == chunk) {
+                    keep.put(key, done);
+                    continue;
+                }
+                if (now() > deadline || lookups >= EDGE_LOOKUPS_PER_SWEEP) continue; // a later sweep
+                lookups++;
                 Object live = this.h.getChunkMD.invoke(dataCache, mcChunkKey(x, z));
                 if (live == null || !(boolean) this.h.hasLevelChunk.invoke(live)) continue;
                 // During a dimension switch JourneyMap can still be mapping the OLD dimension
                 // while its cache already serves the new one: never paint across (review).
                 if (!Objects.equals(this.h.getDimension.invoke(live), id.dimension())) continue;
-                if (this.edgeDone.get(key) == live) {
-                    keep.put(key, live);
-                    continue;
-                }
-                if (now() > deadline) continue; // the next sweep picks it up
                 try {
                     boolean ok = renderTypes(controller, id, types, x, z, live, r);
                     this.h.clearAll.invoke(this.h.getBlockData.invoke(live));
                     if (ok) {
-                        keep.put(key, live);
+                        keep.put(key, new java.lang.ref.WeakReference<>(chunk));
                         r.edgeRendered++;
                     }
                 } catch (Throwable t) {

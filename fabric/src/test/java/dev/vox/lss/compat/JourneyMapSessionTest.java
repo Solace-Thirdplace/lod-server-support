@@ -2,6 +2,7 @@ package dev.vox.lss.compat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -54,6 +55,8 @@ class JourneyMapSessionTest {
     /** Long.MIN_VALUE (no player) keeps edge sweeps off in the tests that are not about them. */
     private long playerChunk;
     private final List<long[]> reports = new ArrayList<>();
+    /** The client's own loaded chunks (the edge sweep's "already drawn" key), by packed position. */
+    private final java.util.Map<Long, Object> clientChunks = new java.util.HashMap<>();
     private final List<VoxelColumnConsumer> registered = new ArrayList<>();
     private JourneymapClient jm;
     private JourneyMapSession session;
@@ -82,6 +85,7 @@ class JourneyMapSessionTest {
         this.clock = 1_000_000L;
         this.playerChunk = Long.MIN_VALUE;
         this.reports.clear();
+        this.clientChunks.clear();
         this.registered.clear();
         var host = new JourneyMapSession.Host() {
             @Override public Object minecraft() { return null; }
@@ -90,6 +94,9 @@ class JourneyMapSessionTest {
             @Override public Object dimension(Object l) { return dimension; }
             @Override public boolean hasCeiling(Object l) { return ceiling; }
             @Override public long playerChunk() { return playerChunk; }
+            @Override public Object liveChunk(Object l, int x, int z) {
+                return clientChunks.get(JourneyMapSession.packed(x, z));
+            }
         };
         this.session = new JourneyMapSession(JourneyMapBindings.resolve(Class::forName), host,
                 () -> this.enabled, () -> this.sessionActive, this.registered::add, this.registered::remove,
@@ -294,11 +301,11 @@ class JourneyMapSessionTest {
         this.failDecode = true;
         settle();
         for (int i = 0; i < JourneyMapSession.DEATH_LATCH; i++) {
-            offer(i, 0);
+            for (int x = 0; x < 7; x++) offer(x, i); // 5 × 7 ≥ DEATH_LATCH_MIN_COLUMNS
             assertEquals(1, cycle());
             this.clock += 1000;
         }
-        assertEquals(JourneyMapSession.DEATH_LATCH, counter("decode_failures"));
+        assertEquals(JourneyMapSession.DEATH_LATCH * 7, counter("decode_failures"));
         assertTrue(this.reports.isEmpty(), "a format mismatch would fail identically on a re-serve");
         assertEquals("dead", this.session.state());
         assertEquals(-1, this.session.reportBackpressure());
@@ -489,6 +496,18 @@ class JourneyMapSessionTest {
     }
 
     @Test
+    void aHeapHoldDoesNotOutliveAPumpThatNeverReachesTheBelt() {
+        this.session.memory = new MapMemoryGuard(() -> 0.95, () -> this.clock);
+        offer(0, 0);
+        settle();
+        this.session.pump();
+        assertTrue(this.session.heapHolding);
+        this.jm.mapping = false; // waiting on not_mapping: the belt is never consulted
+        this.session.pump();
+        assertFalse(this.session.heapHolding, "a stale hold must not keep the long pace box (re-review)");
+    }
+
+    @Test
     void edgeContextNeighboursJoinTheNextBatchButAreNeverRendered() {
         this.jm.properties.mapTopography.value = false;
         this.jm.properties.mapBiome.value = false;
@@ -579,11 +598,90 @@ class JourneyMapSessionTest {
         this.jm.renderController.result = (type, md) -> false;
         settle();
         for (int i = 0; i < JourneyMapSession.DEATH_LATCH; i++) {
-            offer(i, 0);
+            for (int x = 0; x < 7; x++) offer(x, i);
             cycle();
             this.clock += 1000;
         }
         assertEquals("dead", this.session.state(), "a refusing renderer must not re-serve the disc forever");
+    }
+
+    @Test
+    void fiveSmallFailedBatchesDoNotKillTheSession() {
+        // Steady state: one or two dirty re-serves per batch (re-review) — five failing
+        // single columns are not a renderer refusing wholesale.
+        this.jm.renderController.result = (type, md) -> false;
+        settle();
+        for (int i = 0; i < JourneyMapSession.DEATH_LATCH; i++) {
+            offer(i, 0);
+            cycle();
+            this.clock += 1000;
+        }
+        assertEquals(JourneyMapSession.DEATH_LATCH, counter("render_failed"));
+        assertNotEquals("dead", this.session.state());
+        this.jm.renderController.result = (type, md) -> true;
+        offer(40, 40);
+        cycle();
+        assertEquals(1, counter("rendered"), "a render resets the streak");
+        assertEquals(0, this.session.consecutiveFailedColumns);
+    }
+
+    @Test
+    void aWrapperEvictedEveryTimeIsReportedAfterTheLimitNotRequeuedForever() {
+        DataCache.INSTANCE.evictEveryAdd = true;
+        offer(0, 0);
+        settle();
+        for (int i = 0; i < JourneyMapSession.NULL_LOOKUP_LIMIT; i++) {
+            cycle();
+            this.clock += 1000;
+        }
+        assertEquals(JourneyMapSession.NULL_LOOKUP_LIMIT - 1, counter("requeued"));
+        assertEquals(1, counter("column_failures"));
+        assertEquals(1, this.reports.size(), "reported for a re-serve, its receipt closed");
+        assertEquals(0, this.session.queuedGauge);
+    }
+
+    @Test
+    void eastAndSouthBatchNeighboursAreInTheCacheWhenAColumnRenders() {
+        // Topography's slope and shore checks read south and east, biome blending all around
+        // (re-review): the (z, x) order alone only puts north and west there.
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+        for (int z = 0; z < 3; z++) for (int x = 0; x < 3; x++) offer(x, z);
+        var seen = new java.util.HashMap<Long, java.util.Set<Long>>();
+        this.jm.renderController.result = (type, md) -> {
+            seen.put(md.getLongCoord(), new java.util.HashSet<>(DataCache.INSTANCE.cache.keySet()));
+            return true;
+        };
+        settle();
+        cycle();
+        assertEquals(9, counter("rendered"));
+        var atOrigin = seen.get(JourneyMapSession.mcChunkKey(0, 0));
+        for (int[] d : new int[][]{{1, 0}, {0, 1}, {1, 1}}) {
+            assertTrue(atOrigin.contains(JourneyMapSession.mcChunkKey(d[0], d[1])), d[0] + "," + d[1]);
+        }
+        var middle = seen.get(JourneyMapSession.mcChunkKey(1, 1));
+        for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++) {
+            assertTrue(middle.contains(JourneyMapSession.mcChunkKey(1 + dx, 1 + dz)), "all eight around (1,1)");
+        }
+        assertEquals(9, this.session.decodedColumns.get(), "decoded once each, ahead or not");
+        assertTrue(DataCache.INSTANCE.cache.isEmpty(), "every wrapper released after the batch");
+    }
+
+    @Test
+    void aLookAheadTheBoxCutsOffIsReleasedAndRequeued() {
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+        for (int z = 0; z < 2; z++) for (int x = 0; x < 2; x++) offer(x, z);
+        this.jm.renderController.result = (type, md) -> {
+            this.clock += 5_000; // the first render spends the whole box
+            return true;
+        };
+        settle();
+        cycle();
+        assertEquals(1, counter("rendered"));
+        assertEquals(3, counter("requeued"));
+        assertTrue(DataCache.INSTANCE.cache.isEmpty(), "the look-ahead wrappers left JourneyMap's cache");
+        assertEquals(3, this.session.queuedGauge);
     }
 
     @Test
@@ -671,9 +769,12 @@ class JourneyMapSessionTest {
         this.playerChunk = JourneyMapSession.packed(chunkX, chunkZ);
     }
 
+    /** A chunk the client has loaded (a new instance each call — a reload) that JourneyMap
+     *  serves live from its cache. */
     private ChunkMD live(int x, int z) {
         var md = new ChunkMD(x, z, true);
         DataCache.INSTANCE.live.put(JourneyMapSession.mcChunkKey(x, z), md);
+        this.clientChunks.put(JourneyMapSession.packed(x, z), new Object());
         return md;
     }
 
@@ -706,6 +807,41 @@ class JourneyMapSessionTest {
         cycle();
         assertEquals(1, renders().size());
         assertEquals(3, counter("edge_rendered"));
+    }
+
+    @Test
+    void aDrawnEdgeChunkCostsNoJourneyMapLookupAndLookupsArePaced() {
+        // A low surface cap makes the band thousands of chunks wide: done chunks are keyed on
+        // the client's own chunk, never re-looked-up in JourneyMap's cache, and first-fill
+        // lookups are paced per sweep (re-review).
+        this.jm.gameRenderDistance = 32;
+        this.jm.properties.renderDistanceSurfaceMax.value = 4;
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+        livePlayerAt(0, 0);
+        int band = 0;
+        for (int z = -35; z <= 35; z++) for (int x = -35; x <= 35; x++) {
+            if (Math.sqrt(x * x + z * z) > 4.5) {
+                live(x, z);
+                band++;
+            }
+        }
+        assertTrue(band > 2 * JourneyMapSession.EDGE_LOOKUPS_PER_SWEEP);
+        settle();
+        cycle();
+        assertEquals(JourneyMapSession.EDGE_LOOKUPS_PER_SWEEP, counter("edge_rendered"));
+        int lookups = DataCache.INSTANCE.liveOnlyLookups;
+        assertEquals(JourneyMapSession.EDGE_LOOKUPS_PER_SWEEP, lookups);
+        for (int sweep = 2; counter("edge_rendered") < band; sweep++) {
+            this.clock += JourneyMapSession.EDGE_SWEEP_MILLIS;
+            cycle();
+            assertTrue(sweep < 100, "the band fills");
+        }
+        int filled = DataCache.INSTANCE.liveOnlyLookups;
+        this.clock += JourneyMapSession.EDGE_SWEEP_MILLIS;
+        cycle();
+        assertEquals(filled, DataCache.INSTANCE.liveOnlyLookups, "a drawn band costs no lookup");
+        assertEquals(band, counter("edge_rendered"), "and draws nothing again");
     }
 
     @Test

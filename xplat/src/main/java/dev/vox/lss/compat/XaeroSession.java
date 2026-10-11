@@ -1501,9 +1501,12 @@ final class XaeroSession {
                 }
             }
         }
-        // Pacing, not a stuck writer, only while the window held back every commit AND it
-        // is still turning over (a region left, or it filled, within the pace window).
-        this.windowBound = windowWaited && commits == 0
+        // Pacing, not a stuck writer, while the window held work back AND it is still
+        // turning over (a region left, or it filled, within the pace window). Commits into
+        // already-open regions do not clear it: a trickle that cannot recede the occupancy
+        // is exactly what the window makes, and the short time box would wedge it
+        // (re-review; the turnover clause bounds a window that is wide enough).
+        this.windowBound = windowWaited
                 && nowMillis() - this.windowProgressMillis <= BP_PACE_HOLD_MILLIS;
         this.openRegionsGauge = this.openRegions.size();
         if (generation != this.acquisition.acquisitionGeneration.get()) return;
@@ -1534,10 +1537,13 @@ final class XaeroSession {
     /** A load granted into the window keeps its slot this long before the loader starts it. */
     static final long GRANT_RESERVE_MILLIS = 30_000;
 
-    /** Enters (or refreshes) a window region; {@code reservedAt} 0 = committed into. */
+    /** Enters (or refreshes) a window region; {@code reservedAt} 0 = committed into. A grant
+     *  always (re)stamps its reservation — also onto a committed region, whose reload is then
+     *  in flight and must not be released as parked (re-review); a commit turns a
+     *  reservation into a committed slot. */
     void admitToWindow(long regionKey, long reservedAt) {
         Long previous = this.openRegions.get(regionKey);
-        if (previous != null && (previous == 0L || reservedAt != 0L)) return;
+        if (reservedAt == 0L && previous != null && previous == 0L) return;
         this.openRegions.put(regionKey, reservedAt);
         if (previous == null && this.openRegions.size() >= this.openRegionCap) this.windowProgressMillis = nowMillis();
     }
@@ -1575,7 +1581,9 @@ final class XaeroSession {
             this.openRegions.remove(key);
             if (state == 1 || state == 2 || reserved) {
                 this.openRegions.put(key, e.getValue()); // still open: to the back of the round
-            } else {
+            } else if (e.getValue() == 0L || state == 3 || state == 4) {
+                // Turnover: Xaero released a region. An expired reservation whose load never
+                // started frees its slot without being progress (re-review).
                 this.windowProgressMillis = now;
             }
         }
@@ -1615,17 +1623,25 @@ final class XaeroSession {
      */
     void grantLoads(Object mp, Object saveLoad, List<WaitingRegion> waiting) {
         int inFlight = 0;
+        int inFlightOutsideWindow = 0;
         var candidates = new ArrayList<WaitingRegion>();
         for (var w : waiting) {
-            if (w.verdict() == Outcome.AWAITING_IN_FLIGHT) inFlight++;
-            else candidates.add(w);
+            if (w.verdict() == Outcome.AWAITING_IN_FLIGHT) {
+                inFlight++;
+                if (!this.openRegions.containsKey(w.regionKey())) inFlightOutsideWindow++;
+            } else {
+                candidates.add(w);
+            }
         }
         int budget = MAX_OUTSTANDING_LOADS - inFlight;
         // §4.1 (approach D(iii)): a granted load becomes a resident region, so loads
         // count against the open-region window — far owed regions are not reloaded
         // while the window is full.
-        // A grant reserves its window slot (B4): loads in flight already hold theirs.
-        if (this.openRegionCap > 0) budget = Math.min(budget, this.openRegionCap - this.openRegions.size());
+        // A grant reserves its window slot (B4): loads in flight hold theirs, and a load still
+        // queued past its reservation counts too (re-review: no transient overshoot).
+        if (this.openRegionCap > 0) {
+            budget = Math.min(budget, this.openRegionCap - this.openRegions.size() - inFlightOutsideWindow);
+        }
         if (budget <= 0 || candidates.isEmpty()) return;
         candidates.sort((a, b) -> Integer.compare(b.tiles(), a.tiles()));
         var chosen = candidates.subList(0, Math.min(budget, candidates.size()));

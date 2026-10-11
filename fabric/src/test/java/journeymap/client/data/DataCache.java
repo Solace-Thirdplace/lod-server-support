@@ -21,12 +21,15 @@ public class DataCache {
     public Runnable onAllowCachedQuery;
     /** Models the real Guava cache dropping an entry at once (its size cap, an invalidation). */
     public boolean evictEveryAdd;
+    /** LIVE_ONLY lookups made (the edge sweep's JourneyMap cache cost). */
+    public int liveOnlyLookups;
 
     public ChunkMD getChunkMD(long coordLong) {
         return getChunkMD(coordLong, ChunkQueryIntent.LIVE_ONLY);
     }
 
     public ChunkMD getChunkMD(long coordLong, ChunkQueryIntent intent) {
+        if (intent == ChunkQueryIntent.LIVE_ONLY) this.liveOnlyLookups++;
         if (intent == ChunkQueryIntent.ALLOW_CACHED && this.onAllowCachedQuery != null) {
             var hook = this.onAllowCachedQuery;
             this.onAllowCachedQuery = null;
