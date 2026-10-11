@@ -103,7 +103,7 @@ def build(profile,cache,range_runtime,server_source,candidate,context,java,prism
     components=[c for c in profile['components'] if c['uid']!='java']
     runtime['generated_files']['instances/'+instance+'/mmc-pack.json']=json.dumps({'formatVersion':1,'components':components})+'\n'
     runtime['generated_files'][minecraft+'/options.txt']='maxFps:30\nrenderDistance:6\nsimulationDistance:5\npauseOnLostFocus:false\nenableVsync:false\nguiScale:2\nonboardAccessibility:false\n'
-    runtime['generated_files'][minecraft+'/config/lss-client-config.yaml']=render({'lod.receive':True,'integrations.xaero_map.enabled':True,'integrations.xaero_map.backpressure':True,'lod.distance_chunks':32},side='client')
+    runtime['generated_files'][minecraft+'/config/lss-client-config.yaml']=render({'lod.receive':True,'integrations.map_ingestion.enabled':True,'integrations.map_ingestion.backpressure':True,'lod.distance_chunks':32},side='client')
     from rig import endpoint as parse_endpoint
     host,port=parse_endpoint(endpoint)
     runtime['generated_files']['server/eula.txt']='eula=true\n'

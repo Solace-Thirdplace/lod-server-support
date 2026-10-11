@@ -37,7 +37,7 @@ public final class SettingsCli {
         return file(operation,path,prefix,SettingsSchema.server(platform.equals("paper")),changes);
     }
     private static Map<String,Object> inventory(SettingsSchema<?> schema) {
-        var out=new LinkedHashMap<String,Object>();out.put("side",schema.side());out.put("platform",schema.isClient()?"client":schema.isPaper()?"paper":"mod");out.put("descriptors",schema.descriptors());out.put("document",schema.template());return out;
+        var out=new LinkedHashMap<String,Object>();out.put("side",schema.side());out.put("platform",schema.isClient()?"client":schema.isPaper()?"paper":"mod");out.put("descriptors",schema.descriptors());out.put("aliases",schema.aliases());out.put("document",schema.template());return out;
     }
     private static <T> Object file(String operation,Path path,String prefix,SettingsSchema<T> schema,Map<String,String> encoded)throws Exception {
         SettingsStore<T> store=operation.equals("migrate")?new SettingsStore<>(path,prefix,schema):SettingsStore.atPath(path,schema);
@@ -48,11 +48,14 @@ public final class SettingsCli {
             case "edit","stage"->{
                 var old=operation.equals("stage")?store.initialize():store.read();var changes=new LinkedHashMap<String,Object>();
                 if(operation.equals("stage"))for(var descriptor:schema.descriptors())if(schema.applicable(descriptor))changes.put(descriptor.path(),descriptor.defaultValue());
+                // Renamed groups: alias keys are applied under their canonical path, and an
+                // explicit value replaces a staged default (canonicalChanges rejects conflicts).
+                var explicit=new LinkedHashMap<String,Object>();
                 for(var e:encoded.entrySet()) {
-                    if(!schema.descriptorsByPath().containsKey(e.getKey()))throw new SettingsException("Unknown settings path: "+e.getKey());
                     var wrapper=LegacySettingsMigration.readJson(("{\"value\":"+e.getValue()+"}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                    changes.put(e.getKey(),argumentNumbers(wrapper.get("value")));
+                    explicit.put(e.getKey(),argumentNumbers(wrapper.get("value")));
                 }
+                changes.putAll(schema.canonicalChanges(explicit));
                 document=store.saveDraft(old.hash(),changes);
             }
             default->throw new SettingsException("Unknown settings operation: "+operation);
