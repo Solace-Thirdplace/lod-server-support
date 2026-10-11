@@ -233,10 +233,16 @@ final class XaeroRebuildScheduler {
      *  (loading screens, hidden window, headless test JVMs) it falls back to the
      *  full §15 budget-with-borrow rebuild behavior. */
     void tickFlush(Object mp, Object dimensionId) {
+        tickFlush(mp, dimensionId, true);
+    }
+
+    /** {@code keepVisited} false = the heap belt is holding (map-ingestion plan §4.3): owed
+     *  rebuilds still flush, but no region is kept visited, so Xaero may park them. */
+    void tickFlush(Object mp, Object dimensionId, boolean keepVisited) {
         boolean frameActive = this.frameActiveThisPump;
         long budget = frameActive ? this.session.updateNanosBudget // bounds the cheap-class scan only
                 : this.rebuildBudgetWithBorrow();
-        this.flushPendingUpdates(mp, dimensionId, budget, frameActive ? 0 : Integer.MAX_VALUE, true);
+        this.flushPendingUpdates(mp, dimensionId, budget, frameActive ? 0 : Integer.MAX_VALUE, keepVisited);
     }
 
     void flushPendingUpdates(Object mp, Object dimensionId, long budget,

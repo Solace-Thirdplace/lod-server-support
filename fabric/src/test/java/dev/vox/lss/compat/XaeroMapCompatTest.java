@@ -3468,4 +3468,148 @@ class XaeroMapCompatTest {
         assertEquals(0, owner.failures());
     }
 
+    // ---- the open-region window and the heap belt (map-ingestion plan §4.1/§4.3:
+    // the unfocused-window OOM fix — Xaero releases a written region only from a
+    // rendered frame, at least 60 s after the last write) ----
+
+    private MapRegion region(int regionX, int regionZ) {
+        return this.processor.regions.get(((long) regionX << 32) | (regionZ & 0xFFFFFFFFL));
+    }
+
+    @Test
+    void theWindowSizeFollowsTheHeapAndTheLeverWins() {
+        assertEquals(64, XaeroSession.openRegionCapFor(6L << 30, -1), "6 GB: worst case ≈ 64 × 12 MB of source");
+        assertEquals(21, XaeroSession.openRegionCapFor(2L << 30, -1));
+        assertEquals(12, XaeroSession.openRegionCapFor(512L << 20, -1), "floor");
+        assertEquals(64, XaeroSession.openRegionCapFor(64L << 30, -1), "ceiling");
+        assertEquals(0, XaeroSession.openRegionCapFor(6L << 30, 0), "-Dlss.xaero.openRegionWindow=0 disables it");
+        assertEquals(5, XaeroSession.openRegionCapFor(6L << 30, 5));
+        assertEquals(0, this.bridge.openRegionCap, "a bare constructor leaves it off (the suite's default)");
+    }
+
+    @Test
+    void aFullWindowHoldsNewRegionsAndPacesTheStream() {
+        this.bridge.openRegionCap = 2;
+        offer(0, 0);    // region (0,0)
+        offer(32, 0);   // region (1,0)
+        offer(64, 0);   // region (2,0) — no slot
+        this.bridge.pump();
+        assertEquals(2, this.bridge.counterForTest("written"));
+        assertEquals(1, this.bridge.queuedForTest(), "the third region's tile stays queued, not dropped");
+        assertTrue(this.bridge.windowBound);
+        assertTrue(this.bridge.windowWaits.get() > 0);
+        assertEquals(Set.of(0L, 1L << 32), this.bridge.openRegions.keySet());
+        offer(1, 1); // region (0,0) is already open: it keeps committing
+        this.bridge.pump();
+        assertEquals(3, this.bridge.counterForTest("written"));
+        assertTrue(this.bridge.describe().contains(", open_regions=2/2, window_waits="), this.bridge.describe());
+    }
+
+    @Test
+    void aRegionXaeroParksOrRemovesLeavesTheWindow() {
+        this.bridge.openRegionCap = 2;
+        offer(0, 0);
+        offer(32, 0);
+        offer(64, 0);
+        this.bridge.pump();
+        assertEquals(1, this.bridge.queuedForTest());
+        region(0, 0).loadState = 3; // the first tile-chunk clean flips the region to 3
+        this.bridge.pump();         // the probe frees the slot; the waiting region commits
+        assertEquals(3, this.bridge.counterForTest("written"));
+        assertEquals(0, this.bridge.queuedForTest());
+        assertFalse(this.bridge.openRegions.containsKey(0L));
+        assertTrue(this.bridge.openRegions.containsKey(2L << 32));
+        this.processor.regions.remove(1L << 32); // removed by Xaero (removeMapRegion)
+        this.bridge.pump();
+        assertFalse(this.bridge.openRegions.containsKey(1L << 32), "a probe never re-creates a region");
+        assertFalse(this.processor.regions.containsKey(1L << 32));
+    }
+
+    @Test
+    void loadGrantsCountAgainstTheWindow() {
+        this.bridge.openRegionCap = 1;
+        offer(0, 0);
+        this.bridge.pump(); // region (0,0) open: the window is full
+        this.processor.createdRegionLoadState = 0;
+        offer(64, 0);
+        offer(96, 0);
+        this.bridge.pump();
+        assertEquals(0, this.bridge.counterForTest("load_requests"),
+                "no far region is loaded while the window is full (approach D(iii))");
+        region(0, 0).loadState = 3;
+        this.bridge.pump(); // slot free: one grant
+        assertEquals(1, this.bridge.counterForTest("load_requests"));
+    }
+
+    @Test
+    void aWindowHoldWidensTheHaltTimeBoxThenTheDutyClockReleases() {
+        this.bridge.openRegionCap = 1;
+        this.bridge.maxQueue = 2;
+        this.bridge.maxQueueBytes = Long.MAX_VALUE;
+        offer(0, 0);
+        this.bridge.pump();
+        offer(64, 0);
+        offer(96, 0); // full queue, both regions outside the full window
+        this.bridge.pump();
+        assertTrue(this.bridge.windowBound);
+        assertEquals(halt(), this.bridge.reportBackpressure(), "the window paces the stream");
+        this.clockMillis += this.bridge.bpHaltWedgeMillis + 1;
+        this.bridge.pump();
+        assertEquals(halt(), this.bridge.reportBackpressure(),
+                "a pacing hold is not a stuck writer: the 7 s time-box does not fire");
+        this.clockMillis += XaeroSession.BP_PACE_HOLD_MILLIS;
+        this.bridge.pump();
+        assertEquals(-1, this.bridge.reportBackpressure(), "but it never stops the fill for good");
+        assertTrue(this.bridge.describe().contains(", bp=-1(wedged)"), this.bridge.describe());
+    }
+
+    @Test
+    void theHeapBeltHoldsCommitsGrantsAndVisits() {
+        double[] fraction = {0.90};
+        this.bridge.memory = new MapMemoryGuard(() -> fraction[0], () -> this.clockMillis);
+        offer(0, 0);
+        this.bridge.pump();
+        assertEquals(0, this.bridge.counterForTest("written"), "no commit while the heap is full");
+        assertEquals(1, this.bridge.queuedForTest());
+        assertEquals(1, this.bridge.heapHolds.get());
+        assertTrue(this.bridge.heapHolding);
+        assertTrue(this.bridge.describe().contains(", heap=halt(0.90)"), this.bridge.describe());
+        fraction[0] = 0.60;
+        this.clockMillis += MapMemoryGuard.SAMPLE_INTERVAL_MILLIS;
+        this.bridge.pump();
+        assertEquals(1, this.bridge.counterForTest("written"), "resumes below the resume fraction");
+        assertFalse(this.bridge.heapHolding);
+    }
+
+    @Test
+    void theHeapBeltIsInertWithTheBackpressureKillSwitchOff() {
+        this.bridge.memory = new MapMemoryGuard(() -> 0.95, () -> this.clockMillis);
+        this.backpressureEnabled = false;
+        offer(0, 0);
+        this.bridge.pump();
+        assertEquals(1, this.bridge.counterForTest("written"));
+    }
+
+    @Test
+    void aDimensionChangeEmptiesTheWindow() {
+        this.bridge.openRegionCap = 4;
+        offer(0, 0);
+        this.bridge.pump();
+        assertEquals(1, this.bridge.openRegions.size());
+        this.clientDimension = NETHER;
+        this.processor.mapWorld.currentDimensionId = NETHER;
+        this.bridge.pump();
+        assertTrue(this.bridge.openRegions.isEmpty(), "the keys named the other dimension's regions");
+    }
+
+    @Test
+    void sessionEndEmptiesTheWindow() {
+        this.bridge.openRegionCap = 4;
+        offer(0, 0);
+        this.bridge.pump();
+        this.bridge.onSessionEnd();
+        this.bridge.pump();
+        assertTrue(this.bridge.openRegions.isEmpty());
+        assertEquals(0, this.bridge.openRegionsGauge);
+    }
 }
