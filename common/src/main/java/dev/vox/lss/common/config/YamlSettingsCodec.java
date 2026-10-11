@@ -133,7 +133,18 @@ public final class YamlSettingsCodec<T> {
             MappingNode parent = mappingAt(root, alias, alias.length - 1);
             int aliasIndex = parent == null ? -1 : indexOf(parent, alias[alias.length - 1]);
             if (aliasIndex < 0) continue;
-            if (indexOf(parent, canonical[canonical.length - 1]) >= 0) {
+            int canonicalIndex = indexOf(parent, canonical[canonical.length - 1]);
+            if (canonicalIndex >= 0) {
+                // Both groups: the configured values merged them (canonical wins, the alias
+                // fills leaves the canonical group lacks) — keep every merged leaf in the
+                // canonical group before the alias goes, or a save would reset alias-only
+                // values to their defaults (review).
+                if (parent.getValue().get(canonicalIndex).getValueNode() instanceof MappingNode canonicalGroup) {
+                    String prefix = group.getValue() + ".";
+                    for (var leaf : configured.entrySet())
+                        if (leaf.getKey().startsWith(prefix))
+                            replace(canonicalGroup, leaf.getKey().substring(prefix.length()).split("\\."), 0, node(leaf.getValue()));
+                }
                 parent.getValue().remove(aliasIndex);
                 changed = true;
                 continue;

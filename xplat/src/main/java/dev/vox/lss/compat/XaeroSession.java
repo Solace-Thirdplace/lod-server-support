@@ -558,9 +558,11 @@ final class XaeroSession {
     // The open-region window (main thread only). Off (0) for a bare constructor — the
     // test default; production init arms it from the heap size.
     int openRegionCap;
-    final java.util.LinkedHashMap<Long, Boolean> openRegions = new java.util.LinkedHashMap<>();
+    /** Window regions → 0 once committed into, or the grant time of a reserved load. */
+    final java.util.LinkedHashMap<Long, Long> openRegions = new java.util.LinkedHashMap<>();
+    /** The last time a region left the window or the window filled (the B1 turnover clock). */
+    long windowProgressMillis;
     Object openRegionsDimension;
-    int openRegionProbeCursor;
     volatile int openRegionsGauge;
     final AtomicLong windowWaits = new AtomicLong();
     /** The last drain parked a bucket on a full window (the report's pacing hold). */
@@ -1178,6 +1180,10 @@ final class XaeroSession {
                 this.blockedIdleSkips = 0;
                 this.pumpDrainable = true;
             } else {
+                // A gate block, the cave layer, a dead bridge: whatever holds the stream,
+                // it is not the window or the heap belt — no 60 s pacing box for it.
+                this.windowBound = false;
+                this.heapHolding = false;
                 int n = ++this.undrainablePumps;
                 if (n >= this.bpPausePumps) this.pumpDrainable = false;
             }
@@ -1274,15 +1280,16 @@ final class XaeroSession {
                     this.settingsWritesOff = true;
                     this.skippedSettings.addAndGet(clearQueue());
                     this.acquisition.regionsWaiting = 0;
-                    this.rebuilds.tickFlush(mp, dimensionId, true);
+                    this.rebuilds.tickFlush(mp, dimensionId);
                     return false;
                 }
                 this.settingsWritesOff = false;
             }
-            boolean heapHalt = this.memory.halted() && this.backpressureEnabled.getAsBoolean();
-            // §4.3: under heap pressure owed rebuilds still flush, but no region is kept
-            // visited — every park condition the bridge holds open is released.
-            this.rebuilds.tickFlush(mp, dimensionId, !heapHalt);
+            boolean heapHalt = this.backpressureEnabled.getAsBoolean() && this.memory.halted();
+            // §4.3: owed rebuilds still flush under heap pressure, and their regions stay
+            // visited until they do — letting them park mid-rebuild loses those tiles
+            // silently (review); the window already bounds how many regions are open.
+            this.rebuilds.tickFlush(mp, dimensionId);
             if (this.dead) return false;
             if (this.h.getCurrentCaveLayer != null
                     && (int) this.h.getCurrentCaveLayer.invoke(mp) != SURFACE_LAYER) {
@@ -1432,7 +1439,7 @@ final class XaeroSession {
                     case COMMITTED -> {
                         this.acquisition.removeIfCurrent(pending.key(), pending.entry(), pending.tile());
                         pending.origin().close();
-                        if (this.openRegionCap > 0) this.openRegions.putIfAbsent(regionKey, Boolean.TRUE);
+                        if (this.openRegionCap > 0) admitToWindow(regionKey, 0L);
                         this.written.incrementAndGet();
                         this.consecutiveFailures = 0;
                         commits++;
@@ -1494,7 +1501,10 @@ final class XaeroSession {
                 }
             }
         }
-        this.windowBound = windowWaited;
+        // Pacing, not a stuck writer, only while the window held back every commit AND it
+        // is still turning over (a region left, or it filled, within the pace window).
+        this.windowBound = windowWaited && commits == 0
+                && nowMillis() - this.windowProgressMillis <= BP_PACE_HOLD_MILLIS;
         this.openRegionsGauge = this.openRegions.size();
         if (generation != this.acquisition.acquisitionGeneration.get()) return;
         this.acquisition.probeOwed(mp, dimensionId, waiting);
@@ -1521,9 +1531,22 @@ final class XaeroSession {
                 || this.openRegions.size() < this.openRegionCap;
     }
 
-    /** Releases window regions Xaero has parked (loadState ≠ 2) or removed, at most
-     *  {@value #OPEN_REGION_PROBES_PER_PUMP} per pump, round-robin; a dimension change
-     *  empties the window (its keys name another dimension's regions). */
+    /** A load granted into the window keeps its slot this long before the loader starts it. */
+    static final long GRANT_RESERVE_MILLIS = 30_000;
+
+    /** Enters (or refreshes) a window region; {@code reservedAt} 0 = committed into. */
+    void admitToWindow(long regionKey, long reservedAt) {
+        Long previous = this.openRegions.get(regionKey);
+        if (previous != null && (previous == 0L || reservedAt != 0L)) return;
+        this.openRegions.put(regionKey, reservedAt);
+        if (previous == null && this.openRegions.size() >= this.openRegionCap) this.windowProgressMillis = nowMillis();
+    }
+
+    /** Releases window regions Xaero has parked (loadState 3/4) or removed — loading (1) and
+     *  loaded (2) regions stay, as does a reserved grant within {@link #GRANT_RESERVE_MILLIS}
+     *  — at most {@value #OPEN_REGION_PROBES_PER_PUMP} per pump, oldest first, a still-open
+     *  region moving to the back (round-robin without a cursor over a changing set). A
+     *  dimension change empties the window (its keys name another dimension's regions). */
     void probeOpenRegions(Object mp, Object dimensionId) throws Throwable {
         if (this.openRegionsDimension != dimensionId) {
             this.openRegions.clear();
@@ -1533,18 +1556,28 @@ final class XaeroSession {
             this.openRegionsGauge = 0;
             return;
         }
-        var keys = new ArrayList<>(this.openRegions.keySet());
-        int probes = Math.min(OPEN_REGION_PROBES_PER_PUMP, keys.size());
-        for (int i = 0; i < probes; i++) {
-            long key = keys.get(Math.floorMod(this.openRegionProbeCursor++, keys.size()));
+        long now = nowMillis();
+        var batch = new ArrayList<java.util.Map.Entry<Long, Long>>(OPEN_REGION_PROBES_PER_PUMP);
+        for (var e : this.openRegions.entrySet()) {
+            if (batch.size() >= OPEN_REGION_PROBES_PER_PUMP) break;
+            batch.add(java.util.Map.entry(e.getKey(), e.getValue()));
+        }
+        for (var e : batch) {
+            long key = e.getKey();
             Object region = this.h.getLeafMapRegion.invoke(mp, SURFACE_LAYER, (int) (key >> 32), (int) key, false);
-            boolean open = false;
+            byte state = -1;
             if (region != null) {
                 synchronized (region) {
-                    open = (byte) this.h.getLoadState.invoke(region) == 2;
+                    state = (byte) this.h.getLoadState.invoke(region);
                 }
             }
-            if (!open) this.openRegions.remove(key);
+            boolean reserved = e.getValue() != 0L && now - e.getValue() < GRANT_RESERVE_MILLIS;
+            this.openRegions.remove(key);
+            if (state == 1 || state == 2 || reserved) {
+                this.openRegions.put(key, e.getValue()); // still open: to the back of the round
+            } else {
+                this.windowProgressMillis = now;
+            }
         }
         this.openRegionsGauge = this.openRegions.size();
     }
@@ -1591,7 +1624,8 @@ final class XaeroSession {
         // §4.1 (approach D(iii)): a granted load becomes a resident region, so loads
         // count against the open-region window — far owed regions are not reloaded
         // while the window is full.
-        if (this.openRegionCap > 0) budget = Math.min(budget, this.openRegionCap - this.openRegions.size() - inFlight);
+        // A grant reserves its window slot (B4): loads in flight already hold theirs.
+        if (this.openRegionCap > 0) budget = Math.min(budget, this.openRegionCap - this.openRegions.size());
         if (budget <= 0 || candidates.isEmpty()) return;
         candidates.sort((a, b) -> Integer.compare(b.tiles(), a.tiles()));
         var chosen = candidates.subList(0, Math.min(budget, candidates.size()));
@@ -1599,6 +1633,7 @@ final class XaeroSession {
             if (this.dead) return;
             if (requestRegionLoad(mp, saveLoad, chosen.get(i).regionKey())) {
                 this.loadRequests.incrementAndGet();
+                if (this.openRegionCap > 0) admitToWindow(chosen.get(i).regionKey(), Math.max(1L, nowMillis()));
             }
         }
     }

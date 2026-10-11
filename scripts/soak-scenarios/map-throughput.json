@@ -1,0 +1,40 @@
+{
+  "snapshotIntervalSeconds": 5,
+  "joinTimeoutSeconds": 240,
+  "steps": [
+    {
+      "anchor": 1,
+      "at": 2,
+      "cmd": "gamerule minecraft:random_tick_speed 0"
+    },
+    {
+      "anchor": 1,
+      "at": 2,
+      "cmd": "gamerule minecraft:spawn_mobs false"
+    },
+    {
+      "anchor": 1,
+      "at": 2,
+      "cmd": "gamerule minecraft:mob_griefing false"
+    },
+    {
+      "anchor": 1,
+      "at": 3,
+      "cmd": "gamerule minecraft:fire_spread_radius_around_player 0"
+    },
+    {
+      "anchor": 1,
+      "at": 3,
+      "cmd": "gamerule minecraft:advance_time false"
+    },
+    {
+      "anchor": 1,
+      "at": 4,
+      "cmd": "tp @a 0 220 0"
+    }
+  ],
+  "end": {
+    "anchor": 1,
+    "at": 900
+  }
+}

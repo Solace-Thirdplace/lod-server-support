@@ -145,8 +145,9 @@ public final class SettingsSchema<T> {
         var notes=new ArrayList<Normalization>();
         for (var entry:aliased.entrySet()) {
             String canonical=aliases.get(entry.getKey());
-            if (flat.containsKey(canonical)) notes.add(new Normalization(entry.getKey(),entry.getValue(),flat.get(canonical)));
-            else flat.put(canonical,entry.getValue());
+            if (!flat.containsKey(canonical)) flat.put(canonical,entry.getValue());
+            else if (!Objects.equals(entry.getValue(),flat.get(canonical)))
+                notes.add(new Normalization(entry.getKey(),entry.getValue(),flat.get(canonical)));
         }
         var parsed=fromValues(flat);
         var inactive=new ArrayList<String>();

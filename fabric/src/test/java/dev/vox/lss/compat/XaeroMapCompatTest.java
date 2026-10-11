@@ -3496,8 +3496,10 @@ class XaeroMapCompatTest {
         this.bridge.pump();
         assertEquals(2, this.bridge.counterForTest("written"));
         assertEquals(1, this.bridge.queuedForTest(), "the third region's tile stays queued, not dropped");
-        assertTrue(this.bridge.windowBound);
+        assertFalse(this.bridge.windowBound, "this pump still committed: not window-bound yet");
         assertTrue(this.bridge.windowWaits.get() > 0);
+        this.bridge.pump();
+        assertTrue(this.bridge.windowBound, "only the window holds the stream now");
         assertEquals(Set.of(0L, 1L << 32), this.bridge.openRegions.keySet());
         offer(1, 1); // region (0,0) is already open: it keeps committing
         this.bridge.pump();
@@ -3588,6 +3590,74 @@ class XaeroMapCompatTest {
         offer(0, 0);
         this.bridge.pump();
         assertEquals(1, this.bridge.counterForTest("written"));
+    }
+
+    @Test
+    void aPumpThatNeverReachesTheDrainDropsThePacingHold() {
+        // A cave layer (or any gate) is not the window: the 7 s stuck-writer box applies.
+        this.bridge.openRegionCap = 1;
+        offer(0, 0);
+        this.bridge.pump();
+        offer(64, 0);
+        this.bridge.pump();
+        assertTrue(this.bridge.windowBound);
+        this.processor.currentCaveLayer = 3;
+        this.bridge.pump();
+        assertFalse(this.bridge.windowBound, "a stale flag would grant a 60 s box to a cave-layer stall");
+        assertEquals(this.bridge.bpHaltWedgeMillis, this.bridge.wedgeMillis());
+        this.processor.currentCaveLayer = Integer.MAX_VALUE;
+    }
+
+    @Test
+    void aWindowThatStoppedTurningOverIsAStuckWriterAgain() {
+        this.bridge.openRegionCap = 1;
+        offer(0, 0);
+        this.bridge.pump(); // the window fills: the turnover clock starts
+        offer(64, 0);
+        this.bridge.pump();
+        assertTrue(this.bridge.windowBound);
+        this.clockMillis += XaeroSession.BP_PACE_HOLD_MILLIS + 1;
+        this.bridge.pump();
+        assertFalse(this.bridge.windowBound, "no region left the window for a whole pace window");
+    }
+
+    @Test
+    void aGrantedLoadReservesItsWindowSlotUntilTheLoaderStartsIt() {
+        this.bridge.openRegionCap = 2;
+        this.processor.createdRegionLoadState = 0;
+        offer(64, 0);
+        this.bridge.pump();
+        assertEquals(1, this.bridge.counterForTest("load_requests"));
+        assertTrue(this.bridge.openRegions.containsKey(2L << 32), "the slot is held from the grant");
+        this.clockMillis += XaeroSession.GRANT_RESERVE_MILLIS - 1;
+        this.bridge.pump();
+        assertTrue(this.bridge.openRegions.containsKey(2L << 32), "still loading: kept");
+        this.clockMillis += 2;
+        region(2, 0).loadState = 4; // the load never started (or the region was released)
+        for (int i = 0; i < 3; i++) this.bridge.pump();
+        assertFalse(this.bridge.openRegions.containsKey(2L << 32), "an expired reservation frees its slot");
+    }
+
+    @Test
+    void theProbeReachesEveryWindowRegionInTurn() {
+        this.bridge.openRegionCap = 20;
+        for (int i = 0; i < 12; i++) offer(i * 32, 0);
+        this.bridge.pump();
+        assertEquals(12, this.bridge.openRegions.size());
+        region(11, 0).loadState = 3; // the newest one parks first
+        this.bridge.pump();
+        this.bridge.pump();
+        assertFalse(this.bridge.openRegions.containsKey(11L << 32), "found within two rounds of eight");
+    }
+
+    @Test
+    void theHeapBeltGrantsNoLoads() {
+        this.bridge.memory = new MapMemoryGuard(() -> 0.95, () -> this.clockMillis);
+        this.processor.createdRegionLoadState = 0;
+        offer(64, 0);
+        this.bridge.pump();
+        assertEquals(0, this.bridge.counterForTest("load_requests"));
+        assertEquals(1, this.bridge.queuedForTest());
     }
 
     @Test

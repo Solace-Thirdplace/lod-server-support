@@ -156,6 +156,24 @@ class JourneyMapSnapshotEncoderTest {
     }
 
     @Test
+    void sectionsFarBelowTheLowestSurfaceAreLeftOut() throws IOException {
+        var deep = JourneyMapTestColumns.empty();
+        deep.setBlockState(0, 0, 0, Blocks.DEEPSLATE.defaultBlockState()); // y = -64
+        var lit = new DataLayer();
+        lit.set(1, 1, 1, 9);
+        var surface = JourneyMapTestColumns.empty();
+        for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) surface.setBlockState(x, 4, z, Blocks.GRASS_BLOCK.defaultBlockState());
+        var near = JourneyMapTestColumns.empty();
+        near.setBlockState(3, 3, 3, Blocks.STONE.defaultBlockState()); // y = 3: inside 64 blocks of y = 69
+        var in = open(JourneyMapSnapshotEncoder.encode(0, 0, JourneyMapTestColumns.column(
+                new JourneyMapTestColumns.Spec(-4, deep, lit), new JourneyMapTestColumns.Spec(0, near, null),
+                new JourneyMapTestColumns.Spec(4, surface, null)), OVERWORLD)).payload();
+        in.skipNBytes(4 + 1 + 12);
+        assertEquals(2, in.readUnsignedByte(), "the y=-64 section is never read by a surface map");
+        assertEquals(4, in.readUnsignedByte(), "section y 0 stays");
+    }
+
+    @Test
     void moreThan255SectionsCannotBeExpressed() {
         assertNull(JourneyMapSnapshotEncoder.encode(0, 0, JourneyMapTestColumns.column(),
                 new JourneyMapLineSurface.LevelFacts(0, 256, 0, 4096)));

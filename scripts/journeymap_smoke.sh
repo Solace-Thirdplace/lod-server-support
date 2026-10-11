@@ -28,6 +28,16 @@ fi
 python3 "$PROJECT_ROOT/tools/settings/settings_file.py" edit --side client --path "$CLIENT_CONFIG" \
     --set integrations.map_ingestion.enabled=true --set integrations.map_ingestion.backpressure=true > /dev/null
 
+# A missing or stale base world would be auto-built by soak.sh INSIDE this run's environment —
+# fresh-backfill with JourneyMap installed, pre-filling the very map this smoke judges. Build it
+# first, without the JourneyMap levers.
+BASE_VERSION_FILE="$PROJECT_ROOT/soak-worlds/base/mc-version"
+LINE_VERSION="$(sed -n 's/^minecraft_version=//p' "$PROJECT_ROOT/gradle.properties")"
+if [[ ! -f "$BASE_VERSION_FILE" || "$(cat "$BASE_VERSION_FILE")" != "$LINE_VERSION" ]]; then
+    echo "[jm-smoke] Base world missing or stale — building it first (no JourneyMap)"
+    env -u SOAK_CLIENT_GRADLE_ARGS -u SOAK_EXTRA_GRADLE_ARGS "$PROJECT_ROOT/scripts/soak.sh" fresh-backfill
+fi
+
 echo "[jm-smoke] Clearing JourneyMap's map data"
 rm -rf "$CLIENT_RUN_DIR/journeymap/data"
 
@@ -53,12 +63,14 @@ CHECK_ARGS=(--jm-dir "$CLIENT_RUN_DIR/journeymap"
             --config "$PROJECT_ROOT/scripts/soak-scenarios/journeymap-map-config.yaml"
             --client-jsonl "$RESULTS_DIR/client-run1.jsonl"
             --client-log "$RESULTS_DIR/client-run1.log"
+            --client-log "$CLIENT_RUN_DIR/journeymap/journeymap.log"
             --export-crop "$RESULTS_DIR/journeymap-day.png")
 [[ "$MODE" == "world-id" ]] && CHECK_ARGS+=(--world-id)
 MAP_EXIT=0
 python3 "$PROJECT_ROOT/scripts/check_journeymap_smoke.py" "${CHECK_ARGS[@]}" | tee "$RESULTS_DIR/journeymap-verdict.txt" \
     || MAP_EXIT=${PIPESTATUS[0]}
 cp -r "$CLIENT_RUN_DIR/journeymap/data" "$RESULTS_DIR/journeymap-data" 2>/dev/null || true
+cp "$CLIENT_RUN_DIR/journeymap/journeymap.log" "$RESULTS_DIR/journeymap.log" 2>/dev/null || true
 
 echo "[jm-smoke] results: $RESULTS_DIR (soak checker exit $SOAK_EXIT, map verdict exit $MAP_EXIT)"
 if (( SOAK_EXIT != 0 )); then exit "$SOAK_EXIT"; fi

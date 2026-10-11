@@ -32,8 +32,8 @@ import org.junit.jupiter.api.Test;
 /**
  * The JourneyMap map-ingestion session (map-ingestion plan §3.4-§3.8) against the
  * real-package stubs: identity settle, one-region batches on JourneyMap's task thread,
- * the receipt doctrine (accepted only when every requested map type rendered under an
- * unchanged identity; everything else reported or requeued, never silently lost), the
+ * the receipt doctrine (accepted only when the day map rendered under an unchanged identity;
+ * everything else reported or requeued, never silently lost), the edge sweep, the
  * inert states that never hold the stream, the late-world-id replay, the watchdog, the
  * death latch, and the backpressure report.
  */
@@ -453,9 +453,9 @@ class JourneyMapSessionTest {
         for (int i = 0; i < 5; i++) offer(i, 0);
         settle();
         cycle();
-        assertEquals(2, counter("rendered"), "renders at +0 and +60 fit the 100 ms box; +120 does not");
-        assertEquals(3, counter("requeued"));
-        assertEquals(3, this.session.queuedGauge);
+        assertEquals(4, counter("rendered"), "the box is two renderDelays: +0..+180 fit 200 ms, +240 does not");
+        assertEquals(1, counter("requeued"));
+        assertEquals(1, this.session.queuedGauge);
         assertTrue(this.reports.isEmpty(), "requeued, not reported");
         assertTrue(DataCache.INSTANCE.cache.isEmpty());
     }
@@ -521,6 +521,148 @@ class JourneyMapSessionTest {
         this.clock += JourneyMapSession.SETTLE_MILLIS + 1;
         cycle();
         assertFalse(DataCache.INSTANCE.added.contains(JourneyMapSession.mcChunkKey(0, 0)));
+    }
+
+    // ---- review folds (J5) ----
+
+    @Test
+    void journeyMapsOwnMappingSwitchOffIsInertNotAHold() {
+        offer(0, 0);
+        this.jm.properties.mappingEnabled.value = false;
+        this.jm.mapping = Boolean.FALSE; // JourneyMap stopped and will not restart
+        this.session.pump();
+        assertEquals("inert(mapping_disabled)", this.session.state());
+        assertEquals(-1, this.session.reportBackpressure(), "never holds the LOD stream");
+        assertEquals(0, this.session.queuedGauge);
+        gatedOffer(1, 1);
+        assertEquals(1, counter("dropped_inert"));
+    }
+
+    @Test
+    void aLateWorldIdReplaysThroughJourneyMapsRealStopGapRestart() {
+        offer(0, 0);
+        offer(1, 0);
+        settle();
+        cycle();
+        assertEquals(2, counter("rendered"));
+        // setCurrentWorldId: stopMapping at once ...
+        this.jm.mapping = Boolean.FALSE;
+        this.clock += 50;
+        this.session.pump();
+        assertEquals("waiting(not_mapping)", this.session.state());
+        // ... and up to a second later a NEW controller maps into the id-suffixed directory.
+        this.jm.mapping = Boolean.TRUE;
+        this.jm.controller = new TaskController();
+        this.jm.worldId = "abcdef";
+        FileHandler.worldDir = new File("jm-test/mp/Server_A_abcdef");
+        this.clock += 1000;
+        this.session.pump();
+        assertEquals(2, counter("replayed"), "the columns drawn into the id-less directory re-serve");
+        assertEquals(2, this.reports.size());
+    }
+
+    @Test
+    void anEvictedWrapperIsRequeuedNeverAcceptedUndrawn() {
+        DataCache.INSTANCE.evictEveryAdd = true;
+        offer(0, 0);
+        settle();
+        cycle();
+        assertEquals(0, counter("rendered"));
+        assertEquals(0, counter("skipped_live"), "a null lookup is not a live chunk");
+        assertEquals(1, counter("requeued"));
+        assertEquals(1, this.session.queuedGauge);
+        assertTrue(renders().isEmpty());
+    }
+
+    @Test
+    void wholesaleRenderRefusalsTripTheDeathLatch() {
+        this.jm.renderController.result = (type, md) -> false;
+        settle();
+        for (int i = 0; i < JourneyMapSession.DEATH_LATCH; i++) {
+            offer(i, 0);
+            cycle();
+            this.clock += 1000;
+        }
+        assertEquals("dead", this.session.state(), "a refusing renderer must not re-serve the disc forever");
+    }
+
+    @Test
+    void aColumnEncodedAcrossASessionEndNeverReachesTheNextSession() {
+        var receipt = this.session.new Receipt(); // captured while the old session was live
+        this.session.onSessionEnd();
+        this.session.offerEncoded(new JourneyMapSession.Entry(OVERWORLD, 0, 0, frame(0, 0), receipt));
+        assertEquals(0, this.session.queuedGauge);
+        assertTrue(receipt.closed.get());
+    }
+
+    @Test
+    void ourWrappersReleaseTheirChunkEvenWhenTheCacheCannotHandThemBack() {
+        offer(0, 0);
+        settle();
+        var wrappers = new ArrayList<SnapshotChunkMD>();
+        var plain = this.session.decoder;
+        this.session.decoder = (bytes, level) -> {
+            var md = (SnapshotChunkMD) plain.decode(bytes, level);
+            wrappers.add(md);
+            return md;
+        };
+        cycle();
+        assertEquals(1, wrappers.size());
+        assertFalse(wrappers.getFirst().retained, "stopChunkRetention runs for every wrapper we added");
+    }
+
+    @Test
+    void decodingRealTerrainNeverStarvesRendering() {
+        // The throughput gate's livelock: decoding everything first spent the whole box.
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+        var plain = this.session.decoder;
+        this.session.decoder = (bytes, level) -> {
+            this.clock += 60; // decoding costs as much as rendering on real terrain
+            return plain.decode(bytes, level);
+        };
+        for (int i = 0; i < 20; i++) offer(i, 0);
+        settle();
+        cycle();
+        assertTrue(counter("rendered") >= 8, "most of the box renders: " + counter("rendered"));
+        assertEquals(20, counter("rendered") + counter("requeued"));
+    }
+
+    @Test
+    void theEdgeSweepNeverPaintsAnotherDimensionsChunk() {
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+        livePlayerAt(0, 0);
+        live(9, 0).dimension = END; // JourneyMap's cache already serves the new dimension
+        live(0, 9);
+        settle();
+        cycle();
+        assertEquals(1, counter("edge_rendered"));
+        assertEquals(0, renders().getFirst().chunk().chunkX);
+    }
+
+    @Test
+    void theEdgeSweepFollowsJourneyMapsSurfaceCap() {
+        this.jm.gameRenderDistance = 7;
+        this.jm.properties.renderDistanceSurfaceMax.value = 4;
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+        livePlayerAt(0, 0);
+        live(6, 0); // inside the game range, outside JourneyMap's capped surface range
+        settle();
+        cycle();
+        assertEquals(1, counter("edge_rendered"), "the ring starts where JourneyMap stops mapping");
+    }
+
+    @Test
+    void aSweepThatDrewNothingCostsNoIdleGap() {
+        livePlayerAt(0, 0);
+        offer(40, 40);
+        settle();
+        cycle(); // an empty sweep
+        assertEquals(1, counter("edge_sweeps"));
+        cycle(); // the LSS batch follows at once
+        assertEquals(1, counter("batches"));
     }
 
     // ---- the edge sweep ----

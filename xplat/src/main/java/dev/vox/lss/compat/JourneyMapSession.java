@@ -42,11 +42,13 @@ import net.minecraft.world.level.Level;
  * {@code JourneymapClient} monitor {@code stopMapping} holds); the BATCH decodes, renders and
  * publishes on that thread and always ends in a terminal result the pump reconciles.
  *
- * <p>Doctrine (Xaero bridge parity): a column is accepted only when every requested map type
- * rendered it under an unchanged identity; anything else is reported for its bounded re-serve
- * or requeued, never silently lost. Inert states (JourneyMap disabled, mapping not allowed,
+ * <p>Doctrine (Xaero bridge parity): a column is accepted only when its DAY map rendered under
+ * an unchanged identity (topography and biome are best effort, as in JourneyMap's own
+ * pipeline); anything else is reported for its bounded re-serve or requeued, never silently
+ * lost. Inert states (JourneyMap disabled or its mapping switched off, mapping not allowed,
  * dimensions with a ceiling) drop offers before encoding and report no backpressure, so a map
- * that cannot take terrain never holds the stream.
+ * that cannot take terrain never holds the stream. The edge sweep renders JourneyMap's own
+ * live chunks in the ring between its render range and the LOD disc.
  */
 final class JourneyMapSession {
     static final int MAX_QUEUE = 8192;
@@ -60,8 +62,15 @@ final class JourneyMapSession {
     static final long START_TIMEOUT_MILLIS = 30_000;
     static final long SLOW_BATCH_MILLIS = 10_000;
     static final long DEFAULT_RENDER_DELAY_MILLIS = 500;
+    /** A batch runs for at most this many of JourneyMap's renderDelays (its own mapping
+     *  tasks may run three), then idles half of one: JourneyMap's queued tasks run first,
+     *  so its own mapping waits at most one batch. Measured on real terrain (J4): ~3 ms per
+     *  column on JourneyMap's thread, so this pace bounds the map — and, maps pacing the
+     *  download (U2), the LOD fill. */
+    static final int BATCH_BOX_RENDER_DELAYS = 2;
     static final int DEATH_LATCH = 5;
     static final int CONTEXT_CAPACITY = 512;
+    static final long CONTEXT_MAX_BYTES = 16L * 1024 * 1024;
     static final int REPLAY_CAPACITY = 4096;
     static final long REPLAY_WINDOW_MILLIS = 30_000;
     /** The edge sweep's cadence and reach beyond JourneyMap's own mapping range (chunks). */
@@ -236,6 +245,8 @@ final class JourneyMapSession {
         long rendered = session.rendered.get();
         out.put("encode_us_per_column", columns == 0 ? 0L : session.encodeNanos.get() / columns / 1000);
         out.put("render_us_per_column", rendered == 0 ? 0L : session.renderNanos.get() / rendered / 1000);
+        long decoded = session.decodedColumns.get();
+        out.put("decode_us_per_column", decoded == 0 ? 0L : session.decodeNanos.get() / decoded / 1000);
         out.put("occupancy", session.occupancy);
         return out;
     }
@@ -305,6 +316,7 @@ final class JourneyMapSession {
      *  Tagged with the map they were rendered into — a batch racing an identity change
      *  must never lend one map's terrain to another as context. */
     final LinkedHashMap<Long, ContextColumn> context = new LinkedHashMap<>(16, 0.75f, true);
+    long contextBytes; // guarded by context
 
     // ---- counters ----
     final AtomicLong batches = new AtomicLong();
@@ -324,6 +336,8 @@ final class JourneyMapSession {
     final AtomicLong encodeNanos = new AtomicLong();
     final AtomicLong encodedColumns = new AtomicLong();
     final AtomicLong renderNanos = new AtomicLong();
+    final AtomicLong decodeNanos = new AtomicLong();
+    final AtomicLong decodedColumns = new AtomicLong();
     final AtomicLong dropsReported = new AtomicLong();
     final AtomicLong heapHolds = new AtomicLong();
     /** Optional map types (topography, biome) JourneyMap refused for an accepted column. */
@@ -475,6 +489,7 @@ final class JourneyMapSession {
         this.replay.clear();
         synchronized (this.context) {
             this.context.clear();
+            this.contextBytes = 0;
         }
         if (this.registered && !this.enabled.getAsBoolean()) {
             this.deregistrar.accept(this.consumer);
@@ -524,7 +539,13 @@ final class JourneyMapSession {
             return;
         }
         long start = System.nanoTime();
-        byte[] bytes = JourneyMapSnapshotEncoder.encode(chunkX, chunkZ, data, facts);
+        byte[] bytes;
+        try {
+            bytes = JourneyMapSnapshotEncoder.encode(chunkX, chunkZ, data, facts);
+        } catch (Throwable t) {
+            receipt.close(); // never leak the acceptance lease
+            throw t;
+        }
         this.encodeNanos.addAndGet(System.nanoTime() - start);
         this.encodedColumns.incrementAndGet();
         if (bytes == null) {
@@ -539,6 +560,12 @@ final class JourneyMapSession {
     void offerEncoded(Entry entry) {
         var evicted = new ArrayList<Entry>(0);
         synchronized (this.queueLock) {
+            if (!entry.receipt.active()) {
+                // The session ended while this column was encoding: it must never reach the
+                // next session's (maybe another server's) map.
+                entry.receipt.close();
+                return;
+            }
             var previous = this.queue.remove(entry.key());
             if (previous != null) {
                 this.queuedBytes -= previous.bytes.length;
@@ -600,6 +627,7 @@ final class JourneyMapSession {
         try {
             if (this.dead) return;
             if (!this.enabled.getAsBoolean()) {
+                reconcileInFlight(); // a finished batch's receipts still close
                 clearQueue();
                 return;
             }
@@ -625,6 +653,13 @@ final class JourneyMapSession {
             inert("journeymap_disabled", null);
             return;
         }
+        Object props = this.h.getCoreProperties.invoke(client);
+        if (props != null && Boolean.FALSE.equals(this.h.booleanFieldGet.invoke(this.h.mappingEnabled.invoke(props)))) {
+            // JourneyMap's own "mapping disabled" toggle: it will not map again until the
+            // user turns it back on — inert, never a transient hold (review MAJOR).
+            inert("mapping_disabled", null);
+            return;
+        }
         if (this.host.hasCeiling(level)) {
             inert("ceiling_dimension", this.host.dimension(level));
             return;
@@ -637,7 +672,8 @@ final class JourneyMapSession {
             this.observed = null;
             return;
         }
-        if (this.observed == null || now - this.lastIdentityPollMillis >= IDENTITY_POLL_MILLIS) {
+        if (this.observed == null || this.observed.level() != level
+                || now - this.lastIdentityPollMillis >= IDENTITY_POLL_MILLIS) {
             this.lastIdentityPollMillis = now;
             Object dimension = this.host.dimension(level);
             Object day = this.h.mapTypeDay.invoke(dimension);
@@ -654,7 +690,6 @@ final class JourneyMapSession {
                 this.observed = identity;
                 this.identitySinceMillis = now;
             }
-            Object props = this.h.getCoreProperties.invoke(client);
             Object delay = props == null ? null : this.h.integerFieldGet.invoke(this.h.renderDelay.invoke(props));
             this.renderDelayMillis = delay instanceof Integer d && d > 0 ? d : DEFAULT_RENDER_DELAY_MILLIS;
         }
@@ -667,7 +702,7 @@ final class JourneyMapSession {
             return;
         }
         this.waitingReason = null;
-        boolean heapHalt = this.memory.halted() && this.backpressureEnabled.getAsBoolean();
+        boolean heapHalt = this.backpressureEnabled.getAsBoolean() && this.memory.halted();
         this.heapHolding = heapHalt;
         if (heapHalt) {
             this.heapHolds.incrementAndGet();
@@ -736,17 +771,25 @@ final class JourneyMapSession {
             batch.entries.forEach(e -> e.receipt.report(e.dimension, e.chunkX, e.chunkZ));
             this.inFlight = null;
         }
-        if (previous != null && previous.worldDir() != null && !previous.worldDir().equals(next.worldDir())) {
+        if (next.worldDir() != null) {
+            // JourneyMap restarts mapping in a new directory when the world id arrives late:
+            // stopMapping at once, a new start up to a second later — the pump sees the gap
+            // (observed = null), so the replay keys on the DIRECTORY the column went to, never
+            // on the previous identity (review MAJOR).
             long now = now();
-            for (var r : this.replay) {
-                if (now - r.atMillis() > REPLAY_WINDOW_MILLIS || !r.worldDir().equals(previous.worldDir())) continue;
+            var it = this.replay.iterator();
+            while (it.hasNext()) {
+                var r = it.next();
+                if (r.worldDir().equals(next.worldDir())) continue;
+                it.remove();
+                if (now - r.atMillis() > REPLAY_WINDOW_MILLIS) continue;
                 this.dropReporter.report(r.dimension(), r.chunkX(), r.chunkZ());
                 this.replayed.incrementAndGet();
             }
-            this.replay.clear();
         }
         synchronized (this.context) {
             this.context.clear();
+            this.contextBytes = 0;
         }
         // Columns of another dimension can never be written here: report them for the return.
         if (previous == null || !Objects.equals(previous.dimension(), next.dimension())) {
@@ -785,8 +828,15 @@ final class JourneyMapSession {
                 }
             }
             var it = this.queue.values().iterator();
+            var inactive = new ArrayList<Entry>(0);
             while (it.hasNext() && picked.size() < MAX_BATCH_COLUMNS) {
                 var e = it.next();
+                if (!e.receipt.active()) {
+                    it.remove();
+                    this.queuedBytes -= e.bytes.length;
+                    inactive.add(e);
+                    continue;
+                }
                 if (!Objects.equals(e.dimension, identity.dimension())) {
                     it.remove();
                     this.queuedBytes -= e.bytes.length;
@@ -802,10 +852,11 @@ final class JourneyMapSession {
             }
             updateOccupancyLocked();
             this.lastRegionKey = region;
+            inactive.forEach(e -> e.receipt.close());
         }
         this.droppedStale.addAndGet(foreign.size());
         this.pendingReports.addAll(foreign);
-        return picked.isEmpty() ? null : new Batch(picked, identity, this.renderDelayMillis);
+        return picked.isEmpty() ? null : new Batch(picked, identity, this.renderDelayMillis * BATCH_BOX_RENDER_DELAYS);
     }
 
     void reconcileInFlight() {
@@ -824,7 +875,7 @@ final class JourneyMapSession {
             return;
         }
         if (state == Batch.STARTED) {
-            if (!batch.slowCounted && now - batch.startedAtMillis > SLOW_BATCH_MILLIS) {
+            if (!batch.slowCounted && batch.startedAtMillis != 0 && now - batch.startedAtMillis > SLOW_BATCH_MILLIS) {
                 batch.slowCounted = true;
                 this.slowBatches.incrementAndGet();
             }
@@ -834,8 +885,11 @@ final class JourneyMapSession {
         this.inFlight = null;
         applyResult(batch, batch.result);
         long wall = Math.max(0, batch.finishedAtMillis - batch.startedAtMillis);
-        this.lastBatchMillis = wall;
-        this.nextSubmitAfterMillis = now + Math.max(this.renderDelayMillis, wall);
+        boolean idle = batch.edge && (batch.result == null || batch.result.edgeRendered == 0);
+        if (!batch.edge) this.lastBatchMillis = wall;
+        // Half a renderDelay between batches (JourneyMap's queued tasks run first) — and a
+        // sweep that drew nothing costs none.
+        this.nextSubmitAfterMillis = idle ? now : now + this.renderDelayMillis / 2;
     }
 
     void applyResult(Batch batch, Result r) {
@@ -856,8 +910,10 @@ final class JourneyMapSession {
             return;
         }
         if (r.notAllowed) {
+            // Not allowed here (anymore): these columns cannot be written. The next pump
+            // re-polls at once and enters the inert state, which also clears the queue.
             batch.entries.forEach(e -> e.receipt.close());
-            this.inertReason = "mapping_not_allowed";
+            this.observed = null;
             return;
         }
         long now = now();
@@ -877,10 +933,17 @@ final class JourneyMapSession {
         r.decodeFailures.forEach(e -> e.receipt.close());
         this.decodeFailures.addAndGet(r.decodeFailures.size());
         this.renderNanos.addAndGet(r.renderNanos);
+        this.decodeNanos.addAndGet(r.decodeNanos);
+        this.decodedColumns.addAndGet(r.decoded);
         requeue(r.requeued);
-        boolean nothingDecoded = !r.decodeFailures.isEmpty() && r.rendered.isEmpty() && r.renderFailed.isEmpty();
-        if (nothingDecoded) noteBatchFailure(null);
-        else this.consecutiveFailedBatches = 0;
+        // A batch that rendered nothing while columns failed to decode or render counts
+        // toward the death latch: a renderer refusing wholesale would otherwise re-serve
+        // the whole disc forever (review).
+        if (r.rendered.isEmpty() && (!r.decodeFailures.isEmpty() || !r.renderFailed.isEmpty())) {
+            noteBatchFailure(null);
+        } else if (!r.rendered.isEmpty()) {
+            this.consecutiveFailedBatches = 0;
+        }
     }
 
     /** Time-boxed remainder: back into the queue unless a newer delivery replaced it. */
@@ -930,6 +993,8 @@ final class JourneyMapSession {
         long renderNanos;
         long optionalRefusals;
         long edgeRendered;
+        long decodeNanos;
+        long decoded;
     }
 
     final class Batch {
@@ -1046,88 +1111,59 @@ final class JourneyMapSession {
         }
         Object dataCache = this.h.dataCache.invoke();
         Object allowCached = this.h.allowCached.invoke();
-
         long deadline = batch.startedAtMillis + batch.timeBoxMillis;
-        // forceRetain=true: each SnapshotChunkMD holds its LevelChunk strongly until it
-        // leaves the cache, so the render never meets a collected chunk.
-        var mds = new ArrayList<Object>();
-        var mdEntries = new ArrayList<Entry>();
+        // One column at a time — decode, add, render — under ONE time box: decoding real
+        // terrain costs as much as rendering it, so a decode-everything-first batch spent the
+        // whole box decoding and requeued the rest, forever (the throughput live gate). North
+        // and west first: their wrappers stay in JourneyMap's cache for the batch, so slope
+        // shading and biome blending of later columns see them.
+        var ordered = new ArrayList<>(batch.entries);
+        ordered.sort(java.util.Comparator.comparingInt((Entry e) -> e.chunkZ).thenComparingInt(e -> e.chunkX));
         var batchKeys = new java.util.HashSet<Long>();
-        for (var e : batch.entries) batchKeys.add(e.key());
-        for (var e : batch.entries) {
-            if (!this.sessionActive.getAsBoolean()) {
-                r.requeued.add(e); // the session ended: requeue closes the inactive receipt
-                continue;
-            }
-            try {
-                Object live = this.h.getChunkMD.invoke(dataCache, mcChunkKey(e.chunkX, e.chunkZ));
-                if (live != null && (boolean) this.h.hasLevelChunk.invoke(live)) {
-                    r.skippedLive.add(e);
-                    continue;
-                }
-                Object md = this.decoder.decode(e.bytes, id.level());
-                if (md == null) {
-                    r.decodeFailures.add(e);
-                    continue;
-                }
-                mds.add(md);
-                mdEntries.add(e);
-            } catch (Throwable t) {
-                if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
-                r.columnFailures.add(e);
-            }
-        }
-        // Slope shading and biome blending read the north, west and north-west neighbours:
-        // recently rendered columns outside this batch join as context, never rendered.
-        var contextMds = new ArrayList<Object>();
-        var contextMcKeys = new ArrayList<Long>();
-        var contextKeys = new java.util.HashSet<Long>();
-        for (var e : mdEntries) {
-            for (int[] d : new int[][]{{0, -1}, {-1, -1}, {-1, 0}}) {
-                int x = e.chunkX + d[0], z = e.chunkZ + d[1];
-                long key = packed(x, z);
-                if (batchKeys.contains(key) || !contextKeys.add(key)) continue;
-                ContextColumn column;
-                synchronized (this.context) {
-                    column = this.context.get(key);
-                }
-                if (column == null || !Objects.equals(column.dimension(), id.dimension())
-                        || !Objects.equals(column.worldDir(), id.worldDir())) continue;
-                byte[] bytes = column.bytes();
-                try {
-                    Object live = this.h.getChunkMD.invoke(dataCache, mcChunkKey(x, z));
-                    if (live != null && (boolean) this.h.hasLevelChunk.invoke(live)) continue;
-                    Object md = this.decoder.decode(bytes, id.level());
-                    if (md != null) {
-                        contextMds.add(md);
-                        contextMcKeys.add(mcChunkKey(x, z));
-                    }
-                } catch (Throwable t) {
-                    if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
-                }
-            }
-        }
-        for (Object md : mds) this.h.addChunkMD.invoke(dataCache, md);
-        for (Object md : contextMds) this.h.addChunkMD.invoke(dataCache, md);
-        long renderStart = System.nanoTime();
+        for (var e : ordered) batchKeys.add(e.key());
+        var present = new java.util.HashSet<Long>();
+        var ours = new ArrayList<Object>();
+        var oursKeys = new ArrayList<Long>();
         try {
-            for (int i = 0; i < mds.size(); i++) {
-                Object md = mds.get(i);
-                Entry e = mdEntries.get(i);
-                if (now() > deadline) {
+            for (var e : ordered) {
+                if (!this.sessionActive.getAsBoolean() || now() > deadline) {
                     // JourneyMap's own pacing: one renderDelay of work per batch, then the
-                    // pump's duty gate idles it at least as long. The rest goes back.
+                    // pump idles it at least as long. A finished session's receipts close.
                     r.requeued.add(e);
                     continue;
                 }
                 long key = mcChunkKey(e.chunkX, e.chunkZ);
                 try {
-                    if (this.h.getChunkMDWithIntent.invoke(dataCache, key, allowCached) != md) {
-                        r.skippedLive.add(e); // a live chunk replaced ours mid-batch: JourneyMap owns it
+                    Object live = this.h.getChunkMD.invoke(dataCache, key);
+                    if (live != null && (boolean) this.h.hasLevelChunk.invoke(live)) {
+                        r.skippedLive.add(e); // JourneyMap maps its live chunks itself
+                        continue;
+                    }
+                    long t0 = System.nanoTime();
+                    addContext(e, id, dataCache, batchKeys, present, ours, oursKeys, r);
+                    Object md = this.decoder.decode(e.bytes, id.level());
+                    long t1 = System.nanoTime();
+                    r.decodeNanos += t1 - t0;
+                    r.decoded++;
+                    if (md == null) {
+                        r.decodeFailures.add(e);
+                        continue;
+                    }
+                    this.h.addChunkMD.invoke(dataCache, md);
+                    ours.add(md);
+                    oursKeys.add(key);
+                    present.add(e.key());
+                    Object current = this.h.getChunkMDWithIntent.invoke(dataCache, key, allowCached);
+                    if (current != md) {
+                        // A live chunk replaced ours (JourneyMap owns it), or JourneyMap's cache
+                        // dropped our wrapper already (an invalidation, its size cap): requeue
+                        // — a null here is never "live" (review MAJOR).
+                        (current != null ? r.skippedLive : r.requeued).add(e);
                         continue;
                     }
                     boolean ok = renderTypes(controller, id, types, e.chunkX, e.chunkZ, md, r);
                     this.h.clearAll.invoke(this.h.getBlockData.invoke(md));
+                    r.renderNanos += System.nanoTime() - t1;
                     (ok ? r.rendered : r.renderFailed).add(e);
                 } catch (Throwable t) {
                     if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
@@ -1135,14 +1171,7 @@ final class JourneyMapSession {
                 }
             }
         } finally {
-            r.renderNanos = System.nanoTime() - renderStart;
-            for (int i = 0; i < mds.size(); i++) {
-                var e = mdEntries.get(i);
-                removeIfOurs(dataCache, allowCached, mcChunkKey(e.chunkX, e.chunkZ), mds.get(i));
-            }
-            for (int i = 0; i < contextMds.size(); i++) {
-                removeIfOurs(dataCache, allowCached, contextMcKeys.get(i), contextMds.get(i));
-            }
+            for (int i = 0; i < ours.size(); i++) release(dataCache, allowCached, oursKeys.get(i), ours.get(i));
         }
         this.h.updateTextures.invoke(this.h.regionImageCache.invoke(), false, true);
         if (!identityStillMatches(id)) {
@@ -1153,14 +1182,57 @@ final class JourneyMapSession {
         }
         synchronized (this.context) {
             for (var e : r.rendered) {
-                this.context.put(e.key(), new ContextColumn(id.dimension(), id.worldDir(), e.bytes));
-                if (this.context.size() > CONTEXT_CAPACITY) {
-                    var it = this.context.keySet().iterator();
-                    it.next();
+                var previous = this.context.put(e.key(), new ContextColumn(id.dimension(), id.worldDir(), e.bytes));
+                this.contextBytes += e.bytes.length - (previous == null ? 0 : previous.bytes().length);
+                var it = this.context.values().iterator();
+                while ((this.context.size() > CONTEXT_CAPACITY || this.contextBytes > CONTEXT_MAX_BYTES) && it.hasNext()) {
+                    this.contextBytes -= it.next().bytes().length;
                     it.remove();
                 }
             }
         }
+    }
+
+    /** Decodes and adds the column's north, north-west and west neighbours from recent renders
+     *  (context only, never rendered) unless the batch, a live chunk, or an earlier context
+     *  wrapper already covers them. */
+    private void addContext(Entry e, Identity id, Object dataCache, java.util.Set<Long> batchKeys,
+                            java.util.Set<Long> present, List<Object> ours, List<Long> oursKeys, Result r) {
+        for (int[] d : new int[][]{{0, -1}, {-1, -1}, {-1, 0}}) {
+            int x = e.chunkX + d[0], z = e.chunkZ + d[1];
+            long key = packed(x, z);
+            if (batchKeys.contains(key) || !present.add(key)) continue;
+            ContextColumn column;
+            synchronized (this.context) {
+                column = this.context.get(key);
+            }
+            if (column == null || !Objects.equals(column.dimension(), id.dimension())
+                    || !Objects.equals(column.worldDir(), id.worldDir())) continue;
+            try {
+                long mcKey = mcChunkKey(x, z);
+                Object live = this.h.getChunkMD.invoke(this.h.dataCache.invoke(), mcKey);
+                if (live != null && (boolean) this.h.hasLevelChunk.invoke(live)) continue;
+                Object md = this.decoder.decode(column.bytes(), id.level());
+                if (md == null) continue;
+                this.h.addChunkMD.invoke(dataCache, md);
+                ours.add(md);
+                oursKeys.add(mcKey);
+            } catch (Throwable t) {
+                if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
+            }
+        }
+    }
+
+    /** Releases one of our wrappers: drops its strong chunk reference (so a wrapper JourneyMap
+     *  could not hand back — no level after a disconnect — never pins the old level), then
+     *  removes it unless a live chunk replaced it. */
+    private void release(Object dataCache, Object allowCached, long mcKey, Object md) {
+        try {
+            this.h.stopChunkRetention.invoke(md);
+        } catch (Throwable t) {
+            if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
+        }
+        removeIfOurs(dataCache, allowCached, mcKey, md);
     }
 
     /**
@@ -1178,10 +1250,16 @@ final class JourneyMapSession {
             this.edgeDone.clear();
             this.edgeIdentity = id;
         }
-        int range = (int) this.h.getGameRenderDistance.invoke(client);
+        // JourneyMap's own surface range: the game render distance, capped by its surface
+        // maximum (0 = uncapped). The band reaches past the VANILLA area, whatever JourneyMap's
+        // cap: that is the ring LSS leaves to vanilla.
+        int game = (int) this.h.getGameRenderDistance.invoke(client);
+        Object props = this.h.getCoreProperties.invoke(client);
+        Object cap = props == null ? null : this.h.integerFieldGet.invoke(this.h.renderDistanceSurfaceMax.invoke(props));
+        int range = cap instanceof Integer c && c > 0 ? Math.min(game, c) : game;
         int px = (int) (batch.playerChunk >> 32);
         int pz = (int) batch.playerChunk;
-        int reach = range + EDGE_BAND_CHUNKS;
+        int reach = game + EDGE_BAND_CHUNKS;
         double inside = range + 0.5; // JourneyMap's own circle test (RenderSpec.inRange)
         Object dataCache = this.h.dataCache.invoke();
         long deadline = batch.startedAtMillis + batch.timeBoxMillis;
@@ -1193,6 +1271,9 @@ final class JourneyMapSession {
                 long key = packed(x, z);
                 Object live = this.h.getChunkMD.invoke(dataCache, mcChunkKey(x, z));
                 if (live == null || !(boolean) this.h.hasLevelChunk.invoke(live)) continue;
+                // During a dimension switch JourneyMap can still be mapping the OLD dimension
+                // while its cache already serves the new one: never paint across (review).
+                if (!Objects.equals(this.h.getDimension.invoke(live), id.dimension())) continue;
                 if (this.edgeDone.get(key) == live) {
                     keep.put(key, live);
                     continue;
@@ -1279,6 +1360,7 @@ final class JourneyMapSession {
                 + ", context=" + contextSize
                 + ", last_batch_ms=" + this.lastBatchMillis
                 + ", encode_us_per_column=" + (columns == 0 ? 0 : this.encodeNanos.get() / columns / 1000)
+                + ", decode_us_per_column=" + (this.decodedColumns.get() == 0 ? 0 : this.decodeNanos.get() / this.decodedColumns.get() / 1000)
                 + ", render_us_per_column=" + (rendered == 0 ? 0 : this.renderNanos.get() / rendered / 1000)
                 + ", bp=" + this.governor.token(this.backpressureEnabled.getAsBoolean(), active(), this.occupancy)
                 + ", heap=" + this.memory.token()

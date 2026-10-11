@@ -8,4 +8,6 @@ public class CoreProperties {
     public final BooleanField mapTopography = new BooleanField(true);
     public final BooleanField mapBiome = new BooleanField(true);
     public final IntegerField renderDelay = new IntegerField(500);
+    public final BooleanField mappingEnabled = new BooleanField(true);
+    public final IntegerField renderDistanceSurfaceMax = new IntegerField(0);
 }

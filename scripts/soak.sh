@@ -182,7 +182,7 @@ case "$SCENARIO" in
     warm-rejoin-summary|dirty-while-offline-summary|evicted-tscache-rejoin) ;;
     stamp-heal-prime|stamp-heal-rejoin) ;;
     hybrid-boundary) ;;
-    journeymap-map) ;;
+    journeymap-map|map-throughput|xaero-memory) ;;
     paper-dirty-falling-block|paper-store-unfired-event) ;;
     *)
         echo "[soak] ERROR: Unknown scenario '$SCENARIO'"
@@ -231,6 +231,25 @@ case "$SCENARIO" in
                                 # the client the run proves nothing about the map.
                                 if [[ " ${SOAK_CLIENT_GRADLE_ARGS:-} " != *" -Plss.journeymapRuntime=true "* ]]; then
                                     echo "[soak] ERROR: journeymap-map needs JourneyMap on the client — run scripts/journeymap_smoke.sh"
+                                    exit 1
+                                fi
+                                CLIENT_EXTRA_ARGS=("-Psoak.haltGraceMillis=15000") ;;
+    xaero-memory)               CLIENT_RUNS=1; EXPECTED_SECONDS=1560
+                                # The Xaero memory gate (map-ingestion plan §6.4 L2): a lod-255
+                                # real-terrain fill with Xaero's World Map on the client and the
+                                # unfocused frame rate simulated — the A/B arms come from
+                                # SOAK_CLIENT_GRADLE_ARGS (-Plss.xaeroRuntime=true,
+                                # -Psoak.frameThrottle=..., -Psoak.clientJvmArgs=...).
+                                if [[ -z "${SOAK_WORLD_FROM:-}" || " ${SOAK_CLIENT_GRADLE_ARGS:-} " != *" -Plss.xaeroRuntime=true "* ]]; then
+                                    echo "[soak] ERROR: xaero-memory needs SOAK_WORLD_FROM and -Plss.xaeroRuntime=true in SOAK_CLIENT_GRADLE_ARGS"
+                                    exit 1
+                                fi ;;
+    map-throughput)             CLIENT_RUNS=1; EXPECTED_SECONDS=960
+                                # Map pacing measurement (map-ingestion plan §6.4, U2): a
+                                # lod-128 fill over real terrain (SOAK_WORLD_FROM), run with
+                                # and without a map mod on the client (SOAK_CLIENT_GRADLE_ARGS).
+                                if [[ -z "${SOAK_WORLD_FROM:-}" ]]; then
+                                    echo "[soak] ERROR: map-throughput needs a real-terrain world via SOAK_WORLD_FROM"
                                     exit 1
                                 fi
                                 CLIENT_EXTRA_ARGS=("-Psoak.haltGraceMillis=15000") ;;

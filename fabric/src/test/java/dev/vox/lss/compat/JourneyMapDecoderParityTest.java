@@ -38,10 +38,17 @@ class JourneyMapDecoderParityTest {
     @TempDir
     Path scratch;
 
+    private java.net.URLClassLoader loader;
+
+    @org.junit.jupiter.api.AfterEach
+    void closeLoader() throws java.io.IOException {
+        if (this.loader != null) this.loader.close();
+    }
+
     private Object decode(byte[] frame, JourneyMapLineSurface.LevelFacts facts) throws Exception {
         Path jar = JourneyMapGolden.jar("lss.journeymapGoldenNeoForgeJar");
-        var loader = JourneyMapGolden.loader(jar, this.scratch);
-        Class<?> snapshot = Class.forName("journeymap.common.chunk.JMChunkSnapshot", true, loader);
+        if (this.loader == null) this.loader = JourneyMapGolden.loader(jar, this.scratch);
+        Class<?> snapshot = Class.forName("journeymap.common.chunk.JMChunkSnapshot", true, this.loader);
         Level level = mock(Level.class);
         when(level.getSectionsCount()).thenReturn(facts.sectionCount());
         when(level.registryAccess()).thenReturn(JourneyMapTestColumns.REGISTRY_ACCESS);
@@ -81,7 +88,12 @@ class JourneyMapDecoderParityTest {
         }
         JourneyMapTestColumns.setBiome(dense, 1, 2, 3, Biomes.DESERT);
         JourneyMapTestColumns.setBiome(dense, 3, 0, 0, Biomes.SNOWY_PLAINS);
-        specs.add(new JourneyMapTestColumns.Spec(-4, dense, null));
+        specs.add(new JourneyMapTestColumns.Spec(2, dense, null)); // inside the surface depth
+        var deep = JourneyMapTestColumns.empty();
+        deep.setBlockState(1, 1, 1, Blocks.DEEPSLATE_DIAMOND_ORE.defaultBlockState());
+        var deepLight = new DataLayer();
+        deepLight.set(1, 2, 1, 7);
+        specs.add(new JourneyMapTestColumns.Spec(-4, deep, deepLight)); // far below: left out
         var cave = JourneyMapTestColumns.empty();
         for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) cave.setBlockState(x, 0, z, Blocks.DEEPSLATE.defaultBlockState());
         var light = new DataLayer();
@@ -119,6 +131,22 @@ class JourneyMapDecoderParityTest {
             expected[s.sectionY() - facts.minSectionY()] = s.section();
             expectedLight[s.sectionY() - facts.minSectionY()] = s.blockLight();
         }
+        // Sections wholly more than SURFACE_DEPTH_BLOCKS below the lowest surface are left out.
+        var nonAir = new LevelChunkSection[facts.sectionCount()];
+        for (int i = 0; i < nonAir.length; i++) nonAir[i] = expected[i] != null && !expected[i].hasOnlyAir() ? expected[i] : null;
+        int lowest = Integer.MAX_VALUE;
+        for (int o : JourneyMapSnapshotEncoder.worldSurface(nonAir, facts)) if (o > 0) lowest = Math.min(lowest, o);
+        int floorY = lowest == Integer.MAX_VALUE ? Integer.MIN_VALUE
+                : facts.minY() + lowest - JourneyMapSnapshotEncoder.SURFACE_DEPTH_BLOCKS;
+        int culled = 0;
+        for (int i = 0; i < expected.length; i++) {
+            if ((facts.minSectionY() + i) * 16 + 15 < floorY) {
+                if (expected[i] != null && !expected[i].hasOnlyAir()) culled++;
+                expected[i] = null;
+                expectedLight[i] = null;
+            }
+        }
+        this.culledSections = culled;
         for (int i = 0; i < expected.length; i++) {
             if (expected[i] == null || expected[i].hasOnlyAir()) {
                 assertNull(decoded[i], "section " + i + " is omitted");
@@ -143,20 +171,19 @@ class JourneyMapDecoderParityTest {
                 assertNull(light, "light " + i);
             }
         }
-        var sections = new LevelChunkSection[facts.sectionCount()];
-        for (int i = 0; i < sections.length; i++) {
-            sections[i] = expected[i] != null && !expected[i].hasOnlyAir() ? expected[i] : null;
-        }
-        int[] offsets = JourneyMapSnapshotEncoder.worldSurface(sections, facts);
+        int[] offsets = JourneyMapSnapshotEncoder.worldSurface(nonAir, facts); // heights: the full column
         for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
             assertEquals(facts.minY() + offsets[x + z * 16],
                     call(snapshot, "getHeight", Heightmap.Types.WORLD_SURFACE, x, z), "height " + x + "," + z);
         }
     }
 
+    private int culledSections;
+
     @Test
     void aRichColumnSurvivesJourneyMapsReader() throws Exception {
         assertParity(richColumn(), OVERWORLD, -1234, 5678);
+        assertEquals(1, this.culledSections, "the deep section was left out — and JourneyMap decodes without it");
     }
 
     @Test

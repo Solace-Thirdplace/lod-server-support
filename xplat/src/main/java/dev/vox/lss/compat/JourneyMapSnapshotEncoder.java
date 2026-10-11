@@ -46,6 +46,11 @@ final class JourneyMapSnapshotEncoder {
     static final int LIGHT_BYTES = 2048;
     /** {@code nSections}/{@code nLight} and every section index are single unsigned bytes. */
     static final int MAX_SECTIONS = 255;
+    /** JourneyMap's day, topography and biome maps read down from the surface through water
+     *  and transparent blocks to the first opaque floor, never deeper: sections wholly more
+     *  than this many blocks below the column's LOWEST surface are left out (deep-ocean
+     *  floors sit well inside it). Decoding is half of JourneyMap's per-column cost (J4). */
+    static final int SURFACE_DEPTH_BLOCKS = 64;
 
     private JourneyMapSnapshotEncoder() {}
 
@@ -63,6 +68,18 @@ final class JourneyMapSnapshotEncoder {
             // but can carry block light, which the night map reads.
             if (section.section() != null && !section.section().hasOnlyAir()) blocks[index] = section.section();
             if (section.blockLight() != null && !allZero(section.blockLight())) light[index] = section.blockLight();
+        }
+        int[] offsets = worldSurface(blocks, level);
+        int lowest = Integer.MAX_VALUE;
+        for (int offset : offsets) if (offset > 0) lowest = Math.min(lowest, offset);
+        if (lowest != Integer.MAX_VALUE) {
+            int floorY = level.minY() + lowest - SURFACE_DEPTH_BLOCKS;
+            for (int i = 0; i < count; i++) {
+                if ((level.minSectionY() + i) * 16 + 15 < floorY) {
+                    blocks[i] = null;
+                    light[i] = null;
+                }
+            }
         }
         try {
             var payload = new ByteArrayOutputStream(16 * 1024);
@@ -82,7 +99,6 @@ final class JourneyMapSnapshotEncoder {
             out.writeByte(1);
             out.writeByte(Heightmap.Types.WORLD_SURFACE.ordinal());
             int height = level.maxYExclusive() - level.minY();
-            int[] offsets = worldSurface(blocks, level);
             writePacked(out, offsets, Math.max(0, Mth.ceillog2(height + 1)));
             out.writeByte(nonNull(light));
             for (int i = 0; i < count; i++) {

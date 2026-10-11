@@ -645,3 +645,46 @@ judges them:
 | §6.1 binding surface "resolve against the real jars" | Classfile-level check of every bound member, the expected surface CRACKED from the bindings resolved against the stubs (`MethodHandles.reflectAs`) | The real classes cannot link in a plain test JVM (JourneyMap subclasses `NativeImage`, final without JourneyMap's access widener), and resolving them through LSS's lookup records loader constraints that poison the stub-backed suites in the same JVM. The decoder parity test does load the real reader (reflection only, no constraints) |
 | (new) | `release_check` forbids `journeymap/` and `xaero/` entries in every shipped jar | The Tier-1 stubs carry All Rights Reserved package names; they must never ship |
 | (new) | The JourneyMap session gains a `SnapshotDecoder` seam | Tier 1 cannot construct a `ClientLevel`; the real decode path is the parity test's |
+| §6.4 L1 at lod 64 | lod 24 over the base world (no generation; markers in served chunks at distance 12-22) | The base world is generated to 24: a lod-64 run is generation-bound (~15 col/s) and measures the server, not the map |
+| §6.4 `-Dlss.soak.frameThrottleMs=1000` | `-Psoak.frameThrottle=MS[:SECONDS]` (a lift after SECONDS) | L2 needs the lift to show the map completing |
+| §6.4 `modLocalRuntime` | `localRuntime` | 26.x is unobfuscated (no remap); the 1.21.x lines use the nested-jar pattern |
+| §6.4 throughput arm at lod 256 | lod 128 over a 16×16-region real-terrain subset (`map-throughput`, SOAK_WORLD_FROM) | Converges inside the run, so the soak laws still evaluate; the rate is measured during the fill |
+
+### 11.1 J4 live findings (26.2), each fixed and pinned
+
+| Run | Found | Fix |
+|---|---|---|
+| L1 #1 | Client crash: binding with `Class::forName` ran JourneyMap's `DataCache` static initializer at LSS's client init, before JourneyMap was up; the class was poisoned and JourneyMap crashed on its first chunk load | Classes resolve WITHOUT initialization (`PRODUCTION_RESOLVER`); Tier-1 pin |
+| L1 #2 | Every column `render_failed` → a whole-disc re-serve loop: JourneyMap's `TopoRenderer` refuses every chunk until its palettes load (only `updateOptions` loads them, and it is reached only after the refusal check); JourneyMap's own pipeline ignores the result | The DAY map decides acceptance; topography and biome are best effort (`optional_refusals`). User-visible limitation: JourneyMap's topography map receives no LOD terrain (the same is true of its own chunks) |
+| L1 #2 | A permanent unmapped ring between JourneyMap's area and the LOD disc: JourneyMap maps only within `min(game render distance, its surface cap)`, vanilla (and so LSS's exclusion) reaches further | The edge sweep (2 s, LSS session only): renders JourneyMap's OWN live chunks in the band past its range, each chunk instance once |
+| Throughput | On real terrain the fill collapsed to ~1 column per batch (334 rendered, 80 562 requeued): the batch decoded all 256 columns before rendering, decoding real terrain costs as much as rendering, the box expired, the requeue re-decoded | One column at a time (decode → add → render) under one time box, north/west first so in-batch neighbours shade; context decoded lazily per column |
+| Throughput, after the per-column fix | 64 696 of 65 792 rendered, 0 failures, but 137 col/s against 689 col/s with no map (5×): ~1.8 ms decode + ~1.3 ms render per column on JourneyMap's thread, 50 % duty | Two changes inside JourneyMap's own norms: the batch box is 2 × renderDelay (its own mapping tasks may run 3) with a renderDelay/2 idle gap (its queued tasks still run between batches); the encoder leaves out sections wholly more than 64 blocks below the column's lowest surface (JourneyMap's surface maps never read them; deep-ocean floors sit inside the margin). Result: **255 col/s (peak 330), 0 failures, 0 re-serves, decode 1.07 ms + render 1.29 ms per column** — the map paces the LOD fill to ~2.7× slower than no map (U2). Follow-up, not built: decoding on an LSS worker ahead of the batch (JourneyMap itself decodes only on its own thread) |
+| L1 #3 + world-id arm | PASS: 2075 columns, 0 failures, 0 re-serves, 152 ring chunks; with JourneyMap on the server the id-less directory got no LSS chunk (the 3 s settle absorbed the late id; replay/abandon 0/0) | — |
+
+### 11.2 J5 implementation review (3 Opus: backend; Xaero memory + settings; tests/tooling) — dispositions
+
+| Finding | Disposition |
+|---|---|
+| JM MAJOR: JourneyMap's own "mapping disabled" switch held the stream as `waiting(not_mapping)` | Fixed: `CoreProperties.mappingEnabled` bound; false → `inert(mapping_disabled)` |
+| JM MAJOR: the late-world-id replay keyed on the previous identity, which JourneyMap's real stop→gap→restart sequence nulls | Fixed: replay keys on the directory each column went to; test with the real sequence |
+| JM/T MAJOR: a null cache lookup (eviction) read as "live" → accepted undrawn | Fixed: null → requeue; evicting stub mode + test |
+| T MAJOR: the smoke's log leg read the client log; JourneyMap logs to `journeymap/journeymap.log` | Fixed: both logs scanned and archived; selftest in JourneyMap's layout |
+| X MAJOR (borderline): the 60 s pace box applied to stale/too-wide window and heap flags | Fixed: flags cleared on every pump that misses the drain; window-bound only when it held back every commit AND turned over within 60 s |
+| JM MINOR: edge sweep could paint another dimension | Fixed: `ChunkMD.getDimension` checked |
+| JM MINOR: wrappers pinned the old level after a disconnect | Fixed: `stopChunkRetention` on every wrapper we added |
+| JM MINOR: render refusals never tripped the death latch | Fixed: a batch that rendered nothing while columns failed counts |
+| JM MINOR: an encode straddling a session end reached the next session | Fixed: receipt re-checked under the queue lock; `buildBatch` closes inactive receipts |
+| JM MINOR: an empty sweep cost a full idle gap (~20 % throughput) | Fixed: idle charged only when the sweep drew |
+| JM MINOR: sweep inner radius ignored JourneyMap's surface cap | Fixed: `min(game, renderDistanceSurfaceMax)`; the band still reaches past the vanilla area |
+| JM NITs (lease on encode throw, notAllowed queue, reconcile when disabled, spurious slow batch, context byte bound, stale identity after a dimension change) | Fixed |
+| X MINOR: heap halt let owed regions park mid-rebuild | Fixed: keep-visited always (the J2 `tickFlush` overload reverted) |
+| X MINOR: a granted load did not hold its window slot | Fixed: grants reserve their slot (30 s TTL until the loader starts); probe keeps loading (1) and loaded (2) regions |
+| X MINOR: the window throttles focused fills below ~5.5 GB of heap (21 slots at 2 GB ≈ 350 col/s) | Accepted, measured by L2; documented in the performance notes |
+| X MINOR: zero frames (hidden window) → 60 s halted / 10 s released; wedged-phase drops unreported | Accepted (plan-accepted behaviour); documented |
+| S MINOR: a save lost alias-only values when both groups were partial | Fixed: merged leaves written into the canonical group; test |
+| X/S NITs (heap operands, equal-value note, round-robin probe) | Fixed |
+| S NIT: hand-trimmed files without the key arm map ingestion on upgrade | Documented with the U3 downgrade note |
+| X NIT: G1 trigger point | Left to the L2 measurement |
+| T MINOR: the production decode path (bound handles) never runs in Tier 1 | Accepted: it cannot link in a plain JVM; L1 exercises it |
+| T MINOR: Xaero suite runs mostly without the window | Partly: new window/heap tests run with it armed |
+| T MINOR/NITs (world-id dir match, RGB path, parity loader, cold base world) | Fixed |

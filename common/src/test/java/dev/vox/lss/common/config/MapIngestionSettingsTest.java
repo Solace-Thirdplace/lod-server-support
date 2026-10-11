@@ -76,6 +76,28 @@ class MapIngestionSettingsTest {
         assertEquals(true, note.effective());
     }
 
+    @Test void equalValuesInBothGroupsRaiseNoNote() {
+        var codec = new YamlSettingsCodec<>(SettingsSchema.client());
+        String both = template().replace("  map_ingestion:\n", "  xaero_map:\n    enabled: true\n  map_ingestion:\n");
+        assertTrue(codec.parse(bytes(both)).normalizations().isEmpty(), "nothing was overridden");
+    }
+
+    @Test void aSaveKeepsAliasOnlyValuesWhenBothGroupsArePartial() {
+        // A file from the old key with a hand-added new group missing a leaf: the merged
+        // value of that leaf comes from the old group and must survive the save.
+        var codec = new YamlSettingsCodec<>(SettingsSchema.client());
+        String partial = oldFile(true, false).replace("  xaero_map:\n",
+                "  map_ingestion:\n    enabled: true\n  xaero_map:\n");
+        var document = codec.parse(bytes(partial));
+        assertFalse(document.configured().integrations().mapIngestion().backpressure(), "read from the old group");
+        var saved = codec.editSplit(document, Map.of("lod.receive", false));
+        String main = new String(saved.main(), StandardCharsets.UTF_8);
+        assertFalse(main.contains("xaero_map"), main);
+        var reread = codec.parse(saved.main()).configured();
+        assertFalse(reread.integrations().mapIngestion().backpressure(), "the save must not reset it:\n" + main);
+        assertTrue(reread.integrations().mapIngestion().enabled());
+    }
+
     @Test void changeSetsAcceptTheOldPathAndRejectConflicts() {
         var codec = new YamlSettingsCodec<>(SettingsSchema.client());
         var fresh = codec.parse(codec.defaults());

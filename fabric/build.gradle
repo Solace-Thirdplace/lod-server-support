@@ -296,6 +296,9 @@ loom {
             vmArg "-Dlss.soak.haltGraceMillis=${findProperty('soak.haltGraceMillis') ?: '0'}"
             // The Xaero memory gate (map-ingestion plan §6.4 L2): "MS[:SECONDS]" per-frame sleep.
             vmArg "-Dlss.soak.frameThrottle=${findProperty('soak.frameThrottle') ?: ''}"
+            // Extra client JVM arguments for the live gates, comma separated (e.g. a heap
+            // size and -Dlss.xaero.openRegionWindow=0 for the memory A/B).
+            (findProperty('soak.clientJvmArgs') ?: '').toString().split(',').findAll { it }.each { vmArg it }
             vmArg "-Dlss.soak.dialect=${findProperty('soak.dialect') ?: ''}"
             // Region summaries (region-summary-sync-plan.md §6): -Dlss.soak gates the
             // client OFF requesting so no baseline shifts; the summary scenarios opt

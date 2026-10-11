@@ -40,6 +40,9 @@ final class JourneyMapBindings {
     final MethodHandle mapTopography;
     final MethodHandle mapBiome;
     final MethodHandle renderDelay;
+    /** JourneyMap's own "mapping enabled" toggle (its fullscreen map's button). */
+    final MethodHandle mappingEnabled;
+    final MethodHandle renderDistanceSurfaceMax;
     final MethodHandle booleanFieldGet;
     final MethodHandle integerFieldGet;
     final MethodHandle renderChunk;
@@ -61,6 +64,8 @@ final class JourneyMapBindings {
     final MethodHandle decode;
     final MethodHandle hasLevelChunk;
     final MethodHandle getBlockData;
+    final MethodHandle getDimension;
+    final MethodHandle stopChunkRetention;
     final MethodHandle clearAll;
     final MethodHandle regionImageCache;
     final MethodHandle updateTextures;
@@ -116,6 +121,8 @@ final class JourneyMapBindings {
         this.mapTopography = lookup.findGetter(coreProperties, "mapTopography", booleanField);
         this.mapBiome = lookup.findGetter(coreProperties, "mapBiome", booleanField);
         this.renderDelay = lookup.findGetter(coreProperties, "renderDelay", integerField);
+        this.mappingEnabled = lookup.findGetter(coreProperties, "mappingEnabled", booleanField);
+        this.renderDistanceSurfaceMax = lookup.findGetter(coreProperties, "renderDistanceSurfaceMax", integerField);
         this.booleanFieldGet = lookup.findVirtual(booleanField, "get", MethodType.methodType(Boolean.class));
         this.integerFieldGet = lookup.findVirtual(integerField, "get", MethodType.methodType(Integer.class));
         this.renderChunk = lookup.findVirtual(renderController, "renderChunk",
@@ -139,6 +146,8 @@ final class JourneyMapBindings {
         this.decode = lookup.findStatic(snapshot, "decode", MethodType.methodType(snapshot, FriendlyByteBuf.class, Level.class));
         this.hasLevelChunk = lookup.findVirtual(chunkMd, "hasLevelChunk", MethodType.methodType(boolean.class));
         this.getBlockData = lookup.findVirtual(chunkMd, "getBlockData", MethodType.methodType(blockDataArrays));
+        this.getDimension = lookup.findVirtual(chunkMd, "getDimension", MethodType.methodType(ResourceKey.class));
+        this.stopChunkRetention = lookup.findVirtual(chunkMd, "stopChunkRetention", MethodType.methodType(void.class));
         this.clearAll = lookup.findVirtual(blockDataArrays, "clearAll", MethodType.methodType(void.class));
         this.regionImageCache = lookup.findStaticGetter(regionImageCacheClass, "INSTANCE", regionImageCacheClass);
         this.updateTextures = lookup.findVirtual(regionImageCacheClass, "updateTextures",

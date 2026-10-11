@@ -75,6 +75,9 @@ ANOMALY_OPT_INS = {
     # The JourneyMap smoke (map-ingestion plan §6.4): a dirty-broadcast-shaped base-world
     # resync whose client also feeds JourneyMap; the map paces nothing at this size.
     "journeymap-map": frozenset({"saturated"}),
+    # Map pacing measurement: a real-terrain lod-128 disk-read fill.
+    "map-throughput": frozenset({"saturated"}),
+    "xaero-memory": frozenset({"saturated"}),
     "rate-limit-storm": frozenset({"saturated"}),
     "disk-saturation": frozenset({"saturated"}),
     "generation-disabled": frozenset({"saturated"}),
@@ -136,6 +139,10 @@ MIN_CLIENT_WINDOWS = {
     "dimension-trip": {(1, 0): 2, (1, 1): 6, (1, 2): 4},
     "dirty-broadcast": {(1, 0): 5},
     "journeymap-map": {(1, 0): 5},
+    "map-throughput": {(1, 0): 3},
+    # The memory gate's verdict is the xaero group's heap/window series; the fill may still
+    # be pacing when the run ends, so only its converged tail (if any) feeds the laws.
+    "xaero-memory": {(1, 0): 1},
     "rate-limit-storm": {(1, 0): 3},
     "disk-saturation": {(1, 0): 3},
     # K=1 on degraded WSL2 IO can spend ~4-5 min converging the annulus (healthy IO:
@@ -3406,6 +3413,9 @@ CHECKS = {
     # after this checker): here the run must stay a lawful, complete resync.
     "journeymap-map": [make_handshake_check("journeymap-map"),
                        make_disc_completeness("journeymap-map")],
+    "xaero-memory": [make_handshake_check("xaero-memory")],
+    "map-throughput": [make_handshake_check("map-throughput"),
+                       make_disc_completeness("map-throughput")],
     "rate-limit-storm": [check_rate_limit_storm,
                          make_handshake_check("rate-limit-storm"),
                          make_disc_completeness("rate-limit-storm")],

@@ -115,10 +115,14 @@ def encode_png(width: int, height: int, pixel, filter_type: int = 0) -> bytes:
     return encode_png_rows(width, height, rows, filter_type)
 
 
-def encode_png_rows(width: int, height: int, rows: list, filter_type: int = 0) -> bytes:
-    """Selftest helper: an RGBA PNG from RGBA rows, every row with ``filter_type`` (0-4)."""
+def encode_png_rows(width: int, height: int, rows: list, filter_type: int = 0, rgb: bool = False) -> bytes:
+    """Selftest helper: a PNG from RGBA rows, every row with ``filter_type`` (0-4); ``rgb``
+    drops the alpha channel (colour type 2)."""
+    channels = 3 if rgb else 4
+    if rgb:
+        rows = [b"".join(bytes(r[i:i + 3]) for i in range(0, len(r), 4)) for r in rows]
     raw = bytearray()
-    prev = bytearray(width * 4)
+    prev = bytearray(width * channels)
     for y in range(height):
         line = bytearray(rows[y])
         if filter_type == 0:
@@ -127,9 +131,9 @@ def encode_png_rows(width: int, height: int, rows: list, filter_type: int = 0) -
             continue
         out = bytearray()
         for i in range(len(line)):
-            left = line[i - 4] if i >= 4 else 0
+            left = line[i - channels] if i >= channels else 0
             up = prev[i]
-            upleft = prev[i - 4] if i >= 4 else 0
+            upleft = prev[i - channels] if i >= channels else 0
             predictor = (0, left, up, (left + up) >> 1, _paeth(left, up, upleft))[filter_type]
             out.append((line[i] - predictor) & 0xFF)
         raw += bytes([filter_type]) + out
@@ -138,7 +142,7 @@ def encode_png_rows(width: int, height: int, rows: list, filter_type: int = 0) -
     def chunk(kind: bytes, body: bytes) -> bytes:
         return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
 
-    return (PNG_SIGNATURE + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+    return (PNG_SIGNATURE + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2 if rgb else 6, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b""))
 
 
@@ -283,6 +287,15 @@ def export_crop(region_map: RegionMap, lod: int, path: Path) -> None:
     path.write_bytes(encode_png_rows(2 * half, 2 * half, rows))
 
 
+WORLD_ID_DIR = re.compile(r"^(?P<base>.+)_(?P<id>[0-9a-fA-F]{8}([~-][0-9a-fA-F]{4}){3}[~-][0-9a-fA-F]{12})$")
+
+
+def is_world_id_dir(name: str) -> bool:
+    """JourneyMap's ``<server>_<worldId>`` directory: the world id is a UUID it writes with
+    ``~`` separators (a server name may contain ``_`` itself)."""
+    return WORLD_ID_DIR.match(name) is not None
+
+
 def find_day_dirs(jm_dir: Path) -> list[Path]:
     return sorted(p for p in (jm_dir / "data" / "mp").glob("*/*/day")
                   if p.is_dir() and "overworld" in p.parent.name.lower())
@@ -299,8 +312,8 @@ def verdict(args) -> list[str]:
         return [f"no overworld day map under {Path(args.jm_dir) / 'data' / 'mp'}"]
     problems: list[str] = []
     if args.world_id:
-        with_id = [d for d in day_dirs if "_" in d.parent.parent.name]
-        without = [d for d in day_dirs if "_" not in d.parent.parent.name]
+        with_id = [d for d in day_dirs if is_world_id_dir(d.parent.parent.name)]
+        without = [d for d in day_dirs if not is_world_id_dir(d.parent.parent.name)]
         if len(with_id) != 1:
             return problems + [f"expected exactly one <server>_<worldId> map, found {[str(d) for d in with_id]}"]
         target = with_id[0]
@@ -323,8 +336,16 @@ def verdict(args) -> list[str]:
         if line.strip():
             snapshots.append(json.loads(line))
     problems += check_metrics(snapshots)
-    if args.client_log:
-        problems += check_log(Path(args.client_log).read_text(encoding="utf-8", errors="replace"))
+    for log in args.client_log or []:
+        if Path(log).is_file():
+            problems += check_log(Path(log).read_text(encoding="utf-8", errors="replace"))
+        else:
+            problems.append(f"log {log} is missing (JourneyMap writes its snapshot warnings to its own log)")
+    groups = [s["journeymap"] for s in snapshots if isinstance(s.get("journeymap"), dict)]
+    if groups and args.world_id:
+        last = groups[-1]
+        print(f"[journeymap-smoke] world-id race: replayed={last.get('replayed')} abandoned={last.get('abandoned')}"
+              " (0/0 = the settle absorbed the late id)")
     return problems
 
 
@@ -339,13 +360,16 @@ def _selftest() -> int:
         if not cond:
             raise AssertionError(what)
 
-    # PNG round trip, every filter type, RGB and RGBA.
+    # PNG round trip, every filter type, RGBA and RGB.
     for f in range(5):
         data = encode_png(7, 5, lambda x, y: (x * 30 % 256, y * 50 % 256, (x * y) % 256, 255 if x else 0), f)
         w, h, rows = decode_png(data)
         check((w, h) == (7, 5), "png size")
         check(rows[3][4 * 4:4 * 4 + 4] == bytes((120, 150, 12, 255)), f"png filter {f} pixel")
         check(rows[2][3] == 0, f"png filter {f} alpha")
+        src = [b"".join(bytes((x * 30 % 256, y * 50 % 256, (x * y) % 256, 9)) for x in range(7)) for y in range(5)]
+        w, h, rows = decode_png(encode_png_rows(7, 5, src, f, rgb=True))
+        check(rows[3][4 * 4:4 * 4 + 4] == bytes((120, 150, 12, 255)), f"rgb png filter {f} pixel (opaque)")
 
     scenario = {"steps": [
         {"anchor": 1, "at": 20, "cmd": "fill 224 -61 48 239 -61 51 minecraft:red_wool"},
@@ -398,6 +422,26 @@ def _selftest() -> int:
                 check(colour_class(*rows[48 + 272][(224 + 272) * 4:(224 + 272) * 4 + 4]) == "red", "crop marker pixel")
             check(find_day_dirs(jm) == [day], f"day dir discovery {name}")
 
+    # The world-id arm: the map in <server>_<id>, nothing LSS-only in the id-less <server>.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "journeymap"
+        write_map(root, "Soak_Server_f1ad16d6~d06b~44d0~9202~dc65ca6b689e", good)
+        bare = root / "data" / "mp" / "Soak_Server" / "overworld" / "day"
+        bare.mkdir(parents=True)
+        scenario_path, config_path, jsonl = Path(tmp) / "s.json", Path(tmp) / "c.yaml", Path(tmp) / "c.jsonl"
+        scenario_path.write_text(json.dumps(scenario))
+        config_path.write_text('"minecraft:overworld": 16\n')
+        jsonl.write_text(json.dumps({"event": "snapshot", "journeymap": {
+            "state": "active", "rendered": 9, "decode_failures": 0, "render_failed": 0, "column_failures": 0}}) + "\n")
+        ns = argparse.Namespace(scenario=str(scenario_path), config=str(config_path), jm_dir=str(root),
+                                client_jsonl=str(jsonl), client_log=None, margin=2, vanilla=8,
+                                world_id=True, export_crop=None)
+        check(not verdict(ns), f"world-id arm passes: {verdict(ns)}")
+        (bare / "0,0.png").write_bytes(encode_png_rows(512, 512, [bytes(colours["green"]) * 512] * 512))
+        check(any("id-less" in p for p in verdict(ns)), "an LSS-only chunk in the id-less map is caught")
+        ns.world_id = False
+        check(any("expected one" in p for p in verdict(ns)), "two maps without --world-id is a failure")
+
     ok_snaps = [{"journeymap": {"state": "active", "rendered": 900, "decode_failures": 0,
                                 "render_failed": 0, "column_failures": 0}}]
     check(not check_metrics(ok_snaps), "metrics ok")
@@ -405,6 +449,10 @@ def _selftest() -> int:
     check(check_metrics([{"journeymap": dict(ok_snaps[0]["journeymap"], rendered=0)}]), "nothing rendered caught")
     check(check_metrics([{}]), "missing group caught")
     check(check_log("[12:00] [JM-Task/WARN] (journeymap) JMChunkSnapshot.decode: invalid payload"), "log WARN caught")
+    check(check_log("[15:09:07] [JM-Task/WARN] [journeymap] JMChunkSnapshot.readNetworkBinary: bad magic 0x0 for [1, 2]"),
+          "JourneyMap's own log layout caught")
+    check(is_world_id_dir("Minecraft~Server_f1ad16d6~d06b~44d0~9202~dc65ca6b689e"), "world-id dir")
+    check(not is_world_id_dir("Soak_Server"), "an underscore in a server name is not a world id")
     check(not check_log("[12:00] [Render thread/INFO] JMChunkSnapshot ok"), "log INFO ignored")
     print(f"check_journeymap_smoke selftest OK: {cases} cases")
     return 0
@@ -417,7 +465,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--scenario", help="scripts/soak-scenarios/journeymap-map.json")
     parser.add_argument("--config", help="the scenario's server config (LOD distance)")
     parser.add_argument("--client-jsonl", help="soak-results/<run>/client-run1.jsonl")
-    parser.add_argument("--client-log", help="soak-results/<run>/client-run1.log")
+    parser.add_argument("--client-log", action="append",
+                        help="a log to scan for JourneyMap snapshot WARN/ERROR lines (repeatable: the"
+                             " client log and JourneyMap's own journeymap/journeymap.log)")
     parser.add_argument("--margin", type=int, default=2, help="chunks inside the LOD radius left unchecked")
     parser.add_argument("--vanilla", type=int, default=8, help="the client's vanilla view distance")
     parser.add_argument("--world-id", action="store_true", help="JourneyMap also ran on the server")

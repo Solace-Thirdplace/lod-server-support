@@ -19,6 +19,8 @@ public class DataCache {
     public final List<Long> removed = new ArrayList<>();
     /** Fires inside the first matching renderChunk-time query (a live chunk arriving mid-batch). */
     public Runnable onAllowCachedQuery;
+    /** Models the real Guava cache dropping an entry at once (its size cap, an invalidation). */
+    public boolean evictEveryAdd;
 
     public ChunkMD getChunkMD(long coordLong) {
         return getChunkMD(coordLong, ChunkQueryIntent.LIVE_ONLY);
@@ -40,8 +42,8 @@ public class DataCache {
     }
 
     public void addChunkMD(ChunkMD chunkMD) {
-        this.cache.put(chunkMD.getLongCoord(), chunkMD);
         this.added.add(chunkMD.getLongCoord());
+        if (!this.evictEveryAdd) this.cache.put(chunkMD.getLongCoord(), chunkMD);
     }
 
     public void removeChunkMD(ChunkMD chunkMD) {
