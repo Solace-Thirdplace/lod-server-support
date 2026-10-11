@@ -50,3 +50,14 @@ must match the bundled JDBC version. Java 25 may emit a restricted native-access
 warning; `--enable-native-access=ALL-UNNAMED` grants the access used by the private
 loader. Linux and Windows native execution are validated; bundled macOS/ARM
 resources are checked for identity but do not imply live coverage on those systems.
+
+## Sponge server plugin
+
+The Sponge plugin is experimental. At startup Sponge prints a notice that the plugin "uses Mixins"; that notice is expected and is not an LSS failure. Check these first:
+
+| Observation | Check next |
+| --- | --- |
+| "supports SpongeVanilla only" error, no service | The server runs SpongeNeo or SpongeForge. Use the LSS NeoForge jar there instead of the Sponge plugin. |
+| The plugin fails to load or a mixin error names `lss.sponge.mixins.json` | The SpongeVanilla build must match the plugin's Minecraft line exactly; each line's jar is pinned to one Minecraft version. Compare `/lsslod diag`'s `sponge-` loader token with the jar's line. |
+| Region summaries, backfill or the header rung report unknown regions for one world | That world was loaded by a plugin after server start. LSS resolves region folders when the server starts, so it serves such worlds without region-header acceleration (a v1 limitation; serving still works). |
+| A recommended SpongeVanilla build behaves differently from the RC LSS tested | The pinned build is in the line's `gradle.properties` (`spongevanilla_version`). Report the exact Sponge build with `/lsslod diagnostics export`. |
