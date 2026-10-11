@@ -17,11 +17,11 @@ class ClientUiNoConsumerTests(unittest.TestCase):
         self.manifest={'run_id':'owned','run_hash':'run','backend':'isolated-linux-prism','started_at':100,'finished_at':110}
         self.proof={'run_id':'owned','run_hash':'run','ready':True,'handshake':False,'test_count':7,'assertions':dict.fromkeys(ASSERTIONS,True),'evidence':{}}
         self.bind()
-        for name,enabled in EXPORTS.items():self.save(name,{'schemaVersion':2,'connected':True,'negotiated':False,'protocol':0,'consumerAvailable':False,'rendererAvailable':False,'serverEnabled':False,'discovery':'DORMANT','receptionEnabled':enabled,'receivedColumns':0,'receivedBytes':0,'capturedAtMillis':105000,'versions':{'components':{'MINECRAFT':'1.21.10','LOADER':'21.10.64'}}})
+        for name,enabled in EXPORTS.items():self.save(name,{'schemaVersion':4,'connected':True,'negotiated':False,'protocol':0,'consumerAvailable':False,'rendererAvailable':False,'serverEnabled':False,'discovery':'DORMANT','receptionEnabled':enabled,'receivedColumns':0,'receivedBytes':0,'capturedAtMillis':105000,'versions':{'components':{'MINECRAFT':'1.21.10','LOADER':'21.10.64'}}})
         for name, enabled in EXPORTS.items():
             data=json.loads((self.e/name).read_text())
             before_reload=name in ('saved-before-reload-export.json','retry-before-reload-export.json')
-            def state(receive):return dict(receptionEnabled=receive,distanceChunks=0,maxColumnsPerSecond=90000,xaeroMapEnabled=False,sharingEnabled=True)
+            def state(receive):return dict(receptionEnabled=receive,distanceChunks=0,maxColumnsPerSecond=90000,mapIngestionEnabled=False,sharingEnabled=True)
             pending=(['lod.download.slow_start_on_join','lod.receive'] if name=='saved-before-reload-export.json' else ['lod.receive'] if before_reload else [])
             data['settings']=dict(available=True,saved=state(False if before_reload else enabled),configured=state(enabled),effective=state(enabled),pendingReload=pending,pendingReconnect=[])
             self.save(name,data)

@@ -47,6 +47,7 @@
     "sodium": ">=0.8.12",
     "modmenu": "*",
     "voxy": ">=0.2.15-beta",
-    "xaeroworldmap": "*"
+    "xaeroworldmap": "*",
+    "journeymap": "*"
   }
 }

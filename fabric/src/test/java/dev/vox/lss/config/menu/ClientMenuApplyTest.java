@@ -29,17 +29,18 @@ class ClientMenuApplyTest {
                 });
     }
 
-    @Test void applyReloadsTheWholeSavedPatchAndXaeroStartsOnReconnect() throws Exception {
+    @Test void applyReloadsTheWholeSavedPatchAndMapIngestionStopsOnReconnect() throws Exception {
         var store = new SettingsStore<>(directory, "lss", SettingsSchema.client());
         var handle = new SettingsHandle<>(store);
         Object connection = new Object();
         handle.beginSession(connection);
         var reloads = new AtomicInteger();
         var draft = draft(store, handle, reloads);
-        draft.set("integrations.xaero_map.enabled", true);
+        // New settings files enable map ingestion, so the reconnect-timed example turns it off.
+        draft.set("integrations.map_ingestion.enabled", false);
         draft.set("far_players.sharing.enabled", false);
         draft.set("lod.download.max_columns_per_second", 240);
-        assertFalse(store.read().configured().integrations().xaeroMap().enabled());
+        assertTrue(store.read().configured().integrations().mapIngestion().enabled());
         assertTrue(handle.state().effective().farPlayers().sharing().enabled());
 
         SaveHook.SAVE.run(draft);
@@ -47,15 +48,15 @@ class ClientMenuApplyTest {
         assertFalse(draft.pendingReload());
         assertFalse(handle.state().effective().farPlayers().sharing().enabled());
         assertEquals(240, handle.state().effective().lod().download().maxColumnsPerSecond());
-        assertTrue(handle.state().configured().integrations().xaeroMap().enabled());
-        assertFalse(handle.state().effective().integrations().xaeroMap().enabled());
-        assertTrue(handle.state().pendingReconnect().contains("integrations.xaero_map.enabled"));
+        assertFalse(handle.state().configured().integrations().mapIngestion().enabled());
+        assertTrue(handle.state().effective().integrations().mapIngestion().enabled());
+        assertTrue(handle.state().pendingReconnect().contains("integrations.map_ingestion.enabled"));
 
         SaveHook.SAVE.run(draft);
         assertEquals(1, reloads.get(), "no-op Apply must not request another reload");
         handle.endSession(connection);
         handle.beginSession(new Object());
-        assertTrue(handle.state().effective().integrations().xaeroMap().enabled());
+        assertFalse(handle.state().effective().integrations().mapIngestion().enabled());
         assertTrue(handle.state().pendingReconnect().isEmpty());
     }
 
@@ -98,9 +99,9 @@ class ClientMenuApplyTest {
         var handle = new SettingsHandle<>(store);
         var reloads = new AtomicInteger();
         var draft = draft(store, handle, reloads);
-        draft.set("integrations.xaero_map.enabled", true);
+        draft.set("integrations.map_ingestion.enabled", false);
         assertTrue(draft.apply());
-        assertTrue(handle.state().effective().integrations().xaeroMap().enabled());
+        assertFalse(handle.state().effective().integrations().mapIngestion().enabled());
         assertTrue(handle.state().pendingReconnect().isEmpty());
     }
 
