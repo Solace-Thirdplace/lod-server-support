@@ -8,8 +8,8 @@ import net.minecraft.commands.CommandSourceStack;
  * every other file under {@code sponge/} is byte-identical across the five lines. The
  * per-line facts are recorded in docs/planning/per-version-surfaces.md §Sponge.
  *
- * <p>LINE FLAVOR (1.21.10): the command-source permission model is the 1.21.11+
- * {@code PermissionSet} family; 1.21.1–1.21.10 take an int op level.
+ * <p>LINE FLAVOR (1.21.10): the command source takes an int op level
+ * ({@code Commands.LEVEL_GAMEMASTERS}); 1.21.11+ use the {@code PermissionSet} family.
  */
 public final class SpongeLineSurface {
     private SpongeLineSurface() {}

@@ -20,7 +20,7 @@ Use the matching Fabric or shipped NeoForge artifact. Server support and rendere
 | 26.2 | maintained | experimental | shipped; best-effort | unsupported | not available |
 <!-- LSS SERVER MATRIX END -->
 
-**Sponge (experimental):** a SpongeVanilla server plugin ships on the lines the matrix marks shipped. It speaks the same wire as every other server, so any Fabric or NeoForge client with LSS joins it normally. SpongeNeo and SpongeForge servers should use the NeoForge jar instead.
+**Sponge (experimental):** a SpongeVanilla server plugin ships on the lines the matrix marks shipped. It speaks the same wire as every other server, so any Fabric or NeoForge client with LSS joins it normally. On SpongeNeo, use the NeoForge jar instead, on lines that ship one (see the matrix). SpongeForge is not supported.
 
 On 1.21.10 there is no Folia build upstream. The in-game options page renders through Sodium 0.7.x's own settings screen from v0.13.0 (earlier 1.21.10 builds had no page) — every setting also remains in the JSON config files.
 

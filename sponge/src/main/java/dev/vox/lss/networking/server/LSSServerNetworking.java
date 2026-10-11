@@ -34,6 +34,11 @@ public class LSSServerNetworking {
     public static final AtomicLong LOAD_HOOK_DISK_CALLS = new AtomicLong();
     public static final AtomicLong LOAD_HOOK_GENERATED_CALLS = new AtomicLong();
 
+    /** End-of-tick listeners after the service pump — the dev-only Sponge soak driver's
+     *  END_SERVER_TICK (sponge-support-plan.md §5.4). Empty in production. */
+    public static final java.util.List<java.util.function.Consumer<MinecraftServer>> TICK_LISTENERS =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
     public static RequestProcessingService getRequestService() {
         return requestService;
     }
@@ -78,11 +83,14 @@ public class LSSServerNetworking {
     }
 
     /** {@code ServerTickHook}: {@code tickServer} TAIL = fabric's END_SERVER_TICK. */
-    public static void onServerTick() {
+    public static void onServerTick(MinecraftServer server) {
         TICK_HOOK_CALLS.incrementAndGet();
         var service = requestService;
         if (service != null) {
             service.tick();
+        }
+        for (var listener : TICK_LISTENERS) {
+            listener.accept(server);
         }
     }
 
