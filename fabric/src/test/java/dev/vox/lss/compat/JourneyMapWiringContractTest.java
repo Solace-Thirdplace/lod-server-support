@@ -71,7 +71,7 @@ class JourneyMapWiringContractTest {
     @Test
     void theLineSurfacePassesThisLinesHeightExpression() throws IOException {
         String src = Files.readString(SourcePaths.mainSource("dev/vox/lss/compat/JourneyMapLineSurface.java"));
-        assertTrue(src.contains("level.getMinSectionY(), level.getSectionsCount(), level.getMinY(), level.getMaxY() + 1"),
+        assertTrue(src.contains("level.getMinSectionY(), level.getSectionsCount(), level.getMinY(), level.getMaxY() + 1);"),
                 "a lost +1 writes an inclusive max: a build-limit top renders as void (plan review M2)");
     }
 }
