@@ -57,7 +57,7 @@ The Sponge plugin is experimental. At startup Sponge prints a notice that the pl
 
 | Observation | Check next |
 | --- | --- |
-| "supports SpongeVanilla only" error, no service | The server runs SpongeNeo or SpongeForge. Use the LSS NeoForge jar there instead of the Sponge plugin. |
+| "supports SpongeVanilla only" error, no service | The server runs SpongeNeo or SpongeForge. On SpongeNeo, use the LSS NeoForge jar instead, on lines that ship one (see the catalog). SpongeForge is not supported. |
 | The plugin fails to load or a mixin error names `lss.sponge.mixins.json` | The SpongeVanilla build must match the plugin's Minecraft line exactly; each line's jar is pinned to one Minecraft version. Compare `/lsslod diag`'s `sponge-` loader token with the jar's line. |
 | Region summaries, backfill or the header rung report unknown regions for one world | That world was loaded by a plugin after server start. LSS resolves region folders when the server starts, so it serves such worlds without region-header acceleration (a v1 limitation; serving still works). |
 | A recommended SpongeVanilla build behaves differently from the RC LSS tested | The pinned build is in the line's `gradle.properties` (`spongevanilla_version`). Report the exact Sponge build with `/lsslod diagnostics export`. |

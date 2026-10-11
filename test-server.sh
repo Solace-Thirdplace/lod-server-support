@@ -1058,8 +1058,8 @@ case "${1:-run}" in
         echo ""
         echo "=== Starting SpongeVanilla server (${SPONGEVANILLA_VERSION}) ==="
         echo "  Connect to: localhost:25570"
-        echo "  Experimental + best-effort tier: SpongeVanilla only (SpongeNeo/SpongeForge"
-        echo "  servers use the NeoForge jar). Any Fabric/NeoForge client with LSS+Voxy gets a"
+        echo "  Experimental + best-effort tier: SpongeVanilla only (SpongeNeo uses the"
+        echo "  NeoForge jar; SpongeForge is unsupported). Any Fabric/NeoForge client with LSS+Voxy gets a"
         echo "  full LOD session — the wire is identical to every other loader."
         echo ""
         run_sponge

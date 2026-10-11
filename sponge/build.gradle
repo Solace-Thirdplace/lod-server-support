@@ -84,6 +84,22 @@ sourceSets {
         compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
         runtimeClasspath += sourceSets.main.output
     }
+    // Dev-only soak driver (plan §5.4): the fabric driver's Sponge twin plus the SERVER
+    // half of the shared metrics exporter, the store downgrade and the command executor,
+    // compiled from their own trees (never copied) so the row schema cannot drift.
+    soak {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output
+        java {
+            srcDir xplatRoot
+            srcDir rootProject.file('fabric/src/main/java')
+            include 'dev/vox/lss/spongesoak/**'
+            include 'dev/vox/lss/benchmark/SpongeSoakScenarioDriver.java'
+            include 'dev/vox/lss/benchmark/BenchmarkMetricsExporter.java'
+            include 'dev/vox/lss/benchmark/SoakStoreDowngrade.java'
+            include 'dev/vox/lss/benchmark/SoakCommandExecutor.java'
+        }
+    }
 }
 
 // ---- Plugin metadata (generated META-INF/sponge_plugins.json) ------------------------
@@ -333,5 +349,37 @@ tasks.register('bootSmoke', Exec) {
                 '--smoke-plugin', smokeJar.get().archiveFile.get().asFile.absolutePath,
                 '--run-dir', layout.buildDirectory.dir('sponge-smoke/run').get().asFile.absolutePath,
                 '--result', resultFile.get().asFile.absolutePath
+    }
+}
+
+// ---- Soak server (plan §5.4; scripts/soak.sh SOAK_PLATFORM=sponge) ---------------------
+// The release jar + the dev-only soak driver jar on the pinned SpongeVanilla server, in
+// the run dir soak.sh stages (world, config, server.properties, eula). Dev outputs live
+// outside build/libs under a non-release base name (release_check glob hygiene).
+def soakJar = tasks.register('soakJar', Jar) {
+    archiveBaseName = 'lss-sponge-soak'
+    archiveVersion = ''
+    destinationDirectory = layout.buildDirectory.dir('soak-libs')
+    from sourceSets.soak.output
+}
+
+tasks.register('runSoakServer', Exec) {
+    description = 'Runs the soak harness server (release jar + soak driver) on the pinned SpongeVanilla build.'
+    dependsOn tasks.named('shadowJar'), soakJar
+    def launcher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(javaRelease) }
+    doFirst {
+        commandLine 'python3', rootProject.file('scripts/sponge_run_server.py').absolutePath,
+                '--spongevanilla', project.spongevanilla_version,
+                '--sha1', project.spongevanilla_sha1,
+                '--java', launcher.get().executablePath.asFile.absolutePath,
+                '--run-dir', layout.buildDirectory.dir('run/soak-server').get().asFile.absolutePath,
+                '--plugin', tasks.named('shadowJar').get().archiveFile.get().asFile.absolutePath,
+                '--plugin', soakJar.get().archiveFile.get().asFile.absolutePath,
+                '--',
+                '-Xmx2G',
+                "-Dlss.soak.scenario=${findProperty('soak.scenario') ?: ''}",
+                "-Dlss.soak.dirtydebug=${findProperty('soak.dirtydebug') ?: 'false'}",
+                "-Dlss.soak.probes=${findProperty('soak.probes') ?: ''}",
+                "-Dlss.soak.migrationHoldSeconds=${findProperty('soak.migrationHoldSeconds') ?: '0'}"
     }
 }

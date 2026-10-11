@@ -106,10 +106,10 @@ xplat**. Kinds refer to the line classification (`config/lines/classification.js
 |---|---|---|
 | `sponge/build.gradle` | SpongeGradle `2.3.0` + VanillaGradle (per-line version, §4) + shadow. Java release from `line.env` `LINE_JAVA_VERSION` (the 26.2 paper R2-5 read shape); Sponge versions from `gradle.properties` | **identical** |
 | `sponge/src/main/java/dev/vox/lss/sponge/LSSSpongePlugin.java` | entrypoint: Brand → LoaderServices → implementation guard (§1.9) → channels, commands, permissions, lifecycle | identical |
-| `.../sponge/SpongeChannels.java` | the 13 `lss:*` channels over raw data channels; codec bytes exactly; `isSupportedBy` before encode; a quiet per-channel `ChannelExceptionHandler` | identical |
+| `.../sponge/SpongeChannels.java` | the 13 `lss:*` channels over raw data channels; codec bytes exactly; no registered-channel pre-check (the Fabric send contract — as-built §10); a quiet per-channel `ChannelExceptionHandler` | identical |
 | `.../sponge/SpongePermissions.java` | `PermissionDescription`s registered at `StartingEngineEvent` (§1.6) | identical |
 | `.../sponge/SpongeCommands.java` | shared `/lsslod` brigadier tree on a private dispatcher behind `Command.Raw` (the PR #314 design) | identical |
-| `.../sponge/SpongeLineSurface.java` | **the one per-line flavor file**: command-source permission elevation (int op level on 1.21.1–1.21.10, `LevelBasedPermissionSet` on 1.21.11+), plus the per-line literals the contract tests read | adapted |
+| `.../sponge/SpongeLineSurface.java` | **the one per-line flavor file**: command-source permission elevation (int op level on 1.21.1–1.21.10, `LevelBasedPermissionSet` on 1.21.11+). As built it holds no test literals: the tests read `line.env`/`gradle.properties` | adapted |
 | `.../platform/SpongeLoaderServices.java` | the `LoaderServices` impl; facts come from the **injected** `PluginContainer`, never `plugin("lodserversupport")` (a VSS jar has another id) | identical |
 | `.../networking/server/LSSServerNetworking.java` | same-FQN twin (static holder, lifecycle, payload adapters) | identical (the NeoForge twin is identical on all five lines) |
 | `.../mixin/ChunkSaveDataHook.java` | dirty source; that line's target (`copyOf`; `ChunkSerializer.write` on 1.21.1) | adapted |
@@ -119,7 +119,7 @@ xplat**. Kinds refer to the line classification (`config/lines/classification.js
 | `sponge/src/main/resources/lss.sponge.mixins.json` | **`compatibilityLevel: JAVA_21` on every line** (Sponge bundles Mixin 0.8.7, whose enum ends at JAVA_21; a JAVA_25 literal fails to parse a required config; S0-proven on 26.2) | identical |
 | `sponge/src/main/resources/lss-sponge.accesswidener` | header `named` (SpongeVanilla's AW reader has no namespace check; S0-proven at runtime on API 12 and 20) | identical |
 | `lss-brand.properties`, `META-INF/services/...LoaderServices` | brand + ServiceLoader fallback | identical |
-| `sponge/src/test/java/...` | §5.1 | identical where possible; per-line literals come from `SpongeLineSurface`/`gradle.properties`, so the tests stay identical |
+| `sponge/src/test/java/...` | §5.1 | identical on every line; per-line values come from `line.env`/`gradle.properties` (as built) |
 | `sponge/src/smoke/java/...` | dev-only boot-smoke plugin (§5.2) | identical |
 | `sponge/src/soak/java/...` | dev-only soak driver twin (§5.4) | identical |
 
@@ -187,11 +187,12 @@ Raw-channel handlers already hop to the main thread: `handleCustomPayload` HEAD 
 `server.execute` before dispatch. The adapter therefore does not hop; a Tier-1 note
 records the fact, and the boot smoke logs the handler thread once.
 
-`sendTo` ends in `Connection.send`, so it is thread-safe off-main. An unsupported channel
-does **not** throw: Sponge completes the future exceptionally and logs. The adapter
-checks `isSupportedBy` first (skipping the encode), and installs a quiet exception
-handler. A connection-level failure after `isSupportedBy` is recorded as sent, the same
-as Fabric's silent no-op; this is documented in the class javadoc.
+`sendTo` ends in `Connection.send`, so it is thread-safe off-main. It checks only the
+play phase, never the peer's registered channels. The adapter installs a quiet exception
+handler and does **not** pre-check `isSupportedBy` (as-built correction, 2026-10-11):
+Fabric's client sends its handshake on `JOIN`, before its own `minecraft:register`, so a
+pre-check dropped every SessionConfig reply and the first Sponge soak settled on protocol
+19. This matches Fabric's `ServerPlayNetworking.send`, which never consults `canSend`.
 
 ### 1.4 Chunk hooks
 
@@ -326,7 +327,8 @@ call sites.
 If `Sponge.platform().container(IMPLEMENTATION).metadata().id()` is not `spongevanilla`,
 the plugin logs one ERROR and stays disabled. Otherwise, on SpongeNeo, the LSS NeoForge
 mod and the Sponge plugin would run two services on one server. The README states:
-"SpongeNeo/SpongeForge: use the NeoForge jar, not the Sponge plugin."
+"SpongeNeo: use the NeoForge jar on lines that ship one; SpongeForge is not supported."
+(As built: SpongeForge runs on MinecraftForge, for which LSS has no jar.)
 
 ## 2. Release, CI and publishing machinery
 
@@ -545,8 +547,8 @@ Existing surfaces rows to extend:
 
 | Test | Covers |
 |---|---|
-| `SpongeChannelsTest` | channel table ⇔ `LSSConstants.CHANNEL_*` both ways with direction; the codec round-trip for all 13; `isSupportedBy` skip |
-| `SpongeWireParityTest` | frames byte-equal to the shared golden wire corpus |
+| `SpongeChannelsTest` | channel table ⇔ `LSSConstants.CHANNEL_*` both ways with direction; the codec round-trip; a classfile pin that the send path never calls `isSupportedBy` |
+| (folded into `SpongeChannelsTest`, as built) | frames carry exactly the shared codec bytes; the codecs themselves are pinned by the fabric/paper WireParityTests |
 | `SpongeServerHalfContractTest` | §1.2 guards 1–2 (incl. mixin list ⇔ Fabric's) |
 | `SpongeMixinTargetContractTest` | §1.4 against the line's MC classes |
 | `SpongePluginMetadataContractTest` | generated JSON (id, entrypoint exists, version expansion, dependency range); `JAVA_21` literal; services file; no `plugin("lodserversupport")` lookups in sources |
@@ -557,7 +559,7 @@ Existing surfaces rows to extend:
 
 Shared tests extended:
 - `VersionVolatileFileListTest`: the Sponge tree;
-- `NeoForgeModuleContractTest.BYTE_IDENTICAL_TWINS`: `ScopedCarrier` only;
+- the twins: as built, a Sponge-owned `SpongeTwinContractTest` (byte-identical `ScopedCarrier`; the save hook pinned by its injection contract) instead of extending `NeoForgeModuleContractTest`;
 - `LoaderPermissionSeamContractTest`;
 - the `XplatLoaderPurityTest` split;
 - `ReleaseWorkflowContractTest` (§2.2).
