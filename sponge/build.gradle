@@ -1,0 +1,337 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import org.spongepowered.gradle.plugin.config.PluginLoaders
+import org.spongepowered.gradle.vanilla.repository.MinecraftPlatform
+import org.spongepowered.plugin.metadata.model.PluginDependency
+
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+
+// The SpongeVanilla server plugin (sponge-support-plan.md). Server-only: compiles the
+// SERVER half of the xplat source set (§1.2) plus the Sponge glue under src/main.
+// This file is BYTE-IDENTICAL on all five lines — every per-line value comes from
+// gradle.properties (Sponge pins, minecraft_version) or .github/line.env (Java release).
+plugins {
+    id 'java'
+    id 'org.spongepowered.gradle.plugin' version '2.3.0'
+    id 'org.spongepowered.gradle.vanilla' // version: settings.gradle (line data)
+    id 'com.gradleup.shadow' version '9.4.2'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+// R2-5 read shape (paper/build.gradle on 26.2): the Java release is line.env's
+// LINE_JAVA_VERSION — the same datum build.yml/release.yml install.
+def lineEnv = [:]
+rootProject.file('.github/line.env').eachLine { l ->
+    def t = l.trim()
+    if (t && !t.startsWith('#') && t.contains('=')) {
+        def i = t.indexOf('=')
+        lineEnv[t.substring(0, i)] = t.substring(i + 1)
+    }
+}
+def javaRelease = Integer.parseInt(lineEnv['LINE_JAVA_VERSION'])
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(javaRelease)
+tasks.withType(JavaCompile).configureEach { it.options.release = javaRelease }
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
+}
+
+minecraft {
+    version(project.minecraft_version)
+    platform(MinecraftPlatform.SERVER)
+    accessWideners(file('src/main/resources/lss-sponge.accesswidener'))
+}
+
+// ---- The xplat server half (plan §1.2) ------------------------------------------------
+// Excludes are DERIVED where possible: the client accessor mixins are exactly the
+// `client` array of this line's fabric lss.mixins.json (the array differs per line —
+// AccessorEntityRenderDispatcher exists on some lines only). SpongeServerHalfContractTest
+// pins the result both ways (no client reference compiles in; no pattern is stale).
+def fabricMixins = new JsonSlurper().parse(rootProject.file('fabric/src/main/resources/lss.mixins.json'))
+def xplatRoot = rootProject.file('xplat/src/main/java')
+def clientMixinExcludes = (fabricMixins.client ?: [])
+        .collect { "dev/vox/lss/mixin/${it}.java" }
+        .findAll { new File(xplatRoot, it).isFile() }
+def xplatClientExcludes = [
+        'dev/vox/lss/networking/client/**',
+        'dev/vox/lss/config/menu/**',
+        'dev/vox/lss/config/LSSClientConfig.java',
+        'dev/vox/lss/api/**',
+        'dev/vox/lss/benchmark/**',
+        'dev/vox/lss/seed/ClientWorldSeed.java',
+        'dev/vox/lss/compat/Xaero*.java',
+        'dev/vox/lss/compat/Voxy*.java',
+        'dev/vox/lss/compat/DhVoxyBridge.java',
+        'dev/vox/lss/compat/ModCompat.java',
+] + clientMixinExcludes
+ext.xplatClientExcludes = xplatClientExcludes
+
+sourceSets {
+    main {
+        java {
+            srcDir xplatRoot
+            exclude xplatClientExcludes
+        }
+    }
+    // Dev-only boot-smoke companion plugin (plan §5.2): its own jar, never shipped.
+    smoke {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+// ---- Plugin metadata (generated META-INF/sponge_plugins.json) ------------------------
+sponge {
+    apiVersion(project.sponge_api_version)
+    license('MIT')
+    loader {
+        name(PluginLoaders.JAVA_PLAIN)
+        version('1.0')
+    }
+    plugin('lodserversupport') {
+        displayName('LOD Server Support')
+        entrypoint('dev.vox.lss.sponge.LSSSpongePlugin')
+        description('Voxy multiplayer support (unofficial). Enables players with Voxy to see fully rendered terrain out to hundreds of chunks on multiplayer servers without needing to explore the world first.')
+        links {
+            homepage('https://modrinth.com/plugin/lod-server-support')
+            source('https://github.com/VoX/lod-server-support')
+            issues('https://github.com/VoX/lod-server-support/issues')
+        }
+        contributor('VoX') {
+            description('Author')
+        }
+        contributor('StealWonders') {
+            description('Original Sponge port (PR #314)')
+        }
+        // A RANGE admitting the line's snapshot API: SpongeVanilla RC builds report
+        // N.0.0-SNAPSHOT, which Maven orders below N.0.0 (plan §1.8).
+        dependency('spongeapi') {
+            version(project.sponge_api_dependency)
+            loadOrder(PluginDependency.LoadOrder.AFTER)
+            optional(false)
+        }
+    }
+}
+
+dependencies {
+    implementation project(':common')
+    // zstd remains unrelocated and native-stripped, as on Paper (the wire codec pair —
+    // the version must match paper/build.gradle and fabric's slimStoreDepJars).
+    implementation 'com.github.luben:zstd-jni:1.5.7-3'
+    compileOnly 'org.spongepowered:mixin:0.8.7'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.ow2.asm:asm-tree:9.8'
+    testImplementation 'org.ow2.asm:asm-commons:9.8'
+    testImplementation "org.spongepowered:spongeapi:${project.sponge_api_version}"
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+configurations.all {
+    resolutionStrategy {
+        // common declares slf4j 2.0.18; the game provides its own (same posture as the
+        // other modules) — never shaded, so the compile pin only needs to agree.
+        force 'org.slf4j:slf4j-api:2.0.17'
+    }
+}
+
+// VanillaGradle keeps Mojang's jar signature (META-INF/MOJANGCS.SF/.RSA) in the
+// access-widened Minecraft jar on unobfuscated versions (26.x), so the JVM rejects the
+// widened classes at test time ("no manifest section for signature file entry"). The
+// tests run against a signature-stripped copy; compile and the shipped jar are untouched.
+def isVanillaGradleMinecraft = { File f -> f.path.contains('VanillaGradle') && f.name.startsWith('server') && f.name.endsWith('.jar') }
+def unsignedTestJars = layout.buildDirectory.dir('unsigned-test-jars')
+def stripTestJarSignatures = tasks.register('stripTestJarSignatures') {
+    def jars = configurations.testRuntimeClasspath
+    inputs.files(jars)
+    outputs.dir(unsignedTestJars)
+    doLast {
+        def outDir = unsignedTestJars.get().asFile
+        project.delete(outDir)
+        outDir.mkdirs()
+        jars.files.findAll(isVanillaGradleMinecraft).each { File src ->
+            def zf = new ZipFile(src)
+            try {
+                new ZipOutputStream(new FileOutputStream(new File(outDir, src.name))).withCloseable { zos ->
+                    for (e in zf.entries()) {
+                        if (e.name ==~ /META-INF\/[^\/]+\.(SF|RSA|DSA|EC)/) continue
+                        zos.putNextEntry(new ZipEntry(e.name))
+                        zf.getInputStream(e).withCloseable { is -> zos << is }
+                        zos.closeEntry()
+                    }
+                }
+            } finally {
+                zf.close()
+            }
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+    dependsOn stripTestJarSignatures
+    classpath = files({
+        sourceSets.test.runtimeClasspath.files.collect { File f ->
+            isVanillaGradleMinecraft(f) ? new File(unsignedTestJars.get().asFile, f.name) : f
+        }
+    })
+    // The contract tests read these from the source tree; declare them so an edit to
+    // any of them re-runs :sponge:test (the ReleaseWorkflowContractTest pattern).
+    inputs.files(rootProject.file('fabric/src/main/resources/lss.mixins.json'),
+                 rootProject.file('paper/src/main/resources/plugin.yml'),
+                 rootProject.file('.github/line.env'),
+                 rootProject.file('gradle.properties'))
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(xplatRoot).withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty 'lss.sponge.repoRoot', rootProject.projectDir.absolutePath
+    systemProperty 'lss.sponge.classesDir', sourceSets.main.java.destinationDirectory.get().asFile.absolutePath
+    systemProperty 'lss.sponge.xplatExcludes', xplatClientExcludes.join(',')
+    dependsOn tasks.named('writePluginMetadata')
+    systemProperty 'lss.sponge.pluginMetadata',
+            layout.buildDirectory.file('generated/sponge/plugin/META-INF/sponge_plugins.json').get().asFile.absolutePath
+}
+
+// ---- Release jar (Paper's flat layout; plan §1.8) --------------------------------------
+// Native strip lists — keep in sync with paper/build.gradle.
+def storeNativeKeep = [
+    'linux/amd64/', 'linux/aarch64/', 'win/amd64/', 'win/aarch64/',
+    'darwin/x86_64/', 'darwin/aarch64/',
+]
+def storeNativeRoots = ['linux/', 'win/', 'darwin/', 'freebsd/', 'aix/']
+def storeNativeStrip = { el ->
+    def p = el.relativePath.pathString
+    storeNativeRoots.any { p.startsWith(it) } && !storeNativeKeep.any { p.startsWith(it) }
+}
+// The DH adapter is client-only: as on Paper (X-7), a server jar carries no DH codec,
+// no private XZ copy and no XZ license (release_check's check_sponge_dh_absent).
+def dhClientOnly = [
+    'dev/vox/lss/common/dh/**',
+    'dev/vox/lss/internal/xz/**',
+    'META-INF/versions/*/dev/vox/lss/internal/xz/**',
+    'META-INF/licenses/xz-java-0BSD.txt',
+]
+def ciVersion = providers.environmentVariable('CI').map { it == 'true' }.getOrElse(false)
+        ? "${project.mod_version}+${project.minecraft_version}" : ''
+def pluginManifest = ['MixinConfigs': 'lss.sponge.mixins.json', 'Access-Widener': 'lss-sponge.accesswidener']
+
+// No plain/-slim jar may ever match the release glob (the NeoForge rule).
+tasks.named('jar') { enabled = false }
+
+shadowJar {
+    archiveBaseName = 'lod-server-support-sponge'
+    archiveClassifier = ''
+    archiveVersion = ciVersion
+    from sourceSets.main.output
+    configurations = [project.configurations.runtimeClasspath]
+    // Sponge provides slf4j (and gson/fastutil via the game).
+    exclude 'org/slf4j/**'
+    exclude 'META-INF/maven/org.slf4j/**'
+    exclude storeNativeStrip
+    exclude dhClientOnly
+    manifest.attributes(pluginManifest)
+    from(rootProject.file('LICENSE')) {
+        rename { "${it}_lod-server-support-sponge" }
+    }
+    from(rootProject.file('THIRD-PARTY-NOTICES'))
+}
+tasks.named('assemble') { dependsOn tasks.named('shadowJar') }
+
+// ---- Voxy Server Side branded variant --------------------------------------------------
+// A byte-copy of the release jar rewriting ONLY the plugin metadata's display/identity
+// keys (id, name, description, homepage link) and lss-brand.properties (which also
+// renames the command to /vsslod and the admin node to vss.admin). The plugin id is a
+// LOCAL identity on Sponge (the loader reads the metadata entrypoint, never @Plugin's
+// value); the lss:* wire is untouched. release_check pins the pair.
+def vssJarName = 'voxy-server-side-sponge' + (ciVersion ? "-${ciVersion}" : '') + '.jar'
+tasks.register('vssJar') {
+    description = 'Repackages the LSS Sponge jar under the Voxy Server Side branding.'
+    dependsOn tasks.named('shadowJar')
+    def srcJar = tasks.named('shadowJar').flatMap { it.archiveFile }
+    def outFile = layout.buildDirectory.file("libs/${vssJarName}")
+    inputs.file(srcJar)
+    outputs.file(outFile)
+    doLast {
+        def src = srcJar.get().asFile
+        def out = outFile.get().asFile
+        out.parentFile.mkdirs()
+        def zf = new ZipFile(src)
+        try {
+            new ZipOutputStream(new FileOutputStream(out)).withCloseable { zos ->
+                for (e in zf.entries()) {
+                    byte[] replaced = null
+                    if (e.name == 'META-INF/sponge_plugins.json') {
+                        def meta = new JsonSlurper().parse(zf.getInputStream(e))
+                        if (meta.plugins?.size() != 1 || meta.plugins[0].id != 'lodserversupport') {
+                            throw new GradleException('vssJar: sponge_plugins.json shape changed; update the rebrand')
+                        }
+                        def p = meta.plugins[0]
+                        p.id = 'voxyserverside'
+                        p.name = 'Voxy Server Side'
+                        p.description = 'Render distant Voxy LODs on servers'
+                        p.links = (p.links ?: [:]) + [homepage: 'https://modrinth.com/plugin/voxy-server-side']
+                        replaced = JsonOutput.prettyPrint(JsonOutput.toJson(meta)).getBytes('UTF-8')
+                    } else if (e.name == 'lss-brand.properties') {
+                        replaced = 'shortName=VSS\ndisplayName=Voxy Server Side\nclientCommand=vss\nserverCommand=vsslod\n'
+                                .getBytes('UTF-8')
+                    }
+                    def ne = new ZipEntry(e.name)
+                    if (replaced != null) {
+                        zos.putNextEntry(ne)
+                        zos.write(replaced)
+                    } else {
+                        ne.method = e.method
+                        if (e.method == ZipEntry.STORED) {
+                            ne.size = e.size
+                            ne.compressedSize = e.compressedSize
+                            ne.crc = e.crc
+                        }
+                        zos.putNextEntry(ne)
+                        zf.getInputStream(e).withCloseable { is -> zos << is }
+                    }
+                    zos.closeEntry()
+                }
+            }
+        } finally {
+            zf.close()
+        }
+    }
+}
+tasks.named('shadowJar') { finalizedBy tasks.named('vssJar') }
+
+// ---- Boot smoke (plan §5.2) -----------------------------------------------------------
+// Boots the BUILT release jar on the pinned SpongeVanilla server (offline, superflat)
+// beside the dev-only smoke companion plugin, which asserts the runtime facts and writes
+// a JSON verdict. Dev outputs live OUTSIDE build/libs under a non-release base name.
+def smokeJar = tasks.register('smokeJar', Jar) {
+    archiveBaseName = 'lss-sponge-smoke'
+    archiveVersion = ''
+    destinationDirectory = layout.buildDirectory.dir('smoke-libs')
+    from sourceSets.smoke.output
+}
+
+tasks.register('bootSmoke', Exec) {
+    description = 'Boots the release jar on the pinned SpongeVanilla server and checks the runtime contract.'
+    group = 'verification'
+    dependsOn tasks.named('shadowJar'), smokeJar
+    def launcher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(javaRelease) }
+    def resultFile = layout.buildDirectory.file('sponge-smoke/result.json')
+    inputs.files(tasks.named('shadowJar'), smokeJar)
+    outputs.file(resultFile)
+    outputs.upToDateWhen { false }
+    doFirst {
+        commandLine 'python3', rootProject.file('scripts/sponge_boot_smoke.py').absolutePath,
+                '--spongevanilla', project.spongevanilla_version,
+                '--sha1', project.spongevanilla_sha1,
+                '--java', launcher.get().executablePath.asFile.absolutePath,
+                '--plugin', tasks.named('shadowJar').get().archiveFile.get().asFile.absolutePath,
+                '--smoke-plugin', smokeJar.get().archiveFile.get().asFile.absolutePath,
+                '--run-dir', layout.buildDirectory.dir('sponge-smoke/run').get().asFile.absolutePath,
+                '--result', resultFile.get().asFile.absolutePath
+    }
+}
