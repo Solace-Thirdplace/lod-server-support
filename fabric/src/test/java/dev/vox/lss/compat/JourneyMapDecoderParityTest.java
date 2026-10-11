@@ -194,7 +194,7 @@ class JourneyMapDecoderParityTest {
         assertParity(data, FLAT_256, 3, 4);
         Object snapshot = decode(JourneyMapSnapshotEncoder.encode(3, 4, data, FLAT_256), FLAT_256);
         assertEquals(256, call(snapshot, "getHeight", Heightmap.Types.WORLD_SURFACE, 0, 0),
-                "JourneyMap's own inclusive max would mask this to 0 and draw the top as void");
+                "an inclusive max (JourneyMap 6.0.0/6.0.10 write one; 6.0.9 does not) would mask this to 0 and draw the top as void");
     }
 
     @Test

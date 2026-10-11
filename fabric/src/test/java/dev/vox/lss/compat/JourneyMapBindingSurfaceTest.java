@@ -27,8 +27,8 @@ import org.objectweb.asm.tree.ClassNode;
 
 /**
  * Every JourneyMap member the bridge binds exists in the REAL JourneyMap jars of this line,
- * both loaders, with the exact descriptor and static-ness the bindings request (map-ingestion
- * plan §6.1). The expected surface is DERIVED from {@link JourneyMapBindings} itself — each
+ * both loaders, with the descriptor and static-ness the bindings request (map-ingestion plan §6.1)
+ * — exact on the NeoForge jar, Minecraft types erased on this line's intermediary Fabric jar. The expected surface is DERIVED from {@link JourneyMapBindings} itself — each
  * handle resolved against the Tier-1 stubs is cracked back to its member — so the bindings,
  * the stubs and the real jar cannot drift apart without a red.
  *
