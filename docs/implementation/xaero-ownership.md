@@ -32,3 +32,16 @@ Baseline behavior suite: `XaeroMapCompatTest`, `XaeroAcquisitionLifecycleTest`, 
 The new `queuedGauge` is a volatile mirror written under queueLock alongside occupancy. `ModCompat.cachedXaeroStatus()` reads cached resolution, configured enablement, failure/retirement flags and queue/rebuild gauges; it performs no optional discovery, native probing, I/O or queue locking. Lifecycle-tagged UI snapshots remain the status service's responsibility. Every existing Xaero behavioral scenario now checks the queue gauge against membership under the lock in teardown.
 
 `xaero-extraction-audit.json` is supplemental mechanical evidence: 81 of 82 original method bodies match after removing comments, whitespace, routing qualifiers, class renames and record-accessor syntax. The sole intentional difference adds the queue gauge mirror. This audit is not a substitute for descriptor, adverse callback/lifecycle tests or the required live/performance gates.
+
+## Open-region window and heap belt (map ingestion, 2026-10-11)
+
+Added by the map-ingestion program ([plan](../planning/2026-10-11-map-ingestion-journeymap-plan.md) §4, as built in §11). It fixes the unfocused-window OOM: Xaero releases map regions only on frames, so a starved client kept opening regions until the heap ran out. The thread topology, lock order and budgets above are unchanged.
+
+| State | Permitted access and protection | Retirement |
+| --- | --- | --- |
+| `openRegionCap` | Set once at session init from the max heap (`heap / 96 MiB`, clamped 12 to 64; `-Dlss.xaero.openRegionWindow` overrides, 0 disables) | Session-scoped |
+| `openRegions` (region key → 0 when committed, else the grant time), `openRegionsDimension`, `windowProgressMillis`, `openRegionsGauge` | Main thread only. Grants and commits admit a region; the probe walks the window oldest-first, keeps regions Xaero still has loading (1) or loaded (2) plus grants younger than `GRANT_RESERVE_MILLIS` (30 s), and drops the rest. Load grants are budgeted against the free slots | Session-end main settlement clears the window and its dimension; the old world's regions are Xaero's to release |
+| `windowBound`, `heapHolding` | Main thread; set by the pump ladder, cleared in its `finally` whenever the drain was not reached. `windowBound` means the window held back every commit of this pump and turned over within the last 60 s | Session-end main settlement re-arms both |
+| `memory` (`MapMemoryGuard`) | Production guard samples allow-listed old-generation pools after collections; halts above 0.85, releases below 0.70, with a 60 s halt / 10 s release duty cycle so a stuck heap cannot stop the map for good. Tests use `NEVER` or a scripted guard | Stateless toward the session |
+
+While `windowBound` or `heapHolding`, the report to `IngestBackpressureGovernor` holds instead of wedging, so LOD downloads pause rather than the bridge giving up. Keep-visited stays on: an owed region never parks mid-rebuild. `/lss diag` and the `xaero` exporter group show `open_regions=N/cap` and `heap_fraction`. Tests: the window, grant-reservation, round-robin, pacing-flag and heap cases in `XaeroMapCompatTest`.
