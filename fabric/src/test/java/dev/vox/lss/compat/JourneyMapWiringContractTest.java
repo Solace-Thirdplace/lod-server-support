@@ -66,12 +66,12 @@ class JourneyMapWiringContractTest {
         assertTrue(actions.contains("details.journeyMapDiagLine()"), "/lss diag must print the JourneyMap line");
     }
 
-    /** The height facts are PER-LINE data (26.x: getMinY/getMaxY()+1, exclusive) — edited on
+    /** The height facts are PER-LINE data (1.21.11 and 26.x: getMinY/getMaxY()+1, exclusive) — edited on
      *  each line's port, pinned here because Tier 1 cannot construct a ClientLevel. */
     @Test
     void theLineSurfacePassesThisLinesHeightExpression() throws IOException {
         String src = Files.readString(SourcePaths.mainSource("dev/vox/lss/compat/JourneyMapLineSurface.java"));
-        assertTrue(src.contains("level.getMinSectionY(), level.getSectionsCount(), level.getMinY(), level.getMaxY() + 1"),
+        assertTrue(src.contains("level.getMinSectionY(), level.getSectionsCount(), level.getMinY(), level.getMaxY() + 1);"),
                 "a lost +1 writes an inclusive max: a build-limit top renders as void (plan review M2)");
     }
 }
