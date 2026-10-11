@@ -20,6 +20,8 @@ Clients use the Fabric mod on every version; on 26.2, 26.1, and 1.21.1 a NeoForg
 | 26.2 | maintained | experimental | shipped; best-effort | unsupported | not available |
 <!-- LSS SERVER MATRIX END -->
 
+**Sponge (experimental):** a SpongeVanilla server plugin ships on the lines the matrix marks shipped. It speaks the same wire as every other server, so any Fabric or NeoForge client with LSS joins it normally. SpongeNeo and SpongeForge servers should use the NeoForge jar instead.
+
 NeoForge 1.21.1 has distinct native and Connector dependency routes. The recorded 2026-09-08 native Voxy 0.2.9-alpha trial was rejected; older successful reports do not establish current compatibility or its failure's upstream cause. Xaero-only legacy Sodium and the modern Connector Voxy route are separate profiles. Use the [dated profile inventory](docs/testing/astra-live-profiles.md) and exact dependency locks; do not combine their jars by filename.
 
 The in-game settings page (Sodium's Video Settings → the LSS entry or tabs; on Fabric also ModMenu's Configure button) renders on both Sodium generations from v0.13.0: on Sodium 0.8+ it appears under LSS's own entry in the settings screen; on Sodium 0.6/0.7 (MC ≤1.21.10 and the 1.21.1 Voxy-fork pairing) it appears as LSS tabs beside Sodium's own. On NeoForge the page renders on both generations too — the 0.6/0.7 tabs on the Voxy-fork pairing, and LSS's own entry on native NeoForge Sodium 0.8+ builds (what the Connector stack pairs with) — including far-player options where the renderer is available (NeoForge 1.21.1). Other NeoForge lines retain intentional renderer stubs.
@@ -51,13 +53,15 @@ LOD Server Support is backwards and forwards compatible from v0.4.0 through the 
 
 ## Installation
 
-Install **LOD Server Support** on **both** the **server** (Fabric, Paper, or NeoForge on a line that ships it) and **every participating client** (the matching Fabric or NeoForge LSS mod, with Voxy or the enabled Xaero map bridge). The server and client both need LSS for its terrain download service.
+Install **LOD Server Support** on **both** the **server** (Fabric, Paper, NeoForge on a line that ships it, or the experimental Sponge plugin on SpongeVanilla) and **every participating client** (the matching Fabric or NeoForge LSS mod, with Voxy or the enabled Xaero map bridge). The server and client both need LSS for its terrain download service.
 
 NeoForge ships on MC 1.21.1, 26.1 and 26.2; the 1.21.10/1.21.11 modules remain maintained builds. NeoForge far-player rendering is live on 1.21.1 and remains an intentional stub on the other lines. See the [loader/artifact matrix](docs/planning/per-version-surfaces.md#current-loader-and-artifact-surfaces-2026-09-08) and [validation profiles](docs/testing/astra-live-profiles.md) for the separate packaging, consumer and live-test boundaries.
 
+On SpongeVanilla, put the Sponge jar in the server's `mods/` folder. At startup Sponge prints a notice that the plugin uses Mixins; that is expected.
+
 ## Commands
 
-### Server (Fabric, NeoForge, and Paper)
+### Server (Fabric, NeoForge, Paper, and Sponge)
 
 - `/lsslod stats` - Show per-player transfer statistics
 - `/lsslod diag` - Show detailed diagnostics (config, bandwidth, queue depths)
@@ -79,7 +83,7 @@ NeoForge ships on MC 1.21.1, 26.1 and 26.2; the 1.21.10/1.21.11 modules remain m
 ## Configuration
 
 Settings use annotated YAML: `config/lss-server-config.yaml` and
-`config/lss-client-config.yaml` on Fabric/NeoForge, or
+`config/lss-client-config.yaml` on Fabric/NeoForge (the server file also on Sponge), or
 `plugins/LodServerSupport/lss-server-config.yaml` on Paper. VSS uses the corresponding
 `vss-` names, adopting an existing file across brands. Startup migrates an old JSON
 file once and retains both the original and an exact-byte backup. Existing distance
