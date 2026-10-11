@@ -7,6 +7,7 @@ This checkout is the Minecraft **26.1** support line. Use **Java 25** for the pl
 ```sh
 python3 tools/verify/verify.py full --run
 bash tools/verify/run-gradle.sh vssJars
+bash tools/verify/run-gradle.sh :sponge:build :sponge:bootSmoke
 python3 scripts/release_check.py
 python3 tools/tests/check_artifacts.py
 python3 tools/compat/catalog.py validate
@@ -31,6 +32,10 @@ Fast selection is advisory. Never weaken required build/release gates because a 
 
 Experimental, client-side: lets Voxy clients show terrain from servers running Distant Horizons without LSS. On by default since 0.17.0 (`lod.source: distant_horizons`, user decision 2026-10-10). Native LSS always wins on any server that offers it. The DH settings live in the experimental sidecar (`lss-client-experimental.yaml`), which stores only nondefault values, so the main client file stays readable by older versions. The private live rig is `test-fixtures/dh-live` (see its PORTING.md); `dh-p4` is 1.21.1-only. This line needs the four-argument NeoForge `playBidirectional` (21.10+ registers the three-argument handler for the serverbound flow only); `NeoForgeDhTransportContractTest` pins it.
 
+## Sponge server plugin
+
+Experimental and best-effort on every line (exit criterion: plan §0.2). `sponge/` is a SpongeVanilla-only server plugin that compiles the server half of `xplat`; the client excludes are derived in `sponge/build.gradle` and pinned both ways by `SpongeServerHalfContractTest`. The glue: Sponge raw data channels carry exactly the payload codec bytes; `/lsslod` runs on a private brigadier dispatcher behind `Command.Raw`; permission descriptions mirror Paper's plugin.yml defaults; three mixins (the `ChunkSaveDataHook` twin, the descriptor-selected FULL-status `ChunkLoadHook`, `ServerTickHook` at `tickServer` TAIL). The mixin config stays `JAVA_21` on every line (Sponge bundles Mixin 0.8.7). `SpongeLineSurface` is the only per-line flavor file. Sponge pins live in `gradle.properties` (VanillaGradle 0.3.x where Gradle runs on Java 25, 0.2.x on Java 21), the ship flag in `.github/line.env` (`LINE_SHIP_SPONGE`). `:sponge:bootSmoke` boots the built release jar on the pinned SpongeVanilla server in two phases. Far-player vanish goes through the `LoaderServices.vanishVisibility()` seam. Decisions and cuts: [Sponge support plan](docs/planning/2026-10-10-sponge-support-plan.md); local rig `./test-server.sh run-sponge` (port 25570).
+
 ## Known Test Flakes & Environmental Failures
 
 [The canonical flake catalog](docs/operations/test-flakes.md) preserves exact signatures and actions. A different assertion is a regression, not permission to rerun away a failure. Preserve first-attempt XML/logs before any justified retry and record actual test identities/counts.
@@ -45,6 +50,6 @@ Use [maintained disposable rigs](docs/operations/disposable-rigs.md) for automat
 
 ## Releasing
 
-Existing publishing and branding rules are unchanged. Follow the [preserved release discipline](docs/history/contributor-guide-before-project-improvements.md#releasing) and current release scripts. Do not rerun a partially published release; recover from its original attached artifacts. This improvement task does not authorize merges or publication.
+Existing publishing and branding rules are unchanged. Follow the [preserved release discipline](docs/history/contributor-guide-before-project-improvements.md#releasing) and current release scripts. Do not rerun a partially published release; recover from its original attached artifacts. Sponge publishes from release.yml only where `LINE_SHIP_SPONGE=true` (the last Modrinth step); run `:sponge:build --refresh-dependencies` right before tagging, because an expired RC or snapshot pin fails there, and recover a stranded Sponge publish by hand-uploading the GitHub-attached jar. VSS Sponge jars publish locally with the other VSS jars. This improvement task does not authorize merges or publication.
 
 The [previous complete guide](docs/history/contributor-guide-before-project-improvements.md) preserves historical explanations and decisions. Its dated compatibility claims do not override current build definitions/catalogs. Keep stable links and historical evidence intact.
