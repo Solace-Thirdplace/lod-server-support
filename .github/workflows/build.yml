@@ -70,6 +70,31 @@ jobs:
             ran_some_tests
           }
 
+      # The SpongeVanilla plugin (best-effort + experimental tier, sponge-support-plan.md
+      # §2.3): Tier 1 contract suite + the release shadowJar + the VSS repackage.
+      - name: Build Sponge + contract tests
+        run: ./gradlew :sponge:build
+
+      # The two-phase boot smoke (§5.2): the BUILT release jar on the line's pinned
+      # SpongeVanilla server — hooks fire, a disk-read serve, the permission defaults.
+      # The server jar + its first-boot library closure are cached per pinned build; an
+      # expired RC/snapshot pin is a "refresh the pin" failure, never a re-run (flake
+      # catalog). Same retry-once + first-attempt evidence pattern as the gametests.
+      - name: Cache the pinned SpongeVanilla server
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/lss-sponge
+          key: spongevanilla-${{ hashFiles('gradle.properties') }}
+
+      - name: Sponge boot smoke (retry once on flake)
+        run: |
+          ./gradlew :sponge:bootSmoke || {
+            echo "::warning title=Sponge boot smoke flake::bootSmoke failed once; retrying (first-attempt logs in the gametest-flake-evidence-server artifact under sponge/)"
+            mkdir -p flake-evidence/sponge
+            cp -r sponge/build/sponge-smoke flake-evidence/sponge/ 2>/dev/null || true
+            ./gradlew :sponge:bootSmoke
+          }
+
       - name: Isolated harness ownership + result fixtures
         run: |
           ./gradlew :common:settingsCliClasspath --no-parallel
@@ -122,10 +147,13 @@ jobs:
             neoforge/build/test-results/
             neoforge/run/logs/
             neoforge/run/crash-reports/
+            sponge/build/reports/
+            sponge/build/test-results/
+            sponge/build/sponge-smoke/
           if-no-files-found: ignore
           retention-days: 30
 
-      # Four shipped jars: the LSS pair and the branded Voxy Server Side pair (produced by the
+      # The shipped jars per loader: the LSS jar and the branded Voxy Server Side twin (produced by the
       # vssJar repackage tasks — Fabric's runs as a `build` dependency, Paper's as a shadowJar
       # finalizer). Explicit per-brand globs so each artifact holds only its own jar.
       - uses: actions/upload-artifact@v5
@@ -157,6 +185,16 @@ jobs:
         with:
           name: voxy-server-side-neoforge
           path: neoforge/build/libs/voxy-server-side-neoforge*.jar
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: lod-server-support-sponge
+          path: sponge/build/libs/lod-server-support-sponge*.jar
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: voxy-server-side-sponge
+          path: sponge/build/libs/voxy-server-side-sponge*.jar
 
   # Tier 3 (client gametests) is CUT on the 1.21.1 line (pre-authorized-cuts.md) —
   # fabric/build.gradle sets enableClientGameTests = false, so the runClientGameTest

@@ -17,7 +17,8 @@ def candidate_bindings(runtime,artifact):
     if key=='candidate_artifacts':
      for row in item:
       metadata=row.get('metadata',{});fabric=metadata.get('fabric',{});neo=metadata.get('neoforge',{});paper=metadata.get('paper',{})
-      if fabric.get('id')=='lss' or any(m.get('modId')=='lss' for m in neo.get('mods',[])) or paper_product(paper):
+      sponge=[p.get('id') for p in (metadata.get('sponge') or {}).get('plugins',[])]
+      if fabric.get('id')=='lss' or any(m.get('modId')=='lss' for m in neo.get('mods',[])) or paper_product(paper) or any(i in ('lodserversupport','voxyserverside') for i in sponge):
        hashes.add(row['sha256'])
     else:visit(item)
   elif isinstance(value,list):

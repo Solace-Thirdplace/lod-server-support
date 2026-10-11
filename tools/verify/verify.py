@@ -7,10 +7,10 @@ ROOT=Path(__file__).resolve().parents[2]
 def select(paths, tier, line, manifest=None):
     manifest=manifest or json.loads((ROOT/'config/test-impact.json').read_text())
     if manifest.get('schema_version') != 1: raise ValueError('unsupported impact schema')
-    platform=[':common:test',':fabric:test',':paper:test',':neoforge:test']
+    platform=[':common:test',':fabric:test',':paper:test',':neoforge:test',':sponge:test']
     integration=[':fabric:runGameTest',':neoforge:runGameTestServer']
     if line!='1.21.1':integration.append(':fabric:runClientGameTest')
-    full=[':common:test',':fabric:build',':paper:build',':neoforge:build',':neoforge:runGameTestServer']
+    full=[':common:test',':fabric:build',':paper:build',':neoforge:build',':neoforge:runGameTestServer',':sponge:build',':sponge:bootSmoke']
     if line!='1.21.1':full.append(':fabric:runClientGameTest')
     if tier=='full':return full
     if tier=='platform':return platform
@@ -18,7 +18,7 @@ def select(paths, tier, line, manifest=None):
     if not paths:return full
     if all(p.endswith('.md') or p.startswith('docs/') for p in paths):return []
     if any(p.startswith(tuple(manifest['shared_prefixes']+manifest['tooling_prefixes'])) or not p.startswith(tuple(manifest['platform_prefixes'])) for p in paths):return full
-    return [':common:test']+[':'+mod+':test' for mod in ('fabric','paper','neoforge') if any(p.startswith(mod+'/') for p in paths)]
+    return [':common:test']+[':'+mod+':test' for mod in ('fabric','paper','neoforge','sponge') if any(p.startswith(mod+'/') for p in paths)]
 
 def cross_line_required(paths, manifest):
     if not paths:return True # No impact information cannot narrow the line set.

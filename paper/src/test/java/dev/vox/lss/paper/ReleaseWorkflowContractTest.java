@@ -145,7 +145,9 @@ class ReleaseWorkflowContractTest {
         // namespace (labrinth rejects nothing). Every publish-feeding row ties back.
         assertTrue(refines(env("LINE_MC_NEOFORGE"), env("LINE_MC_FABRIC")),
                 "LINE_MC_NEOFORGE must refine the line token, never another line's");
-        for (String loader : new String[]{"FABRIC", "PAPER", "NEOFORGE"}) {
+        assertTrue(refines(env("LINE_MC_SPONGE"), env("LINE_MC_FABRIC")),
+                "LINE_MC_SPONGE must refine the line token, never another line's");
+        for (String loader : new String[]{"FABRIC", "PAPER", "NEOFORGE", "SPONGE"}) {
             // Whole-token membership, not substring (round-3 review: "26.11" contains
             // "26.1" — the same 1.21.1x confusion in list form).
             assertTrue(java.util.Arrays.asList(env("LINE_GAME_VERSIONS_" + loader).split(" "))
@@ -223,7 +225,7 @@ class ReleaseWorkflowContractTest {
         // Every publish step is push-event-gated.
         for (String step : new String[]{"- uses: softprops/action-gh-release",
                 "- name: Upload Fabric to Modrinth", "- name: Upload Paper to Modrinth",
-                "- name: Upload NeoForge to Modrinth"}) {
+                "- name: Upload NeoForge to Modrinth", "- name: Upload Sponge to Modrinth"}) {
             assertTrue(stepBlock(step).contains(
                             "if: github.event_name == 'push' && github.ref_type == 'tag'"),
                     step + " must be push-gated so a dispatch rehearsal can never publish");
@@ -281,6 +283,37 @@ class ReleaseWorkflowContractTest {
         int fi = releaseYml.indexOf("\n            fi", guard);
         assertTrue(fi > guard && neoGlob < fi,
                 "the neoforge asset glob must sit BEFORE the guard's closing fi");
+        // Sponge (sponge-support-plan.md §2.2): the same bounded-guard shape.
+        int spongeGuard = releaseYml.indexOf("if [ \"${LINE_SHIP_SPONGE}\" = \"true\" ]");
+        int spongeGlob = releaseYml.indexOf("echo \"sponge/build/libs/lod-server-support-sponge-*.jar\"");
+        int spongeFi = releaseYml.indexOf("\n            fi", spongeGuard);
+        assertTrue(spongeGuard >= 0 && spongeGlob > spongeGuard && spongeGlob < spongeFi,
+                "the sponge asset glob must sit INSIDE (bounded by) the LINE_SHIP_SPONGE guard");
+    }
+
+    @Test
+    void spongeShippingIsGatedPerLine() {
+        // sponge-support-plan.md §0.3: a line flips LINE_SHIP_SPONGE to true only after
+        // its live server smoke passes on the frozen candidate. The value pin makes every
+        // flip a conscious per-line edit (line.env + this pin + release_check + line.json).
+        assertEquals("false", env("LINE_SHIP_SPONGE"),
+                "this line's Sponge ship flag — flip it only with the live-smoke record");
+        assertTrue(stepBlock("- name: Build Sponge + contract tests")
+                        .contains("if: env.LINE_SHIP_SPONGE == 'true'"),
+                "the release-pipeline Sponge build must be flag-gated");
+        assertTrue(stepBlock("- name: Upload Sponge to Modrinth")
+                        .contains("env.LINE_SHIP_SPONGE == 'true'"),
+                "the Sponge Modrinth step must be flag-gated");
+        try {
+            String rc = Files.readString(locate("scripts/release_check.py"));
+            // This line predates R2-5: release_check HAND-MIRRORS the flag — the
+            // two-file coupling pin (flip BOTH together).
+            assertTrue(rc.contains("\nSHIP_SPONGE = "
+                            + ("true".equals(env("LINE_SHIP_SPONGE")) ? "True" : "False") + "\n"),
+                    "release_check.py's SHIP_SPONGE hand mirror must equal line.env LINE_SHIP_SPONGE");
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
     }
 
     @Test
@@ -316,9 +349,9 @@ class ReleaseWorkflowContractTest {
 
     @Test
     void onlyTheLssModrinthStepsExistAndUseTheDataDrivenIds() {
-        assertEquals(3, Pattern.compile(Pattern.quote("modrinth-id: " + LSS_MODRINTH_ID))
+        assertEquals(4, Pattern.compile(Pattern.quote("modrinth-id: " + LSS_MODRINTH_ID))
                         .matcher(releaseYml).results().count(),
-                "all three LSS Modrinth steps must target " + LSS_MODRINTH_ID);
+                "all four LSS Modrinth steps must target " + LSS_MODRINTH_ID);
         assertFalse(releaseYml.contains(VSS_MODRINTH_ID),
                 "release.yml must not reference the VSS Modrinth project " + VSS_MODRINTH_ID);
         assertFalse(releaseYml.contains("voxy-server-side-"),
@@ -329,7 +362,8 @@ class ReleaseWorkflowContractTest {
         for (String template : new String[]{
                 "version: v${{ env.MOD_VERSION }}+fabric+mc${{ env.LINE_MC_FABRIC }}",
                 "version: v${{ env.MOD_VERSION }}+paper+mc${{ env.LINE_MC_PAPER }}",
-                "version: v${{ env.MOD_VERSION }}+neoforge+mc${{ env.LINE_MC_NEOFORGE }}"}) {
+                "version: v${{ env.MOD_VERSION }}+neoforge+mc${{ env.LINE_MC_NEOFORGE }}",
+                "version: v${{ env.MOD_VERSION }}+sponge+mc${{ env.LINE_MC_SPONGE }}"}) {
             assertEquals(1, Pattern.compile(Pattern.quote(template)).matcher(releaseYml)
                             .results().count(),
                     "exactly one Modrinth step per version-id template '" + template + "'");
@@ -340,6 +374,7 @@ class ReleaseWorkflowContractTest {
         assertTrue(stepBlock("- name: Upload Paper to Modrinth")
                 .contains("loaders: ${{ env.PAPER_LOADERS }}"));
         assertTrue(stepBlock("- name: Upload NeoForge to Modrinth").contains("loaders: neoforge"));
+        assertTrue(stepBlock("- name: Upload Sponge to Modrinth").contains("loaders: sponge"));
         if (isMainline) {
             assertTrue(env("LINE_PAPER_LOADERS").contains("folia"),
                     "the 26.2 Paper step advertises folia (jar declares folia-supported; "
@@ -376,6 +411,29 @@ class ReleaseWorkflowContractTest {
         assertTrue(releaseYml.indexOf("- name: Upload NeoForge to Modrinth")
                         > releaseYml.indexOf("- name: Upload Paper to Modrinth"),
                 "the NeoForge Modrinth step must come AFTER the Paper step");
+    }
+
+    @Test
+    void spongeStepIsDataDrivenUnderTheLabrinthCapsAndLast() {
+        String sponge = stepBlock("- name: Upload Sponge to Modrinth");
+        assertTrue(sponge.contains("name: v${{ env.MOD_VERSION }} - ${{ env.LINE_SPONGE_NAME }}"),
+                "the Sponge name must resolve from LINE_SPONGE_NAME");
+        String resolved = "v0.99.99 - " + env("LINE_SPONGE_NAME");
+        assertTrue(resolved.length() <= 64, "the resolved Sponge name ('" + resolved + "') must "
+                + "stay under labrinth's 64-char cap");
+        String number = "v0.99.99+sponge+mc" + env("LINE_MC_SPONGE");
+        assertTrue(number.length() <= 32, "the resolved Sponge version number ('" + number
+                + "') must stay under labrinth's 32-char cap");
+        assertTrue(env("LINE_SPONGE_NAME").contains("Sponge"), "the name must identify the loader");
+        assertTrue(env("LINE_SPONGE_NAME").contains("experimental"),
+                "the name carries the experimental label until the plan's §0.2 exit criterion");
+        assertTrue(sponge.contains("files: sponge/build/libs/lod-server-support-sponge-*.jar"),
+                "the Sponge step must ship the sponge LSS jar, not another loader's");
+        assertTrue(sponge.contains("modrinth-featured: false"), "an experimental platform is never featured");
+        assertTrue(sponge.contains("game-versions: ${{ env.GV_SPONGE }}"));
+        assertTrue(releaseYml.indexOf("- name: Upload Sponge to Modrinth")
+                        > releaseYml.indexOf("- name: Upload NeoForge to Modrinth"),
+                "the Sponge Modrinth step runs LAST — a best-effort failure strands only Sponge");
     }
 
     @Test
