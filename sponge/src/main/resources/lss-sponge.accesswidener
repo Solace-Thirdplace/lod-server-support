@@ -1,0 +1,8 @@
+accessWidener v2 named
+# Headless section serialization (disk-read serve path): the palette histogram that
+# replaces LevelChunkSection's recalcBlockCounts needs the container's palette + storage
+# pair — the fabric lss.accesswidener's two widenings, verbatim. The `named` header is
+# correct on every line: SpongeVanilla runs on Mojang names and its AW reader applies no
+# namespace check (sponge-support-plan.md §1.1, S0-proven on API 12 and API 20).
+accessible class net/minecraft/world/level/chunk/PalettedContainer$Data
+accessible field net/minecraft/world/level/chunk/PalettedContainer data Lnet/minecraft/world/level/chunk/PalettedContainer$Data;

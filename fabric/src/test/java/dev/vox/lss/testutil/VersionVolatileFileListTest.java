@@ -57,7 +57,18 @@ class VersionVolatileFileListTest {
             assertTrue(Files.exists(root.resolve("neoforge/src/main/java/" + file)),
                     file + " must exist in the neoforge tree (the same-FQN twin)");
         }
+        // The server-only Sponge tree (sponge-support-plan.md §1.1) carries the
+        // server-relevant volatile files too — the client renderer is not compiled there.
+        for (String file : SERVER_VOLATILE) {
+            assertTrue(Files.exists(root.resolve("sponge/src/main/java/" + file)),
+                    file + " must exist in the sponge tree (the same-FQN server twin)");
+        }
     }
+
+    private static final String[] SERVER_VOLATILE = {
+            "dev/vox/lss/mixin/ChunkSaveDataHook.java",
+            "dev/vox/lss/compat/ScopedCarrier.java",
+    };
 
     private static Path repoRoot() {
         Path dir = Path.of("").toAbsolutePath();
