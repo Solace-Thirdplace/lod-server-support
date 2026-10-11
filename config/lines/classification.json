@@ -1,10 +1,10 @@
 {
   "basis": {
-    "1.21.1": "f70fe1526c08aa414183ff1f08dcfdda4953e3ff",
-    "1.21.10": "339d466d21d91207abb085256427240ade6dded9",
-    "1.21.11": "8cc3f0e01c86f9f3ea1465d58caf880c3e76b2cc",
-    "26.1": "f3f442b71eca65b05af0ff6b3a8f83643fd8a29a",
-    "26.2": "13b6138851d2acfeeb8811a74128b2d9f58cb726"
+    "1.21.1": "5a7ce085b79ed6fc68a730bfd4a73630234aa19a",
+    "1.21.10": "fa91339df9e84092ef453048dee19c61010137e9",
+    "1.21.11": "1e41ebb86f11763b2faba0880407c82c40745d84",
+    "26.1": "a1cb482a231ca3fdaf0162bae0832658b359eebd",
+    "26.2": "3c63ee5ff1cea6e473144b186d06e26d5c4d8c91"
   },
   "files": {
     ".github/line.env": {
@@ -26,13 +26,13 @@
     ".github/workflows/build.yml": {
       "axes": "Per-line Tier3 availability and game JDK selection remain intact; 26.x additionally installs Java 21 for fixed common tests. Shared fixture-exclusion validation and common-test failure evidence are mandatory across all five lines.",
       "kind": "adapted",
-      "review": "2026-09-29 release gate: identical settingsCliClasspath preparation added before harness fixtures on every line; existing line JDKs, Tier3 availability, all test gates and failure evidence preserved.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-09-29 release gate: identical settingsCliClasspath preparation added before harness fixtures on every line; existing line JDKs, Tier3 availability, all test gates and failure evidence preserved.",
       "reviewed_blobs": {
-        "1.21.1": "3c6d98212312a6be1db372b2ea2a74248e567581",
-        "1.21.10": "23d4159d085d721bf21c75653085d889c3d16d98",
-        "1.21.11": "23d4159d085d721bf21c75653085d889c3d16d98",
-        "26.1": "fb10d277aa7575841c2910488689bc7b5a5714ef",
-        "26.2": "34035c32256e92d2bf066ac855c999a762342f53"
+        "1.21.1": "e79cd611e26b10eb88dff58356c09374a4e13905",
+        "1.21.10": "098204d1bef88e909f01594866705fe52397e92b",
+        "1.21.11": "098204d1bef88e909f01594866705fe52397e92b",
+        "26.1": "736510b6ce24aac0e44915474bf67d663e30cb63",
+        "26.2": "77f1234c6f58fce2e5fa567b0cdac00da486e844"
       },
       "surface": "line-adaptation:.github/workflows/build.yml",
       "tests": [
@@ -575,6 +575,9 @@
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/config/LegacySettingsMigrationTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/config/MapIngestionSettingsTest.java": {
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/config/RuntimeBatchTest.java": {
@@ -1832,13 +1835,13 @@
     "fabric/build.gradle": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: delta from the 0.16.0 reviewed blobs adds mockito-core 5.20.0 and objenesis 3.3 test dependencies on every line; the loom-remap 1.21.x lines (1.21.1/1.21.10/1.21.11) add localRuntime org.tukaani:xz:1.10 because their development runs see unshaded common classes, while 26.1/26.2 consume common's shadow jar and carry no XZ dev-runtime row (26.1 keeps the explanatory comment without the row: comment-only residue, no build effect). Release jars carry only common's relocated private XZ on every line. All other line flavours unchanged from the reviewed 0.16.0 blobs.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: delta from the 0.16.0 reviewed blobs adds mockito-core 5.20.0 and objenesis 3.3 test dependencies on every line; the loom-remap 1.21.x lines (1.21.1/1.21.10/1.21.11) add localRuntime org.tukaani:xz:1.10 because their development runs see unshaded common classes, while 26.1/26.2 consume common's shadow jar and carry no XZ dev-runtime row (26.1 keeps the explanatory comment without the row: comment-only residue, no build effect). Release jars carry only common's relocated private XZ on every line. All other line flavours unchanged from the reviewed 0.16.0 blobs.",
       "reviewed_blobs": {
-        "1.21.1": "662ab4dc66c98e945a8d6ea04f47e9ec99c589df",
-        "1.21.10": "d6912f82d903c5dc93e4623cd68d8133f783e9b9",
-        "1.21.11": "4a9a2119499d7777fc38f6dd29c6cf1889797eee",
-        "26.1": "bdecf5c5f041f53bd0e63ca1c117ac73601a954c",
-        "26.2": "51376589872383f88d6cfa178c5ef8d00e19cadd"
+        "1.21.1": "d4a89d143d7f7e15d67f1f19540a5cef7c48df3a",
+        "1.21.10": "71fba92eedb856b2d215de04d88bd2f49f1bd230",
+        "1.21.11": "6796e34f2005edcb79a4f5b8731c2d05eaa175a2",
+        "26.1": "e70da1d96ad60cf529032f65888b5967cad38c33",
+        "26.2": "d646dc871bd0f5b691039c1a204a7cece56be643"
       },
       "surface": "build-toolchain",
       "tests": [
@@ -2124,13 +2127,13 @@
     "fabric/src/main/java/dev/vox/lss/benchmark/BenchmarkHook.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Implementation candidate; independent final change review must cover residual logic before handoff.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. Implementation candidate; independent final change review must cover residual logic before handoff.",
       "reviewed_blobs": {
-        "1.21.1": "74d51b2d1eac4b9f72aeb2110ce7a1a30602b367",
-        "1.21.10": "74d51b2d1eac4b9f72aeb2110ce7a1a30602b367",
-        "1.21.11": "74d51b2d1eac4b9f72aeb2110ce7a1a30602b367",
-        "26.1": "d83425d79be6916dc2786112f43181785ad9db00",
-        "26.2": "d83425d79be6916dc2786112f43181785ad9db00"
+        "1.21.1": "bf03c4f0e34577581a48256a55e868a2b1bbfd65",
+        "1.21.10": "de0eba916f6891673c96cada592561b420bda30f",
+        "1.21.11": "9fc9a6316dde1c243368a0957903dd8b5b85edae",
+        "26.1": "dfb2d79176a3aefd9c3de7afc7db8a16b2d5236e",
+        "26.2": "dfb2d79176a3aefd9c3de7afc7db8a16b2d5236e"
       },
       "surface": "line-adaptation:fabric/src/main/java/dev/vox/lss/benchmark/BenchmarkHook.java",
       "tests": [
@@ -2385,13 +2388,13 @@
     "fabric/src/main/resources/assets/lss/lang/en_us.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical DH source/option string additions on every line; 1.21.10 and 1.21.11 drop the \"(NeoForge: restart required)\" note from lss.config.lod_source.tooltip because those lines have no NeoForge client route. Other keys unchanged.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH source/option string additions on every line; 1.21.10 and 1.21.11 drop the \"(NeoForge: restart required)\" note from lss.config.lod_source.tooltip because those lines have no NeoForge client route. Other keys unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "2b185c1c55be8df88794ff6afa9e43f09eadfbd4",
-        "1.21.10": "fed2725b2209af5b1de45d8918f46d4601a26966",
-        "1.21.11": "fed2725b2209af5b1de45d8918f46d4601a26966",
-        "26.1": "2b185c1c55be8df88794ff6afa9e43f09eadfbd4",
-        "26.2": "51dc1a7bac92e75b940e9648acea83f68bfc7f3a"
+        "1.21.1": "17747c2da5d755ebea11229e0e821e0eb74778cb",
+        "1.21.10": "cf5953a02430e4c9f231234d2f42667cae119a58",
+        "1.21.11": "fae047b43061bd3c2f393b373a4b2ef019c0b4ac",
+        "26.1": "17747c2da5d755ebea11229e0e821e0eb74778cb",
+        "26.2": "db22f6129231533ffef20e264e2627257806d8b6"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/en_us.json",
       "tests": [
@@ -2402,13 +2405,13 @@
     "fabric/src/main/resources/assets/lss/lang/zh_cn.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
       "reviewed_blobs": {
-        "1.21.1": "864dbd3a85c0322235105b4c8f2ca3e9facecbfd",
-        "1.21.10": "41f453ae7079fb51deee7071487404409f762716",
-        "1.21.11": "41f453ae7079fb51deee7071487404409f762716",
-        "26.1": "864dbd3a85c0322235105b4c8f2ca3e9facecbfd",
-        "26.2": "ec1602bf8aaf161d8c11395c222990faa31104a5"
+        "1.21.1": "171a98380abf4075dea56f27504146cea9de0f06",
+        "1.21.10": "28426b05dc067f09f3b8beb1424ceb8e3bb52cba",
+        "1.21.11": "226672f9095b90845929ebe1813633ab957c4b52",
+        "26.1": "171a98380abf4075dea56f27504146cea9de0f06",
+        "26.2": "05a40b33f71146323328df39ceac9575ff5fe3d3"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/zh_cn.json",
       "tests": [
@@ -2419,13 +2422,13 @@
     "fabric/src/main/resources/assets/lss/lang/zh_tw.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
       "reviewed_blobs": {
-        "1.21.1": "10a11f3e964b6d7cb27de3c73fabe463b758834d",
-        "1.21.10": "3618c9882ed89ba3ed0a3cae77867723b21b3ad5",
-        "1.21.11": "3618c9882ed89ba3ed0a3cae77867723b21b3ad5",
-        "26.1": "10a11f3e964b6d7cb27de3c73fabe463b758834d",
-        "26.2": "c02be4f44bfc4f6ca560e7e7eafef06b6b6bf1ce"
+        "1.21.1": "89b0086a97bb2085615e95be02fdfa47cacaf220",
+        "1.21.10": "2cb3f4ab804328bd28b4507a0d6c0448511bd85a",
+        "1.21.11": "637cfbdaa9500f2d6af4ae2bcb51107505387565",
+        "26.1": "89b0086a97bb2085615e95be02fdfa47cacaf220",
+        "26.2": "a465c0fa86b03271a5374ea2fe6144c27ab49ddb"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/zh_tw.json",
       "tests": [
@@ -2436,13 +2439,13 @@
     "fabric/src/main/resources/fabric.mod.json": {
       "axes": "Loader/game/version entrypoint identity, declared gametests and packaging metadata.",
       "kind": "adapted",
-      "review": "2026-09-28 SQLite isolation port reviewed across all five lines by Astra: identical semantic changes, preserved MC/JDK/shipping facts and loader-specific zstd dev visibility. YAML parser, settings CLI, policy ownership and both packaging checkers preserved; runtime integration independently reviewed.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-09-28 SQLite isolation port reviewed across all five lines by Astra: identical semantic changes, preserved MC/JDK/shipping facts and loader-specific zstd dev visibility. YAML parser, settings CLI, policy ownership and both packaging checkers preserved; runtime integration independently reviewed.",
       "reviewed_blobs": {
-        "1.21.1": "bd6c2dd921e45d996f123ac7154a457fba161e35",
+        "1.21.1": "aa4158d888cfdf1e9792af3123e1210c542720a1",
         "1.21.10": "32d65e1ffe684b67b309d58ec9244c82fbcfe332",
-        "1.21.11": "f7988a868953afed568955b53071ec1e7979da03",
-        "26.1": "f8f5f9c99bc04d250657404cc6e347e68e0e57f0",
-        "26.2": "df3d66ae3b8a720c898519aff4eae611d02896a2"
+        "1.21.11": "6039265a5dceb3f134403de23b91c1e104299407",
+        "26.1": "70becbd18e61c6ab6b216343d66e0daf2bc7be5c",
+        "26.2": "76720fdd96547743e83fcbe56c202606674ccdd3"
       },
       "surface": "loader-entrypoint-metadata",
       "tests": [
@@ -2542,13 +2545,13 @@
     "fabric/src/test/java/dev/vox/lss/FabricModJsonContractTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "Implementation candidate; independent final change review must cover residual logic before handoff.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. Implementation candidate; independent final change review must cover residual logic before handoff.",
       "reviewed_blobs": {
-        "1.21.1": "b1d4490a56e814ea36bcd475e76bc789a10dfa5f",
-        "1.21.10": "70a42d49d82ef95d55ebf441ba003aceba04f637",
-        "1.21.11": "9cd5da470ad5da50241b4d11141d154709ba3638",
-        "26.1": "d0a4e964c2f9244166508aa316cbf6eb7d5d8180",
-        "26.2": "edecd50e2fb9ba067c2e2b436a9bfecec4b247f4"
+        "1.21.1": "cd5882aca7e11d7018f21320e9e679211a35aa5c",
+        "1.21.10": "c534e7d5a25a73973dfcb8ac2712e2584af96b31",
+        "1.21.11": "d43f02accae8a7f468040cb2434c95cc4632203e",
+        "26.1": "a26aa71ae4ecb73e0f4e7c7af0c9f16eae7577c2",
+        "26.2": "b41c778e27e8af915a8c4808619eca35a3584b74"
       },
       "surface": "line-adaptation:fabric/src/test/java/dev/vox/lss/FabricModJsonContractTest.java",
       "tests": [
@@ -2860,6 +2863,86 @@
     "fabric/src/test/java/dev/vox/lss/compat/FabricPermissionsBridgeTest.java": {
       "kind": "identical"
     },
+    "fabric/src/test/java/dev/vox/lss/compat/IngestBackpressureGovernorTest.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/dev/vox/lss/compat/JourneyMapBindingSurfaceTest.java": {
+      "axes": "Golden-jar descriptor namespace (exact on 26.x; intermediary Fabric arm with Minecraft types erased on 1.21.x), isMappingSuspended presence (absent on 6.0.0/1.21.11), the 1.21.10 unsupported-beta pin.",
+      "kind": "adapted",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green.",
+      "reviewed_blobs": {
+        "1.21.1": "1166734e04b3d41e182756801d83da77725e1e2c",
+        "1.21.10": "44b6264789501b0fe0729ea9497703bb4094a530",
+        "1.21.11": "cd6e05210473dc7be4c0c1cc6d53abc704f17c3a",
+        "26.1": "8a809da2b1d2a9a355641eca38195f1f9c7a3dc2",
+        "26.2": "c4a57887899eced2dc6207621fe40055d58b5d4d"
+      },
+      "surface": "journeymap-binding-surface",
+      "tests": [
+        "JourneyMapBindingSurfaceTest"
+      ]
+    },
+    "fabric/src/test/java/dev/vox/lss/compat/JourneyMapDecoderParityTest.java": {
+      "axes": "Absent on 1.21.10 (no supported JourneyMap); assertion wording on 1.21.1 (JourneyMap 6.0.9 writes an exclusive max).",
+      "kind": "adapted",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green.",
+      "reviewed_blobs": {
+        "1.21.1": "218e0c23c0ee224d507e3598685ec210d394ac28",
+        "1.21.10": null,
+        "1.21.11": "da108c82daf1a83902955d9bdfdae843be04a59e",
+        "26.1": "da108c82daf1a83902955d9bdfdae843be04a59e",
+        "26.2": "da108c82daf1a83902955d9bdfdae843be04a59e"
+      },
+      "surface": "journeymap-decoder-parity",
+      "tests": [
+        "JourneyMapDecoderParityTest"
+      ]
+    },
+    "fabric/src/test/java/dev/vox/lss/compat/JourneyMapGolden.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/dev/vox/lss/compat/JourneyMapSessionTest.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/dev/vox/lss/compat/JourneyMapSnapshotEncoderTest.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/dev/vox/lss/compat/JourneyMapTestColumns.java": {
+      "axes": "Section construction seam (PalettedContainerFactory vs Registry<Biome> on 1.21.1) and holder lookup.",
+      "kind": "adapted",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green.",
+      "reviewed_blobs": {
+        "1.21.1": "d9d90015ac2a45533dce75518aa364b1601c5e10",
+        "1.21.10": "0a459fdaa3778eb28f5a6160d4d22edaf3f1acb7",
+        "1.21.11": "cf0a33cbbb19d41f1e41e42f177f8f699231a1d2",
+        "26.1": "993dc7d17b57892cdea6d21ecf1b373a7bb52bf0",
+        "26.2": "531dafc203ceb7ed9c5c8c7a695eec2cf926f597"
+      },
+      "surface": "journeymap-test-columns",
+      "tests": [
+        "JourneyMapSnapshotEncoderTest",
+        "JourneyMapDecoderParityTest"
+      ]
+    },
+    "fabric/src/test/java/dev/vox/lss/compat/JourneyMapWiringContractTest.java": {
+      "axes": "Pins this line's height expression (26.x/1.21.11/1.21.10: getMaxY()+1; 1.21.1: getMaxBuildHeight()).",
+      "kind": "adapted",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green.",
+      "reviewed_blobs": {
+        "1.21.1": "af1805a0e46fc42cb50d9b4057020b33fe9eff1d",
+        "1.21.10": "d8632bbb1582e5bb24dcb2dc24b0785a06f6cd95",
+        "1.21.11": "03fd69e4f53dca3f8f1d6b8c8f905b7f5f0c6a14",
+        "26.1": "d8632bbb1582e5bb24dcb2dc24b0785a06f6cd95",
+        "26.2": "d8632bbb1582e5bb24dcb2dc24b0785a06f6cd95"
+      },
+      "surface": "journeymap-line-surface",
+      "tests": [
+        "JourneyMapWiringContractTest"
+      ]
+    },
+    "fabric/src/test/java/dev/vox/lss/compat/MapMemoryGuardTest.java": {
+      "kind": "identical"
+    },
     "fabric/src/test/java/dev/vox/lss/compat/MeliusVanishBridgeTest.java": {
       "kind": "identical"
     },
@@ -2947,13 +3030,13 @@
     "fabric/src/test/java/dev/vox/lss/compat/XaeroMapCompatTest.java": {
       "axes": "World height and MC symbol flavors; queue/lifetime/lock behavior shared.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
-        "1.21.1": "3b5367a512d03c3803382a9a47b29e95e58b198c",
-        "1.21.10": "3b5367a512d03c3803382a9a47b29e95e58b198c",
-        "1.21.11": "d20b4a9cb55a8c9f0921a69b754356c612f8fc87",
-        "26.1": "d20b4a9cb55a8c9f0921a69b754356c612f8fc87",
-        "26.2": "d20b4a9cb55a8c9f0921a69b754356c612f8fc87"
+        "1.21.1": "70a89f842f7f8d2529062bc4d5e5792ae22536b1",
+        "1.21.10": "70a89f842f7f8d2529062bc4d5e5792ae22536b1",
+        "1.21.11": "f1c36523bf7782dc8a6bac15ea7a1f0b0aa99a58",
+        "26.1": "f1c36523bf7782dc8a6bac15ea7a1f0b0aa99a58",
+        "26.2": "f1c36523bf7782dc8a6bac15ea7a1f0b0aa99a58"
       },
       "surface": "xaero-world-height",
       "tests": [
@@ -3022,13 +3105,13 @@
     "fabric/src/test/java/dev/vox/lss/config/LSSConfigMenuTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical delta (multi-dependency enabled-provider pin, display-time tooltip pin) apart from ResourceLocation (1.21.1) vs Identifier; absent on 1.21.10 with the walker.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical delta (multi-dependency enabled-provider pin, display-time tooltip pin) apart from ResourceLocation (1.21.1) vs Identifier; absent on 1.21.10 with the walker.",
       "reviewed_blobs": {
-        "1.21.1": "98aa8c075124b7f7a5896c328beb675e7c4f7742",
+        "1.21.1": "4da161ae807001498a19087e1e457619a84ad7d8",
         "1.21.10": null,
-        "1.21.11": "7d9cb1acd57e0fe4a0e37e7f845ce91ba4169d52",
-        "26.1": "7d9cb1acd57e0fe4a0e37e7f845ce91ba4169d52",
-        "26.2": "7d9cb1acd57e0fe4a0e37e7f845ce91ba4169d52"
+        "1.21.11": "054fe88318f3b8c2c919d8c3eb96f9bc2751854a",
+        "26.1": "054fe88318f3b8c2c919d8c3eb96f9bc2751854a",
+        "26.2": "054fe88318f3b8c2c919d8c3eb96f9bc2751854a"
       },
       "surface": "line-adaptation:fabric/src/test/java/dev/vox/lss/config/LSSConfigMenuTest.java",
       "tests": [
@@ -3047,13 +3130,13 @@
     "fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java": {
       "axes": "Sodium page generation: 1.21.10 pins display-time tooltip context on the legacy LegacySodiumPage twins (its Sodium 0.8 LSSConfigMenu walker is cut); the other lines pin the LSSConfigMenu twins. All other assertions byte-identical.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: 1.21.10 differs from the shared blob only in the display-time twin pin (commit 27d61c1e), which targets the legacy page twins because LSSConfigMenu does not exist on that line; both legacy twins contain the pinned buildWith(h, cfg, MenuContext.current(), call. Other four lines byte-identical. 2026-10-10 default flip: the fallback-permission test now asserts the default is on, turns it off and defers \"lss\" to the next connection; identical edit on every line, the 1.21.10 twin-pin residual unchanged.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: 1.21.10 differs from the shared blob only in the display-time twin pin (commit 27d61c1e), which targets the legacy page twins because LSSConfigMenu does not exist on that line; both legacy twins contain the pinned buildWith(h, cfg, MenuContext.current(), call. Other four lines byte-identical. 2026-10-10 default flip: the fallback-permission test now asserts the default is on, turns it off and defers \"lss\" to the next connection; identical edit on every line, the 1.21.10 twin-pin residual unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "7da3a4a40e786c329b52aa5102a5ecdbafe58429",
-        "1.21.10": "25754232e995703d0c6e9b52f224e61ed6d1f680",
-        "1.21.11": "7da3a4a40e786c329b52aa5102a5ecdbafe58429",
-        "26.1": "7da3a4a40e786c329b52aa5102a5ecdbafe58429",
-        "26.2": "7da3a4a40e786c329b52aa5102a5ecdbafe58429"
+        "1.21.1": "ad829e6e1ed3a0b1fc6d1af2f85faaed2a88d40e",
+        "1.21.10": "f0d6f0674190406868f208e2b7a2ddb356388ffe",
+        "1.21.11": "ad829e6e1ed3a0b1fc6d1af2f85faaed2a88d40e",
+        "26.1": "ad829e6e1ed3a0b1fc6d1af2f85faaed2a88d40e",
+        "26.2": "ad829e6e1ed3a0b1fc6d1af2f85faaed2a88d40e"
       },
       "surface": "sodium-generation:fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java",
       "tests": [
@@ -3924,6 +4007,54 @@
       "kind": "identical"
     },
     "fabric/src/test/java/dev/vox/lss/voxel/ColumnTimestampCacheTest.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/JourneymapClient.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/JourneymapClientWithoutSuspend.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/cartography/ChunkRenderController.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/data/DataCache.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/io/FileHandler.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/model/block/BlockDataArrays.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/model/chunk/ChunkMD.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/model/chunk/SnapshotChunkMD.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/model/map/MapType.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/model/region/RegionCoord.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/model/region/RegionImageCache.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/properties/CoreProperties.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/client/task/multi/TaskController.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/common/chunk/JMChunkSnapshot.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/common/properties/config/BooleanField.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/journeymap/common/properties/config/IntegerField.java": {
       "kind": "identical"
     },
     "fabric/src/test/java/me/cortex/voxy/client/VoxyClientInstance.java": {
@@ -4894,13 +5025,13 @@
     "gradle.properties": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: reviewed diff changes only mod_version from 0.16.0 to 0.17.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: reviewed diff changes only mod_version from 0.16.0 to 0.17.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "5feefc00cb8c831e5ddaa86f0940d06642e6b10f",
-        "1.21.10": "7adda3cc9a9f5d9fecc607f07bd4363f6cc29228",
-        "1.21.11": "c3813b2e29efda5cea88fe6f73cdbebe3097068d",
-        "26.1": "9e5e1171850c4507d1d2b436add8ba06ea38d052",
-        "26.2": "836b158eb9758fe7d6fda0c0ff2de87c035969f2"
+        "1.21.1": "38eb2ddfda79a24a79e6b9df200a75c999dd0329",
+        "1.21.10": "7d37fa1d022c221c0c64ae3895144b294e9dc464",
+        "1.21.11": "f4ebc148383fcd757bd1bb15bedca3e90cf3d47e",
+        "26.1": "66e54396a2ca1041761cc78129bf5b0d851b131b",
+        "26.2": "8343708b20749faf5dd6e3e7a02e4453f3236774"
       },
       "surface": "build-toolchain",
       "tests": [
@@ -6593,6 +6724,9 @@
         "Full platform build and existing version-surface/behavior contracts"
       ]
     },
+    "scripts/check_journeymap_smoke.py": {
+      "kind": "identical"
+    },
     "scripts/check_move_trace.py": {
       "kind": "identical"
     },
@@ -6607,6 +6741,22 @@
     },
     "scripts/compress_gate_check.py": {
       "kind": "identical"
+    },
+    "scripts/journeymap_smoke.sh": {
+      "axes": "Refuses to start on 1.21.10 (JourneyMap unsupported there).",
+      "kind": "adapted",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green.",
+      "reviewed_blobs": {
+        "1.21.1": "114c1bdb9717e89eb3bca3d96c2d18ab6f859b7b",
+        "1.21.10": "99af7fb1379f31874950def7f163dab85dfea7ba",
+        "1.21.11": "114c1bdb9717e89eb3bca3d96c2d18ab6f859b7b",
+        "26.1": "114c1bdb9717e89eb3bca3d96c2d18ab6f859b7b",
+        "26.2": "114c1bdb9717e89eb3bca3d96c2d18ab6f859b7b"
+      },
+      "surface": "journeymap-live-smoke",
+      "tests": [
+        "check_journeymap_smoke.py --selftest"
+      ]
     },
     "scripts/lib/benchmark-results.py": {
       "kind": "identical"
@@ -6645,13 +6795,13 @@
     "scripts/release_check.py": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: the DH release-gate delta (client-only common/dh + private XZ placement, Paper exclusion, XZ third-party notice, forbidden fixture mixin configs, dependency allowlists and selftests) is textually identical on all five lines except documented line facts: FABRIC_DEPENDENCY_ALLOWLIST suggests also voxy on 1.21.10/1.21.11/26.1/26.2, matching each line's fabric.mod.json; NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST is {\"sqlite_jdbc\"} on 1.21.1 only (issue #304) and empty elsewhere, with the optional-sqlite selftest written against the line's allowlist (equivalent to 1.21.1's specialized assertion); the dependency selftest fixture names the line's Minecraft version. Pre-existing per-line gate flavours unchanged.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: the DH release-gate delta (client-only common/dh + private XZ placement, Paper exclusion, XZ third-party notice, forbidden fixture mixin configs, dependency allowlists and selftests) is textually identical on all five lines except documented line facts: FABRIC_DEPENDENCY_ALLOWLIST suggests also voxy on 1.21.10/1.21.11/26.1/26.2, matching each line's fabric.mod.json; NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST is {\"sqlite_jdbc\"} on 1.21.1 only (issue #304) and empty elsewhere, with the optional-sqlite selftest written against the line's allowlist (equivalent to 1.21.1's specialized assertion); the dependency selftest fixture names the line's Minecraft version. Pre-existing per-line gate flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "1c659da35caaa67ce0f01b4144b5456f8b9c0c01",
-        "1.21.10": "f8d3884a03eb9cdd10730eaf392fbdfde5b34cb3",
-        "1.21.11": "787c73b648c3f41678abf47738af3fc72b5bc87d",
-        "26.1": "9361699c25e441fb18cb8ed7ea658a94cc225cf1",
-        "26.2": "baa1664b31fcdf286091bc59de59e78d90e00020"
+        "1.21.1": "b0f885ea5c0b5243b7bbad4e9313e7f58808a497",
+        "1.21.10": "f91469c164416102e119c16b882d4cf9d3a9ada3",
+        "1.21.11": "7da92a76f16100d5e422465a2f0b944001ffdb7c",
+        "26.1": "67db39e08896a4554979b98c44aa1db960a0777d",
+        "26.2": "e0d5a8375227165ad00a93a15e922948e5310c0c"
       },
       "surface": "line-adaptation:scripts/release_check.py",
       "tests": [
@@ -7060,6 +7210,46 @@
         "Full platform build and existing version-surface/behavior contracts"
       ]
     },
+    "scripts/soak-scenarios/journeymap-map-config.yaml": {
+      "kind": "identical"
+    },
+    "scripts/soak-scenarios/journeymap-map.json": {
+      "axes": "Gamerule ids per MC version (camelCase on 1.21.10/1.21.1, registry ids on 1.21.11/26.x).",
+      "kind": "adapted",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green.",
+      "reviewed_blobs": {
+        "1.21.1": "baa4d92d30daa0229dd956968027e80b0fc0d7e6",
+        "1.21.10": "baa4d92d30daa0229dd956968027e80b0fc0d7e6",
+        "1.21.11": "3c91bebde2d300ccb7dc227dd66d741c22cf3d1b",
+        "26.1": "3c91bebde2d300ccb7dc227dd66d741c22cf3d1b",
+        "26.2": "3c91bebde2d300ccb7dc227dd66d741c22cf3d1b"
+      },
+      "surface": "soak-scenario-gamerules",
+      "tests": [
+        "CommandGameTests.soakScenarioGamerulesExecuteAndReadBack",
+        "check_soak.py --validate"
+      ]
+    },
+    "scripts/soak-scenarios/map-throughput-config.yaml": {
+      "kind": "identical"
+    },
+    "scripts/soak-scenarios/map-throughput.json": {
+      "axes": "Gamerule ids per MC version (camelCase on 1.21.10/1.21.1, registry ids on 1.21.11/26.x).",
+      "kind": "adapted",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green.",
+      "reviewed_blobs": {
+        "1.21.1": "e397c018e428dc9ac61edfad66afef78d15d1b28",
+        "1.21.10": "e397c018e428dc9ac61edfad66afef78d15d1b28",
+        "1.21.11": "c0b1b8219a5a17486b1a30efd253cff04d8d4d5e",
+        "26.1": "c0b1b8219a5a17486b1a30efd253cff04d8d4d5e",
+        "26.2": "c0b1b8219a5a17486b1a30efd253cff04d8d4d5e"
+      },
+      "surface": "soak-scenario-gamerules",
+      "tests": [
+        "CommandGameTests.soakScenarioGamerulesExecuteAndReadBack",
+        "check_soak.py --validate"
+      ]
+    },
     "scripts/soak-scenarios/paper-dirty-falling-block-config.json": {
       "kind": "identical"
     },
@@ -7408,16 +7598,36 @@
         "Full platform build and existing version-surface/behavior contracts"
       ]
     },
+    "scripts/soak-scenarios/xaero-memory-config.yaml": {
+      "kind": "identical"
+    },
+    "scripts/soak-scenarios/xaero-memory.json": {
+      "axes": "Gamerule ids per MC version (camelCase on 1.21.10/1.21.1, registry ids on 1.21.11/26.x).",
+      "kind": "adapted",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green.",
+      "reviewed_blobs": {
+        "1.21.1": "d6459965fe6079669378caf09b5b8fd5e07e4958",
+        "1.21.10": "d6459965fe6079669378caf09b5b8fd5e07e4958",
+        "1.21.11": "0ea897bf03f3851f8eb9aa4b41e0d6a8e2786c43",
+        "26.1": "0ea897bf03f3851f8eb9aa4b41e0d6a8e2786c43",
+        "26.2": "0ea897bf03f3851f8eb9aa4b41e0d6a8e2786c43"
+      },
+      "surface": "soak-scenario-gamerules",
+      "tests": [
+        "CommandGameTests.soakScenarioGamerulesExecuteAndReadBack",
+        "check_soak.py --validate"
+      ]
+    },
     "scripts/soak.sh": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. YAML staging/codec helpers, platform-specific soak YAML, historical JSON-only comparison arms, parser relocation/resource/license assertions and loader discovery reviewed. Feature deltas match exactly across all five pre-existing script flavors; inherited platform/version guards remain intact. Corrected canonical v16 generation echo. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-09-28 cross-line YAML residual review. YAML staging/codec helpers, platform-specific soak YAML, historical JSON-only comparison arms, parser relocation/resource/license assertions and loader discovery reviewed. Feature deltas match exactly across all five pre-existing script flavors; inherited platform/version guards remain intact. Corrected canonical v16 generation echo. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
-        "1.21.1": "d32fe6978d3725e75fda20cd23135cd48184f685",
-        "1.21.10": "998da3daa08a72c40e8da4bd85df9b710197f6d2",
-        "1.21.11": "998da3daa08a72c40e8da4bd85df9b710197f6d2",
-        "26.1": "0ded4fb5d8a9189b3b254ac48307a8cb5592fb09",
-        "26.2": "be1e4c123569ef6428ae48323dd0edfd333da64a"
+        "1.21.1": "0e156cf23d8d5b69353308d55687222a947b4756",
+        "1.21.10": "5f767b6c64072567d8d435a7effb8e213cef4e97",
+        "1.21.11": "5f767b6c64072567d8d435a7effb8e213cef4e97",
+        "26.1": "9bce052a43eeb6c90579fccf931343965bd0bfae",
+        "26.2": "88cbbbd917ed7737c6658cd76e22a170b77bcd7d"
       },
       "surface": "line-adaptation:scripts/soak.sh",
       "tests": [
@@ -7666,13 +7876,13 @@
     "test-fixtures/dh-live/prepare.py": {
       "axes": "Private DH live rig. 1.21.1 keeps its original inline paths/versions; 1.21.10/1.21.11/26.1/26.2 read every line-specific parameter (Java/javac, Minecraft/NeoForge/Paper/DH pins, client mods, Prism components, remap, datapack/dimension schema, game-rule id) from test-fixtures/dh-live/line.py. Fixture MC API flavours (camera, ChunkPos, height, permissions, disconnect, screen, screenshot, concrete blocks, mixin compatibilityLevel) follow each line. Not shipped; never in release jars.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports parameterize servers/mods/pins/profile/datapack through line.py; 1.21.10/1.21.11 (no NeoForge client route) let the Fabric observer drive updates/lifecycle/boundary and refuse the native boundary arm without the NeoForge artifact; 26.x keep 1.21.1's Fabric scenario set. 2026-10-10 default flip: --source-unset writes no experimental client key (no lod.source, no sidecar) and refuses to run if one is written; identical insertion on every line.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed. Ports parameterize servers/mods/pins/profile/datapack through line.py; 1.21.10/1.21.11 (no NeoForge client route) let the Fabric observer drive updates/lifecycle/boundary and refuse the native boundary arm without the NeoForge artifact; 26.x keep 1.21.1's Fabric scenario set. 2026-10-10 default flip: --source-unset writes no experimental client key (no lod.source, no sidecar) and refuses to run if one is written; identical insertion on every line.",
       "reviewed_blobs": {
-        "1.21.1": "8150ee34bc654e132afb95cd3c29d07325642c17",
-        "1.21.10": "603a3b6dfa4e2fc7fe6221ad1b35e38872770d1a",
-        "1.21.11": "10b16790ab061d1a8e580b7d3adf66f1a994dcc7",
-        "26.1": "a89db73729632bf7c42cc8c5e4f0a7da6b016ecf",
-        "26.2": "a89db73729632bf7c42cc8c5e4f0a7da6b016ecf"
+        "1.21.1": "96a0a7debd40a8f66310e5219fad14cac89aaea7",
+        "1.21.10": "851a0274f4adf5fb6b7c2c1037ba1156a197863f",
+        "1.21.11": "5b268d72abd3ec7c263be9d1a4d6423acf50adcc",
+        "26.1": "880e86facbc5cd2a55f2e9ef61618725ba43ffc1",
+        "26.2": "880e86facbc5cd2a55f2e9ef61618725ba43ffc1"
       },
       "surface": "dh-live-fixture:test-fixtures/dh-live/prepare.py",
       "tests": [
@@ -9693,6 +9903,42 @@
     "xplat/src/main/java/dev/vox/lss/compat/DhVoxyBridge.java": {
       "kind": "identical"
     },
+    "xplat/src/main/java/dev/vox/lss/compat/IngestBackpressureGovernor.java": {
+      "kind": "identical"
+    },
+    "xplat/src/main/java/dev/vox/lss/compat/JourneyMapBindings.java": {
+      "kind": "identical"
+    },
+    "xplat/src/main/java/dev/vox/lss/compat/JourneyMapCompat.java": {
+      "kind": "identical"
+    },
+    "xplat/src/main/java/dev/vox/lss/compat/JourneyMapLineSurface.java": {
+      "axes": "Client-level min section/min Y/exclusive max Y accessors and the ResourceKey identifier accessor per MC version (the only per-line JourneyMap production file).",
+      "kind": "adapted",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green.",
+      "reviewed_blobs": {
+        "1.21.1": "4c8889e3d8ce2c006da704cc9c19fb1da6adb26a",
+        "1.21.10": "12e29241b4ab03d63d75c70be1d31eca61e1e7b6",
+        "1.21.11": "eeac117dbcb86a4a8c3071b253fd26c140934d07",
+        "26.1": "0bd22cfab006bed40be1788fb4de871b8acfb605",
+        "26.2": "d663f0d1bedeba81ffd89d423f5b036d76c00539"
+      },
+      "surface": "journeymap-line-surface",
+      "tests": [
+        "JourneyMapWiringContractTest",
+        "JourneyMapSnapshotEncoderTest",
+        "JourneyMapDecoderParityTest"
+      ]
+    },
+    "xplat/src/main/java/dev/vox/lss/compat/JourneyMapSession.java": {
+      "kind": "identical"
+    },
+    "xplat/src/main/java/dev/vox/lss/compat/JourneyMapSnapshotEncoder.java": {
+      "kind": "identical"
+    },
+    "xplat/src/main/java/dev/vox/lss/compat/MapMemoryGuard.java": {
+      "kind": "identical"
+    },
     "xplat/src/main/java/dev/vox/lss/compat/MeliusVanishBridge.java": {
       "kind": "identical"
     },
@@ -9771,13 +10017,13 @@
     "xplat/src/main/java/dev/vox/lss/compat/XaeroSession.java": {
       "axes": "World height and MC symbol flavors; queue/lifetime/lock behavior shared.",
       "kind": "adapted",
-      "review": "2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
-        "1.21.1": "cb9df0a7ddcf247f2e34a7f36826ebf403edd0a1",
-        "1.21.10": "11ac80ba0cf78048b2ddcd2fedafaaa60b6fb816",
-        "1.21.11": "11ac80ba0cf78048b2ddcd2fedafaaa60b6fb816",
-        "26.1": "11ac80ba0cf78048b2ddcd2fedafaaa60b6fb816",
-        "26.2": "11ac80ba0cf78048b2ddcd2fedafaaa60b6fb816"
+        "1.21.1": "8a489dce247a2a3d99b61a620ccb0356a97f631e",
+        "1.21.10": "99c54d3205670f77a132ca9e32609d1287575f61",
+        "1.21.11": "99c54d3205670f77a132ca9e32609d1287575f61",
+        "26.1": "99c54d3205670f77a132ca9e32609d1287575f61",
+        "26.2": "99c54d3205670f77a132ca9e32609d1287575f61"
       },
       "surface": "xaero-world-height",
       "tests": [
@@ -9819,13 +10065,13 @@
     "xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical DH option/dependency delta on every line; residual line flavours unchanged. 2026-10-10 default flip (user decision): lod_source defaultValue false->true plus a two-line comment, identical on every line.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH option/dependency delta on every line; residual line flavours unchanged. 2026-10-10 default flip (user decision): lod_source defaultValue false->true plus a two-line comment, identical on every line.",
       "reviewed_blobs": {
-        "1.21.1": "93ccd40ba5c057367dcea643d16138b7cda7a9bc",
-        "1.21.10": "50c472c55d3a0f38dd54246e9e44ab6646790a20",
-        "1.21.11": "50c472c55d3a0f38dd54246e9e44ab6646790a20",
-        "26.1": "50c472c55d3a0f38dd54246e9e44ab6646790a20",
-        "26.2": "50c472c55d3a0f38dd54246e9e44ab6646790a20"
+        "1.21.1": "f61a9306a910d5f01ff30f391fed9d7cd0c88e42",
+        "1.21.10": "b7c574cccec359626739618a296973ffd1de48be",
+        "1.21.11": "b7c574cccec359626739618a296973ffd1de48be",
+        "26.1": "b7c574cccec359626739618a296973ffd1de48be",
+        "26.2": "b7c574cccec359626739618a296973ffd1de48be"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java",
       "tests": [
@@ -9866,13 +10112,13 @@
     "xplat/src/main/java/dev/vox/lss/config/menu/MenuContext.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical nativeTerrain context delta on every line; residual line flavours unchanged. 2026-10-10 default flip: nativeTerrain reports DH only on a live connection that selected it (title screen stays native); identical edit on every line.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical nativeTerrain context delta on every line; residual line flavours unchanged. 2026-10-10 default flip: nativeTerrain reports DH only on a live connection that selected it (title screen stays native); identical edit on every line.",
       "reviewed_blobs": {
-        "1.21.1": "af35e784e282def2119103f856c52b1dbf75d1f9",
-        "1.21.10": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f",
-        "1.21.11": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f",
-        "26.1": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f",
-        "26.2": "0ec0dafd80f92a24bdec0fcf63a442bb53f1a52f"
+        "1.21.1": "18851afa66b295a73fbe7cd3c4b54ad84e4a12da",
+        "1.21.10": "ceeb3e05e29600e244af990d4d718b2451f37194",
+        "1.21.11": "ceeb3e05e29600e244af990d4d718b2451f37194",
+        "26.1": "ceeb3e05e29600e244af990d4d718b2451f37194",
+        "26.2": "ceeb3e05e29600e244af990d4d718b2451f37194"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/config/menu/MenuContext.java",
       "tests": [
@@ -10029,13 +10275,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java": {
       "axes": "Only command-factory Javadoc differs between 1.x and 26.x; Sodium-independent status/preset/export behavior is shared.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical DH reset/clear-cache delta on every line; residual line flavours unchanged.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH reset/clear-cache delta on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "ca2e24e274fc997c8ab9c314b564fa45bdb2efe9",
-        "1.21.10": "ca2e24e274fc997c8ab9c314b564fa45bdb2efe9",
-        "1.21.11": "ca2e24e274fc997c8ab9c314b564fa45bdb2efe9",
-        "26.1": "b4471afb20177217fc8588e9d40b7b339646dbcd",
-        "26.2": "b4471afb20177217fc8588e9d40b7b339646dbcd"
+        "1.21.1": "2feff0d23658d14a1d4ce1a31c5322bbf0800bc4",
+        "1.21.10": "2feff0d23658d14a1d4ce1a31c5322bbf0800bc4",
+        "1.21.11": "2feff0d23658d14a1d4ce1a31c5322bbf0800bc4",
+        "26.1": "c1ca110cbde81dabebb2274a06a8a7949102eab7",
+        "26.2": "c1ca110cbde81dabebb2274a06a8a7949102eab7"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/client/ClientCommandActions.java",
       "tests": [
@@ -10064,13 +10310,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/ClientNetGlue.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical DH session lifecycle wiring (join/disconnect/tick, native offer, reception gate, cache sweep) on every line; residual line flavours unchanged.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH session lifecycle wiring (join/disconnect/tick, native offer, reception gate, cache sweep) on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "81f37329e28888035c674a2348c3f7b459e8cfed",
-        "1.21.10": "5bfdb5a9da0d1b4aba963c21e448158ed438727c",
-        "1.21.11": "5bfdb5a9da0d1b4aba963c21e448158ed438727c",
-        "26.1": "5bfdb5a9da0d1b4aba963c21e448158ed438727c",
-        "26.2": "5bfdb5a9da0d1b4aba963c21e448158ed438727c"
+        "1.21.1": "2e5648a2a18b146010e7e0eebc9b000456eed4c3",
+        "1.21.10": "567b2222e2b9747d78f3e97c6ad5fbbe79b4ffa8",
+        "1.21.11": "567b2222e2b9747d78f3e97c6ad5fbbe79b4ffa8",
+        "26.1": "567b2222e2b9747d78f3e97c6ad5fbbe79b4ffa8",
+        "26.2": "567b2222e2b9747d78f3e97c6ad5fbbe79b4ffa8"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/client/ClientNetGlue.java",
       "tests": [
@@ -10102,13 +10348,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/ClientStatus.java": {
       "axes": "26.2 uses setScreenAndShow; other lines use setScreen. Cached tick collection and lifecycle handling are shared.",
       "kind": "adapted",
-      "review": "2026-10-10 0.17.0 release pin: identical DH status block delta on every line; residual line flavours unchanged.",
+      "review": "2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH status block delta on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "2d8d674cdea7410da44c678dbec3a7f6a431412a",
-        "1.21.10": "2d8d674cdea7410da44c678dbec3a7f6a431412a",
-        "1.21.11": "2d8d674cdea7410da44c678dbec3a7f6a431412a",
-        "26.1": "2d8d674cdea7410da44c678dbec3a7f6a431412a",
-        "26.2": "b6e1d0c46cdeb1cbe097e834f02d1116687e4ba9"
+        "1.21.1": "5647eddc60a601680cf6fbac152f21e6271e46cc",
+        "1.21.10": "5647eddc60a601680cf6fbac152f21e6271e46cc",
+        "1.21.11": "5647eddc60a601680cf6fbac152f21e6271e46cc",
+        "26.1": "5647eddc60a601680cf6fbac152f21e6271e46cc",
+        "26.2": "52ea2c475b939673c9ab88866d6f3acd08e773f1"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/client/ClientStatus.java",
       "tests": [
