@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 def capture(root):
     cases = []
-    for module in ('common', 'fabric', 'paper', 'neoforge'):
+    for module in ('common', 'fabric', 'paper', 'neoforge', 'sponge'):
         for path in sorted((root / module / 'build/test-results').glob('*/TEST-*.xml')):
             suite = ET.parse(path).getroot()
             for case in suite.findall('testcase'):

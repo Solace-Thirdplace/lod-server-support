@@ -15,6 +15,7 @@
     "AccessorConnection",
     "AccessorServerCommonPacketListener",
     "ChunkSaveDataHook",
-    "ChunkLoadHook"
+    "ChunkLoadHook",
+    "ServerTickHook"
   ]
 }

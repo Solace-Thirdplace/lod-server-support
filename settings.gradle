@@ -15,6 +15,13 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+    // The Sponge module's VanillaGradle version is LINE DATA (gradle.properties): 0.3.x
+    // requires Gradle to RUN on Java 25, so the Java-21 lines pin 0.2.x
+    // (sponge-support-plan.md §1.1/§4). Resolved here so sponge/build.gradle stays
+    // byte-identical across the five lines.
+    plugins {
+        id 'org.spongepowered.gradle.vanilla' version providers.gradleProperty('vanillagradle_version').get()
+    }
 }
 
 include ':common', ':fabric', ':paper', ':neoforge', ':sponge'

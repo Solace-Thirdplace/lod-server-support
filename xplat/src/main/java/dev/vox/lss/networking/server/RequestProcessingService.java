@@ -172,12 +172,15 @@ public class RequestProcessingService {
         this.advertisedLod = config.snapshot().lod();
         this.adoptedServicePolicy = config.snapshot().service();
         this.adoptedFarPlayerPolicy = config.snapshot().farPlayers();
-        // The Melius Vanish bridge (WI-7b), per (viewer, target): resolved through the
-        // constructor's own `server` (non-null by construction). A departed viewer answers
-        // hidden — nothing is sendable to it anyway; absent mod = visible.
+        // The vanish source (WI-7b; the loader seam since sponge-support-plan.md §1.5 —
+        // the Melius Vanish bridge by default, Sponge's native vanish state on Sponge), per
+        // (viewer, target): resolved through the constructor's own `server` (non-null by
+        // construction). A departed viewer answers hidden — nothing is sendable to it
+        // anyway; absent source = visible.
+        var vanish = dev.vox.lss.platform.LoaderServices.get().vanishVisibility();
         this.farPlayerService = new dev.vox.lss.common.farplayers.FarPlayerBroadcastService(
                 (viewer, target) -> {
-                    if (!dev.vox.lss.compat.MeliusVanishBridge.present()) return true;
+                    if (!vanish.present()) return true;
                     // Review fold B3: one isVanished per TARGET per tick (the plan's memo),
                     // not per viewer×target pair; the per-observer query only for the vanished.
                     int tick = server.getTickCount();
@@ -186,12 +189,12 @@ public class RequestProcessingService {
                         vanishMemoTick = tick;
                     }
                     if (!vanishMemo.computeIfAbsent(target,
-                            t -> dev.vox.lss.compat.MeliusVanishBridge.isVanished(server, t))) {
+                            t -> vanish.isVanished(server, t))) {
                         return true;
                     }
                     var observer = server.getPlayerList().getPlayer(viewer);
                     return observer != null
-                            && dev.vox.lss.compat.MeliusVanishBridge.canSee(server, observer, target);
+                            && vanish.canSee(server, observer, target);
                 });
 
         // Publishes the per-world x-ray mask decisions the (static) serializer choke

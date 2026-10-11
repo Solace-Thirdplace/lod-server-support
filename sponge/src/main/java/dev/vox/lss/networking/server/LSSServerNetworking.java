@@ -14,16 +14,25 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.chunk.ChunkAccess;
 
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Sponge server-side networking glue — the fabric/neoforge {@code LSSServerNetworking}
- * twin (same FQN). The receiver bodies are the shared {@link ServerReceiverGlue}; this
- * class owns the static service holder and the lifecycle/payload entry points that
- * {@code LSSSpongePlugin} and the mixin twins call. Dedicated server only: Sponge has no
- * integrated-server/LAN path.
+ * twin (same FQN; sponge-support-plan.md §1.1). The receiver BODIES are the shared
+ * {@link ServerReceiverGlue}; this class owns the static service holder and the
+ * lifecycle/payload entry points that {@code LSSSpongePlugin}, {@code SpongeChannels} and
+ * the mixins call. Dedicated server only: SpongeVanilla has no integrated-server/LAN path.
+ *
+ * <p>The hook counters are diagnostics for the boot smoke (§5.2): they prove the three
+ * mixins actually FIRE on the pinned SpongeVanilla build, not merely that they applied.
  */
 public class LSSServerNetworking {
     private static volatile RequestProcessingService requestService;
+
+    public static final AtomicLong TICK_HOOK_CALLS = new AtomicLong();
+    public static final AtomicLong SAVE_HOOK_CALLS = new AtomicLong();
+    public static final AtomicLong LOAD_HOOK_DISK_CALLS = new AtomicLong();
+    public static final AtomicLong LOAD_HOOK_GENERATED_CALLS = new AtomicLong();
 
     public static RequestProcessingService getRequestService() {
         return requestService;
@@ -36,17 +45,18 @@ public class LSSServerNetworking {
 
     /** Hook body for the {@code ChunkSaveDataHook} mixin twin. */
     public static void onChunkSaveData(ServerLevel level, ChunkAccess chunk) {
+        SAVE_HOOK_CALLS.incrementAndGet();
         ServerReceiverGlue.onChunkSaveData(level, chunk, requestService);
     }
 
-    /** Hook body for {@code ChunkLoadHook}: the FULL-status promotion, as Fabric's
-     *  CHUNK_LOAD / NeoForge's ChunkEvent.Load (Sponge's own ChunkEvent.Load only fires at
-     *  ENTITY_TICKING, which misses the border of the loaded area). */
+    /** Hook body for {@code ChunkLoadHook}: the FULL-status promotion (fabric-api's
+     *  {@code CHUNK_LOAD} point, with its {@code generated} derivation). */
     public static void onChunkLoad(ServerLevel level, ChunkAccess chunk, boolean newlyGenerated) {
+        (newlyGenerated ? LOAD_HOOK_GENERATED_CALLS : LOAD_HOOK_DISK_CALLS).incrementAndGet();
         ServerReceiverGlue.onChunkLoaded(level, chunk, requestService, newlyGenerated);
     }
 
-    // ---- Lifecycle (driven by LSSSpongePlugin) ----
+    // ---- Lifecycle (driven by LSSSpongePlugin and ServerTickHook) ----
 
     public static void onServerStarted(MinecraftServer server) {
         dev.vox.lss.config.LSSServerConfig.beginServerLifecycle();
@@ -67,7 +77,9 @@ public class LSSServerNetworking {
         ServerReceiverGlue.clearClientInfo();
     }
 
+    /** {@code ServerTickHook}: {@code tickServer} TAIL = fabric's END_SERVER_TICK. */
     public static void onServerTick() {
+        TICK_HOOK_CALLS.incrementAndGet();
         var service = requestService;
         if (service != null) {
             service.tick();
@@ -78,20 +90,26 @@ public class LSSServerNetworking {
         var service = requestService;
         if (service != null) {
             service.removePlayer(uuid);
-            // Connection-scoped state: compat identities, far-player subscription and
-            // prefs, region summaries and the service-gate memo die with the connection,
-            // never with the dimension-change remove+register cycle.
+            // Network-level: the disconnect drops the compat session identities
+            // (removePlayer above only reset the v16 want-set and touches neither
+            // membership — dim changes reuse that path and must keep both).
             service.getV16CompatManager().onDisconnect(uuid);
             service.getDialectTracker().onDisconnect(uuid);
+            // Far players: the subscription AND the retained target prefs die with
+            // the CONNECTION, never with the dimension-change remove+register cycle.
             service.getFarPlayerService().onDisconnect(uuid);
+            // Region summaries: same connection-scoped cleanup.
             service.getRegionSummaries().removePlayer(uuid);
+            // Service gate: the denied-handshake memo, the denial-log latch, and any
+            // revocation streak are session-scoped.
             service.getServiceGateState().onDisconnect(uuid);
         }
-        // Service-independent: recorded at the network level, possibly before any service.
+        // Service-independent: the sidecar fact is recorded at the network level
+        // (possibly before any service exists) and must die with the connection.
         ServerReceiverGlue.sweepClientInfo(uuid);
     }
 
-    // ---- Payload handlers (main thread: Sponge hops channel payloads onto it) ----
+    // ---- Payload handlers (main thread: Sponge's handleCustomPayload hops onto it) ----
 
     public static void handleHandshake(HandshakeC2SPayload payload, ServerPlayer player) {
         ServerReceiverGlue.handleHandshake(payload, player, requestService,

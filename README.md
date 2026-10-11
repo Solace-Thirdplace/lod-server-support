@@ -11,16 +11,14 @@ https://github.com/user-attachments/assets/721fb344-890e-4e03-ab36-539444427f7b
 Use the matching Fabric or shipped NeoForge artifact. Server support and renderer availability are separate; see the generated [compatibility matrix](docs/compatibility.md). Supported servers:
 
 <!-- LSS SERVER MATRIX START -->
-| Minecraft line | Fabric / Paper | Folia | NeoForge shipping | Neo far renderer |
-| --- | --- | --- | --- | --- |
-| 1.21.1 | maintained | unsupported | shipped; best-effort | available |
-| 1.21.10 | maintained | unsupported | maintained build only | unsupported |
-| 1.21.11 | maintained | experimental | maintained build only | unsupported |
-| 26.1 | maintained | experimental | shipped; best-effort | unsupported |
-| 26.2 | maintained | experimental | shipped; best-effort | unsupported |
+| Minecraft line | Fabric / Paper | Folia | NeoForge shipping | Neo far renderer | Sponge |
+| --- | --- | --- | --- | --- | --- |
+| 1.21.1 | maintained | unsupported | shipped; best-effort | available | not available |
+| 1.21.10 | maintained | unsupported | maintained build only | unsupported | not available |
+| 1.21.11 | maintained | experimental | maintained build only | unsupported | not available |
+| 26.1 | maintained | experimental | shipped; best-effort | unsupported | not available |
+| 26.2 | maintained | experimental | shipped; best-effort | unsupported | not available |
 <!-- LSS SERVER MATRIX END -->
-
-A Sponge server plugin (SpongeVanilla, API 18) is built on the 1.21.11 line from the `sponge` module. It serves the same protocol as the Paper plugin and uses the vanilla chunk system, so it has no Folia support and reads no Bukkit events: block changes come from Sponge's own change events.
 
 NeoForge 1.21.1 has distinct native and Connector dependency routes. The recorded 2026-09-08 native Voxy 0.2.9-alpha trial was rejected; older successful reports do not establish current compatibility or its failure's upstream cause. Xaero-only legacy Sodium and the modern Connector Voxy route are separate profiles. Use the [dated profile inventory](docs/testing/astra-live-profiles.md) and exact dependency locks; do not combine their jars by filename.
 
@@ -59,13 +57,13 @@ NeoForge ships on MC 1.21.1, 26.1 and 26.2; the 1.21.10/1.21.11 modules remain m
 
 ## Commands
 
-### Server (Fabric, NeoForge, Paper, and Sponge)
+### Server (Fabric, NeoForge, and Paper)
 
 - `/lsslod stats` - Show per-player transfer statistics
 - `/lsslod diag` - Show detailed diagnostics (config, bandwidth, queue depths)
 - `/lsslod reload` - Validate server YAML and apply supported changes; report restart requirements
 - `/lsslod store status` - Show LOD store status (state, hit/miss counters, size)
-- `/lsslod store backfill start|stop|status` - Control the background pre-warm walk (not on Paper or Sponge)
+- `/lsslod store backfill start|stop|status` - Control the background pre-warm walk (not on Paper)
 - `/lsslod help` - List all commands
 
 ### Client (Fabric and supported NeoForge clients)
@@ -82,8 +80,7 @@ NeoForge ships on MC 1.21.1, 26.1 and 26.2; the 1.21.10/1.21.11 modules remain m
 
 Settings use annotated YAML: `config/lss-server-config.yaml` and
 `config/lss-client-config.yaml` on Fabric/NeoForge, or
-`plugins/LodServerSupport/lss-server-config.yaml` on Paper, or
-`config/lodserversupport/lss-server-config.yaml` on Sponge. VSS uses the corresponding
+`plugins/LodServerSupport/lss-server-config.yaml` on Paper. VSS uses the corresponding
 `vss-` names, adopting an existing file across brands. Startup migrates an old JSON
 file once and retains both the original and an exact-byte backup. Existing distance
 choices are preserved; fresh servers use **512 chunks in the Overworld and End,

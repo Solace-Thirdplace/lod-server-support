@@ -26,7 +26,7 @@ def build(root,profile_path,scenario_path,runtime_path,candidate_target,fixture_
  candidates=candidate_bindings(runtime,artifact)
  if candidate_target not in candidates:raise ValueError('selected primary candidate not declared native product')
  # Require candidate role bytes to agree with the explicit current owning build outputs.
- available={hashlib.sha256(p.read_bytes()).hexdigest() for platform in ('fabric','paper','neoforge') for p in (root/platform/'build/libs').glob('lod-server-support-'+platform+'.jar')}
+ available={hashlib.sha256(p.read_bytes()).hexdigest() for platform in ('fabric','paper','neoforge','sponge') for p in (root/platform/'build/libs').glob('lod-server-support-'+platform+'.jar')}
  from named_gametest_target import allowed
  available.update(allowed(root,profile,scenario,runtime,candidate_target,fixture_targets))
  if not set(candidates.values())<=available:raise ValueError('recipe candidates differ from current explicit build artifacts')

@@ -5,7 +5,8 @@
     "targets": {
       "fabric": "1.21.11",
       "paper": "1.21.11",
-      "neoforge": "1.21.11"
+      "neoforge": "1.21.11",
+      "sponge": "1.21.11"
     },
     "java": 21,
     "common_java": 21,
@@ -17,7 +18,8 @@
       "purpur",
       "folia"
     ],
-    "fabric_client_gametests": true
+    "fabric_client_gametests": true,
+    "sponge_shipping": false
   },
   "support_tier": "correct-not-perfect",
   "capability_states": [
@@ -28,6 +30,7 @@
   ],
   "notes": [
     "NeoForge support commitment is best-effort independently of shipping and renderer capability.",
-    "Folia remains experimental where present."
+    "Folia remains experimental where present.",
+    "Sponge (SpongeVanilla server plugin) is best-effort and experimental; LINE_SHIP_SPONGE gates shipping per line."
   ]
 }

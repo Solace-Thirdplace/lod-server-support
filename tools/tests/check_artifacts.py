@@ -53,7 +53,7 @@ def main():
         raise ValueError('No fixture/test inventory: cannot establish packaging exclusion')
     failures = []
     inspected = []
-    for module in ('fabric', 'paper', 'neoforge'):
+    for module in ('fabric', 'paper', 'neoforge', 'sponge'):
         for brand in ('lod-server-support', 'voxy-server-side'):
             jars = sorted((args.root / module / 'build/libs').glob(brand + '*.jar'))
             jars = [p for p in jars if not p.stem.endswith(('-sources', '-javadoc'))]
