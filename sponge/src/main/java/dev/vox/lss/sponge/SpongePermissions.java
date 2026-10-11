@@ -21,7 +21,9 @@ import java.util.List;
  *   <li>{@code lss.farplayers.hidden} / {@code vss.farplayers.hidden}: FALSE — the
  *       grant-model privacy lever; both spellings, for the LSS↔VSS jar swap.</li>
  *   <li>{@code <brand>.admin}: NO default (UNDEFINED), so Sponge's default service falls
- *       back to the op level — Paper's {@code default: op}.</li>
+ *       back to op status — but only for ops at or above the server's
+ *       {@code op-permission-level} (default 4), unlike Paper's {@code default: op},
+ *       which admits any op level. Grant the node explicitly for lower-level ops.</li>
  * </ul>
  */
 public final class SpongePermissions {

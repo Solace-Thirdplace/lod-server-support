@@ -54,11 +54,12 @@ public class LSSSpongePlugin {
         String implementation = Sponge.platform().container(Platform.Component.IMPLEMENTATION).metadata().id();
         this.active = SUPPORTED_IMPLEMENTATION.equals(implementation);
         if (!active) {
-            // SpongeNeo/SpongeForge: the LSS NeoForge mod is the supported route there; two
-            // services on one server would double-serve every client (plan §1.9).
+            // SpongeNeo: the LSS NeoForge mod is the supported route there; two services
+            // on one server would double-serve every client. SpongeForge is unsupported
+            // (no Forge jar). Plan §1.9.
             LSSLogger.error(Brand.displayName() + " (Sponge) supports SpongeVanilla only; this server runs '"
-                    + implementation + "'. Use the " + Brand.shortName()
-                    + " NeoForge jar instead. The plugin stays disabled.");
+                    + implementation + "'. On SpongeNeo use the " + Brand.shortName()
+                    + " NeoForge jar instead; SpongeForge is not supported. The plugin stays disabled.");
         }
     }
 
