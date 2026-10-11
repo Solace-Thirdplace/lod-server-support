@@ -14,6 +14,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import journeymap.client.JourneymapClient;
+import journeymap.client.JourneymapClientWithoutSuspend;
 import journeymap.client.cartography.ChunkRenderController;
 import journeymap.client.data.DataCache;
 import journeymap.client.io.FileHandler;
@@ -39,6 +40,13 @@ import org.junit.jupiter.api.Test;
  * death latch, and the backpressure report.
  */
 class JourneyMapSessionTest {
+    static {
+        // Before the constants below: touching Level initializes registries, which need the
+        // bootstrap — run alone (no earlier suite in the JVM) the class failed to initialize.
+        net.minecraft.SharedConstants.tryDetectVersion();
+        net.minecraft.server.Bootstrap.bootStrap();
+    }
+
     private static final ResourceKey<Level> OVERWORLD = Level.OVERWORLD;
     private static final ResourceKey<Level> END = Level.END;
     private static final ResourceKey<Level> NETHER = Level.NETHER;
@@ -87,7 +95,7 @@ class JourneyMapSessionTest {
         this.reports.clear();
         this.clientChunks.clear();
         this.registered.clear();
-        var host = new JourneyMapSession.Host() {
+        this.host = new JourneyMapSession.Host() {
             @Override public Object minecraft() { return null; }
             @Override public Object level() { return level; }
             @Override public boolean playerInLevel() { return level != null; }
@@ -98,7 +106,13 @@ class JourneyMapSessionTest {
                 return clientChunks.get(JourneyMapSession.packed(x, z));
             }
         };
-        this.session = new JourneyMapSession(JourneyMapBindings.resolve(Class::forName), host,
+        newSession(JourneyMapBindings.resolve(Class::forName));
+    }
+
+    private JourneyMapSession.Host host;
+
+    private void newSession(JourneyMapBindings bindings) {
+        this.session = new JourneyMapSession(bindings, this.host,
                 () -> this.enabled, () -> this.sessionActive, this.registered::add, this.registered::remove,
                 () -> this.backpressure,
                 (dim, x, z) -> this.reports.add(new long[]{dimIndex(dim), x, z}),
@@ -1013,6 +1027,22 @@ class JourneyMapSessionTest {
     private static String source() throws java.io.IOException {
         return java.nio.file.Files.readString(dev.vox.lss.testutil.SourcePaths.mainSource(
                 "dev/vox/lss/compat/JourneyMapSession.java"));
+    }
+
+    @Test
+    void aJourneyMapWithoutTheSuspendedProbeStillMaps() throws Exception {
+        // JourneyMap 6.0.0 (the 1.21.11 line) has no isMappingSuspended, so production always
+        // takes the null-handle branch — which the stubs, carrying the member, never reached
+        // (port review).
+        var bindings = JourneyMapBindings.resolve(name -> name.equals("journeymap.client.JourneymapClient")
+                ? JourneymapClientWithoutSuspend.class : Class.forName(name));
+        assertNull(bindings.isMappingSuspended);
+        newSession(bindings);
+        this.jm.suspended = true; // nothing on 6.0.0 can report a suspension
+        offer(0, 0);
+        settle();
+        cycle();
+        assertEquals(1, counter("rendered"));
     }
 
     @Test
