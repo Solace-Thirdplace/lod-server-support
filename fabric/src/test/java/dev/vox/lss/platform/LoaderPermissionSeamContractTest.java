@@ -103,6 +103,12 @@ class LoaderPermissionSeamContractTest {
                 "the NeoForge receiver must ride the 4-arg production entry");
         assertFalse(neo.contains("OPEN"),
                 "no open-gate reference may appear in the NeoForge receiver");
+
+        String sponge = source("sponge/src/main/java/dev/vox/lss/networking/server/LSSServerNetworking.java");
+        assertTrue(sponge.contains("ServerReceiverGlue.handleHandshake(payload, player, requestService,"),
+                "the Sponge receiver must ride the 4-arg production entry");
+        assertFalse(sponge.contains("OPEN"),
+                "no open-gate reference may appear in the Sponge receiver");
     }
 
     @Test
@@ -123,6 +129,7 @@ class LoaderPermissionSeamContractTest {
         for (String repoPath : new String[] {
                 "fabric/src/main/java/dev/vox/lss/networking/server/LSSServerNetworking.java",
                 "neoforge/src/main/java/dev/vox/lss/networking/server/LSSServerNetworking.java",
+                "sponge/src/main/java/dev/vox/lss/networking/server/LSSServerNetworking.java",
         }) {
             assertTrue(source(repoPath).contains(".getServiceGateState().onDisconnect("),
                     repoPath + " must sweep the gate state beside the client-info fact — "

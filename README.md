@@ -11,13 +11,13 @@ https://github.com/user-attachments/assets/721fb344-890e-4e03-ab36-539444427f7b
 Use the matching Fabric or shipped NeoForge artifact. Server support and renderer availability are separate; see the generated [compatibility matrix](docs/compatibility.md). Supported servers:
 
 <!-- LSS SERVER MATRIX START -->
-| Minecraft line | Fabric / Paper | Folia | NeoForge shipping | Neo far renderer |
-| --- | --- | --- | --- | --- |
-| 1.21.1 | maintained | unsupported | shipped; best-effort | available |
-| 1.21.10 | maintained | unsupported | maintained build only | unsupported |
-| 1.21.11 | maintained | experimental | maintained build only | unsupported |
-| 26.1 | maintained | experimental | shipped; best-effort | unsupported |
-| 26.2 | maintained | experimental | shipped; best-effort | unsupported |
+| Minecraft line | Fabric / Paper | Folia | NeoForge shipping | Neo far renderer | Sponge |
+| --- | --- | --- | --- | --- | --- |
+| 1.21.1 | maintained | unsupported | shipped; best-effort | available | not available |
+| 1.21.10 | maintained | unsupported | maintained build only | unsupported | not available |
+| 1.21.11 | maintained | experimental | maintained build only | unsupported | not available |
+| 26.1 | maintained | experimental | shipped; best-effort | unsupported | not available |
+| 26.2 | maintained | experimental | shipped; best-effort | unsupported | not available |
 <!-- LSS SERVER MATRIX END -->
 
 On 1.21.10 there is no Folia build upstream. The in-game options page renders through Sodium 0.7.x's own settings screen from v0.13.0 (earlier 1.21.10 builds had no page) — every setting also remains in the JSON config files.

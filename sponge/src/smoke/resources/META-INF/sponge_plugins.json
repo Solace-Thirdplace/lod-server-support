@@ -1,0 +1,24 @@
+{
+  "loader": {
+    "name": "java_plain",
+    "version": "1.0"
+  },
+  "license": "MIT",
+  "plugins": [
+    {
+      "id": "lsssmoke",
+      "name": "LSS Sponge boot smoke (dev only)",
+      "version": "1.0.0",
+      "entrypoint": "dev.vox.lss.spongesmoke.SmokePlugin",
+      "description": "Dev-only companion that checks the LSS Sponge runtime contract. Never shipped.",
+      "dependencies": [
+        {
+          "id": "lodserversupport",
+          "version": "*",
+          "load-order": "after",
+          "optional": false
+        }
+      ]
+    }
+  ]
+}

@@ -71,7 +71,8 @@ def check(jar_path, problems):
                     problems.append(f'{base}!{label}: unexpected private SQLite resource {name}')
                 if name == 'META-INF/services/java.sql.Driver' and b'org.sqlite' in jar.read(name):
                     problems.append(f'{base}!{label}: exposed SQLite JDBC provider')
-                if name in ('fabric.mod.json', 'META-INF/jarjar/metadata.json', 'META-INF/neoforge.mods.toml'):
+                if name in ('fabric.mod.json', 'META-INF/jarjar/metadata.json', 'META-INF/neoforge.mods.toml',
+                            'META-INF/sponge_plugins.json'):
                     metadata = jar.read(name).decode('utf-8')
                     if re.search(r'sqlite[-_]jdbc|org\.xerial|internal/jdbc', metadata, re.I):
                         problems.append(f'{base}!{label}: loader metadata exposes/requires SQLite')
@@ -115,7 +116,8 @@ def _check_payload(label, jar, problems):
         unexpected = [name for name in names if name.startswith('org/sqlite/native/') and name not in NATIVES]
         if unexpected:
             problems.append(f'{label}: SQLite capsule has natives outside supported matrix: {unexpected[0]}')
-        if any(name in names for name in ('fabric.mod.json', 'META-INF/neoforge.mods.toml')):
+        if any(name in names for name in ('fabric.mod.json', 'META-INF/neoforge.mods.toml',
+                                           'META-INF/sponge_plugins.json')):
             problems.append(f'{label}: capsule must not carry loader mod metadata')
 
 

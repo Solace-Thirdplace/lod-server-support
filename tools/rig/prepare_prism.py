@@ -30,6 +30,13 @@ def verify_bootstrap(path,profile):
             props=dict(line.split('=',1) for line in raw.decode().splitlines() if '=' in line and not line.startswith('#'))
             if props.get('game-version')!=components.get('net.minecraft') or props.get('fabric-loader-version')!=components.get('net.fabricmc.fabric-loader'):
                 raise ValueError('Fabric bootstrap differs from locked Minecraft/loader identity')
+        elif profile['platform']=='sponge':
+            # SpongeVanilla's universal jar names its exact build in the manifest; the
+            # locked component pins it (sponge-support-plan.md §5.3).
+            manifest=archive.read('META-INF/MANIFEST.MF').decode()
+            fields=dict(line.split(': ',1) for line in manifest.splitlines() if ': ' in line)
+            if fields.get('Implementation-Title')!='SpongeVanilla' or fields.get('Implementation-Version')!=components.get('org.spongepowered.spongevanilla') or not str(fields.get('Implementation-Version','')).startswith(str(components.get('net.minecraft'))+'-'):
+                raise ValueError('SpongeVanilla bootstrap differs from locked Minecraft/Sponge identity')
         else:
             if archive.getinfo('version.json').file_size>65536:raise ValueError('oversized bootstrap identity')
             raw=archive.read('version.json')
