@@ -39,7 +39,7 @@ def render(data: dict | None = None) -> str:
               "development builds wrote these keys into the main file: they are still honoured on read",
               "and the next save moves them into the sidecar (retired `lod.dh.refresh_seconds` and",
               "`lod.dh.profile` are removed). One reload reads both files.", ""]
-    for key, title in [("server", "Fabric / NeoForge server"), ("paper", "Paper / Folia server"), ("client", "Client")]:
+    for key, title in [("server", "Fabric / NeoForge / Sponge server"), ("paper", "Paper / Folia server"), ("client", "Client")]:
         schema = data[key]
         output += ["## " + title, "", "| YAML path | Type | Default | Range / units | Timing | Applicability |", "| --- | --- | --- | --- | --- | --- |"]
         for descriptor in schema["descriptors"]:

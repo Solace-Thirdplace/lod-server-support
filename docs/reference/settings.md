@@ -33,7 +33,7 @@ development builds wrote these keys into the main file: they are still honoured 
 and the next save moves them into the sidecar (retired `lod.dh.refresh_seconds` and
 `lod.dh.profile` are removed). One reload reads both files.
 
-## Fabric / NeoForge server
+## Fabric / NeoForge / Sponge server
 
 | YAML path | Type | Default | Range / units | Timing | Applicability |
 | --- | --- | --- | --- | --- | --- |

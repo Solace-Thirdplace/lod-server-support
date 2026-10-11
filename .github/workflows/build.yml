@@ -95,7 +95,9 @@ jobs:
           ./gradlew :sponge:bootSmoke || {
             echo "::warning title=Sponge boot smoke flake::bootSmoke failed once; retrying (first-attempt logs in the gametest-flake-evidence-server artifact under sponge/)"
             mkdir -p flake-evidence/sponge
-            cp -r sponge/build/sponge-smoke flake-evidence/sponge/ 2>/dev/null || true
+            # Logs + verdicts only: the run dir's libraries/ symlinks the ~150 MB cached
+            # SpongeVanilla closure, and the world is regenerated per run.
+            rsync -a --exclude libraries --exclude world sponge/build/sponge-smoke flake-evidence/sponge/ 2>/dev/null || true
             ./gradlew :sponge:bootSmoke
           }
 
@@ -154,6 +156,8 @@ jobs:
             sponge/build/reports/
             sponge/build/test-results/
             sponge/build/sponge-smoke/
+            !sponge/build/sponge-smoke/run/libraries/**
+            !sponge/build/sponge-smoke/run/world/**
           if-no-files-found: ignore
           retention-days: 30
 
