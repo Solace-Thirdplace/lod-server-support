@@ -97,6 +97,19 @@ public final class ClientStatus {
                 : "unavailable".equals(xaero.resolution()) ? ClientStatusSnapshot.Availability.UNAVAILABLE
                 : !cfg.enableXaeroMapBridge() ? ClientStatusSnapshot.Availability.DISABLED
                 : ClientStatusSnapshot.Availability.AVAILABLE;
+        if (DhClientSession.selected()) {
+            // DH mode: native fields describe the (idle) native path truthfully; DH
+            // acquisition lives in the dh block. Nothing is faked.
+            CACHE.publish(lifecycle, new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION, lifecycle, System.currentTimeMillis(),
+                    mc.getConnection() != null, ClientNetGlue.hasReceivedSessionConfig(), cfg.receiveServerLods(),
+                    ClientNetGlue.isServerEnabled(), LSSApi.hasVoxelConsumers(), FarPlayerRenderer.RENDER_AVAILABLE,
+                    ClientNetGlue.getSessionVersion(), ClientNetGlue.getServerLodDistance(), 0, 0, 0, 0,
+                    dev.vox.lss.compat.DhVoxyBridge.backlog(), 0, cfg.lodColumnsPerSecondLimit(), 0,
+                    xaero.pendingRebuilds(), ClientNetGlue.discoveryStatus(), availability, null,
+                    dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(), cfg.diagnosticSettings(),
+                    DhClientSession.diagnostics()));
+            return;
+        }
         var snapshot = new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION, lifecycle, System.currentTimeMillis(),
                 mc.getConnection() != null, ClientNetGlue.hasReceivedSessionConfig(),
                 cfg.receiveServerLods(), ClientNetGlue.isServerEnabled(), LSSApi.hasVoxelConsumers(),
@@ -110,7 +123,7 @@ public final class ClientStatus {
                 cfg.lodColumnsPerSecondLimit(), Math.max(0, rateGated - lastRateGated),
                 xaero.pendingRebuilds(), ClientNetGlue.discoveryStatus(), availability,
                 active ? captureDetails(manager) : null,
-                dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(), cfg.diagnosticSettings());
+                dev.vox.lss.platform.LoaderServices.get().diagnosticVersions(), cfg.diagnosticSettings(),DhClientSession.fallbackEnabled()?DhClientSession.diagnostics():null);
         lastRateGated = rateGated;
         CACHE.publish(lifecycle, snapshot);
     }

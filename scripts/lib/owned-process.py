@@ -70,6 +70,13 @@ def main():
     inherit = args[:1] == ["--inherit-lock"]
     if inherit:
         args = args[1:]
+    termination_grace=3.0
+    if args[:1]==['--termination-grace']:
+        if len(args)<2:return 2
+        try:termination_grace=float(args[1])
+        except ValueError:return 2
+        if not 3<=termination_grace<=120:return 2
+        args=args[2:]
     rig_root = None
     if args[:1] == ['--rig-run-root']:
         rig_root, args = Path(args[1]).resolve(), args[2:]
@@ -149,7 +156,7 @@ def main():
         sent = {}
         group_signal = None
         while True:
-            sig = signal.SIGKILL if time.monotonic() - started >= 3 else signal.SIGTERM
+            sig = signal.SIGKILL if time.monotonic() - started >= termination_grace else signal.SIGTERM
             if group_signal != sig:
                 signal_group(proc, sig)
                 group_signal = sig

@@ -24,23 +24,31 @@ public final class ModCompat {
         discoveryComplete = true;
     }
 
-    /** End-of-client-tick forwarder (main client thread) — the Xaero bridge's pump. */
+    /** Main-thread pumps for Voxy's local vanilla border and Xaero map work. */
     public static void clientTick() {
+        if(voxyLoaded)VoxyCompat.vanillaBorderTick();
         XaeroMapCompat.clientTick();
+    }
+
+    public static void vanillaChunkLoaded(net.minecraft.client.multiplayer.ClientLevel level,net.minecraft.world.level.chunk.LevelChunk chunk) {
+        if(voxyLoaded)VoxyCompat.vanillaChunkLoaded(level,chunk);
     }
 
     /** Per-frame forwarder (render thread) — the Xaero bridge's texture-rebuild
      *  slice: one recolor per frame (xaero-map-bridge-plan.md §17). */
     public static void renderFrame() {
+        if(voxyLoaded)VoxyCompat.vanillaBorderRendered();
         XaeroMapCompat.renderFrame();
     }
 
     /** Disconnect forwarder — a session's queued map tiles never outlive it. */
     public static void retireClientAcquisition() {
+        VoxyCompat.retireVanillaBorder();
         XaeroMapCompat.retireClientAcquisition();
     }
 
     public static void onDisconnect() {
+        VoxyCompat.retireVanillaBorder();
         XaeroMapCompat.onDisconnect();
     }
 

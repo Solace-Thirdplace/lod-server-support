@@ -1,0 +1,22 @@
+{
+  "producer": "stock DH3.3.3 on NeoForge21.1.248 / Minecraft1.21.1",
+  "producer_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+  "profile": "OFFICIAL_16",
+  "generator_plan": "SURFACE_ONLY",
+  "world": {
+    "min_y": -64,
+    "height": 384,
+    "sky": true
+  },
+  "tile": [
+    6,
+    -3,
+    -1
+  ],
+  "source_run": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-07/p4-coverage-performance/r4-final/cases/surface-only/attempt-91bqmvym",
+  "frames": {
+    "received-0004.bin": "8c8ee4f2ce6baedd4a610ba81da9015504d297a2f3c83a39ff2e1b0c08a11de6",
+    "received-0003.bin": "26cdd843f4284e553c21aab4d6811df61b0dfae21832ea405643fc8034dd70e5"
+  },
+  "observed": "4096 columns with generation step5; two spans each. Upper AIR ends at relative448 due to getMaxHeight returning height384, then subtracting minY=-64. Original frames unmodified."
+}

@@ -175,6 +175,9 @@ class SodiumLegacySurfaceResolvesTest {
             boolean ok = switch (m.kind()) {
                 case STATIC_METHOD -> hasMethod(node, m.name(), m.arity(), true);
                 case METHOD -> hasMethod(node, m.name(), m.arity(), false);
+                case PRIVATE_METHOD -> node.methods.stream().anyMatch(method -> method.name.equals(m.name())
+                        && Type.getArgumentTypes(method.desc).length == m.arity()
+                        && (method.access & Opcodes.ACC_PRIVATE) != 0 && (method.access & Opcodes.ACC_STATIC) == 0);
                 case CONSTRUCTOR -> hasMethod(node, "<init>", m.arity(), false);
                 case INTERFACE_METHOD -> (node.access & Opcodes.ACC_INTERFACE) != 0
                         && hasMethod(node, m.name(), m.arity(), false);

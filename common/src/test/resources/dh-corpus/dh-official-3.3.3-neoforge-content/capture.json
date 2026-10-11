@@ -1,0 +1,75 @@
+{
+  "kind": "official-upstream-custom-height-and-conditional-removal-capture",
+  "captured_utc": "2026-10-05T07:19:08.804455+00:00",
+  "server_artifact": "DistantHorizons-3.3.3-1.21.1-fabric-neoforge.jar",
+  "server_artifact_sha256": "864e70def5b0d54d619b940b66bb2784e91d3f3fc253064fdc1b3fc5786cbfab",
+  "lss_candidate_sha256": "d6317a65a62a5a79d3e0ca3b4a10b9986866b02e6c90ed154a312ca03bc547fb",
+  "fixture_sha256": "a977501d9890c60b1a70a587c5e96eceee56176fe899b631c600281f4c72c6c3",
+  "minecraft": "1.21.1",
+  "neoforge": "21.1.248",
+  "profile": "official_16",
+  "dimension": "lssfixture:tall",
+  "world_shape": {
+    "min_y": -128,
+    "height": 512,
+    "sky": true
+  },
+  "tile": {
+    "detail": 6,
+    "x": -3,
+    "z": 0
+  },
+  "seed": 8675309,
+  "producer_configuration": {
+    "generator_plan": "DISABLED",
+    "updates": false,
+    "generation_distance": 0
+  },
+  "independent_expectations": {
+    "initial": {
+      "350..351": "minecraft:lime_concrete",
+      "-118..-117": "minecraft:cyan_concrete",
+      "340": "minecraft:gold_block",
+      "-128": "minecraft:bedrock",
+      "-127": "minecraft:stone"
+    },
+    "removed": {
+      "350..351": "minecraft:air",
+      "-118..-117": "minecraft:purple_concrete",
+      "340": "minecraft:gold_block",
+      "-128": "minecraft:bedrock",
+      "-127": "minecraft:stone"
+    },
+    "scope": "all 4096 columns in x=-192..-129, z=0..63"
+  },
+  "seed_commands": [
+    "execute in lssfixture:tall run forceload add -192 0 -129 63",
+    "execute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:red_concrete",
+    "execute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:blue_concrete",
+    "execute in lssfixture:tall run fill -192 340 0 -129 340 63 minecraft:gold_block",
+    "save-all flush"
+  ],
+  "dh_source_mutation_commands": [
+    "execute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:lime_concrete",
+    "execute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:cyan_concrete",
+    "save-all flush"
+  ],
+  "removal_commands": [
+    "execute in lssfixture:tall run fill -192 350 0 -129 351 63 minecraft:air",
+    "execute in lssfixture:tall run fill -192 -118 0 -129 -117 63 minecraft:purple_concrete",
+    "save-all flush"
+  ],
+  "frame_policy": "Requests are labelled codec reconstructions with opaque level key replaced by lssfixture:tall; incoming Split/Response bytes are verbatim. No SessionConfig/LevelInit/control identities included.",
+  "files_sha256": {
+    "target-0001-request.bin": "d3bf39e1af181157370aec2003d7165874015f0686b16f6815c64ecb7500d28c",
+    "target-0002-split.bin": "c2f16c6551114a50c317ef433f56549e9b221b6643a3603230a2743804247b5f",
+    "target-0003-response.bin": "943b3eb4569e433ced0008116ea0acd1a163776e2f1cbfbf95567f51d3aead49",
+    "target-0004-request.bin": "8a81356e74defbef5d6d35582d9d63e5e828ea80a57c0d0621bc7421269a441d",
+    "target-0005-response.bin": "8c3d90c7430e2697f9a540a49a774f9ef7f290e11b4516983c252187e8237da4",
+    "target-0006-request.bin": "08c29fbd66093264bb83e21b4eb53d6cca6d0eec64c7ac84f45fa277b3935dee",
+    "target-0007-split.bin": "9d7ba9df9d2abb79010ddfcab9e35c464cc5d61634b29e6b7ea022e0f1ad2356",
+    "target-0008-response.bin": "e84d79115e59ffff30857cfd94d8eb1670bbe53472cb3db19b429f463b9d2d5f"
+  },
+  "local_run_evidence": "/home/vox/projects/voxel-server-support/build/dh-neoforge/2026-10-05/p4-review-fixes/content-runs/attempt-jo288t5f",
+  "normalized_hash_role": "implementation regression pin, not an independent oracle"
+}

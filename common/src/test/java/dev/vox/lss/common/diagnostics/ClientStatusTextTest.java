@@ -29,6 +29,26 @@ class ClientStatusTextTest {
                 }
         for (var reason : ClientStatusSnapshot.Reason.values()) check(List.of(new ClientStatusText.Message(
                 "lss.status.reason."+reason.name().toLowerCase(Locale.ROOT),List.of())),languages);
+        for(var reason:DhStatusSnapshot.Reason.values())check(List.of(new ClientStatusText.Message("lss.status.dh.reason."+reason.name().toLowerCase(Locale.ROOT),List.of())),languages);
+        for(var activity:DhStatusSnapshot.Activity.values())check(List.of(new ClientStatusText.Message("lss.status.dh.activity."+activity.name().toLowerCase(Locale.ROOT),List.of())),languages);
+        check(List.of(new ClientStatusText.Message("lss.status.dh.notice.stopped",List.of("x"))),languages);
+        for(var state:DhStatusSnapshot.State.values()) for(var profile:dev.vox.lss.common.dh.DhProfile.values())
+            for(boolean sync:new boolean[]{false,true}) for(boolean live:new boolean[]{false,true}) {
+                var dh=new DhStatusSnapshot(profile,state,DhStatusSnapshot.Reason.NONE,DhStatusSnapshot.Activity.IDLE,10,5,2,1,45,3,2,1000,100,1,2,3,32,1,2,500,true,sync,live,sync,0,0,100,4096,7,0);
+                var snapshot=new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION,1,100,true,false,true,false,true,false,
+                        0,0,0,0,0,0,-1,0,0,0,0,ClientStatusSnapshot.Discovery.DORMANT,
+                        ClientStatusSnapshot.Availability.DISABLED,null,DiagnosticVersions.unknown(),settings,dh);
+                check(ClientStatusText.lines(snapshot,200),languages);
+                assertTrue(ClientStatusText.lines(snapshot,200).stream().noneMatch(m->m.key().equals("lss.status.renderer")
+                        || m.key().equals("lss.status.xaero") || m.key().equals("lss.status.connection")));
+                String json=DiagnosticExport.clientJson(snapshot);
+                assertTrue(json.contains("\"dh\""));assertTrue(json.contains("\"protocol\": 0"));
+                assertTrue(snapshot.lines().getFirst().contains("Distant Horizons"));
+                assertTrue(snapshot.lines().stream().anyMatch(line->line.startsWith("Activity:")));
+                assertTrue(snapshot.lines().stream().anyMatch(line->line.startsWith("Receipts:")));
+                assertTrue(snapshot.lines().stream().anyMatch(line->line.startsWith("Versions:")));
+                assertTrue(snapshot.lines().stream().anyMatch(line->line.startsWith("Settings:")));
+            }
     }
     private void check(List<?> values,List<com.google.gson.JsonObject> languages) {
         for(Object value:values) {

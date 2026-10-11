@@ -52,7 +52,10 @@ NEOFORGE_FORBIDDEN = ("dev/vox/lss/benchmark/", "dev/vox/lss/neoforge/gametest/"
                       "net/caffeinemc/")
 # Dev-only namespaces that would live in common/ (e.g. a deduped soak-driver twin): common
 # ships on BOTH platforms — nested in the Fabric jar, shaded into the Paper jar.
-COMMON_FORBIDDEN = ("dev/vox/lss/common/soak/", "dev/vox/lss/common/benchmark/")
+COMMON_FORBIDDEN = ("privatep4/", "com/seibel/", "net/caffeinemc/", "dev/vox/lss/common/soak/", "dev/vox/lss/common/benchmark/",
+                    "dev/vox/lssfixture/",
+                    # Voxy carries stock XZ; LSS must carry only its private relocated copy.
+                    "org/tukaani/")
 # All four shipped artifacts: the LSS pair (Modrinth lKiXKLvv) and the Voxy Server Side pair
 # (Modrinth voxy-server-side). The VSS jars are branded byte-copies of the LSS jars — same
 # classes, mod id `lss` / plugin name LodServerSupport, so they get the IDENTICAL safety
@@ -114,7 +117,7 @@ def _scan_forbidden(jar, base, prefixes, problems):
         problems.append(f"{base}: unreadable nested jar ({e})")
         nested = []
     for label, names in [(None, _names(jar))] + nested:
-        leaked = [n for n in names if n.startswith(prefixes)]
+        leaked = [n for n in names if re.sub(r"^META-INF/versions/[0-9]+/", "", n).startswith(prefixes)]
         if leaked:
             where = base if label is None else f"{base}!{label}"
             problems.append(f"{where}: ships forbidden entries "
@@ -160,9 +163,165 @@ def _yaml_archives(source, label=None):
     with zipfile.ZipFile(source) as archive:
         yield label, archive
         for entry in archive.namelist():
-            if entry.startswith(("META-INF/jars/", "META-INF/jarjar/")) and entry.endswith(".jar"):
+            if (entry.startswith(("META-INF/jars/", "META-INF/jarjar/")) and entry.endswith(".jar")) or entry==sqlite_capsule.CAPSULE:
                 nested_label = entry if label is None else label + "!" + entry
                 yield from _yaml_archives(io.BytesIO(archive.read(entry)), nested_label)
+
+
+DH_CODEC = "dev/vox/lss/common/dh/DhTerrainDecoder.class"
+XZ_PREFIX = "dev/vox/lss/internal/xz/"
+XZ_LICENSE = "META-INF/licenses/xz-java-0BSD.txt"
+XZ_REQUIRED = tuple(XZ_PREFIX + name + ".class" for name in (
+    "XZInputStream", "SingleXZInputStream", "LZMA2InputStream"))
+# The exact upstream 0BSD text (common/src/main/resources/META-INF/licenses/). A token
+# check accepted a stub containing only "0BSD" (A10 N7); pin the bytes instead.
+XZ_LICENSE_SHA256 = "915b4483261ec76bb45f63a1f24564dc8edf894c6b66e0a992143a30bfa7bbf0"
+# The THIRD-PARTY-NOTICES paragraph every DH-carrying jar must keep verbatim (compared
+# whitespace-normalized). Three tokens anywhere passed a gutted paragraph (A10 N8).
+XZ_NOTICE_PARAGRAPH = (
+    "XZ for Java 1.10 (0BSD) is bundled with common and relocated privately to "
+    "dev.vox.lss.internal.xz for the client-only Distant Horizons compatibility "
+    "source. Its license is at META-INF/licenses/xz-java-0BSD.txt (inside Fabric's "
+    "nested common jar, flattened on NeoForge). Paper jars do not contain XZ.")
+DH_PACKAGE = "dev/vox/lss/common/dh/"
+# Paper never runs the client DH adapter, so its jar carries neither the DH codec nor
+# the private XZ copy (X-7). These client-only common classes still NAME common/dh
+# types in their constant pools (DhProfile in the snapshot's record components and
+# status text): Paper reaches them only through client-side diagnostics code a server
+# never invokes, and the JVM resolves those references lazily, so the absent classes are
+# never loaded. Any
+# other Paper class linking common/dh would fail at runtime: keep this set minimal.
+# Entries match the class itself and its nested classes ($...).
+PAPER_DH_REFERENCE_ALLOWLIST = (
+    "dev/vox/lss/common/diagnostics/ClientStatusText",
+    "dev/vox/lss/common/diagnostics/DhStatusSnapshot",
+)
+
+
+def _class_utf8(code):
+    """Constant-pool UTF8 values of a class file, or None when it is not parseable."""
+    values=[]
+    try:
+        if len(code)<10 or code[:4]!=b'\xca\xfe\xba\xbe':raise ValueError('not a class')
+        count=int.from_bytes(code[8:10],'big');offset=10;index=1
+        if count<1:raise ValueError('invalid pool count')
+        widths={3:4,4:4,5:8,6:8,7:2,8:2,9:4,10:4,11:4,12:4,15:3,16:2,17:4,18:4,19:2,20:2}
+        while index<count:
+            tag=code[offset];offset+=1
+            if tag==1:
+                size=int.from_bytes(code[offset:offset+2],'big');offset+=2
+                if offset+size>len(code):raise ValueError('truncated UTF8')
+                values.append(code[offset:offset+size]);offset+=size
+            else:
+                offset+=widths[tag]
+                if tag in (5,6):index+=1
+            if offset>len(code):raise ValueError('truncated constant')
+            index+=1
+    except (IndexError,KeyError,ValueError):
+        return None
+    return values
+
+
+def _links_package(code, package):
+    """True when a class symbolically names `package` (internal form, trailing slash)."""
+    values=_class_utf8(code)
+    dotted=package.replace('/','.').encode()
+    slashed=package.encode()
+    if values is None:
+        return slashed in code or dotted in code
+    return any(value.startswith((slashed,dotted)) or b'L'+slashed in value for value in values)
+
+
+def _links_stock_xz(code):
+    """Inspect symbolic names/descriptors and exact reflective class literals.
+
+    XZ retains upstream property names in English diagnostic text. That text is
+    not a class link; searching arbitrary class bytes falsely rejects clean jars.
+    Malformed/synthetic inputs keep the conservative raw-byte fallback.
+    """
+    values=_class_utf8(code)
+    if values is None:
+        return b'org/tukaani/' in code or b'org.tukaani.' in code
+    return any(value.startswith((b'org/tukaani/',b'org.tukaani.'))
+               or b'Lorg/tukaani/' in value for value in values)
+
+
+def _paper_dh_allowed(class_name):
+    return any(class_name == entry or class_name.startswith(entry + "$")
+               for entry in PAPER_DH_REFERENCE_ALLOWLIST)
+
+
+def check_paper_dh_absent(jar, problems):
+    """X-7: the client-only DH codec, its private XZ and the XZ license stay out of
+    Paper (LSS and VSS); only the allowlisted client-only classes may still name them."""
+    base = os.path.basename(jar)
+    try:
+        for label, archive in _yaml_archives(jar):
+            where = base if label is None else f"{base}!{label}"
+            for name in archive.namelist():
+                flat = re.sub(r"^META-INF/versions/[0-9]+/", "", name)
+                if flat.startswith(DH_PACKAGE) and not name.endswith("/"):
+                    problems.append(f"{where}: Paper ships client-only DH class {name}")
+                elif flat.startswith(XZ_PREFIX) and not name.endswith("/"):
+                    problems.append(f"{where}: Paper ships private XZ entry {name}")
+                elif name == XZ_LICENSE:
+                    problems.append(f"{where}: Paper ships the XZ license without XZ")
+                elif name.endswith(".class") and not flat.startswith(("org/", "com/")):
+                    owner = flat[:-len(".class")]
+                    if _links_package(archive.read(name), DH_PACKAGE) and not _paper_dh_allowed(owner):
+                        problems.append(f"{where}: {name} links client-only {DH_PACKAGE} — "
+                                        "absent on Paper, so this class would fail to link "
+                                        "(allowlist only classes a server never executes)")
+    except zipfile.BadZipFile as error:
+        problems.append(f"{base}: unreadable Paper archive ({error})")
+
+
+def check_dh_codec(jar, loader, problems):
+    """DH's common codec owns one private XZ copy; stock packages must never leak.
+    Paper carries no DH codec at all (check_paper_dh_absent)."""
+    owners = []
+    base = os.path.basename(jar)
+    try:
+        for label, archive in _yaml_archives(jar):
+            names = archive.namelist()
+            where = base if label is None else f"{base}!{label}"
+            if any(re.sub(r"^META-INF/versions/[0-9]+/", "", name).startswith("org/tukaani/") for name in names):
+                problems.append(f"{where}: unrelocated XZ classes")
+            for name in names:
+                if name.endswith(".class"):
+                    code=archive.read(name)
+                    if _links_stock_xz(code):
+                        problems.append(f"{where}: {name} links unrelocated XZ")
+            private = any(name.startswith(XZ_PREFIX) and name.endswith(".class") for name in names)
+            if DH_CODEC not in names:
+                if private:
+                    problems.append(f"{where}: private XZ has no owning DH codec")
+                continue
+            owners.append(label)
+            code = archive.read(DH_CODEC)
+            if _links_stock_xz(code):
+                problems.append(f"{where}: DH codec still links unrelocated XZ")
+            for required in XZ_REQUIRED:
+                if required not in names:
+                    problems.append(f"{where}: missing private XZ class {required}")
+            if XZ_LICENSE not in names:
+                problems.append(f"{where}: missing XZ 0BSD notice")
+            elif hashlib.sha256(archive.read(XZ_LICENSE)).hexdigest() != XZ_LICENSE_SHA256:
+                problems.append(f"{where}: XZ 0BSD license text differs from the pinned "
+                                "upstream text (not just the token)")
+    except zipfile.BadZipFile as error:
+        problems.append(f"{base}: unreadable DH codec archive ({error})")
+    if loader == "paper":
+        if owners:
+            problems.append(f"{base}: Paper must not carry the client-only DH codec/XZ")
+        check_paper_dh_absent(jar, problems)
+        return
+    if len(owners) != 1:
+        problems.append(f"{base}: expected exactly one DH codec/XZ owner, found {len(owners)}")
+    elif loader == "fabric" and (owners[0] is None or not owners[0].startswith("META-INF/jars/common-")):
+        problems.append(f"{base}: Fabric DH codec must live in its nested common jar")
+    elif loader in ("neoforge", "common") and owners[0] is not None:
+        problems.append(f"{base}: {loader} DH codec must be flattened with common")
 
 
 def check_yaml_parser(jar, loader, problems):
@@ -619,6 +778,112 @@ def check_neoforge_jar(jar, problems):
                             "configuration must never include the MC/loader classpath")
 
 
+# Mixin configs (D-27). Only the loader's primary config may be required: every other
+# config (legacy Sodium hook, move tracer) targets optional or drift-prone code and must
+# soft-fail. Fixture/rig configs never ship. Rules are generic so deleting or adding a
+# mixin class needs no edit here.
+PRIMARY_MIXIN_CONFIG = {"fabric": "lss.mixins.json", "neoforge": "lss.neoforge.mixins.json"}
+FORBIDDEN_MIXIN_CONFIG = re.compile(r"(^lss-dh-|fixture|^lss-rig-|^lss-smoke|p4)", re.IGNORECASE)
+# Dependency surfaces a release may declare. A stray hard dependency (for example on
+# distanthorizons, which the DH adapter must never require) changes who can load the
+# mod on BOTH brands, so the VSS pair diff cannot catch it.
+FABRIC_DEPENDENCY_ALLOWLIST = {
+    "depends": {"minecraft", "fabricloader", "fabric-api"},
+    # 1.21.11 line: fabric.mod.json also suggests voxy (>=0.2.15-beta).
+    "recommends": set(), "suggests": {"sodium", "modmenu", "voxy", "xaeroworldmap"},
+    "breaks": set(), "conflicts": set(),
+}
+NEOFORGE_DEPENDENCY_ALLOWLIST = {"neoforge", "minecraft"}
+# Allowed only as type="optional": the external SQLite JDBC library mod (issue #304
+# line work) may be declared optional, never required.
+NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST = set()  # 1.21.1-only (issue #304); SQLite is private here
+
+
+def _declared_mixin_configs(jar, loader):
+    if loader == "fabric":
+        try:
+            meta = json.loads(_read(jar, "fabric.mod.json"))
+        except (KeyError, json.JSONDecodeError):
+            return set()
+        declared = set()
+        for entry in meta.get("mixins", []):
+            declared.add(entry if isinstance(entry, str) else entry.get("config", ""))
+        return declared
+    try:
+        toml = _read(jar, "META-INF/neoforge.mods.toml")
+    except KeyError:
+        return set()
+    return set(re.findall(r'(?m)^\s*config\s*=\s*"([^"]+)"', toml))
+
+
+def check_mixin_configs(jar, loader, problems):
+    """Every shipped mixin config is declared, non-fixture, soft-failing unless primary,
+    and lists only classes present in the same jar (A10 N4/N5/N11/N12/M13)."""
+    base = os.path.basename(jar)
+    names = set(_names(jar))
+    configs = {n for n in names if "/" not in n and n.endswith(".mixins.json")}
+    declared = _declared_mixin_configs(jar, loader)
+    for missing in sorted(declared - configs):
+        problems.append(f"{base}: declared mixin config {missing} is missing from the jar")
+    for config in sorted(configs):
+        if FORBIDDEN_MIXIN_CONFIG.search(config):
+            problems.append(f"{base}: test/fixture mixin config {config} must never ship")
+        if config not in declared:
+            problems.append(f"{base}: mixin config {config} ships but is not declared by the "
+                            "loader metadata (inert or fixture leftovers must not ship)")
+        try:
+            data = json.loads(_read(jar, config))
+        except json.JSONDecodeError as error:
+            problems.append(f"{base}: {config} is not valid JSON ({error.msg})")
+            continue
+        if not isinstance(data, dict):
+            problems.append(f"{base}: {config} is not a JSON object")
+            continue
+        if config != PRIMARY_MIXIN_CONFIG.get(loader):
+            require = (data.get("injectors") or {}).get("defaultRequire", 0)
+            if data.get("required", False) is not False or require != 0:
+                problems.append(f"{base}: {config} must stay required:false with "
+                                "defaultRequire 0 — only the primary config may hard-fail")
+        package = data.get("package", "")
+        for side in ("mixins", "client", "server"):
+            for mixin in data.get(side) or []:
+                entry = (package + "." + mixin if package else mixin).replace(".", "/") + ".class"
+                if entry not in names:
+                    problems.append(f"{base}: {config} lists {mixin} but {entry} is not in "
+                                    "the jar (a required mixin config would crash at load)")
+
+
+def check_dependency_allowlist(jar, loader, problems):
+    base = os.path.basename(jar)
+    if loader == "fabric":
+        try:
+            meta = json.loads(_read(jar, "fabric.mod.json"))
+        except (KeyError, json.JSONDecodeError):
+            return
+        for key in ("depends", "recommends", "suggests", "breaks", "conflicts"):
+            for dep in (meta.get(key) or {}):
+                if dep not in FABRIC_DEPENDENCY_ALLOWLIST[key]:
+                    problems.append(f"{base}: fabric.mod.json {key} declares unexpected "
+                                    f"{dep!r} — release dependency surfaces are allowlisted")
+        return
+    try:
+        toml = _read(jar, "META-INF/neoforge.mods.toml")
+    except KeyError:
+        return
+    for block in re.split(r"(?m)^\s*\[\[", toml)[1:]:
+        if not block.startswith("dependencies."):
+            continue
+        dep = re.search(r'(?m)^\s*modId\s*=\s*"([^"]+)"', block)
+        kind = re.search(r'(?m)^\s*type\s*=\s*"([^"]+)"', block)
+        if (dep is not None and dep.group(1) in NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST
+                and kind is not None and kind.group(1) == "optional"):
+            continue
+        if dep is None or dep.group(1) not in NEOFORGE_DEPENDENCY_ALLOWLIST:
+            found = dep.group(1) if dep else "<no modId>"
+            problems.append(f"{base}: neoforge.mods.toml declares unexpected dependency "
+                            f"{found!r} — release dependency surfaces are allowlisted")
+
+
 # Classes that legitimately exist ONLY in the fabric jar (per-loader wiring homes; the
 # networking holders/renderer have same-FQN neoforge twins, so they are deliberately
 # NOT listed — their absence from the neoforge jar would be real drift).
@@ -764,6 +1029,10 @@ def check_third_party_notices(jar, is_fabric, problems):
         return
     if len(_read_raw(jar, "THIRD-PARTY-NOTICES")) < 100:
         problems.append(f"{base}: THIRD-PARTY-NOTICES is (near-)empty")
+    if any(DH_CODEC in names for _,names in [(None,_names(jar))]+_nested_jars(jar)):
+        notice=" ".join(_read_raw(jar,"THIRD-PARTY-NOTICES").decode("utf-8","replace").split())
+        if XZ_NOTICE_PARAGRAPH not in notice:
+            problems.append(f"{base}: missing the exact XZ 1.10/0BSD third-party paragraph")
 
 
 def check_vss_fabric_identity(jar, problems):
@@ -1164,6 +1433,8 @@ def discover(problems, expected_version=None, root=ROOT):
             _flag_ambiguous(vneo, "voxy-server-side-neoforge", problems)
     for jar in fab:
         check_fabric_jar(jar, problems)
+        check_mixin_configs(jar, "fabric", problems)
+        check_dependency_allowlist(jar, "fabric", problems)
         check_yaml_parser(jar, "fabric", problems)
         check_store_natives_fabric(jar, problems)
         check_third_party_notices(jar, True, problems)
@@ -1174,6 +1445,8 @@ def discover(problems, expected_version=None, root=ROOT):
         check_third_party_notices(jar, False, problems)
     for jar in neo:
         check_neoforge_jar(jar, problems)
+        check_mixin_configs(jar, "neoforge", problems)
+        check_dependency_allowlist(jar, "neoforge", problems)
         check_yaml_parser(jar, "neoforge", problems)
         # Stock zstd-jni rides in jarJar (issue #275); SQLite stays in the
         # private capsule. The outer jar exposes neither library nor its natives.
@@ -1183,6 +1456,8 @@ def discover(problems, expected_version=None, root=ROOT):
             check_cross_loader_classes(fab[0], jar, problems)
     for jar in vneo:
         check_neoforge_jar(jar, problems)
+        check_mixin_configs(jar, "neoforge", problems)
+        check_dependency_allowlist(jar, "neoforge", problems)
         check_yaml_parser(jar, "neoforge", problems)
         check_store_natives_neoforge(jar, problems)
         check_third_party_notices(jar, False, problems)
@@ -1206,6 +1481,8 @@ def discover(problems, expected_version=None, root=ROOT):
         check_brand_properties(jar, _BRAND_LSS, problems)
     for jar in vfab:
         check_fabric_jar(jar, problems)
+        check_mixin_configs(jar, "fabric", problems)
+        check_dependency_allowlist(jar, "fabric", problems)
         check_yaml_parser(jar, "fabric", problems)
         check_store_natives_fabric(jar, problems)
         check_third_party_notices(jar, True, problems)
@@ -1235,6 +1512,9 @@ def discover(problems, expected_version=None, root=ROOT):
     check_glob_hygiene(problems, soak)
     for jar in fab + pap + vfab + vpap + neo + vneo:
         sqlite_capsule.check(jar, problems)
+    for loader, jars in (("fabric", fab + vfab), ("paper", pap + vpap), ("neoforge", neo + vneo)):
+        for jar in jars:
+            check_dh_codec(jar, loader, problems)
     return fab, pap, vfab, vpap, neo, vneo, soak
 
 
@@ -1323,13 +1603,22 @@ def _selftest_fixtures():
         assert cond, "selftest FAIL: " + msg
         n += 1
 
-    def _yaml_entries():
+    xz_license_bytes = open(os.path.join(ROOT, "common", "src", "main", "resources", "META-INF",
+                                         "licenses", "xz-java-0BSD.txt"), "rb").read()
+    notices = ("sqlite-jdbc / zstd-jni notices\n\n" + XZ_NOTICE_PARAGRAPH.replace(". ", ".\n")
+               + "\n" + "x" * 100)
+
+    def _yaml_entries(dh=True):
         entries = {name: b"\xca\xfe\xba\xbe\x00\x00\x00\x37" for name in YAML_REQUIRED_CLASSES}
         entries[YAML_CODEC] = b"\xca\xfe\xba\xbe\x00\x00\x00\x41"
         entries[YAML_LICENSE] = "Apache License Version 2.0 " + "x" * 11000
         entries[YAML_NOTICE] = "SnakeYAML Engine 3.1.1 Copyright (c) 2018, SnakeYAML"
         entries[YAML_VERSION] = "version=3.1.1\n"
         entries.update({name: "config_version: 1\n" for name in YAML_TEMPLATES})
+        if dh:
+            entries[DH_CODEC] = b"\xca\xfe\xba\xbe\x00\x00\x00\x41"
+            entries.update({name: b"\xca\xfe\xba\xbe\x00\x00\x00\x34" for name in XZ_REQUIRED})
+            entries[XZ_LICENSE] = xz_license_bytes
         return entries
 
     def _nested_common(version="0.4.0"):
@@ -2093,6 +2382,18 @@ def _selftest_fixtures():
         # Relocated YAML parser: all six brands/loaders must enforce the same shape.
         yaml_flat = os.path.join(td, "yaml-flat.jar")
         _make_jar(yaml_flat, _yaml_entries())
+        fixture_nested = io.BytesIO()
+        with zipfile.ZipFile(fixture_nested, "w") as z:
+            z.writestr("dev/vox/lssfixture/dh/Probe.class", b"test-only")
+        for label, entries in (
+                ("fixture-flat", {"dev/vox/lssfixture/dh/Probe.class": b"test-only"}),
+                ("fixture-nested", {"META-INF/jars/common-test.jar": fixture_nested.getvalue()})):
+            bad = os.path.join(td, label + ".jar")
+            _make_jar(bad, entries)
+            p = []
+            _scan_forbidden(bad, label, COMMON_FORBIDDEN, p)
+            check(any("dev/vox/lssfixture/" in issue for issue in p), f"test fixture accepted: {p}")
+
         for loader in ("paper", "neoforge", "common"):
             p = []
             check_yaml_parser(yaml_flat, loader, p)
@@ -2126,6 +2427,178 @@ def _selftest_fixtures():
         p = []
         check_yaml_parser(yaml_missing, "paper", p)
         check(any("found 0" in issue for issue in p), f"missing parser accepted: {p}")
+
+        # XZ cannot escape into any flat or nested loader/brand artifact.
+        xz_stock = io.BytesIO()
+        with zipfile.ZipFile(xz_stock, "w") as z:
+            z.writestr("org/tukaani/xz/XZInputStream.class", b"stock")
+        for label, entries in (
+                ("xz-flat", {"org/tukaani/xz/XZInputStream.class": b"stock"}),
+                ("xz-nested", {"META-INF/jars/common-test.jar": xz_stock.getvalue()})):
+            bad = os.path.join(td, label + ".jar")
+            _make_jar(bad, entries)
+            p = []
+            _scan_forbidden(bad, label, COMMON_FORBIDDEN, p)
+            check(any("org/tukaani/" in issue for issue in p), f"unrelocated XZ accepted: {p}")
+
+        for loader in ("neoforge", "common"):
+            p = []
+            check_dh_codec(yaml_flat, loader, p)
+            check(not p, f"valid private XZ rejected on {loader}: {p}")
+        p = []
+        check_dh_codec(yaml_fabric, "fabric", p)
+        check(not p, f"valid nested private XZ rejected: {p}")
+        for label, change, expected in (
+                ("xz-link", {DH_CODEC: b"org/tukaani/xz/XZInputStream"}, "links unrelocated"),
+                ("xz-missing", {XZ_REQUIRED[0]: None}, "missing private"),
+                ("xz-notice", {XZ_LICENSE: None}, "missing XZ")):
+            entries = _yaml_entries()
+            for name, value in change.items():
+                if value is None:
+                    entries.pop(name)
+                else:
+                    entries[name] = value
+            bad = os.path.join(td, label + ".jar")
+            _make_jar(bad, entries)
+            p = []
+            check_dh_codec(bad, "neoforge", p)
+            check(any(expected in issue for issue in p), f"{label} accepted: {p}")
+        p = []
+        check_dh_codec(yaml_duplicate, "neoforge", p)
+        check(any("found 2" in issue for issue in p), f"duplicate DH/XZ owner accepted: {p}")
+
+        # X-7: Paper carries no DH codec/XZ; only allowlisted client-only classes may name them.
+        def _cp_class(*utf8):
+            body = b""
+            for value in utf8:
+                raw = value.encode()
+                body += b"\x01" + len(raw).to_bytes(2, "big") + raw
+            return (b"\xca\xfe\xba\xbe\x00\x00\x00\x41"
+                    + (len(utf8) + 1).to_bytes(2, "big") + body)
+        paper_clean = dict(_yaml_entries(dh=False))
+        paper_clean["dev/vox/lss/common/diagnostics/DhStatusSnapshot.class"] = _cp_class(
+            "dev/vox/lss/common/dh/DhProfile")
+        paper_clean["dev/vox/lss/common/diagnostics/DhStatusSnapshot$State.class"] = _cp_class(
+            "Ldev/vox/lss/common/dh/DhProfile;")
+        paper_clean["dev/vox/lss/common/diagnostics/ClientStatusText.class"] = _cp_class(
+            "dev/vox/lss/common/dh/DhProfile")
+        # Diagnostic prose naming the package is not a link (mirrors the XZ rule).
+        paper_clean["dev/vox/lss/paper/Prose.class"] = _cp_class(
+            "client-only classes live in the dev.vox.lss.common.dh package")
+        ok = os.path.join(td, "paper-clean.jar")
+        _make_jar(ok, paper_clean)
+        p = []
+        check_dh_codec(ok, "paper", p)
+        check(not p, f"clean Paper jar without DH rejected: {p}")
+        for label, change, expected in (
+                ("paper-codec", _yaml_entries(dh=True), "must not carry"),
+                ("paper-dh-class", {"dev/vox/lss/common/dh/DhProfile.class": b"x"}, "client-only DH class"),
+                ("paper-xz-mr", {"META-INF/versions/9/" + XZ_PREFIX + "lz/LZDecoder.class": b"x"},
+                 "private XZ entry"),
+                ("paper-xz-license", {XZ_LICENSE: xz_license_bytes}, "license without XZ"),
+                ("paper-link", {"dev/vox/lss/paper/PaperCommands.class":
+                                _cp_class("dev/vox/lss/common/dh/DhProfile")}, "links client-only"),
+                ("paper-link-descriptor", {"dev/vox/lss/common/diagnostics/ServerStatusSnapshot.class":
+                                           _cp_class("(Ldev/vox/lss/common/dh/DhProfile;)V")},
+                 "links client-only"),
+                ("paper-nested", {"META-INF/jars/common-test.jar": _nested_common()}, "client-only DH class")):
+            bad = os.path.join(td, label + ".jar")
+            _make_jar(bad, dict(paper_clean, **change))
+            p = []
+            check_dh_codec(bad, "paper", p)
+            check(any(expected in issue for issue in p), f"{label} accepted on Paper: {p}")
+        # N7: a stub that merely names the license is not the license.
+        stub = dict(_yaml_entries(), **{XZ_LICENSE: b"see upstream 0BSD"})
+        bad = os.path.join(td, "xz-license-stub.jar")
+        _make_jar(bad, stub)
+        p = []
+        check_dh_codec(bad, "neoforge", p)
+        check(any("differs from the pinned" in issue for issue in p), f"XZ license stub accepted: {p}")
+        # The pinned paragraph must match the checked-in notices file.
+        root_notice = " ".join(open(os.path.join(ROOT, "THIRD-PARTY-NOTICES"), encoding="utf-8").read().split())
+        check(XZ_NOTICE_PARAGRAPH in root_notice,
+              "THIRD-PARTY-NOTICES no longer carries XZ_NOTICE_PARAGRAPH verbatim")
+        check(hashlib.sha256(xz_license_bytes).hexdigest() == XZ_LICENSE_SHA256,
+              "XZ_LICENSE_SHA256 drifted from common's checked-in license")
+        # N8: the three tokens without the paragraph no longer pass.
+        for text, valid in (("XZ 1.10 0BSD " + "x" * 200, False), (notices, True)):
+            tp = os.path.join(td, "tp-xz.jar")
+            _make_jar(tp, {DH_CODEC: b"codec", "THIRD-PARTY-NOTICES": text})
+            p = []
+            check_third_party_notices(tp, False, p)
+            check(valid == (not p), f"XZ notice paragraph rule wrong for {text[:20]!r}: {p}")
+
+        # D-27: mixin configs and dependency surfaces (A10 N4/N5/N11/N12/N13/M13).
+        legacy_cfg = json.dumps({"required": False, "package": "dev.vox.lss.mixin.sodium",
+                                 "injectors": {"defaultRequire": 0},
+                                 "client": ["SodiumLegacyOptionsHook"]})
+        primary_cfg = json.dumps({"required": True, "package": "dev.vox.lss.mixin",
+                                  "injectors": {"defaultRequire": 1},
+                                  "mixins": ["ChunkSaveDataHook"], "client": ["AccessorScreenWidgets"]})
+        mixin_classes = {"dev/vox/lss/mixin/ChunkSaveDataHook.class": b"x",
+                         "dev/vox/lss/mixin/AccessorScreenWidgets.class": b"x",
+                         "dev/vox/lss/mixin/sodium/SodiumLegacyOptionsHook.class": b"x"}
+        fab_meta = {"id": "lss", "mixins": ["lss.mixins.json", "lss-sodium-legacy.mixins.json"],
+                    "depends": {"minecraft": "1.21.11", "fabricloader": ">=0.18.4", "fabric-api": "*"},
+                    "suggests": {"sodium": "*", "modmenu": "*", "xaeroworldmap": "*"}}
+        neo_toml = ('[[mods]]\nmodId="lss"\n\n[[mixins]]\nconfig="lss.neoforge.mixins.json"\n\n'
+                    '[[mixins]]\nconfig="lss-sodium-legacy.mixins.json"\n\n'
+                    '[[dependencies.lss]]\n    modId="neoforge"\n    type="required"\n\n'
+                    '[[dependencies.lss]]\n    modId="minecraft"\n    type="required"\n')
+
+        def _mixin_jar(name, loader, change=None, drop=()):
+            entries = dict(mixin_classes)
+            if loader == "fabric":
+                entries.update({"fabric.mod.json": json.dumps(fab_meta), "lss.mixins.json": primary_cfg})
+            else:
+                entries.update({"META-INF/neoforge.mods.toml": neo_toml,
+                                "lss.neoforge.mixins.json": primary_cfg})
+            entries["lss-sodium-legacy.mixins.json"] = legacy_cfg
+            entries.update(change or {})
+            for d in drop:
+                entries.pop(d, None)
+            path = os.path.join(td, name)
+            _make_jar(path, entries)
+            p = []
+            check_mixin_configs(path, loader, p)
+            check_dependency_allowlist(path, loader, p)
+            return p
+
+        for loader in ("fabric", "neoforge"):
+            p = _mixin_jar(f"mixin-ok-{loader}.jar", loader)
+            check(not p, f"clean {loader} mixin/dependency surfaces rejected: {p}")
+            for label, change, drop, expected in (
+                    ("N4-missing-class", None, ("dev/vox/lss/mixin/AccessorScreenWidgets.class",),
+                     "is not in the jar"),
+                    ("N5-legacy-required", {"lss-sodium-legacy.mixins.json": legacy_cfg.replace(
+                        '"required": false', '"required": true')}, (), "required:false"),
+                    ("N5b-legacy-defaultrequire", {"lss-sodium-legacy.mixins.json": legacy_cfg.replace(
+                        '"defaultRequire": 0', '"defaultRequire": 1')}, (), "required:false"),
+                    ("N11-dh-fixture", {"lss-dh-fixture.mixins.json": b"{}"}, (), "must never ship"),
+                    ("N12-p4-fixture", {"lss-dh-p4.mixins.json": b"{}"}, (), "must never ship"),
+                    ("M13-undeclared", {"lss-extra.mixins.json": b"{}"}, (), "not declared"),
+                    ("declared-missing", None, ("lss-sodium-legacy.mixins.json",), "is missing")):
+                p = _mixin_jar(f"mixin-{label}-{loader}.jar", loader, change, drop)
+                check(any(expected in issue for issue in p), f"{label} accepted on {loader}: {p}")
+        # N13: a stray dependency fails on either loader, independent of the VSS pair diff.
+        for key in ("depends", "recommends", "breaks"):
+            bad_meta = dict(fab_meta, **{key: dict(fab_meta.get(key, {}), distanthorizons="*")})
+            p = _mixin_jar(f"dep-{key}.jar", "fabric", {"fabric.mod.json": json.dumps(bad_meta)})
+            check(any("distanthorizons" in issue for issue in p), f"fabric {key} DH dependency accepted: {p}")
+        p = _mixin_jar("dep-neo.jar", "neoforge", {"META-INF/neoforge.mods.toml": neo_toml
+                       + '\n[[dependencies.lss]]\n    modId="distanthorizons"\n    type="optional"\n'})
+        check(any("distanthorizons" in issue for issue in p), f"neoforge DH dependency accepted: {p}")
+        # The external SQLite library mod is allowed only as an optional dependency.
+        p = _mixin_jar("dep-neo-sqlite-opt.jar", "neoforge", {"META-INF/neoforge.mods.toml": neo_toml
+                       + '\n[[dependencies.lss]]\n    modId="sqlite_jdbc"\n    type="optional"\n'})
+        check(any("sqlite_jdbc" in issue for issue in p) != ("sqlite_jdbc" in NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST),
+              f"optional sqlite_jdbc handled against this line's allowlist: {p}")
+        p = _mixin_jar("dep-neo-sqlite-req.jar", "neoforge", {"META-INF/neoforge.mods.toml": neo_toml
+                       + '\n[[dependencies.lss]]\n    modId="sqlite_jdbc"\n    type="required"\n'})
+        check(any("sqlite_jdbc" in issue for issue in p), f"required sqlite_jdbc accepted: {p}")
+        p = []
+        check_dh_codec(yaml_flat, "fabric", p)
+        check(any("nested common" in issue for issue in p), f"flat Fabric DH codec accepted: {p}")
 
         # ---- discover(): end-to-end wiring over a synthetic build tree ----
         # The leaf checks above prove each check works; these prove discover() actually
@@ -2186,7 +2659,7 @@ def _selftest_fixtures():
                 "META-INF/jars/common-0.7.0.jar": _nested_common("0.7.0"),
                 "lss-brand.properties": brand,
                 "LICENSE_lod-server-support-fabric": "MIT",
-                "THIRD-PARTY-NOTICES": "sqlite-jdbc / zstd-jni notices " + "x" * 100,
+                "THIRD-PARTY-NOTICES": notices,
             }
             entries.update(STORE_FABRIC_ENTRIES)
             entries.update(extra or {})
@@ -2200,10 +2673,10 @@ def _selftest_fixtures():
                 "lss-brand.properties": brand,
                 "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
                 "dev/vox/lss/common/PositionUtil.class": "x",
-                "THIRD-PARTY-NOTICES": "sqlite-jdbc / zstd-jni notices " + "x" * 100,
+                "THIRD-PARTY-NOTICES": notices,
             }
             entries.update(_store_paper_entries())
-            entries.update(_yaml_entries())
+            entries.update(_yaml_entries(dh=False))
             _make_jar(os.path.join(dpap, name), entries, manifest=pap_manifest)
 
         _write_tree_fabric("lod-server-support-fabric.jar",
@@ -2221,7 +2694,8 @@ def _selftest_fixtures():
                     'modId="lss"\nversion="0.7.0"\ndisplayName="LOD Server Support"\n'
                     'authors="VoX"\nlogoFile="assets/lss/icon.png"\n'
                     'description=\'\'\'LSS.\'\'\'\n\n'
-                    '[[mixins]]\nconfig="lss.neoforge.mixins.json"\n')
+                    '[[mixins]]\nconfig="lss.neoforge.mixins.json"\n\n'
+                    '[[mixins]]\nconfig="lss-sodium-legacy.mixins.json"\n')
         TOML_VSS = (TOML_LSS
                     .replace('displayName="LOD Server Support"', 'displayName="Voxy Server Side"')
                     .replace('authors="VoX"', 'authors="Xantha, VoX"')
@@ -2233,7 +2707,8 @@ def _selftest_fixtures():
             entries = {
                 "META-INF/neoforge.mods.toml": toml,
                 "lss.neoforge.mixins.json": "{}",
-                "lss-sodium-legacy.mixins.json": "{}",
+                "lss-sodium-legacy.mixins.json":
+                    '{"required": false, "injectors": {"defaultRequire": 0}}',
                 "assets/lss/lang/en_us.json": json.dumps(
                     {"lss.config.page": "General",
                      "lss.status.title": ("VSS Status" if brand == BRAND_VSS
@@ -2253,7 +2728,7 @@ def _selftest_fixtures():
                 "dev/vox/lss/common/store/StoreCodec.class":
                     "ref com/github/luben/zstd/Zstd ok",
                 "assets/lss/icon.png": "PNG",
-                "THIRD-PARTY-NOTICES": "sqlite-jdbc / zstd-jni notices " + "x" * 100,
+                "THIRD-PARTY-NOTICES": notices,
             }
             entries.update(_yaml_entries())
             entries.update(_store_neoforge_entries() if store_entries is None
@@ -2296,6 +2771,29 @@ def _selftest_fixtures():
         check(any("LSSNeoMod" in m and "excluded from the shadow jar" in m for m in p),
               f"entrypoint-less neoforge jar not caught: {p}")
         _write_tree_neoforge("lod-server-support-neoforge.jar", TOML_LSS, BRAND_LSS)
+
+        # discover() wires the D-27 mixin/dependency rules into both brands, and the
+        # X-7 Paper absence rule into Paper (a refactor dropping a call must red).
+        for jar_name, toml, brand in (("lod-server-support-neoforge.jar", TOML_LSS, BRAND_LSS),
+                                      ("voxy-server-side-neoforge.jar", TOML_VSS, BRAND_VSS)):
+            _write_tree_neoforge(jar_name, toml, brand,
+                                 extra={"lss-dh-fixture.mixins.json": "{}"})
+            p = []
+            discover(p, root=droot)
+            check(any(jar_name in m and "must never ship" in m for m in p),
+                  f"discover did not run the mixin rules on {jar_name}: {p}")
+            _write_tree_neoforge(jar_name, toml, brand)
+        for jar_name, yml, brand in (("lod-server-support-paper.jar", PY_LSS, BRAND_LSS),
+                                     ("voxy-server-side-paper.jar", PY_VSS, BRAND_VSS)):
+            pap_path = os.path.join(dpap, jar_name)
+            with zipfile.ZipFile(pap_path) as archive:
+                kept = {n: archive.read(n) for n in archive.namelist() if not n.endswith("MANIFEST.MF")}
+            _make_jar(pap_path, dict(kept, **{DH_CODEC: b"codec"}), manifest=pap_manifest)
+            p = []
+            discover(p, root=droot)
+            check(any(jar_name in m and "client-only DH class" in m for m in p),
+                  f"discover did not run the Paper DH absence rule on {jar_name}: {p}")
+            _write_tree_paper(jar_name, yml, brand)
 
         # a logoFile pointing at a missing icon entry must red (the mods-screen
         # icon parity fix — fabric/neoforge lists must match)
