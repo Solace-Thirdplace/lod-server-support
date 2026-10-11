@@ -7,7 +7,7 @@ from rig_settings import render, values
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def prepare(runtime,client_id,fixture,output,platform,store_database,neo_closure=None):
     out=Path(output)
-    if platform not in ('fabric','paper','neoforge'):raise ValueError('unsupported native server platform')
+    if platform not in ('fabric','paper','neoforge','sponge'):raise ValueError('unsupported native server platform')
     if '..' in Path(store_database).parts or Path(store_database).is_absolute():raise ValueError('store must be owned relative path')
     if out.exists():raise ValueError('refuse existing recipe output')
     d=copy.deepcopy(runtime);fixture=Path(fixture)

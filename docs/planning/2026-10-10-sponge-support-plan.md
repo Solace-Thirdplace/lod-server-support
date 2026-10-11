@@ -766,7 +766,24 @@ NITs folded:
 - the Co-authored-by trailer;
 - the five-line decision with a fallback minimum.
 
-## 11. Credit
+## 11. Credit and PR #314 closure
+
+**User decision (2026-10-10, mid-implementation):** the 1.21.11 line, the one PR #314
+targets, is **based on the PR branch**. `feat/sponge-mc1.21.11` starts at the PR head
+(`945e1d81`), with `support/mc1.21.11-v0.14` (0.17.0) merged into it. The five-line
+implementation lands on top and supersedes the PR's files: the port compares against
+the line base, never the PR's versions.
+
+Merging the 1.21.11 release PR therefore carries the contributor's commits into the line.
+GitHub marks a PR merged only when its head reaches the PR's own base branch, and #314's
+base is the already-released `release/v0.16.0-mc1.21.11`. So at S6, **with the user's
+go**, #314's base is retargeted to `support/mc1.21.11-v0.14` (`gh pr edit 314 --base`).
+Our release PR merges with a merge commit, never a squash or rebase, which would orphan
+the PR head. #314 then closes as merged.
+
+Catalog note: the PR's commits are ancestors, not product state. Classification is
+over the final tree, so the superseded PR files leave no trace beyond history.
+
 
 PR #314 by StealWonders (EmpireWar) proved the raw-channel transport, the
 private-dispatcher command bridge and the FULL-lambda load hook live. The 26.2 module
