@@ -106,7 +106,7 @@ def check_report(proof, manifest, scenario, root):
         for name, enabled in EXPORTS.items():
             data = json.loads(raw[name])
             expected_renderer = profile['line']=='1.21.1' or profile['platform']=='fabric'
-            common_ok = (type(data.get('schemaVersion')) is int and data['schemaVersion']==2
+            common_ok = (type(data.get('schemaVersion')) is int and data['schemaVersion']==4
                          and data.get('connected') is True and data.get('receptionEnabled') is enabled
                          and data.get('rendererAvailable') is expected_renderer)
             settings=data.get('settings', {})

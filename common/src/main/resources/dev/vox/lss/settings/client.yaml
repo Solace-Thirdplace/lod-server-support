@@ -3,7 +3,7 @@
 # Sodium Apply saves and reloads automatically. [reconnect] settings wait for the next connection.
 config_version: 1 # Local settings schema version, independent of the network protocol.
 
-# Downloads distant terrain for installed consumers such as Voxy or Xaero's map.
+# Downloads distant terrain for installed consumers such as Voxy or a map mod.
 # The terrain renderer controls how that data is drawn; this download radius does
 # not raise vanilla render/simulation distance. More terrain can cost client disk,
 # memory and processing time. Turning reception off does not erase cached terrain.
@@ -42,7 +42,7 @@ cache:
   split_by_world: true # [reconnect] Separate cache identity when one address changes worlds.
   address_aliases: [] # [reconnect] Ordered address groups; first address is canonical.
   # Example: [["play.example.com", "alt.example.com"]]. Requires consumer corroboration.
-  # Aliases stay inactive while the Xaero map bridge is enabled.
+  # Aliases stay inactive while map ingestion writes into a per-server map store.
 
 # Protocol fallbacks allow older LOD servers. Block fallbacks provide a local visual
 # substitute when this client does not know a received block; they do not install
@@ -57,12 +57,13 @@ compatibility:
     overrides: {} # [reconnect] Remote block ID -> local block ID mappings.
 
 integrations:
-  # Writes received terrain into Xaero's persistent map beyond normal view distance.
-  # Filling a large map adds client CPU, memory and disk work. Turning this off stops
-  # future writes after reconnect; it does not remove terrain already saved on the map.
-  # Backpressure lets map writing keep up instead of allowing an unchecked backlog.
-  xaero_map:
-    enabled: false # [reconnect] Write native terrain service data into Xaero's World Map; requires that mod.
+  # Writes received distant terrain into installed map mods (Xaero's World Map, JourneyMap),
+  # so the map shows beyond the area you have explored. See the README for supported versions.
+  # Maps save these tiles like explored terrain (they stay until you revisit), and a large LOD
+  # distance can add GBs of map data. Map writing paces downloads so maps stay complete; turning
+  # this off stops future writes after reconnect without removing terrain already saved.
+  map_ingestion:
+    enabled: true # [reconnect] Write server terrain into installed map mods; off = maps show only explored terrain.
     backpressure: true # Pace downloads to map writes; requires ingest_backpressure.
 
 # Draws distant player models from server snapshots, not fully simulated entities.

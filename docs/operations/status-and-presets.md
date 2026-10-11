@@ -24,11 +24,11 @@ accepted by the exporter. The command displays the local output path; the report
 does not contain that path. Nothing uploads automatically. The exporter retains
 at most ten reports and admits one active plus one queued export.
 
-Client JSON reports use schema version 2. Their `settings` section separates the
+Client JSON reports use schema version 4 (map ingestion fields: `xaeroAvailability`, `journeyMapAvailability`, `journeyMapPending`). Their `settings` section separates the
 last successfully read or saved values (`saved`), the values accepted at startup or
 reload (`configured`), and current effective values (`effective`). It includes
 pending reload/reconnect/adoption paths, published/adopted revisions, and a small scalar allowlist: reception, distance,
-manual column rate, Xaero enablement and sharing. Unsaved menu edits are excluded.
+manual column rate, map ingestion and sharing. Unsaved menu edits are excluded.
 The saved observation does not watch the file: an external edit becomes known at
 an explicit read, reload or menu open. Sensitive collection values stay private.
 
@@ -43,7 +43,7 @@ The old `set`, preset preview/apply/undo and reception-toggle paths are removed.
 
 Sodium edits a draft. Apply validates and atomically saves YAML, then automatically
 runs the same reload used by `/lss reload`. Hot settings activate after reload
-completes; session settings such as Xaero enabling wait for reconnect. Direct YAML
+completes; session settings such as map ingestion wait for reconnect. Direct YAML
 edits still need `/lss reload`. Sodium uses its normal layout, without an LSS banner
 or status button. The standalone status screen shows accepted and effective values.
 A failed save retains the draft without activation; a successful Retry or Rebase
@@ -64,7 +64,7 @@ report applied paths/counts, normalization, inactive platform settings and pendi
 restart/reconnect paths. Comments and hand-authored values remain on disk. A
 subsystem adoption timeout is reported as pending rather than as successful rollback.
 
-Client cache identity, protocol compatibility and Xaero enabling wait for a new
+Client cache identity, protocol compatibility and map ingestion wait for a new
 physical connection. A dimension switch or server session-config refresh does not
 activate them. Server reader pools, store enabling, wire compression, compatibility,
 masking and Paper event selection wait for a restart. See the

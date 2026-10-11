@@ -12,6 +12,8 @@ import java.util.OptionalInt;
  */
 public final class ModCompat {
     private static boolean voxyLoaded;
+    /** JourneyMap is installed: its facade may be class-loaded (never otherwise). */
+    private static volatile boolean journeyMapLoaded;
     private static volatile boolean discoveryComplete;
 
     public static void init() {
@@ -21,13 +23,18 @@ public final class ModCompat {
         if (dev.vox.lss.platform.LoaderServices.get().isModLoaded("xaeroworldmap")) {
             XaeroMapCompat.init();
         }
+        if (dev.vox.lss.platform.LoaderServices.get().isModLoaded("journeymap")) {
+            journeyMapLoaded = true;
+            JourneyMapCompat.init();
+        }
         discoveryComplete = true;
     }
 
-    /** Main-thread pumps for Voxy's local vanilla border and Xaero map work. */
+    /** Main-thread pumps for Voxy's local vanilla border and the map backends. */
     public static void clientTick() {
         if(voxyLoaded)VoxyCompat.vanillaBorderTick();
         XaeroMapCompat.clientTick();
+        if (journeyMapLoaded) JourneyMapCompat.clientTick();
     }
 
     public static void vanillaChunkLoaded(net.minecraft.client.multiplayer.ClientLevel level,net.minecraft.world.level.chunk.LevelChunk chunk) {
@@ -45,11 +52,13 @@ public final class ModCompat {
     public static void retireClientAcquisition() {
         VoxyCompat.retireVanillaBorder();
         XaeroMapCompat.retireClientAcquisition();
+        if (journeyMapLoaded) JourneyMapCompat.retireClientAcquisition();
     }
 
     public static void onDisconnect() {
         VoxyCompat.retireVanillaBorder();
         XaeroMapCompat.onDisconnect();
+        if (journeyMapLoaded) JourneyMapCompat.onDisconnect();
     }
 
     /** Whether the Voxy ingest bridge registered a consumer this launch — the alias
@@ -70,6 +79,36 @@ public final class ModCompat {
      *  corroboration's hard fallback gate (Xaero's map store is per-address). */
     public static boolean isXaeroBridgeArmed() {
         return XaeroMapCompat.isArmed();
+    }
+
+    /** Whether LOD map ingestion can write ANY map store this session (Xaero's World Map
+     *  or JourneyMap armed) — the alias corroboration's hard fallback gate: both stores
+     *  are per-server with no alias support. */
+    public static boolean isMapStoreArmed() {
+        return XaeroMapCompat.isArmed() || (journeyMapLoaded && JourneyMapCompat.isArmed());
+    }
+
+    /** Whether an installed JourneyMap resolved its internals, so map ingestion can write
+     *  to it (the menu's "supported map mod" fact; the 1.21.10 beta never resolves). */
+    public static boolean isJourneyMapSupported() {
+        return journeyMapLoaded && JourneyMapCompat.isSupported();
+    }
+
+    /** The harness client snapshot's map groups (map-ingestion plan §4.4/§3.8): present
+     *  only for an installed map mod, so ordinary soaks keep their schema. */
+    public static java.util.Map<String, java.util.Map<String, Object>> mapIngestionMetrics() {
+        var out = new java.util.LinkedHashMap<String, java.util.Map<String, Object>>();
+        if (dev.vox.lss.platform.LoaderServices.get().isModLoaded("xaeroworldmap")) {
+            out.put("xaero", XaeroMapCompat.metrics());
+        }
+        if (journeyMapLoaded) out.put("journeymap", JourneyMapCompat.metrics());
+        return out;
+    }
+
+    /** The conditional {@code /lss diag} JourneyMap line, or null when JourneyMap is not
+     *  installed (an unsupported or unrecognized JourneyMap renders its state). */
+    public static String journeyMapDiagLine() {
+        return journeyMapLoaded ? JourneyMapCompat.diagLine() : null;
     }
 
     /** The conditional {@code /lss diag} Xaero line, or null when Xaero is not
@@ -212,5 +251,13 @@ public final class ModCompat {
 
     public static XaeroStatus cachedXaeroStatus() {
         return XaeroMapCompat.cachedStatus(discoveryComplete);
+    }
+
+    /** Immutable cached JourneyMap facts; {@code resolution} is unknown|absent|unavailable|available. */
+    public record JourneyMapStatus(String resolution, boolean failed, int pendingColumns) {}
+
+    public static JourneyMapStatus cachedJourneyMapStatus() {
+        return journeyMapLoaded ? JourneyMapCompat.cachedStatus(discoveryComplete)
+                : new JourneyMapStatus(discoveryComplete ? "absent" : "unknown", false, 0);
     }
 }

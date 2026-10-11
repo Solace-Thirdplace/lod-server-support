@@ -14,32 +14,32 @@ class ClientSettingsStatusTest {
         var handle = new SettingsHandle<>(store);
         Object connection = new Object(); handle.beginSession(connection);
         var saved = store.saveDraft(store.read().hash(), Map.of("lod.receive", false,
-                "integrations.xaero_map.enabled", true,
+                "integrations.map_ingestion.enabled", false,
                 "cache.address_aliases", List.of(List.of("private.example", "secret.example")))).configured();
         var before = capture(saved, handle);
         assertFalse(before.saved().receptionEnabled());
         assertTrue(before.configured().receptionEnabled());
         assertTrue(before.effective().receptionEnabled());
-        assertEquals(List.of("cache.address_aliases", "integrations.xaero_map.enabled", "lod.receive"), before.pendingReload());
+        assertEquals(List.of("cache.address_aliases", "integrations.map_ingestion.enabled", "lod.receive"), before.pendingReload());
         handle.commit(handle.prepareReload());
         var accepted = capture(saved, handle);
         assertTrue(accepted.pendingReload().isEmpty());
         assertFalse(accepted.effective().receptionEnabled());
-        assertTrue(accepted.configured().xaeroMapEnabled());
-        assertFalse(accepted.effective().xaeroMapEnabled());
-        assertEquals(List.of("cache.address_aliases", "integrations.xaero_map.enabled"), accepted.pendingReconnect());
+        assertFalse(accepted.configured().mapIngestionEnabled());
+        assertTrue(accepted.effective().mapIngestionEnabled());
+        assertEquals(List.of("cache.address_aliases", "integrations.map_ingestion.enabled"), accepted.pendingReconnect());
         var snapshot = new ClientStatusSnapshot(ClientStatusSnapshot.SCHEMA_VERSION, 1, 0, true, true,
                 false, true, true, false, 20, 512, 128, 0, 0, 0, 0, 0, 0, 0, 0,
                 ClientStatusSnapshot.Discovery.NEGOTIATED, ClientStatusSnapshot.Availability.DISABLED,
                 null, DiagnosticVersions.unknown(), accepted);
         String json = DiagnosticExport.clientJson(snapshot);
-        assertTrue(json.contains("\"schemaVersion\": 3"));
+        assertTrue(json.contains("\"schemaVersion\": 4"));
         assertTrue(json.contains("pendingReconnect"));
         assertFalse(json.contains("private.example")); assertFalse(json.contains("secret.example"));
         handle.endSession(connection);
         var reconnected = capture(saved, handle);
         assertTrue(reconnected.pendingReconnect().isEmpty());
-        assertTrue(reconnected.effective().xaeroMapEnabled());
+        assertFalse(reconnected.effective().mapIngestionEnabled());
     }
     @Test void arbitraryStringsCannotMasqueradeAsPendingSettingsPaths() {
         var defaults = SettingsSchema.client().defaults();

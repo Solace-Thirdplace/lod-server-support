@@ -89,6 +89,15 @@ class FabricModJsonContractTest {
     }
 
     @Test
+    void suggestsJourneyMapAsLiteralWildcard() {
+        // Same rule as Xaero (map-ingestion plan §3.2): the binding probe classifies
+        // unsupported/unrecognized JourneyMap builds at runtime; no range is claimed.
+        assertEquals("*",
+                modJson.getAsJsonObject("suggests").get("journeymap").getAsString(),
+                "suggests.journeymap must be the literal any-version wildcard");
+    }
+
+    @Test
     void gradlePropertiesTargetsTheSameLine() {
         String mc = gradleProps.getProperty("minecraft_version", "");
         // equals-or-dot: a bare prefix match would also accept e.g. 26.10, which the
