@@ -72,6 +72,9 @@ ANOMALY_OPT_INS = {
     "warm-rejoin": frozenset({"saturated"}),
     "dimension-trip": frozenset({"saturated"}),
     "dirty-broadcast": frozenset(),
+    # The JourneyMap smoke (map-ingestion plan §6.4): a dirty-broadcast-shaped base-world
+    # resync whose client also feeds JourneyMap; the map paces nothing at this size.
+    "journeymap-map": frozenset({"saturated"}),
     "rate-limit-storm": frozenset({"saturated"}),
     "disk-saturation": frozenset({"saturated"}),
     "generation-disabled": frozenset({"saturated"}),
@@ -132,6 +135,7 @@ MIN_CLIENT_WINDOWS = {
     "warm-rejoin": {(1, 0): 8, (2, 0): 5},
     "dimension-trip": {(1, 0): 2, (1, 1): 6, (1, 2): 4},
     "dirty-broadcast": {(1, 0): 5},
+    "journeymap-map": {(1, 0): 5},
     "rate-limit-storm": {(1, 0): 3},
     "disk-saturation": {(1, 0): 3},
     # K=1 on degraded WSL2 IO can spend ~4-5 min converging the annulus (healthy IO:
@@ -3398,6 +3402,10 @@ CHECKS = {
                         check_dirty_resave_quiet,
                         make_handshake_check("dirty-broadcast"),
                         make_disc_completeness("dirty-broadcast")],
+    # The map verdict itself is check_journeymap_smoke.py (journeymap_smoke.sh runs it
+    # after this checker): here the run must stay a lawful, complete resync.
+    "journeymap-map": [make_handshake_check("journeymap-map"),
+                       make_disc_completeness("journeymap-map")],
     "rate-limit-storm": [check_rate_limit_storm,
                          make_handshake_check("rate-limit-storm"),
                          make_disc_completeness("rate-limit-storm")],

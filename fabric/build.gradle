@@ -291,6 +291,11 @@ loom {
             // skips the v20 decode translation, exercising the server's egress rungs)
             vmArg "-Dlss.soak.probes=${findProperty('soak.probes') ?: ''}"
             vmArg "-Dlss.soak.clientActionAt=${findProperty('soak.clientActionAt') ?: ''}"
+            // The JourneyMap smoke (map-ingestion plan §6.4): let JourneyMap's own
+            // stop-mapping flush land before the client halts. 0 = halt at once.
+            vmArg "-Dlss.soak.haltGraceMillis=${findProperty('soak.haltGraceMillis') ?: '0'}"
+            // The Xaero memory gate (map-ingestion plan §6.4 L2): "MS[:SECONDS]" per-frame sleep.
+            vmArg "-Dlss.soak.frameThrottle=${findProperty('soak.frameThrottle') ?: ''}"
             vmArg "-Dlss.soak.dialect=${findProperty('soak.dialect') ?: ''}"
             // Region summaries (region-summary-sync-plan.md §6): -Dlss.soak gates the
             // client OFF requesting so no baseline shifts; the summary scenarios opt

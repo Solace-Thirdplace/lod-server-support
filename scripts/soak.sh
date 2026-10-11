@@ -182,6 +182,7 @@ case "$SCENARIO" in
     warm-rejoin-summary|dirty-while-offline-summary|evicted-tscache-rejoin) ;;
     stamp-heal-prime|stamp-heal-rejoin) ;;
     hybrid-boundary) ;;
+    journeymap-map) ;;
     paper-dirty-falling-block|paper-store-unfired-event) ;;
     *)
         echo "[soak] ERROR: Unknown scenario '$SCENARIO'"
@@ -224,6 +225,15 @@ case "$SCENARIO" in
     warm-rejoin)                CLIENT_RUNS=2; EXPECTED_SECONDS=360 ;;
     dimension-trip)             CLIENT_RUNS=1; EXPECTED_SECONDS=440 ;;
     dirty-broadcast)            CLIENT_RUNS=1; EXPECTED_SECONDS=270 ;;
+    journeymap-map)             CLIENT_RUNS=1; EXPECTED_SECONDS=320
+                                # The JourneyMap smoke's own chain (journeymap_smoke.sh)
+                                # supplies the client runtime lever; without JourneyMap on
+                                # the client the run proves nothing about the map.
+                                if [[ " ${SOAK_CLIENT_GRADLE_ARGS:-} " != *" -Plss.journeymapRuntime=true "* ]]; then
+                                    echo "[soak] ERROR: journeymap-map needs JourneyMap on the client — run scripts/journeymap_smoke.sh"
+                                    exit 1
+                                fi
+                                CLIENT_EXTRA_ARGS=("-Psoak.haltGraceMillis=15000") ;;
     rate-limit-storm)           CLIENT_RUNS=1; EXPECTED_SECONDS=370 ;;
     disk-saturation)            CLIENT_RUNS=1; EXPECTED_SECONDS=250 ;;
     # K=1 over the prebuilt annulus: with the park list feeding the permit, healthy IO

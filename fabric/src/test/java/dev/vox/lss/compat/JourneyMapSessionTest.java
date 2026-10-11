@@ -51,6 +51,8 @@ class JourneyMapSessionTest {
     private boolean backpressure;
     private boolean failDecode;
     private long clock;
+    /** Long.MIN_VALUE (no player) keeps edge sweeps off in the tests that are not about them. */
+    private long playerChunk;
     private final List<long[]> reports = new ArrayList<>();
     private final List<VoxelColumnConsumer> registered = new ArrayList<>();
     private JourneymapClient jm;
@@ -78,6 +80,7 @@ class JourneyMapSessionTest {
         this.backpressure = true;
         this.failDecode = false;
         this.clock = 1_000_000L;
+        this.playerChunk = Long.MIN_VALUE;
         this.reports.clear();
         this.registered.clear();
         var host = new JourneyMapSession.Host() {
@@ -86,6 +89,7 @@ class JourneyMapSessionTest {
             @Override public boolean playerInLevel() { return level != null; }
             @Override public Object dimension(Object l) { return dimension; }
             @Override public boolean hasCeiling(Object l) { return ceiling; }
+            @Override public long playerChunk() { return playerChunk; }
         };
         this.session = new JourneyMapSession(JourneyMapBindings.resolve(Class::forName), host,
                 () -> this.enabled, () -> this.sessionActive, this.registered::add, this.registered::remove,
@@ -247,15 +251,30 @@ class JourneyMapSessionTest {
     // ---- failures are reported, never silently lost ----
 
     @Test
-    void aFailedMapTypeReportsTheColumn() {
-        this.jm.renderController.result = (type, md) -> !type.name.equals("biome");
+    void aFailedDayMapReportsTheColumn() {
+        this.jm.renderController.result = (type, md) -> !type.name.equals("day");
         offer(0, 0);
         offer(1, 0);
         settle();
         cycle();
         assertEquals(0, counter("rendered"));
         assertEquals(2, counter("render_failed"));
-        assertEquals(2, this.reports.size(), "every requested type must render or the column re-serves");
+        assertEquals(2, this.reports.size(), "the day map decides: a refused day render re-serves");
+        assertEquals(2, renders().size(), "optional types are not attempted after a refused day render");
+    }
+
+    @Test
+    void refusedOptionalTypesAreCountedNotReserved() {
+        // JourneyMap's own topography renderer refuses every chunk until its palettes load;
+        // its own pipeline ignores the result, so a re-serve could never fix it.
+        this.jm.renderController.result = (type, md) -> !type.name.equals("topo");
+        offer(0, 0);
+        offer(1, 0);
+        settle();
+        cycle();
+        assertEquals(2, counter("rendered"));
+        assertEquals(2, counter("optional_refusals"));
+        assertTrue(this.reports.isEmpty());
     }
 
     @Test
@@ -504,6 +523,86 @@ class JourneyMapSessionTest {
         assertFalse(DataCache.INSTANCE.added.contains(JourneyMapSession.mcChunkKey(0, 0)));
     }
 
+    // ---- the edge sweep ----
+
+    private void livePlayerAt(int chunkX, int chunkZ) {
+        this.playerChunk = JourneyMapSession.packed(chunkX, chunkZ);
+    }
+
+    private ChunkMD live(int x, int z) {
+        var md = new ChunkMD(x, z, true);
+        DataCache.INSTANCE.live.put(JourneyMapSession.mcChunkKey(x, z), md);
+        return md;
+    }
+
+    @Test
+    void theEdgeSweepRendersJourneyMapsOwnLiveChunksPastItsRangeOnce() {
+        this.jm.gameRenderDistance = 7;
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+        livePlayerAt(100, 100);
+        var inside = live(107, 100);  // distance 7: JourneyMap maps it itself
+        var band = live(108, 100);    // 8 > 7.5: the ring JourneyMap never maps
+        var diagonal = live(106, 106); // 8.5
+        var far = live(111, 100);     // beyond range + 3
+        settle();
+        assertEquals(1, cycle(), "the first submission is the sweep");
+        assertEquals(1, counter("edge_sweeps"));
+        assertEquals(2, counter("edge_rendered"));
+        var drawn = renders().stream().map(ChunkRenderController.Render::chunk).toList();
+        assertTrue(drawn.contains(band) && drawn.contains(diagonal));
+        assertFalse(drawn.contains(inside) || drawn.contains(far));
+        assertEquals(0, counter("batches"), "no LSS batch, no receipts");
+        assertEquals(1, band.getBlockData().clears, "block data is released like JourneyMap's own renders");
+        renders().clear();
+        this.clock += JourneyMapSession.EDGE_SWEEP_MILLIS;
+        cycle();
+        assertEquals(2, counter("edge_sweeps"));
+        assertTrue(renders().isEmpty(), "an already-drawn live chunk instance is not drawn again");
+        live(108, 100); // the chunk reloaded: a new instance
+        this.clock += JourneyMapSession.EDGE_SWEEP_MILLIS;
+        cycle();
+        assertEquals(1, renders().size());
+        assertEquals(3, counter("edge_rendered"));
+    }
+
+    @Test
+    void theEdgeSweepInterleavesWithLssBatchesAndNeedsASession() {
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+        livePlayerAt(0, 0);
+        live(9, 0);
+        offer(40, 40);
+        settle();
+        cycle(); // the sweep
+        this.clock += 500;
+        cycle(); // the LSS batch
+        assertEquals(1, counter("edge_sweeps"));
+        assertEquals(1, counter("batches"));
+        assertEquals(1, counter("rendered"));
+        this.sessionActive = false;
+        this.clock += JourneyMapSession.EDGE_SWEEP_MILLIS;
+        this.session.pump();
+        assertEquals(1, counter("edge_sweeps"), "never touches JourneyMap's map without an LSS session");
+    }
+
+    @Test
+    void anIdentityChangeRedrawsTheEdge() {
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+        livePlayerAt(0, 0);
+        live(9, 0);
+        settle();
+        cycle();
+        assertEquals(1, counter("edge_rendered"));
+        FileHandler.worldDir = new File("jm-test/mp/Server_A_abcdef");
+        this.clock += JourneyMapSession.IDENTITY_POLL_MILLIS;
+        this.session.pump();
+        this.clock += JourneyMapSession.SETTLE_MILLIS + 1;
+        cycle();
+        assertEquals(2, counter("edge_rendered"), "the new map gets the ring too");
+    }
+
     // ---- queue and backpressure ----
 
     @Test
@@ -609,6 +708,34 @@ class JourneyMapSessionTest {
     }
 
     // ---- the static facade ----
+
+    /** Written by {@link InitProbe}'s static initializer — a separate class, so reading it
+     *  never initializes the probe. */
+    static final class InitFlag {
+        static volatile boolean probeInitialized;
+    }
+
+    /** Loaded, never initialized, by the production resolver. */
+    static final class InitProbe {
+        static {
+            InitFlag.probeInitialized = true;
+        }
+    }
+
+    @Test
+    void theProductionResolverNeverInitializesJourneyMapsClasses() throws Exception {
+        Class<?> probe = JourneyMapSession.PRODUCTION_RESOLVER.resolve(InitProbe.class.getName());
+        assertEquals(InitProbe.class.getName(), probe.getName());
+        assertFalse(InitFlag.probeInitialized,
+                "binding at client init must not run another mod's static initializers (the live-smoke crash)");
+        assertTrue(source().contains("initWith(PRODUCTION_RESOLVER, PRODUCTION_HOST)"),
+                "init() must bind through the non-initializing resolver");
+    }
+
+    private static String source() throws java.io.IOException {
+        return java.nio.file.Files.readString(dev.vox.lss.testutil.SourcePaths.mainSource(
+                "dev/vox/lss/compat/JourneyMapSession.java"));
+    }
 
     @Test
     void aJourneyMapWithoutTheSnapshotLayerIsUnsupported() {

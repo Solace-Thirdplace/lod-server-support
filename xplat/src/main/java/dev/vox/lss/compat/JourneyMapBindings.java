@@ -36,6 +36,7 @@ final class JourneyMapBindings {
     final MethodHandle getCurrentWorldId;
     final MethodHandle enabled;
     final MethodHandle getCoreProperties;
+    final MethodHandle getGameRenderDistance;
     final MethodHandle mapTopography;
     final MethodHandle mapBiome;
     final MethodHandle renderDelay;
@@ -111,6 +112,7 @@ final class JourneyMapBindings {
         this.getCurrentWorldId = lookup.findVirtual(client, "getCurrentWorldId", MethodType.methodType(String.class));
         this.enabled = lookup.findVirtual(client, "enabled", MethodType.methodType(boolean.class));
         this.getCoreProperties = lookup.findVirtual(client, "getCoreProperties", MethodType.methodType(coreProperties));
+        this.getGameRenderDistance = lookup.findVirtual(client, "getGameRenderDistance", MethodType.methodType(int.class));
         this.mapTopography = lookup.findGetter(coreProperties, "mapTopography", booleanField);
         this.mapBiome = lookup.findGetter(coreProperties, "mapBiome", booleanField);
         this.renderDelay = lookup.findGetter(coreProperties, "renderDelay", integerField);

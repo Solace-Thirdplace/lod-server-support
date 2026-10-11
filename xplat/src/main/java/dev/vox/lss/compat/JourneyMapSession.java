@@ -64,6 +64,9 @@ final class JourneyMapSession {
     static final int CONTEXT_CAPACITY = 512;
     static final int REPLAY_CAPACITY = 4096;
     static final long REPLAY_WINDOW_MILLIS = 30_000;
+    /** The edge sweep's cadence and reach beyond JourneyMap's own mapping range (chunks). */
+    static final long EDGE_SWEEP_MILLIS = 2000;
+    static final int EDGE_BAND_CHUNKS = 3;
 
     static final LogThrottle FAILURE_WARN = new LogThrottle(60_000);
 
@@ -75,6 +78,8 @@ final class JourneyMapSession {
         boolean playerInLevel();
         Object dimension(Object level);
         boolean hasCeiling(Object level);
+        /** The player's packed chunk position, or {@link Long#MIN_VALUE} without a player. */
+        long playerChunk();
     }
 
     /** Encoded snapshot bytes → a {@code SnapshotChunkMD}, or null when JourneyMap refuses the
@@ -102,6 +107,12 @@ final class JourneyMapSession {
         @Override public Object dimension(Object level) { return ((ClientLevel) level).dimension(); }
 
         @Override public boolean hasCeiling(Object level) { return ((ClientLevel) level).dimensionType().hasCeiling(); }
+
+        @Override public long playerChunk() {
+            var mc = Minecraft.getInstance();
+            var player = mc == null ? null : mc.player;
+            return player == null ? Long.MIN_VALUE : packed(player.getBlockX() >> 4, player.getBlockZ() >> 4);
+        }
     };
 
     // ---- static facade (ModCompat owns it through JourneyMapCompat) ----
@@ -112,8 +123,19 @@ final class JourneyMapSession {
     /** Installed, has the snapshot layer, but a member did not resolve: drift. */
     static volatile String unavailableReason;
 
+    /**
+     * Resolves JourneyMap's classes WITHOUT initializing them. Binding runs at LSS's client
+     * init, before JourneyMap has necessarily initialized itself: running a JourneyMap
+     * static initializer there (DataCache's reads JourneyMap's not-yet-loaded config)
+     * throws, poisons the class for good, and JourneyMap then crashes on its first chunk
+     * load (found by the live smoke). Classes initialize on first use instead — on the pump
+     * or JourneyMap's own thread, once JourneyMap is mapping.
+     */
+    static final XaeroSession.ClassResolver PRODUCTION_RESOLVER =
+            name -> Class.forName(name, false, JourneyMapSession.class.getClassLoader());
+
     static boolean init() {
-        return initWith(Class::forName, PRODUCTION_HOST);
+        return initWith(PRODUCTION_RESOLVER, PRODUCTION_HOST);
     }
 
     static boolean initWith(XaeroSession.ClassResolver resolver, Host host) {
@@ -203,7 +225,7 @@ final class JourneyMapSession {
         out.put("queued", session.queuedGauge);
         for (String name : new String[]{"batches", "rendered", "skipped_live", "render_failed", "decode_failures",
                 "column_failures", "abandoned", "replayed", "requeued", "dropped_overflow", "dropped_stale",
-                "dropped_inert", "drops_reported"}) {
+                "dropped_inert", "drops_reported", "optional_refusals", "edge_sweeps", "edge_rendered"}) {
             out.put(name, session.counterForTest(name));
         }
         out.put("slow_batches", session.slowBatches.get());
@@ -304,7 +326,15 @@ final class JourneyMapSession {
     final AtomicLong renderNanos = new AtomicLong();
     final AtomicLong dropsReported = new AtomicLong();
     final AtomicLong heapHolds = new AtomicLong();
+    /** Optional map types (topography, biome) JourneyMap refused for an accepted column. */
+    final AtomicLong optionalRefusals = new AtomicLong();
+    final AtomicLong edgeSweeps = new AtomicLong();
+    final AtomicLong edgeRendered = new AtomicLong();
     volatile long lastBatchMillis;
+    long lastEdgeSweepMillis; // main thread
+    /** Live chunks the edge sweep rendered, by position → the ChunkMD instance (JM thread). */
+    final java.util.HashMap<Long, Object> edgeDone = new java.util.HashMap<>();
+    Identity edgeIdentity; // JM thread
 
     JourneyMapSession(JourneyMapBindings h, Host host, BooleanSupplier enabled, BooleanSupplier sessionActive,
                       Consumer<VoxelColumnConsumer> registrar, Consumer<VoxelColumnConsumer> deregistrar,
@@ -644,11 +674,22 @@ final class JourneyMapSession {
             return;
         }
         if (this.inFlight != null || now < this.nextSubmitAfterMillis) return;
-        var batch = buildBatch(this.observed);
-        if (batch == null) return;
+        Batch batch = null;
+        if (now - this.lastEdgeSweepMillis >= EDGE_SWEEP_MILLIS && this.sessionActive.getAsBoolean()) {
+            long player = this.host.playerChunk();
+            if (player != Long.MIN_VALUE) {
+                this.lastEdgeSweepMillis = now;
+                batch = new Batch(List.of(), this.observed, this.renderDelayMillis, true, player);
+                this.edgeSweeps.incrementAndGet();
+            }
+        }
+        if (batch == null) {
+            batch = buildBatch(this.observed);
+            if (batch == null) return;
+            this.batches.incrementAndGet();
+        }
         this.inFlight = batch;
         batch.submittedAtMillis = now;
-        this.batches.incrementAndGet();
         synchronized (client) {
             // Under the monitor stopMapping holds: a submit can never race the executor's
             // shutdown into resurrecting it. A null controller is a silent no-op — the
@@ -798,6 +839,15 @@ final class JourneyMapSession {
     }
 
     void applyResult(Batch batch, Result r) {
+        if (r != null) {
+            this.optionalRefusals.addAndGet(r.optionalRefusals);
+            this.edgeRendered.addAndGet(r.edgeRendered);
+        }
+        if (batch.edge) {
+            // No receipts ride an edge sweep: only a throw counts, toward the death latch.
+            if (r == null || r.failure != null) noteBatchFailure(r == null ? null : r.failure);
+            return;
+        }
         if (r == null || r.failure != null || r.abandoned) {
             if (r != null && r.abandoned) this.abandoned.incrementAndGet();
             // A throw mid-batch or an identity change: nothing is known-good — re-serve all.
@@ -878,6 +928,8 @@ final class JourneyMapSession {
         boolean notAllowed;
         Throwable failure;
         long renderNanos;
+        long optionalRefusals;
+        long edgeRendered;
     }
 
     final class Batch {
@@ -885,6 +937,9 @@ final class JourneyMapSession {
         final List<Entry> entries;
         final Identity identity;
         final long timeBoxMillis;
+        /** An edge sweep (no entries): renders JourneyMap's own live chunks past its range. */
+        final boolean edge;
+        final long playerChunk;
         final AtomicInteger state = new AtomicInteger(QUEUED);
         long submittedAtMillis; // main thread
         volatile long startedAtMillis;
@@ -893,9 +948,15 @@ final class JourneyMapSession {
         boolean slowCounted; // main thread
 
         Batch(List<Entry> entries, Identity identity, long timeBoxMillis) {
+            this(entries, identity, timeBoxMillis, false, 0);
+        }
+
+        Batch(List<Entry> entries, Identity identity, long timeBoxMillis, boolean edge, long playerChunk) {
             this.entries = entries;
             this.identity = identity;
             this.timeBoxMillis = timeBoxMillis;
+            this.edge = edge;
+            this.playerChunk = playerChunk;
         }
 
         /** JourneyMap's task thread: always ends in DONE with a result (a lost slot wedges). */
@@ -928,6 +989,44 @@ final class JourneyMapSession {
         return dir != null && dir.equals(identity.worldDir());
     }
 
+    /** The map types to render, day first; null when the day map is not allowed here. */
+    private List<Object> mapTypes(Object client, Object dimension) throws Throwable {
+        Object day = this.h.mapTypeDay.invoke(dimension);
+        if (!(boolean) this.h.isAllowed.invoke(day)) return null;
+        Object props = this.h.getCoreProperties.invoke(client); // replaced on every startMapping
+        var types = new ArrayList<Object>(3);
+        types.add(day); // the surface renderer draws day and night together
+        if (props != null && Boolean.TRUE.equals(this.h.booleanFieldGet.invoke(this.h.mapTopography.invoke(props)))) {
+            Object topo = this.h.mapTypeTopo.invoke(dimension);
+            if ((boolean) this.h.isAllowed.invoke(topo)) types.add(topo);
+        }
+        if (props != null && Boolean.TRUE.equals(this.h.booleanFieldGet.invoke(this.h.mapBiome.invoke(props)))) {
+            Object biome = this.h.mapTypeBiome.invoke(dimension);
+            if ((boolean) this.h.isAllowed.invoke(biome)) types.add(biome);
+        }
+        return types;
+    }
+
+    /**
+     * Renders one chunk into every map type. The DAY map decides: it is what the column is
+     * accepted or re-served on. Topography and biome are best effort, exactly as in
+     * JourneyMap's own pipeline, which ignores their results — its topography renderer
+     * refuses every chunk until something loads its palettes (live smoke), so requiring them
+     * turned every column into a re-serve.
+     */
+    private boolean renderTypes(Object controller, Identity id, List<Object> types, int chunkX, int chunkZ,
+                                Object md, Result r) throws Throwable {
+        Object day = types.getFirst();
+        if (!(boolean) this.h.renderChunk.invoke(controller,
+                this.h.fromChunkPos.invoke(id.worldDir(), day, chunkX, chunkZ), day, md)) return false;
+        for (int t = 1; t < types.size(); t++) {
+            Object type = types.get(t);
+            if (!(boolean) this.h.renderChunk.invoke(controller,
+                    this.h.fromChunkPos.invoke(id.worldDir(), type, chunkX, chunkZ), type, md)) r.optionalRefusals++;
+        }
+        return true;
+    }
+
     void render(Batch batch, Result r) throws Throwable {
         Identity id = batch.identity;
         if (!identityStillMatches(id)) {
@@ -935,28 +1034,18 @@ final class JourneyMapSession {
             return;
         }
         Object client = this.h.getInstance.invoke();
-        Object props = this.h.getCoreProperties.invoke(client); // replaced on every startMapping
         Object controller = this.h.getChunkRenderController.invoke(client);
-        Object day = this.h.mapTypeDay.invoke(id.dimension());
-        if (!(boolean) this.h.isAllowed.invoke(day)) {
+        var types = mapTypes(client, id.dimension());
+        if (types == null) {
             r.notAllowed = true;
             return;
         }
-        var types = new ArrayList<Object>(3);
-        types.add(day); // the surface renderer draws day and night together
-        if (props != null && Boolean.TRUE.equals(this.h.booleanFieldGet.invoke(this.h.mapTopography.invoke(props)))) {
-            Object topo = this.h.mapTypeTopo.invoke(id.dimension());
-            if ((boolean) this.h.isAllowed.invoke(topo)) types.add(topo);
-        }
-        if (props != null && Boolean.TRUE.equals(this.h.booleanFieldGet.invoke(this.h.mapBiome.invoke(props)))) {
-            Object biome = this.h.mapTypeBiome.invoke(id.dimension());
-            if ((boolean) this.h.isAllowed.invoke(biome)) types.add(biome);
+        if (batch.edge) {
+            renderEdge(batch, r, client, controller, types);
+            return;
         }
         Object dataCache = this.h.dataCache.invoke();
         Object allowCached = this.h.allowCached.invoke();
-        var first = batch.entries.getFirst();
-        var coords = new ArrayList<Object>(types.size()); // a region coordinate per map type
-        for (Object type : types) coords.add(this.h.fromChunkPos.invoke(id.worldDir(), type, first.chunkX, first.chunkZ));
 
         long deadline = batch.startedAtMillis + batch.timeBoxMillis;
         // forceRetain=true: each SnapshotChunkMD holds its LevelChunk strongly until it
@@ -1037,10 +1126,7 @@ final class JourneyMapSession {
                         r.skippedLive.add(e); // a live chunk replaced ours mid-batch: JourneyMap owns it
                         continue;
                     }
-                    boolean ok = true;
-                    for (int t = 0; t < types.size(); t++) {
-                        ok &= (boolean) this.h.renderChunk.invoke(controller, coords.get(t), types.get(t), md);
-                    }
+                    boolean ok = renderTypes(controller, id, types, e.chunkX, e.chunkZ, md, r);
                     this.h.clearAll.invoke(this.h.getBlockData.invoke(md));
                     (ok ? r.rendered : r.renderFailed).add(e);
                 } catch (Throwable t) {
@@ -1074,6 +1160,63 @@ final class JourneyMapSession {
                     it.remove();
                 }
             }
+        }
+    }
+
+    /**
+     * The edge sweep: JourneyMap maps only chunks within its own render range (about the
+     * client's render distance minus one), while vanilla sends — and LSS therefore leaves to
+     * vanilla — a ring a few chunks wider. A stationary player would see a permanent unmapped
+     * ring between JourneyMap's area and the LOD disc (live smoke). Every
+     * {@value #EDGE_SWEEP_MILLIS} ms, while an LSS session is active, this renders
+     * JourneyMap's OWN live chunks in the {@value #EDGE_BAND_CHUNKS}-chunk band past its range
+     * — its data, its renderer, its thread — each live chunk instance once.
+     */
+    void renderEdge(Batch batch, Result r, Object client, Object controller, List<Object> types) throws Throwable {
+        Identity id = batch.identity;
+        if (!id.equals(this.edgeIdentity)) {
+            this.edgeDone.clear();
+            this.edgeIdentity = id;
+        }
+        int range = (int) this.h.getGameRenderDistance.invoke(client);
+        int px = (int) (batch.playerChunk >> 32);
+        int pz = (int) batch.playerChunk;
+        int reach = range + EDGE_BAND_CHUNKS;
+        double inside = range + 0.5; // JourneyMap's own circle test (RenderSpec.inRange)
+        Object dataCache = this.h.dataCache.invoke();
+        long deadline = batch.startedAtMillis + batch.timeBoxMillis;
+        var keep = new java.util.HashMap<Long, Object>();
+        for (int dz = -reach; dz <= reach; dz++) {
+            for (int dx = -reach; dx <= reach; dx++) {
+                if (Math.sqrt(dx * dx + dz * dz) <= inside) continue;
+                int x = px + dx, z = pz + dz;
+                long key = packed(x, z);
+                Object live = this.h.getChunkMD.invoke(dataCache, mcChunkKey(x, z));
+                if (live == null || !(boolean) this.h.hasLevelChunk.invoke(live)) continue;
+                if (this.edgeDone.get(key) == live) {
+                    keep.put(key, live);
+                    continue;
+                }
+                if (now() > deadline) continue; // the next sweep picks it up
+                try {
+                    boolean ok = renderTypes(controller, id, types, x, z, live, r);
+                    this.h.clearAll.invoke(this.h.getBlockData.invoke(live));
+                    if (ok) {
+                        keep.put(key, live);
+                        r.edgeRendered++;
+                    }
+                } catch (Throwable t) {
+                    if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
+                    // a vanilla chunk JourneyMap cannot render now; the next sweep retries
+                }
+            }
+        }
+        this.edgeDone.clear();
+        this.edgeDone.putAll(keep);
+        if (r.edgeRendered > 0) this.h.updateTextures.invoke(this.h.regionImageCache.invoke(), false, true);
+        if (!identityStillMatches(id)) {
+            this.edgeDone.clear(); // rendered into a map that just ended: redo under the new one
+            r.abandoned = true;
         }
     }
 
@@ -1120,6 +1263,8 @@ final class JourneyMapSession {
                 + ", rendered=" + rendered
                 + ", skipped_live=" + this.skippedLive.get()
                 + ", render_failed=" + this.renderFailed.get()
+                + ", optional_refusals=" + this.optionalRefusals.get()
+                + ", edge_rendered=" + this.edgeRendered.get()
                 + ", decode_failures=" + this.decodeFailures.get()
                 + ", column_failures=" + this.columnFailures.get()
                 + ", abandoned=" + this.abandoned.get()
@@ -1155,6 +1300,9 @@ final class JourneyMapSession {
             case "dropped_stale" -> this.droppedStale.get();
             case "dropped_inert" -> this.droppedInert.get();
             case "drops_reported" -> this.dropsReported.get();
+            case "optional_refusals" -> this.optionalRefusals.get();
+            case "edge_sweeps" -> this.edgeSweeps.get();
+            case "edge_rendered" -> this.edgeRendered.get();
             default -> throw new IllegalArgumentException(name);
         };
     }

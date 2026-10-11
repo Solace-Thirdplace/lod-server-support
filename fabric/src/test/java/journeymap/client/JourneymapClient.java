@@ -18,6 +18,7 @@ public class JourneymapClient {
     public TaskController controller = new TaskController();
     public String worldId;
     public CoreProperties properties = new CoreProperties();
+    public int gameRenderDistance = 7;
     public ChunkRenderController renderController = new ChunkRenderController();
     public final List<Runnable> queued = new ArrayList<>();
 
@@ -28,6 +29,7 @@ public class JourneymapClient {
     public TaskController getMultithreadTaskController() { return this.controller; }
     public String getCurrentWorldId() { return this.worldId; }
     public CoreProperties getCoreProperties() { return this.properties; }
+    public int getGameRenderDistance() { return this.gameRenderDistance; }
     public ChunkRenderController getChunkRenderController() { return this.renderController; }
 
     public void queueOneOff(Runnable runnable) throws Exception {
