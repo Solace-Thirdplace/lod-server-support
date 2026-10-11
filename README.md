@@ -11,13 +11,13 @@ https://github.com/user-attachments/assets/721fb344-890e-4e03-ab36-539444427f7b
 Clients use the Fabric mod on every version; on 26.2, 26.1, and 1.21.1 a NeoForge client works as well. Supported servers:
 
 <!-- LSS SERVER MATRIX START -->
-| Minecraft line | Fabric / Paper | Folia | NeoForge shipping | Neo far renderer |
-| --- | --- | --- | --- | --- |
-| 1.21.1 | maintained | unsupported | shipped; best-effort | available |
-| 1.21.10 | maintained | unsupported | maintained build only | unsupported |
-| 1.21.11 | maintained | experimental | maintained build only | unsupported |
-| 26.1 | maintained | experimental | shipped; best-effort | unsupported |
-| 26.2 | maintained | experimental | shipped; best-effort | unsupported |
+| Minecraft line | Fabric / Paper | Folia | NeoForge shipping | Neo far renderer | Sponge |
+| --- | --- | --- | --- | --- | --- |
+| 1.21.1 | maintained | unsupported | shipped; best-effort | available | not available |
+| 1.21.10 | maintained | unsupported | maintained build only | unsupported | not available |
+| 1.21.11 | maintained | experimental | maintained build only | unsupported | not available |
+| 26.1 | maintained | experimental | shipped; best-effort | unsupported | not available |
+| 26.2 | maintained | experimental | shipped; best-effort | unsupported | not available |
 <!-- LSS SERVER MATRIX END -->
 
 NeoForge 1.21.1 has distinct native and Connector dependency routes. The recorded 2026-09-08 native Voxy 0.2.9-alpha trial was rejected; older successful reports do not establish current compatibility or its failure's upstream cause. Xaero-only legacy Sodium and the modern Connector Voxy route are separate profiles. Use the [dated profile inventory](docs/testing/astra-live-profiles.md) and exact dependency locks; do not combine their jars by filename.
