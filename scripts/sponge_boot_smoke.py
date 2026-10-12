@@ -74,7 +74,7 @@ def stage(run_dir: Path, plugin: Path, smoke_plugin: Path, cache: Path) -> None:
     shutil.copy2(smoke_plugin, run_dir / "mods" / smoke_plugin.name)
     (run_dir / "eula.txt").write_text("eula=true\n")
     (run_dir / "server.properties").write_text(
-        f"server-port={free_port()}\nonline-mode=false\nlevel-type=minecraft\\:flat\n"
+        f"server-port={free_port()}\nonline-mode=false\nwhite-list=false\nlevel-type=minecraft\\:flat\n"
         "spawn-protection=0\nenable-rcon=false\nsync-chunk-writes=true\n")
     # SpongeVanilla downloads + remaps vanilla and its libraries into ./libraries on first
     # boot; keep that closure in the cache so later runs (and CI) skip it.
