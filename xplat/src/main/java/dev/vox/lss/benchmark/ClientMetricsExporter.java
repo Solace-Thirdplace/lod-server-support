@@ -134,6 +134,10 @@ public final class ClientMetricsExporter {
         summary.put("stamps_ignored", manager != null ? manager.getSummaryStampsIgnored() : 0L);
         result.put("summary", summary);
 
+        // Map ingestion (map-ingestion plan §3.8/§4.4): the xaero/journeymap groups,
+        // present only when the map mod is installed (the live gates' instruments).
+        result.putAll(dev.vox.lss.compat.ModCompat.mapIngestionMetrics());
+
         // Declared-and-unanswered (the awaiting-answer set), replaced per scan.
         result.put("tracker_in_flight", manager != null ? manager.getPendingCount() : 0);
 

@@ -92,7 +92,7 @@ def assemble(spec,output):
  validate_profile(server_profile,allow_unresolved_ranges=True)
  runtime['server_profile']=dict(path=str(server_profile_path.resolve()),id=server_profile['id'],profile_hash=digest(server_profile),candidate_artifacts=[server_row])
  stage(server,'server/'+('plugins' if platform=='paper' else 'mods')+'/lod-server-support-'+platform+'.jar')
- runtime['generated_files'].update({'server/eula.txt':'eula=true\n','server/server.properties':f'server-ip={host}\nserver-port={port}\nonline-mode=false\nlevel-name=world\nlevel-seed=project-improvements-functional\nspawn-protection=0\nallow-flight=true\nenforce-secure-profile=false\n'})
+ runtime['generated_files'].update({'server/eula.txt':'eula=true\n','server/server.properties':f'server-ip={host}\nserver-port={port}\nonline-mode=false\nwhite-list=false\nlevel-name=world\nlevel-seed=project-improvements-functional\nspawn-protection=0\nallow-flight=true\nenforce-secure-profile=false\n'})
  runtime['launches']=[dict(id='server',cwd='server',argv=server_argv,stop_stdin='stop')]
  runtime_path=prepare_client(runtime,spec['capture'],source,client,out/'client-closure');runtime=json.loads(runtime_path.read_text())
  # Derive the actual named native dependency lock, never reuse an optional renderer profile.

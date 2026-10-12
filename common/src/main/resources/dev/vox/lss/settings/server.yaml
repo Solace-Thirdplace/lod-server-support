@@ -15,8 +15,8 @@ service:
 # times the area; a large configured radius does not mean it fills instantly.
 lod:
   distance:
-    default_chunks: 512 # Fallback for dimensions not listed below; range 1–2048.
-    by_dimension: # These are fresh-install defaults; migration preserves existing limits.
+    default_chunks: 512 # Fallback for dimensions not listed below; range 1–2048, 0 = off.
+    by_dimension: # Fresh-install defaults; 0 turns LODs off in that dimension.
       "minecraft:overworld": 512 # Overworld radius in chunks.
       "minecraft:the_nether": 64 # Nether radius in chunks.
       "minecraft:the_end": 512 # End radius in chunks.

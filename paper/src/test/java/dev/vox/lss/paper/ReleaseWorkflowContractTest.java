@@ -158,8 +158,8 @@ class ReleaseWorkflowContractTest {
         if (isMainline) {
             assertEquals("true", env("LINE_MAKE_LATEST"),
                     "main-line releases carry the Latest badge");
-            assertEquals("26.2", env("LINE_MC_FABRIC"),
-                    "mainline is the 26.2 line — a support cut must flip line.env in the "
+            assertEquals("26.3", env("LINE_MC_FABRIC"),
+                    "mainline is the 26.3 line — a support cut must flip line.env in the "
                             + "same commit that retargets gradle.properties");
         } else {
             assertEquals("false", env("LINE_MAKE_LATEST"),
@@ -173,7 +173,7 @@ class ReleaseWorkflowContractTest {
         // literal of any line may appear in the workflow body. This replaces the old
         // FORBIDDEN_LINE_TOKENS list — under parameterization the strongest form is
         // 'no line's token, not even ours'.
-        for (String token : new String[]{"26.2", "26.1", "1.21", "1.20"}) {
+        for (String token : new String[]{"26.3", "26.2", "26.1", "1.21", "1.20"}) {
             assertFalse(releaseYml.contains(token),
                     "release.yml must not hardcode MC " + token + " — line.env owns MC identity");
         }

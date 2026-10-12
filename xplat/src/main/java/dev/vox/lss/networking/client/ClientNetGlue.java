@@ -163,12 +163,19 @@ public final class ClientNetGlue {
         return columnProcessor.awaitDecodeIdle(timeoutMs);
     }
 
+    /** The LAN host self-handshake needs a consumer other than the map backends. */
+    static boolean hostHandshakeHasConsumer() {
+        return dev.vox.lss.compat.ModCompat.hasNonMapConsumers();
+    }
+
     public static void triggerHostHandshake() {
         Minecraft.getInstance().execute(() -> {
             sessionGate.onHostServiceReady(); // remember publication even when downloads are OFF
             if (!LSSClientConfig.CONFIG.receiveServerLods()) return;
             if (sessionGate.getRequestManager() != null) return;
-            if (!LSSApi.hasVoxelConsumers()) return; // no LOD consumer -> stay silent
+            // No LOD consumer -> stay silent. Map ingestion alone is multiplayer-only: a host
+            // with only a map mod must not generate a LOD disc around itself (review).
+            if (!hostHandshakeHasConsumer()) return;
             try {
                 LoaderServices.get().sendToServer(new HandshakeC2SPayload(
                         LSSConstants.PROTOCOL_VERSION, LSSConstants.CAPABILITY_VOXEL_COLUMNS
@@ -263,11 +270,11 @@ public final class ClientNetGlue {
         // The Xaero gate is evaluated first inside the ladder, so the Voxy probe (a
         // reflective read with its own log line) is skipped when its answer would be
         // discarded anyway.
-        boolean xaeroArmed = dev.vox.lss.compat.ModCompat.isXaeroBridgeArmed();
+        boolean mapStoreArmed = dev.vox.lss.compat.ModCompat.isMapStoreArmed();
         var result = AliasCorroboration.evaluate(
                 dev.vox.lss.compat.ModCompat.isVoxyBridgeActive(),
-                xaeroArmed,
-                xaeroArmed ? null : dev.vox.lss.compat.ModCompat.observeVoxyStorageDirName(),
+                mapStoreArmed,
+                mapStoreArmed ? null : dev.vox.lss.compat.ModCompat.observeVoxyStorageDirName(),
                 connectAddr, group.canonicalRaw());
         if (result.warn() != null) {
             LSSLogger.warn(result.warn());

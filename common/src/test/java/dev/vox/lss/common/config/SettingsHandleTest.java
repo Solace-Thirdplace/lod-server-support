@@ -80,13 +80,13 @@ class SettingsHandleTest {
     }
     @Test void clientSessionGroupWaitsForActualReconnectAndUsesAcceptedSnapshotOnly()throws Exception {
         var store=new SettingsStore<>(dir,"lss",SettingsSchema.client());var h=new SettingsHandle<>(store);Object connection=new Object();h.beginSession(connection);
-        edit(store,Map.of("scan.quadtree",false,"integrations.xaero_map.enabled",true,"far_players.sharing.enabled",false));
-        var result=h.commit(h.prepareReload());assertFalse(result.effective().farPlayers().sharing().enabled());assertTrue(result.effective().scan().quadtree());assertFalse(result.effective().integrations().xaeroMap().enabled());
-        assertEquals(Set.of("scan.quadtree","integrations.xaero_map.enabled"),h.state().pendingReconnect());
+        edit(store,Map.of("scan.quadtree",false,"integrations.map_ingestion.enabled",false,"far_players.sharing.enabled",false));
+        var result=h.commit(h.prepareReload());assertFalse(result.effective().farPlayers().sharing().enabled());assertTrue(result.effective().scan().quadtree());assertTrue(result.effective().integrations().mapIngestion().enabled());
+        assertEquals(Set.of("scan.quadtree","integrations.map_ingestion.enabled"),h.state().pendingReconnect());
         h.beginSession(connection);assertTrue(h.state().effective().scan().quadtree());
         // An un-reloaded disk edit does not become active at reconnect.
         edit(store,Map.of("scan.quadtree",true));h.endSession(connection);h.beginSession(new Object());
-        assertFalse(h.state().effective().scan().quadtree());assertTrue(h.state().effective().integrations().xaeroMap().enabled());assertTrue(h.state().pendingReconnect().isEmpty());
+        assertFalse(h.state().effective().scan().quadtree());assertFalse(h.state().effective().integrations().mapIngestion().enabled());assertTrue(h.state().pendingReconnect().isEmpty());
     }
     @Test void disconnectedReloadAcceptsSessionChangesAndStaleDisconnectDoesNotUnfreezeNewSession()throws Exception {
         var store=new SettingsStore<>(dir,"lss",SettingsSchema.client());var h=new SettingsHandle<>(store);

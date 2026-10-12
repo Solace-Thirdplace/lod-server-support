@@ -65,6 +65,13 @@ class PaperDirtyColumnBroadcasterTest {
             this.sequence = sequence;
         }
 
+        /** With an explicit served-set sweep radius (the distance-0 clear bound). */
+        RecordingProcessor(Map<UUID, PaperPlayerRequestState> players, List<String> sequence,
+                           int sweepRadiusChunks) {
+            super(players, null, false, null, 32, 0, sweepRadiusChunks);
+            this.sequence = sequence;
+        }
+
         @Override
         public void invalidateTimestamps(String dimension, long[] positions, Runnable onApplied) {
             // The 2-arg form delegates here, so both call shapes record. Run the
@@ -231,6 +238,45 @@ class PaperDirtyColumnBroadcasterTest {
         assertEquals(1, overworldFrames.size());
         assertArrayEquals(new long[]{PositionUtil.packPosition(9, 0)}, overworldFrames.get(0).positions(),
                 "overworld still uses the default lodDistance");
+    }
+
+    @Test
+    void aWorldWithDistanceZeroClearsEveryDoneBitTheSweepStillHolds() {
+        // 0 = no LOD service in that world (twin of the Fabric pin): done-bits still clear and
+        // notices still go out — a world reloaded back on must not answer up_to_date off a
+        // pre-edit bit. The bound is the served-set sweep radius, not the largest distance
+        // configured NOW: a session served the nether at 512 before a reload turned it off
+        // holds bits far past today's default (16), and the sweep radius (a monotonic max)
+        // still covers them. Bits beyond the sweep radius are already gone.
+        processor = new RecordingProcessor(players, sequence, 600);
+        broadcaster = new PaperDirtyColumnBroadcaster(server, players, tracker, processor);
+        broadcaster.setDirtySender((player, positions) -> {
+            sent.add(new Sent(player.getUUID(), positions.clone()));
+            sequence.add("send:" + player.getUUID());
+        });
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 16);
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        var nether = level(Level.NETHER);
+        when(server.getAllLevels()).thenReturn(List.of(overworld, nether));
+        var netherUuid = UUID.randomUUID();
+        addPlayer(netherUuid, nether, true, false);
+        var overworldUuid = UUID.randomUUID();
+        addPlayer(overworldUuid, overworld, true, false);
+
+        tracker.markDirty("minecraft:the_nether", 0, 0);
+        tracker.markDirty("minecraft:the_nether", 400, 0); // beyond today's 16, inside the sweep
+        tracker.markDirty("minecraft:the_nether", 700, 0); // beyond the sweep radius
+        tracker.markDirty(OVERWORLD, 1, 0);
+        fireBroadcast();
+
+        var netherClears = processor.clears.stream().filter(c -> c.playerUuid().equals(netherUuid)).toList();
+        assertEquals(1, netherClears.size(), "the off world's done-bits still clear");
+        assertArrayEquals(new long[]{PositionUtil.packPosition(0, 0), PositionUtil.packPosition(400, 0)},
+                netherClears.get(0).positions(), "out to the sweep radius, past today's largest distance");
+        assertEquals(1, sent.stream().filter(f -> f.playerUuid().equals(netherUuid)).count());
+        assertEquals(1, sent.stream().filter(f -> f.playerUuid().equals(overworldUuid)).count());
+        assertTrue(processor.invalidations.stream().anyMatch(i -> i.dimension().equals("minecraft:the_nether")),
+                "the off world's marks are still invalidated");
     }
 
     @Test

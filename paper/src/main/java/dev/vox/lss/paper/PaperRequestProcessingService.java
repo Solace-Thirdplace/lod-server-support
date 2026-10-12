@@ -866,14 +866,29 @@ public class PaperRequestProcessingService {
     public int[] repushSessionConfig() {
         int pushed = 0;
         int legacy = 0;
-        for (var state : this.players.values()) {
+        for (var state : java.util.List.copyOf(this.players.values())) {
             if (this.dialects.dialectOf(state.getPlayerUUID())
                     != dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT) {
                 legacy++;
                 continue;
             }
             try {
-                this.sessionConfigSender.send(state.getPlayer(), this.config, this.config.enabled());
+                int dist = PaperWorldLod.distance(this.config, state.getPlayer());
+                if (dist <= 0) {
+                    // The reload turned this player's world off: abandon its in-flight work
+                    // via the dimension-change remove + fresh register (the Fabric twin) — a
+                    // world later turned back on cannot answer up_to_date off an old done-bit.
+                    var player = state.getPlayer();
+                    int capabilities = state.getCapabilities();
+                    removePlayer(player.getUUID());
+                    registerPlayer(player, capabilities);
+                    // The client ends its far-player session on the enabled=false below, so
+                    // the roster re-sends as on a dimension change (the Fabric twin) — or the
+                    // old-epoch updates are dropped and the proxies vanish until a rejoin.
+                    this.farPlayerService.onViewerDimensionChange(player.getUUID());
+                }
+                // 0 = no LOD service in this world.
+                this.sessionConfigSender.send(state.getPlayer(), this.config, this.config.enabled() && dist > 0);
                 pushed++;
             } catch (Exception e) {
                 LSSLogger.error("Session-config re-push failed for "
@@ -1207,7 +1222,9 @@ public class PaperRequestProcessingService {
         // one prompt per REATTACH_PROMPT_INTERVAL, which the guard's INFO line makes
         // visible; a rejoin heals it.
         PaperPayloadHandler.sendSessionConfigV16(player.getBukkitEntity(),
-                this.config.enabled(), PaperWorldLod.distance(this.config, player),
+                this.config.enabled(),
+                // A legacy session gets no later push: a serving distance, the filter enforces 0.
+                this.config.legacyAdvertisedDistance(PaperWorldLod.distance(this.config, player)),
                 LSSConstants.SYNC_ON_LOAD_SLOT_CAP,
                 this.config.generationLimits().perPlayer(),
                 generationEnabledForSession());
@@ -1256,7 +1273,7 @@ public class PaperRequestProcessingService {
      * the converged-and-stationary corner heals on the first movement, and a converged
      * client's LOD is complete by definition — only edit staleness is at risk.
      */
-    private void maybeSendReattachPrompt(ServerPlayer player) {
+    private void maybeSendReattachPrompt(ServerPlayer player, String why) {
         var uuid = player.getUUID();
         long now = System.nanoTime() / 1_000_000L;
         boolean[] fire = {false};
@@ -1266,15 +1283,68 @@ public class PaperRequestProcessingService {
             return now;
         });
         if (!fire[0]) return;
-        LSSLogger.info("Re-attach prompt for " + player.getName().getString()
-                + " — declared a want-set with no registered session (plugin reloaded?)");
+        LSSLogger.info("Re-attach prompt for " + player.getName().getString() + " — " + why);
         this.reattachPromptSender.send(player);
+    }
+
+    /** Test seam: does this player's client speak LSS? Production reads the channels the
+     *  client registered (minecraft:register) from Bukkit's listening-channel set. */
+    @FunctionalInterface
+    interface LssClientProbe {
+        boolean speaksLss(ServerPlayer player);
+    }
+
+    LssClientProbe lssClientProbe = player -> {
+        try {
+            return player.getBukkitEntity().getListeningPluginChannels()
+                    .contains(LSSConstants.CHANNEL_SESSION_CONFIG);
+        } catch (Throwable t) {
+            return false;
+        }
+    };
+
+    private boolean orphanSweepDone;
+
+    // The last tick's bandwidth-sharing player count (pump only; a test observation point).
+    private int lastActiveCount;
+
+    int lastActiveCountForTest() {
+        return this.lastActiveCount;
+    }
+
+    /**
+     * One-shot at the first enabled tick — the start-time twin of the declaration-triggered
+     * prompt above. A plugin reload's fresh service has no state for the LSS clients already
+     * connected; a declaring client heals on its next batch, but one parked in a world with
+     * no LOD service (distance 0) declares nothing, so it would stay orphaned until it
+     * rejoins — with no LODs even after walking into a served world (the converged,
+     * stationary client of the residual above heals here too). Every online player whose
+     * client registered the LSS channels is prompted once (the shared rate-limit map keeps
+     * its next batch from prompting again). Nothing healthy exists yet: a just-started
+     * service's player map holds only what the lifecycle drain registered this tick, which
+     * is skipped, and at server start nobody is online. A client that never registered the
+     * channels keeps the declaration-triggered residual. Pump thread only.
+     */
+    private void promptOrphanedSessionsOnce() {
+        if (this.orphanSweepDone) return;
+        this.orphanSweepDone = true;
+        List<ServerPlayer> online;
+        try {
+            online = List.copyOf(this.server.getPlayerList().getPlayers());
+        } catch (Throwable t) {
+            return;
+        }
+        for (var player : online) {
+            if (this.players.containsKey(player.getUUID())) continue;
+            if (!this.lssClientProbe.speaksLss(player)) continue;
+            maybeSendReattachPrompt(player, "connected before this service started (plugin reloaded?)");
+        }
     }
 
     public void handleBatchRequest(ServerPlayer player, PaperPayloadHandler.DecodedBatchChunkRequest batch) {
         int playerCx = player.getBlockX() >> 4;
         int playerCz = player.getBlockZ() >> 4;
-        int maxDist = PaperWorldLod.distance(this.config, player) + LSSConstants.LOD_DISTANCE_BUFFER;
+        int maxDist = dev.vox.lss.common.config.ServerConfigBase.requestRadius(PaperWorldLod.distance(this.config, player));
 
         // v16 compat branch: legacy drip batches MERGE into the synthetic want-set (the 1 Hz
         // pump tick is the sole declarer) instead of replacing the backlog. Placed before the
@@ -1304,7 +1374,7 @@ public class PaperRequestProcessingService {
         if (state == null) {
             // STRICTLY state == null: a registered-but-mid-handshake state (the guard
             // below) is a healthy client whose own deferred reply is in flight.
-            maybeSendReattachPrompt(player);
+            maybeSendReattachPrompt(player, "declared a want-set with no registered session (plugin reloaded?)");
             return;
         }
         if (!state.hasCompletedHandshake()) return;
@@ -1449,6 +1519,16 @@ public class PaperRequestProcessingService {
         return result;
     }
 
+    private final dev.vox.lss.common.config.UnservedWorldsLog unservedWorldsLog =
+            new dev.vox.lss.common.config.UnservedWorldsLog();
+
+    /** The diag line naming the loaded worlds with no LOD service (resolved per world, as
+     *  requests are — see {@link PaperWorldLod#unservedWorlds}), or null when all are served. */
+    public String unservedWorldsDiagLineOrNull() {
+        var off = PaperWorldLod.unservedWorlds(this.config, this.server);
+        return off.isEmpty() ? null : "LODs off (distance 0): " + String.join(", ", off);
+    }
+
     public void tick() {
         // shuttingDown FIRST: an overlapped tick during a runtime plugin-manager disable must
         // not apply lifecycle events into mid-teardown collaborators (registerPlayer racing
@@ -1470,6 +1550,8 @@ public class PaperRequestProcessingService {
         drainRuntimeTasks();
         if (!this.config.enabled())
             return;
+        this.unservedWorldsLog.note(this.config, () -> PaperWorldLod.unservedWorlds(this.config, this.server));
+        promptOrphanedSessionsOnce();
 
         this.diag.reset(this.offThreadProcessor.getDiagnostics());
 
@@ -1529,6 +1611,7 @@ public class PaperRequestProcessingService {
         postSnapshot(lifecycle, generationReady);
         this.drainSendActions();
         this.drainGenerationTicketRequests();
+        this.lastActiveCount = lifecycle.activeCount;
         flushSendQueues(lifecycle.activeCount);
         this.dirtyBroadcaster.tick(this.config);
         tickFarPlayers();
@@ -1548,6 +1631,9 @@ public class PaperRequestProcessingService {
                 String dim = state.registeredDimension();
                 long pc = state.playerChunkPackedOrSentinel();
                 if (dim == null || pc == Long.MIN_VALUE) return null;
+                // No LOD service in this world: no summary (the request expires on its TTL).
+                if (!dev.vox.lss.common.config.ServerConfigBase.servesWorld(
+                        PaperWorldLod.distanceForDimString(this.config, this.server, dim))) return null;
                 return new dev.vox.lss.common.region.RegionSummaryService.PlayerAnchor(
                         dim, PositionUtil.unpackX(pc), PositionUtil.unpackZ(pc));
             }, (uuid, frame) -> {
@@ -1619,7 +1705,7 @@ public class PaperRequestProcessingService {
         for (var state : this.players.values()) {
             if (!state.hasCompletedHandshake()) continue;
             var player = state.getPlayer();
-            int maxDist = PaperWorldLod.distance(this.config, player) + LSSConstants.LOD_DISTANCE_BUFFER;
+            int maxDist = dev.vox.lss.common.config.ServerConfigBase.requestRadius(PaperWorldLod.distance(this.config, player));
             this.v16Compat.tickPlayer(player.getUUID(), state,
                     player.chunkPosition().x, player.chunkPosition().z, maxDist);
         }
@@ -1679,8 +1765,11 @@ public class PaperRequestProcessingService {
 
             if (removed)
                 continue;
-            // Counted AFTER the removal check (R2-11) — see the Fabric twin.
-            activeCount++;
+            // Counted AFTER the removal check (R2-11), and only in a served world: a player
+            // parked where the distance is 0 can never spend — see the Fabric twin.
+            if (dev.vox.lss.common.config.ServerConfigBase.servesWorld(
+                    PaperWorldLod.distance(this.config, state.getPlayer())))
+                activeCount++;
 
             // Captured BEFORE checkDimensionChange() mutates the stored dimension.
             var prevDim = state.getLastDimension();
@@ -1705,7 +1794,8 @@ public class PaperRequestProcessingService {
                 int prevDist = PaperWorldLod.distanceForDimKey(this.config, this.server, prevDim);
                 if (newDist != prevDist && this.dialects.isCurrent(changed.getUUID())) {
                     try {
-                        this.sessionConfigSender.send(changed, this.config, this.config.enabled());
+                        // 0 = no LOD service in this world: the client parks until a served one.
+                        this.sessionConfigSender.send(changed, this.config, this.config.enabled() && newDist > 0);
                     } catch (Exception e) {
                         LSSLogger.error("Session-config dimension-change push failed for "
                                 + changed.getName().getString(), e);
@@ -1913,7 +2003,7 @@ public class PaperRequestProcessingService {
     private void holdAndScheduleRegionProbe(PaperPlayerRequestState state, ServerPlayer player,
                                             ServerLevel level, LongOpenHashSet skipPositions,
                                             Long2ObjectMap<LoadedColumnData> readyProbes) {
-        state.updateLateProbeRange(PaperWorldLod.distance(this.config, level) + LSSConstants.LOD_DISTANCE_BUFFER);
+        state.updateLateProbeRange(dev.vox.lss.common.config.ServerConfigBase.requestRadius(PaperWorldLod.distance(this.config, level)));
         var released = this.heldForProbe.remove(player.getUUID());
         if (released != null
                 && state.republishHeldBatch(released.batch(), released.offerGeneration(), readyProbes)) {
