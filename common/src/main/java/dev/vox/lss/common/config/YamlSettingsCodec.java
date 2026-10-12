@@ -99,9 +99,11 @@ public final class YamlSettingsCodec<T> {
         boolean client = schema.isClient();
         MappingNode root = (MappingNode) compose(document.bytes());
         boolean touched = false;
-        // Only a save that changes something canonicalizes renamed groups: the startup
-        // development-key split edits with an empty change set and must not rewrite them.
-        if (client && !changes.isEmpty()) touched = canonicalizeAliasGroups(root, configured);
+        // Only a save that changes a MAIN-file value canonicalizes renamed groups: the startup
+        // development-key split edits with an empty change set, and a sidecar-only change (the
+        // experimental DH toggles) must leave the main file readable by older builds.
+        boolean mainChange = changes.keySet().stream().anyMatch(path -> !SIDECAR_PATHS.contains(path));
+        if (client && mainChange) touched = canonicalizeAliasGroups(root, configured);
         for (var entry : changes.entrySet()) {
             if (client && SIDECAR_PATHS.contains(entry.getKey())) continue;
             replace(root, entry.getKey().split("\\."), 0, node(configured.get(entry.getKey())));

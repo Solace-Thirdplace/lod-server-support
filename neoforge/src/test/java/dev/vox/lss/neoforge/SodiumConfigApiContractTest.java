@@ -23,7 +23,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * green — the fabric ClientMenuEntrypointContractTest twin leg). The stubs
  * themselves must never SHIP — release_check's NEOFORGE_FORBIDDEN pins
  * {@code net/caffeinemc/} out of the jars — and their fidelity to the REAL
- * sodium-neoforge artifact is {@link SodiumNeoGoldenParityTest}'s job.
+ * sodium-neoforge artifact is {@link SodiumNeoGoldenParityTest}'s job. Sodium 0.9.2
+ * (26.3) added a second discovery path, a {@code @ConfigEntryPointForge} class
+ * annotation scan, beside the MODPROPERTY one LSS uses; if a later Sodium drops the
+ * property read, that annotation is the likely successor.
  */
 class SodiumConfigApiContractTest {
 
