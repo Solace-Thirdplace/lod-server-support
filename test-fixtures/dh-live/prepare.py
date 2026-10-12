@@ -114,5 +114,5 @@ if a.scenario in ['content','race','rejoin','updates','boundary']:
  # Only the updates scenario subscribes to real-time pushes. Other scenarios
  # require conditional load checks. Generation never competes with this fixture.
  (run/'server/config/DistantHorizons.toml').write_text('_version = 5\n[server]\nenableRealTimeUpdates = '+str(a.scenario=='updates').lower()+'\nmaxGenerationRequestDistance = 0\n[common.worldGenerator]\ngeneratorPlan = "DISABLED"\n')
-(run/'server/server.properties').write_text('server-ip=::1\nserver-port=25586\nonline-mode=false\nlevel-seed=8675309\ngamemode=creative\nview-distance='+str(8 if a.scenario=='boundary' else 4)+'\nsimulation-distance=4\nspawn-protection=0\nallow-flight=true\nenforce-secure-profile=false\nmax-tick-time=120000\n')
+(run/'server/server.properties').write_text('server-ip=::1\nserver-port=25586\nonline-mode=false\nwhite-list=false\nlevel-seed=8675309\ngamemode=creative\nview-distance='+str(8 if a.scenario=='boundary' else 4)+'\nsimulation-distance=4\nspawn-protection=0\nallow-flight=true\nenforce-secure-profile=false\nmax-tick-time=120000\n')
 print(run)
