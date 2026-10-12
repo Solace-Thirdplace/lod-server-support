@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.vox.lss.api.VoxelColumnConsumer;
@@ -59,6 +60,8 @@ class JourneyMapSessionTest {
     private boolean sessionActive;
     private boolean backpressure;
     private boolean failDecode;
+    /** The host's level read throws (JourneyMap or Minecraft internals drifting at call time). */
+    private boolean levelThrows;
     private long clock;
     /** Long.MIN_VALUE (no player) keeps edge sweeps off in the tests that are not about them. */
     private long playerChunk;
@@ -90,6 +93,7 @@ class JourneyMapSessionTest {
         this.sessionActive = true;
         this.backpressure = true;
         this.failDecode = false;
+        this.levelThrows = false;
         this.clock = 1_000_000L;
         this.playerChunk = Long.MIN_VALUE;
         this.reports.clear();
@@ -97,7 +101,10 @@ class JourneyMapSessionTest {
         this.registered.clear();
         this.host = new JourneyMapSession.Host() {
             @Override public Object minecraft() { return null; }
-            @Override public Object level() { return level; }
+            @Override public Object level() {
+                if (levelThrows) throw new IllegalStateException("drifted");
+                return level;
+            }
             @Override public boolean playerInLevel() { return level != null; }
             @Override public Object dimension(Object l) { return dimension; }
             @Override public boolean hasCeiling(Object l) { return ceiling; }
@@ -1067,5 +1074,237 @@ class JourneyMapSessionTest {
         assertTrue(JourneyMapSession.diagLine().startsWith("JourneyMap: state=unavailable(journeymap.client.io.FileHandler)"),
                 JourneyMapSession.diagLine());
         assertNull(JourneyMapSession.instance);
+    }
+
+    // ---- the post-0.17 review fold ----
+
+    @Test
+    void aBackendDisabledOnTheTitleScreenReleasesItsConsumerAtOnce() {
+        assertEquals(1, this.registered.size());
+        boolean[] connected = {true};
+        this.session.connected = () -> connected[0];
+        this.enabled = false;
+        this.session.pump();
+        assertEquals(1, this.registered.size(), "connected: add-only until the session ends");
+        connected[0] = false;
+        this.session.pump();
+        assertTrue(this.registered.isEmpty(), "no connection: the next handshake must not advertise LOD reception");
+        this.enabled = true;
+        this.session.pump();
+        assertEquals(1, this.registered.size());
+    }
+
+    @Test
+    void theHeapBeltReportsTheFullHalt() {
+        this.session.memory = new MapMemoryGuard(() -> 0.95, () -> this.clock);
+        offer(0, 0);
+        settle();
+        this.session.pump();
+        assertTrue(this.session.heapHolding);
+        assertEquals(LodRequestManager.INGEST_BACKLOG_HALT_SECTIONS, this.session.reportBackpressure(),
+                "plan §4.3: the belt stops the stream instead of filling the queue it protects");
+    }
+
+    @Test
+    void anOfferEncodedAcrossAnInertTransitionIsReleasedNotStranded() {
+        this.session.pump();
+        this.dimension = NETHER;
+        this.ceiling = true;
+        this.session.pump();
+        assertEquals("inert(ceiling_dimension)", this.session.state());
+        var receipt = this.session.new Receipt();
+        // Encoded before the pump went inert, queued after its clear: re-checked under the lock.
+        this.session.offerEncoded(new JourneyMapSession.Entry(NETHER, 0, 0, frame(0, 0), receipt));
+        assertEquals(0, this.session.queuedGauge);
+        assertEquals(1, counter("dropped_inert"));
+        assertTrue(receipt.closed.get(), "the acceptance lease is released, never stranded");
+    }
+
+    @Test
+    void aBatchStuckOnJourneyMapsThreadLatchesTheSessionDead() {
+        offer(0, 0);
+        settle();
+        this.session.pump();
+        var batch = this.session.inFlight;
+        assertNotNull(batch);
+        batch.state.set(JourneyMapSession.Batch.STARTED); // JourneyMap's thread entered it and never returned
+        batch.startedAtMillis = this.clock;
+        this.clock += JourneyMapSession.SLOW_BATCH_MILLIS + 1;
+        this.session.pump();
+        assertFalse(this.session.dead, "slow is not stuck");
+        assertTrue(this.session.describe().contains(", inflight_ms=" + (JourneyMapSession.SLOW_BATCH_MILLIS + 1)),
+                this.session.describe());
+        offer(1, 1);
+        this.clock += JourneyMapSession.WEDGED_BATCH_MILLIS;
+        this.session.pump();
+        assertTrue(this.session.dead, "a stuck task thread would otherwise hold the stream all session");
+        assertEquals(0, this.session.queuedGauge);
+        assertEquals(-1, this.session.reportBackpressure());
+        assertSame(batch, this.session.inFlight, "the slot stays taken: the thread may still write its result");
+    }
+
+    @Test
+    void aPumpThatThrowsEveryTickLatchesButAnOccasionalThrowDoesNot() {
+        offer(0, 0);
+        this.levelThrows = true;
+        for (int i = 0; i < JourneyMapSession.DEATH_LATCH - 1; i++) this.session.pump();
+        this.levelThrows = false;
+        this.session.pump(); // a clean pump resets the streak
+        this.levelThrows = true;
+        for (int i = 0; i < JourneyMapSession.DEATH_LATCH - 1; i++) this.session.pump();
+        assertFalse(this.session.dead);
+        this.session.pump();
+        assertTrue(this.session.dead, "drift at call time would duty-cycle the governor all session");
+        assertEquals(0, this.session.queuedGauge);
+    }
+
+    @Test
+    void aNotMappingHoldThatNeverEndsTurnsInert() {
+        this.jm.mapping = Boolean.FALSE;
+        offer(0, 0);
+        this.session.pump();
+        assertEquals("waiting(not_mapping)", this.session.state());
+        this.clock += JourneyMapSession.STUCK_HOLD_MILLIS - 1;
+        this.session.pump();
+        assertEquals("waiting(not_mapping)", this.session.state(), "a dimension or world switch still holds");
+        assertEquals(1, this.session.queuedGauge);
+        this.clock += 2;
+        this.session.pump();
+        assertEquals("inert(not_mapping)", this.session.state());
+        assertEquals(0, this.session.queuedGauge);
+        assertEquals(-1, this.session.reportBackpressure(), "it no longer holds the stream");
+        this.jm.mapping = Boolean.TRUE;
+        this.session.pump();
+        assertEquals("waiting(settle)", this.session.state(), "mapping again: a fresh identity settles");
+    }
+
+    @Test
+    void anInterruptedHoldRestartsItsClock() {
+        this.jm.mapping = Boolean.FALSE;
+        this.session.pump();
+        this.clock += JourneyMapSession.STUCK_HOLD_MILLIS - 1;
+        this.level = null; // between worlds: not a mapping hold
+        this.session.pump();
+        this.level = this.levelMarker;
+        this.clock += 2;
+        this.session.pump();
+        assertEquals("waiting(not_mapping)", this.session.state(), "only an uninterrupted hold ages");
+    }
+
+    @Test
+    void aBatchStopsAtTheNextColumnWhenJourneyMapStopsItsMapping() {
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+        this.jm.renderController.result = (type, md) -> {
+            // stopMapping/startMapping: JourneyMap replaced its task controller mid-batch
+            this.jm.controller = new TaskController();
+            return true;
+        };
+        for (int i = 0; i < 4; i++) offer(i, 0);
+        settle();
+        int updates = RegionImageCache.INSTANCE.updates;
+        cycle();
+        assertEquals(1, renders().size(), "no column after the stop is rendered");
+        assertEquals(updates, RegionImageCache.INSTANCE.updates, "JourneyMap's textures are left to the next mapping");
+        assertEquals(1, counter("abandoned"));
+        assertEquals(4, this.reports.size(), "every column re-serves into the next mapping");
+        assertTrue(DataCache.INSTANCE.cache.isEmpty(), "our wrappers are still released");
+    }
+
+    @Test
+    void aNewerColumnFromAnotherDimensionReportsTheOneItReplaces() {
+        offer(OVERWORLD, 3, 3);
+        offer(END, 3, 3);
+        this.session.drainPendingReports();
+        assertEquals(1, counter("dropped_stale"));
+        assertEquals(1, this.reports.size(), "the overworld column was never written: it re-serves on the way back");
+        assertEquals(0, this.reports.getFirst()[0]);
+        assertEquals(1, this.session.queuedGauge);
+    }
+
+    @Test
+    void aDimensionChangeReportsQueuedColumnsEvenWhileJourneyMapIsNotMapping() {
+        offer(OVERWORLD, 0, 0);
+        this.jm.mapping = Boolean.FALSE;
+        this.session.pump();
+        assertEquals(1, this.session.queuedGauge, "the switch hold keeps them");
+        offer(END, 1, 1);
+        this.dimension = END;
+        this.session.pump();
+        assertEquals(1, counter("dropped_stale"));
+        assertEquals(1, this.reports.size());
+        assertEquals(0, this.reports.getFirst()[0]);
+        assertEquals(1, this.session.queuedGauge, "the new dimension's column stays");
+    }
+
+    @Test
+    void aBatchFinishingAfterItsSessionAppliesNothing() {
+        offer(0, 0);
+        settle();
+        this.session.pump();
+        this.jm.runQueued(); // done on JourneyMap's thread...
+        this.session.onSessionEnd(); // ...but the session ended before a pump reconciled it
+        this.session.pump();
+        assertNull(this.session.inFlight);
+        assertEquals(0, counter("rendered"));
+        assertTrue(this.session.replay.isEmpty(), "never replayed into the next server's map");
+        assertTrue(this.reports.isEmpty());
+    }
+
+    @Test
+    void aRequeueRespectsTheQueueBounds() {
+        this.jm.properties.renderDelay.value = 100;
+        this.jm.renderController.result = (type, md) -> {
+            this.clock += 300;
+            return true;
+        };
+        offer(0, 0);
+        offer(1, 0);
+        settle();
+        this.session.pump(); // submits region (0, 0)
+        this.session.maxQueue = 1;
+        offer(40, 40); // fills the queue while the batch runs
+        this.jm.runQueued(); // (1, 0) misses the box
+        this.session.pump();
+        assertEquals(1, this.session.queuedGauge, "the requeue never overshoots the bound");
+        assertEquals(1, counter("dropped_overflow"));
+        assertEquals(1, this.reports.size(), "governed: the overflowed column re-serves");
+        assertEquals(1, this.reports.getFirst()[1]);
+    }
+
+    @Test
+    void theEdgeSweepKeyHoldsTheLevelAndControllerWeakly() {
+        for (var c : JourneyMapSession.EdgeKey.class.getRecordComponents()) {
+            if (c.getName().equals("level") || c.getName().equals("controller")) {
+                assertEquals(java.lang.ref.WeakReference.class, c.getType(), c.getName());
+            }
+        }
+        assertTrue(java.util.Arrays.stream(JourneyMapSession.class.getDeclaredFields())
+                        .noneMatch(f -> f.getType() == JourneyMapSession.Identity.class && f.getName().startsWith("edge")),
+                "a disconnect must never pin the old level through the edge sweep");
+    }
+
+    @Test
+    void productionInitRegistersTheConsumerAndTheTitleScreenReleasesIt() {
+        JourneyMapSession.resetFacadeForTest();
+        assertFalse(dev.vox.lss.api.LSSApi.hasVoxelConsumers(), "premise: no consumer leaked from another suite");
+        boolean old = dev.vox.lss.config.LSSClientConfig.CONFIG.mapIngestionEnabled();
+        try {
+            dev.vox.lss.config.ClientConfigTestSupport.set("integrations.map_ingestion.enabled", true);
+            assertTrue(JourneyMapSession.initWith(Class::forName, this.host));
+            assertTrue(dev.vox.lss.api.LSSApi.hasVoxelConsumers(), "the capability bit's consumer is registered");
+            assertTrue(JourneyMapSession.isArmed());
+            assertTrue(JourneyMapSession.isSupported());
+            assertEquals("available", JourneyMapSession.cachedStatus(true).resolution());
+            JourneyMapSession.instance.connected = () -> false; // the title screen
+            dev.vox.lss.config.ClientConfigTestSupport.set("integrations.map_ingestion.enabled", false);
+            JourneyMapSession.clientTick();
+            assertFalse(dev.vox.lss.api.LSSApi.hasVoxelConsumers(), "disabled with no connection: released at once");
+        } finally {
+            var instance = JourneyMapSession.instance;
+            if (instance != null) dev.vox.lss.api.LSSApi.removeColumnConsumer(instance.consumer);
+            dev.vox.lss.config.ClientConfigTestSupport.set("integrations.map_ingestion.enabled", old);
+            JourneyMapSession.resetFacadeForTest();
+        }
     }
 }

@@ -16,7 +16,7 @@ import net.minecraft.world.level.Level;
  * remap with LSS's jar, so one source binds the intermediary-named Fabric 1.21.x JourneyMap
  * jars and the Mojang-named ones alike. JourneyMap's own names are never remapped.
  *
- * <p>Verified identical in JourneyMap 6.0.0 (1.21.11), 6.0.9 (1.21.1) and 6.0.10 (26.1.2, 26.2)
+ * <p>Verified identical in JourneyMap 6.0.0 (1.21.11), 6.0.9 (1.21.1) and 6.0.10 (26.1.2, 26.2, 26.3)
  * on Fabric and NeoForge. The 1.21.10 build (6.0.0-beta.58) predates the snapshot layer: its
  * missing {@code SnapshotChunkMD}/{@code JMChunkSnapshot} classes classify as unsupported.
  * {@code isMappingSuspended} is optional (absent in 6.0.0).
@@ -85,7 +85,8 @@ final class JourneyMapBindings {
             snapshotChunkMd = resolver.resolve("journeymap.client.model.chunk.SnapshotChunkMD");
             snapshot = resolver.resolve("journeymap.common.chunk.JMChunkSnapshot");
         } catch (ClassNotFoundException e) {
-            throw new Unsupported("this JourneyMap has no chunk-snapshot layer (6.0.0 or newer is required)");
+            throw new Unsupported("this JourneyMap has no chunk-snapshot layer ("
+                    + JourneyMapLineSurface.UNSUPPORTED_HINT + ")");
         }
         Class<?> client = resolver.resolve("journeymap.client.JourneymapClient");
         Class<?> renderController = resolver.resolve("journeymap.client.cartography.ChunkRenderController");
