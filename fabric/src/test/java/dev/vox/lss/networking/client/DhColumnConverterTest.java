@@ -49,6 +49,44 @@ class DhColumnConverterTest {
         }
         assertEquals(0,budget.used());
     }
+    /** DH 3.3 pushes a real-time update before baking its sky light (all zero); a reply is baked. */
+    @Test void aPushedTileIsSkyBakedBeforeConversionAndAReplyIsNot() throws Exception {
+        var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
+        try(var reply=unbakedPattern(budget);var push=unbakedPattern(budget)) {
+            var converter=new DhColumnConverter(biomes);
+            var asReply=converter.convertTile(reply,1,false)[0];
+            assertEquals(0,asReply.sections()[2].skyLight().get(0,0,0),"converted as-is, the unbaked floor darkens the air run");
+            var asPush=converter.convertTile(push,1,true)[0];
+            assertEquals(15,asPush.sections()[2].skyLight().get(0,0,0),"the face above the floor is lit");
+            assertEquals(15,asPush.sections()[3].skyLight().get(0,15,0),"so is the rest of the air run");
+            assertEquals(7,asPush.sections()[1].blockLight().get(0,15,0),"block light is kept");
+        }
+        assertEquals(0,budget.used());
+    }
+    @Test void dhOpacityFollowsDhsBlockStateRule() {
+        assertEquals(0,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.AIR.defaultBlockState()));
+        assertEquals(0,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.GLASS.defaultBlockState()));
+        assertEquals(1,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.WATER.defaultBlockState()));
+        assertEquals(1,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.KELP.defaultBlockState()));
+        assertEquals(16,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.STONE.defaultBlockState()));
+        assertEquals(16,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.SNOW.defaultBlockState()));
+        assertEquals(16,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.OAK_LEAVES.defaultBlockState()));
+    }
+    private static DhTerrainTile unbakedPattern(DhMemoryBudget budget) throws Exception {
+        byte[][] blobs=new byte[8][];var raw=new ByteArrayOutputStream();var points=new DataOutputStream(raw);
+        for(int i=0;i<4096;i++) {
+            points.writeShort(2);points.writeLong(32L<<32|7L<<60);
+            points.writeLong(1L|32L<<32|32L<<44);
+        }
+        blobs[0]=raw.toByteArray();for(int i=1;i<=4;i++)blobs[i]=new byte[0];
+        blobs[5]=new byte[4096];Arrays.fill(blobs[5],(byte)9);blobs[6]=new byte[4096];
+        var map=new ByteArrayOutputStream();var strings=new DataOutputStream(map);strings.writeInt(2);
+        strings.writeUTF("minecraft:plains_DH-BSW_minecraft:stone");strings.writeUTF("minecraft:plains_DH-BSW_minecraft:air");blobs[7]=map.toByteArray();
+        var dto=new ByteArrayOutputStream();var out=new DataOutputStream(dto);var position=new DhPosition(6,-1,-1);
+        out.writeLong(position.packed());out.writeInt(0);for(var blob:blobs){out.writeInt(blob.length);out.write(blob);}
+        out.writeByte(1);out.writeByte(0);out.writeBoolean(false);out.writeBoolean(false);out.writeLong(100);out.writeLong(200);
+        return new DhTerrainDecoder(DhLimits.DEFAULT).decode(dto.toByteArray(),DhProfile.SUPPORT_15,position,new DhTerrainTile.WorldShape(-32,64,true),budget);
+    }
     private static DhTerrainTile floorPattern(boolean sky,DhMemoryBudget budget) throws Exception {return floorPattern(sky,budget,"stone",32);}
     private static DhTerrainTile floorPattern(boolean sky,DhMemoryBudget budget,String floor,int gap) throws Exception {
         byte[][] blobs=new byte[8][];var raw=new ByteArrayOutputStream();var points=new DataOutputStream(raw);
