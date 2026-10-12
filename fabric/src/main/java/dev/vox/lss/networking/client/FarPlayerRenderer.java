@@ -509,9 +509,9 @@ public final class FarPlayerRenderer {
                         () -> packedLightFor(dispatcher, realPlayer, partialTick, fullBright));
             }
         }
-        // WI-6: the tags, submitted AFTER every model; the text phase draws them in
-        // submission order, so all first draws precede all second draws (one render-type
-        // switch per frame on the text lane, not one per tag).
+        // WI-6: the tags, submitted AFTER every model, all first draws then all second draws
+        // (one render-type switch per frame per lane, not one per tag; on 26.3 the second,
+        // glyph-only draws render in the earlier solid phase — see submitFarNameTag).
         int tagsDrawn = 0;
         for (var tag : pendingTags) {
             submitFarNameTag(collector, cameraState, tag, cameraPosition, poseStack,
@@ -863,8 +863,9 @@ public final class FarPlayerRenderer {
      *
      * <p>TIERED (fold (e2)): the pieces that overlap each other (leggings under a chestplate,
      * boots over leggings, a shield against the chest) are ~1/32 block apart and would still
-     * fight under one uniform lift; tier 0 = the inner armor model, 1 = outer armor + trims +
-     * glint, 2 = held items / elytra / anything else, ~4 depth steps apart
+     * fight under one uniform lift; tier 0 = the inner armor model, 1 = outer armor + its
+     * glint (trims and their glint inherit their armor model's tier — modelTiers), 2 = held
+     * items / elytra / anything else, ~4 depth steps apart
      * ({@code lift × (1 + 0.8·tier)}). The tiers come from the proxy's own equipment
      * ({@code Proxy.refreshLiftTiers}), keyed by the exact render-type identities the armor
      * layer requests. Submissions without a render type (items) take tier 2. DELIBERATELY NOT
@@ -885,6 +886,11 @@ public final class FarPlayerRenderer {
         private final float lift;
         private final double cameraDistance;
         private final Map<RenderType, Integer> tiers;
+        /** LINE FLAVOR (26.3): the tier each armor MODEL INSTANCE was last submitted at (shared
+         *  with the order(n) children) — trims render through a per-texture render type this
+         *  side cannot rebuild, so an unknown render type on a known armor model takes that
+         *  model's tier and stays coplanar with its piece, as vanilla draws it. */
+        private final Map<Model<?>, Integer> modelTiers;
         /** One scratch stack per wrapper: every delegate submission COPIES the pose it is
          *  handed (verified per site in SubmitNodeCollection), so reuse is safe. */
         private final PoseStack scratch = new PoseStack();
@@ -898,6 +904,7 @@ public final class FarPlayerRenderer {
             this.lift = lift;
             this.cameraDistance = cameraDistance;
             this.tiers = tiers;
+            this.modelTiers = new IdentityHashMap<>();
         }
 
         private LiftedSubmitCollector(OrderedSubmitNodeCollector ordered, LiftedSubmitCollector parent) {
@@ -908,6 +915,7 @@ public final class FarPlayerRenderer {
             this.lift = parent.lift;
             this.cameraDistance = parent.cameraDistance;
             this.tiers = parent.tiers;
+            this.modelTiers = parent.modelTiers;
         }
 
         /** The lifted pose for a submission of {@code tier} ({@code < 0} = untouched). */
@@ -926,6 +934,18 @@ public final class FarPlayerRenderer {
             return tiers.getOrDefault(type, 2);
         }
 
+        /** {@link #tierOf(RenderType)} for a model submission: a known render type records the
+         *  model instance's tier; an unknown one (a trim, its glint) inherits it. */
+        private int tierOf(Model<?> model, RenderType type) {
+            if (model == skinModel || type == skinType) return -1;
+            Integer known = tiers.get(type);
+            if (known != null) {
+                modelTiers.put(model, known);
+                return known;
+            }
+            return modelTiers.getOrDefault(model, 2);
+        }
+
         @Override
         public OrderedSubmitNodeCollector order(int order) {
             return root == null ? this : new LiftedSubmitCollector(root.order(order), this);
@@ -935,7 +955,7 @@ public final class FarPlayerRenderer {
         public <S> void submitModel(Model<? super S> model, S state, PoseStack poseStack, RenderType renderType,
                                     int lightCoords, int overlayCoords, int tintedColor,
                                     UvMapping uvMapping, int outlineColor) {
-            int tier = model == skinModel ? -1 : tierOf(renderType);
+            int tier = tierOf(model, renderType);
             delegate.submitModel(model, state, lifted(poseStack, tier), renderType, lightCoords, overlayCoords,
                     tintedColor, uvMapping, outlineColor);
         }
@@ -945,7 +965,7 @@ public final class FarPlayerRenderer {
         public <S> void submitCrumblingOverlay(Model<? super S> model, S state, PoseStack poseStack,
                                                RenderType renderType, int lightCoords, int overlayCoords,
                                                int tintedColor, ModelFeatureRenderer.CrumblingOverlay crumblingOverlay) {
-            int tier = model == skinModel ? -1 : tierOf(renderType);
+            int tier = tierOf(model, renderType);
             delegate.submitCrumblingOverlay(model, state, lifted(poseStack, tier), renderType, lightCoords,
                     overlayCoords, tintedColor, crumblingOverlay);
         }
@@ -1152,8 +1172,11 @@ public final class FarPlayerRenderer {
      * ({@code glPolygonOffset(-1, -10)}: at least ten depth units nearer, resolution-adaptive
      * on every depth format, zero perspective shift, no see-through window — the review's
      * replacement for a geometric lift). The pass runs all first submits, then all second
-     * ones, and the text phase draws them in that order. The push is unwound in a finally
-     * (fold D1).
+     * ones. LINE FLAVOR (26.3): the glyph-only second submit (opaque, no background) lands in
+     * the SOLID phase, which renders BEFORE the text phase holding the plate — the opposite
+     * order; it still reads correctly because the polygon-offset draw writes its biased depth
+     * and the later plate fails the depth test at glyph pixels. Do not "fix" the submit order.
+     * The push is unwound in a finally (fold D1).
      */
     private static void submitFarNameTag(SubmitNodeCollector collector, CameraRenderState cameraState,
                                          PendingTag tag, Vec3 cameraPosition, PoseStack poseStack,
@@ -1310,9 +1333,10 @@ public final class FarPlayerRenderer {
             liftTiers.clear();
             // LINE FLAVOR (26.3): trims render per trim texture (RenderTypes.armorTrim keyed by
             // EquipmentLayerRenderer's private TrimTextureKey) — not reproducible here, so trims and
-            // their glint take the default top tier: drawn in front of the armor piece they decorate.
+            // their glint (trimmedArmorGlint) stay OUT of this map and inherit the tier of the armor
+            // model instance they are submitted on (LiftedSubmitCollector.modelTiers) — coplanar
+            // with their own piece, never pulled through the piece in front of it.
             // Foil armor is ONE render type per texture (armorCutoutNoCullGlint), tiered with its armor.
-            liftTiers.put(RenderTypes.trimmedArmorGlint(), 2);
             if (equipmentAssets == null) return;
             for (EquipmentSlot slot : ARMOR_EQUIPMENT_SLOTS) {
                 Equippable equippable = this.getItemBySlot(slot).get(DataComponents.EQUIPPABLE);

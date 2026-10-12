@@ -19,7 +19,7 @@ import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerFactory;
 
 /** Hand-built LSS columns for the JourneyMap encoder tests, over a real (frozen) biome
- *  registry so biome holders carry their keys like the client's. LINE FLAVOR (26.2):
+ *  registry so biome holders carry their keys like the client's. LINE FLAVOR (26.2/26.3):
  *  {@code PalettedContainerFactory}. */
 final class JourneyMapTestColumns {
     static final Registry<Biome> BIOMES;

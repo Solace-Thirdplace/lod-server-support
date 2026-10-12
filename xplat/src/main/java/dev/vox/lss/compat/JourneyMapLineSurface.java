@@ -9,11 +9,15 @@ import net.minecraft.world.level.biome.Biome;
  * level's height facts and the biome identifier accessor. Every other JourneyMap file is
  * identical on every line.
  *
- * <p>LINE FLAVOR (26.2): {@code getMinSectionY/getMinY/getMaxY} (max inclusive) and
+ * <p>LINE FLAVOR (26.2/26.3): {@code getMinSectionY/getMinY/getMaxY} (max inclusive) and
  * {@code ResourceKey.identifier()}.
  */
 final class JourneyMapLineSurface {
     private JourneyMapLineSurface() {}
+
+    /** What the unsupported state tells the player (diag line, binding failure): an upgrade
+     *  hint where a supported JourneyMap exists for this line, a plain statement where none does. */
+    static final String UNSUPPORTED_HINT = "map ingestion needs JourneyMap 6.0.0 or newer";
 
     /** The client level's vertical layout; {@code maxYExclusive} is one past the top block. */
     record LevelFacts(int minSectionY, int sectionCount, int minY, int maxYExclusive) {}

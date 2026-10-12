@@ -148,7 +148,8 @@ class FarPlayerRenderSourceContractTest {
         // layers are distance-gated; mounts are not wrapped.
         assertEquals(1, count(src, "new LiftedSubmitCollector(collector, skinModel(dispatcher, proxy), skinRenderType(dispatcher, proxy),"),
                 tree + ": the proxy submit must go through the lifting collector");
-        assertTrue(src.contains("int tier = model == skinModel ? -1 : tierOf(renderType);")
+        assertTrue(src.contains("int tier = tierOf(model, renderType);")
+                        && src.contains("if (model == skinModel || type == skinType) return -1;")
                         && src.contains("if (type == skinType) return -1;")
                         && src.contains("pose.pose().scaleLocal(f);")
                         && src.contains("Math.clamp(distance * distance * 6e-6, 0.02, 4.0)")
@@ -169,6 +170,14 @@ class FarPlayerRenderSourceContractTest {
                         && src.contains("liftTiers.put(RenderTypes.armorCutoutNoCullGlint(texture), inner ? 0 : 1);")
                         && src.contains("((AccessorEntityRenderDispatcher) dispatcher).lss$getEquipmentAssets()"),
                 tree + ": overlapping armor pieces must sit on different lift tiers");
+        // LINE FLAVOR (26.3): trims render through per-texture render types this side cannot
+        // rebuild; they inherit the tier of the armor model instance they are submitted on
+        // (never the default top tier, which pulls a leggings trim through the chestplate).
+        assertTrue(src.contains("return modelTiers.getOrDefault(model, 2);")
+                        && src.contains("modelTiers.put(model, known);")
+                        && src.contains("this.modelTiers = parent.modelTiers;")
+                        && !src.contains("liftTiers.put(RenderTypes.trimmedArmorGlint(), 2);"),
+                tree + ": trims must inherit their armor model's lift tier");
         assertTrue(src.contains("return root == null ? this : new LiftedSubmitCollector(root.order(order), this);"),
                 tree + ": ordered sub-collectors (the armor layer's) must be wrapped too");
         assertTrue(src.contains("tierOf(ChunkSectionLayerHelper.getRenderType(translucent))"),
