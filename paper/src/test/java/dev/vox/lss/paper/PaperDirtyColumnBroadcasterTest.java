@@ -234,6 +234,35 @@ class PaperDirtyColumnBroadcasterTest {
     }
 
     @Test
+    void aWorldWithDistanceZeroStillClearsDoneBitsAtTheLegacyRadius() {
+        // 0 = no LOD service in that world (twin of the Fabric pin): done-bits still clear and
+        // notices still go out, at the largest configured distance (16) a legacy session was
+        // advertised — a world reloaded back on must not answer up_to_date off a pre-edit bit.
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 16);
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        var nether = level(Level.NETHER);
+        when(server.getAllLevels()).thenReturn(List.of(overworld, nether));
+        var netherUuid = UUID.randomUUID();
+        addPlayer(netherUuid, nether, true, false);
+        var overworldUuid = UUID.randomUUID();
+        addPlayer(overworldUuid, overworld, true, false);
+
+        tracker.markDirty("minecraft:the_nether", 0, 0);
+        tracker.markDirty("minecraft:the_nether", 40, 0);
+        tracker.markDirty(OVERWORLD, 1, 0);
+        fireBroadcast();
+
+        long inRange = PositionUtil.packPosition(0, 0);
+        var netherClears = processor.clears.stream().filter(c -> c.playerUuid().equals(netherUuid)).toList();
+        assertEquals(1, netherClears.size(), "the off world's done-bits still clear");
+        assertArrayEquals(new long[]{inRange}, netherClears.get(0).positions(), "within the legacy radius only");
+        assertEquals(1, sent.stream().filter(f -> f.playerUuid().equals(netherUuid)).count());
+        assertEquals(1, sent.stream().filter(f -> f.playerUuid().equals(overworldUuid)).count());
+        assertTrue(processor.invalidations.stream().anyMatch(i -> i.dimension().equals("minecraft:the_nether")),
+                "the off world's marks are still invalidated");
+    }
+
+    @Test
     void broadcastPaginatesBeyondMaxDirtyColumnPositionsCoveringEveryPosition() {
         var uuid = UUID.randomUUID();
         addPlayer(uuid, overworld, true, false);
