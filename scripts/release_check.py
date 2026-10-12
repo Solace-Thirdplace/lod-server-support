@@ -1623,6 +1623,9 @@ def _selftest():
 
 
 def _selftest_fixtures():
+    # The folia-supported value this line's plugin.yml derives (LINE_PAPER_LOADERS) — the
+    # clean fixtures must carry it (26.3: false, no Folia build exists upstream).
+    FOLIA_YML = "folia-supported: " + ("true" if FOLIA_SUPPORTED else "false") + "\n"
     n = 0
 
     def check(cond, msg):
@@ -1839,7 +1842,7 @@ def _selftest_fixtures():
                           "  vss.use:\n    description: receive LOD data\n    default: true\n")
         good_pap = os.path.join(td, "lod-server-support-paper.jar")
         _make_jar(good_pap, {
-            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n"
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\n" + FOLIA_YML
                           + GATE_NODES_YML,
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
             "dev/vox/lss/common/PositionUtil.class": "x",
@@ -1853,8 +1856,8 @@ def _selftest_fixtures():
         # check only runs when a VSS jar exists.
         nodeless_pap = os.path.join(td, "lod-server-support-paper-nodeless.jar")
         _make_jar(nodeless_pap, {
-            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n"
-                          "permissions:\n  lss.use:\n    default: true\n",
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\n" + FOLIA_YML
+                          + "permissions:\n  lss.use:\n    default: true\n",
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
             "dev/vox/lss/common/PositionUtil.class": "x",
         }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
@@ -1864,7 +1867,7 @@ def _selftest_fixtures():
               f"missing vss.use node not caught: {p}")
         flipped_pap = os.path.join(td, "lod-server-support-paper-flipped.jar")
         _make_jar(flipped_pap, {
-            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n"
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\n" + FOLIA_YML
                           + GATE_NODES_YML.replace("  vss.use:\n    description: receive LOD data\n    default: true\n",
                                                    "  vss.use:\n    description: receive LOD data\n    default: op\n"),
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
@@ -2028,8 +2031,8 @@ def _selftest_fixtures():
         good_vpap = os.path.join(td, "voxy-server-side-paper.jar")
         _make_jar(good_vpap, {
             "plugin.yml": ("name: VoxyServerSide\nversion: 0.7.0\n"
-                           "folia-supported: true\n"
-                           "description: Render distant Voxy LODs on servers\n"
+                           + FOLIA_YML
+                           + "description: Render distant Voxy LODs on servers\n"
                            + GATE_NODES_YML),
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
             "dev/vox/lss/common/PositionUtil.class": "x",
@@ -2646,8 +2649,8 @@ def _selftest_fixtures():
         os.makedirs(dneo)
         PY_LSS = ("name: LodServerSupport\nversion: '0.7.0'\n"
                   "main: dev.vox.lss.paper.LSSPaperPlugin\napi-version: '26.2'\n"
-                  "folia-supported: true\n"
-                  "description: LSS plugin.\n"
+                  + FOLIA_YML
+                  + "description: LSS plugin.\n"
                   "author: VoX\n"
                   "website: https://modrinth.com/plugin/lod-server-support\n"
                   "commands:\n  lsslod:\n"
