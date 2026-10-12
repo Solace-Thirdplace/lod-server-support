@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage one exact native Fabric/Paper/production-Neo smoke row; never creates/runs it."""
+"""Stage one exact native Fabric/Paper/production-Neo/Sponge smoke row; never creates/runs it."""
 import argparse,copy,hashlib,json,sys
 from pathlib import Path
 from prepare_native_client import prepare as prepare_client
@@ -11,7 +11,7 @@ def assemble(spec,output):
  out=Path(output)
  if out.exists():raise ValueError('fresh platform recipe root required')
  source=Path(spec['source']).resolve();platform=spec['platform']
- if platform not in ('fabric','paper','neoforge'):raise ValueError('native platform required')
+ if platform not in ('fabric','paper','neoforge','sponge'):raise ValueError('native platform required')
  props=dict(x.split('=',1) for x in (source/'gradle.properties').read_text().splitlines() if '='in x and not x.startswith('#'))
  mc=props['minecraft_version'];line='.'.join(mc.split('.')[:2]) if mc.startswith('26.') else mc;java=str(Path(spec['java']).resolve());client=Path(spec['client_candidate']);server=Path(spec['server_candidate'])
  for key,path in [('client_candidate',client),('server_candidate',server),('fixture',Path(spec['fixture']))]:
@@ -30,9 +30,10 @@ def assemble(spec,output):
    if 'no recognized mod metadata' not in str(e):raise
    row=dict(file=path.name,sha256=checksum,metadata={});metadata={}
   fabric=metadata.get('fabric');paper=metadata.get('paper');maven=metadata.get('neoforge',metadata.get('maven',{}))
+  sponge=(metadata.get('sponge') or {}).get('plugins',[None])[0] if metadata.get('sponge') else None
   mods=maven.get('mods',[]) if isinstance(maven,dict) else []
-  mid,version=(fabric['id'],fabric['version']) if fabric else ((paper['name'],str(paper['version'])) if paper else ((mods[0]['modId'],mods[0]['version']) if mods else ('library-'+checksum[:16],'locked')))
-  row.update(id=mid,version=str(version),source='cache:sha256:'+checksum,enabled=True,kind=kind or ('mod' if fabric or mods else ('plugin' if paper else 'library')))
+  mid,version=(fabric['id'],fabric['version']) if fabric else ((paper['name'],str(paper['version'])) if paper else ((sponge['id'],str(sponge['version'])) if sponge else ((mods[0]['modId'],mods[0]['version']) if mods else ('library-'+checksum[:16],'locked'))))
+  row.update(id=mid,version=str(version),source='cache:sha256:'+checksum,enabled=True,kind=kind or ('mod' if fabric or mods else ('plugin' if paper or sponge else 'library')))
   cache[checksum]=str(path.resolve());return row
  client_row=artifact(client);server_row=artifact(server)
  if 'fabric' not in client_row['metadata'] or platform not in server_row['metadata']:raise ValueError('actual candidate loader metadata differs from participant')
@@ -70,7 +71,7 @@ def assemble(spec,output):
      stage(path,'server/mods/'+entry['file'])
    server_argv=identity['launch']
   else:
-   bootstrap=Path(spec['server_bootstrap']);verify_bootstrap(bootstrap,server_profile);name='paper.jar' if platform=='paper' else 'fabric-server-launch.jar';stage(bootstrap,'server/'+name)
+   bootstrap=Path(spec['server_bootstrap']);verify_bootstrap(bootstrap,server_profile);name={'paper':'paper.jar','sponge':'spongevanilla.jar'}.get(platform,'fabric-server-launch.jar');stage(bootstrap,'server/'+name)
    # The exact profile's server artifact must be this bootstrap, if it carries one.
    engines=[x for x in server_profile['artifacts'] if x.get('kind')=='server' and x.get('enabled',True)]
    if engines and sha(bootstrap) not in {x['sha256'] for x in engines}:raise ValueError('bootstrap artifact differs from locked server engine')

@@ -6,6 +6,8 @@ import java.util.*;
 public final class DhSessionPolicy {
     public static final int MAX_RECEIPTS = 8192;
     public static final int MAX_REJECTED_ATTEMPTS = 4;
+    /** Coalesces a burst of pushes to one tile into one refetch. */
+    public static final long PUSH_REFETCH_DELAY_NANOS = 2_000_000_000L;
     /** Vanilla-held chunks as one 1024-bit mask per 32x32-chunk region (128 bytes/region). */
     private final Map<Long, long[]> vanilla = new HashMap<>();
     private final LinkedHashMap<DhPosition, Receipt> receipts = new LinkedHashMap<>();
@@ -122,6 +124,18 @@ public final class DhSessionPolicy {
     public void deferUnverified(DhPosition p,long now) {
         var previous=receipts.get(p);
         put(p,new Receipt(0,acceptedAt(p),now+2_000_000_000L,previous!=null && previous.generate,
+                false,failures(p)>=MAX_REJECTED_ATTEMPTS,failures(p),false,false));
+    }
+    /**
+     * A push that wrote columns without describing the whole tile was baked without its
+     * stored neighbours (DH bakes the merged tile): fetch the server's merged tile in full
+     * once the burst settles. An already-scheduled refetch is never postponed, so a steady
+     * push stream cannot starve it.
+     */
+    public void refetchAfterPush(DhPosition p, long now) {
+        var r=receipts.get(p);
+        boolean scheduled=r!=null && !r.snapshot && !r.held && r.timestamp==0 && r.due>now;
+        put(p,new Receipt(0,acceptedAt(p),scheduled?r.due:now+PUSH_REFETCH_DELAY_NANOS,r!=null && r.generate,
                 false,failures(p)>=MAX_REJECTED_ATTEMPTS,failures(p),false,false));
     }
     /** Every eligible MC column must have been accepted. Accepted snapshots are held until a load check or server update. */

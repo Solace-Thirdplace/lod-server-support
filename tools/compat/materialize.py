@@ -110,6 +110,19 @@ def resolution(profile,cache,range_runtime=None):
                 for mid in [name,*meta.get('provides',[])]:provided.setdefault(mid,set()).add(version)
                 deps.extend((name,dep,'*','maven') for dep in meta.get('depend',[]))
                 continue
+            if profile['platform']=='sponge':
+                # SpongeVanilla plugins: one sponge_plugins.json entry; the platform API
+                # dependency is the server itself (sponge-support-plan.md §2.5).
+                require('sponge' in current,'Sponge platform requires sponge_plugins.json')
+                plugins=current['sponge'].get('plugins') or []
+                require(len(plugins)==1,'Sponge plugin jar must declare exactly one plugin')
+                name=plugins[0].get('id');version=str(plugins[0].get('version',''))
+                require(isinstance(name,str) and name and version and '${' not in version,'invalid/unresolved Sponge plugin identity')
+                require(name not in top_level_ids,'duplicate top-level plugin identity');top_level_ids.add(name)
+                provided.setdefault(name,set()).add(version)
+                deps.extend((name,dep['id'],dep.get('version','*'),'maven') for dep in plugins[0].get('dependencies',[])
+                            if dep.get('id')!='spongeapi' and not dep.get('optional',False))
+                continue
             require(a.get('kind','mod')!='plugin','plugin artifact missing plugin.yml')
             require(('fabric' in current if profile['platform']=='fabric' else
                      any(k in current for k in ('neoforge','forge')) or

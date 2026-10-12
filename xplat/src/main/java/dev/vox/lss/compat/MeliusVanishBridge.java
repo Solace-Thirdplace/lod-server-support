@@ -53,6 +53,19 @@ public final class MeliusVanishBridge {
     private MeliusVanishBridge() {
     }
 
+    /** The default {@link dev.vox.lss.platform.VanishVisibility} (sponge-support-plan.md §1.5):
+     *  the three static calls below, unchanged. */
+    public static final dev.vox.lss.platform.VanishVisibility VISIBILITY =
+            new dev.vox.lss.platform.VanishVisibility() {
+                @Override public boolean present() { return MeliusVanishBridge.present(); }
+                @Override public boolean isVanished(MinecraftServer server, UUID target) {
+                    return MeliusVanishBridge.isVanished(server, target);
+                }
+                @Override public boolean canSee(MinecraftServer server, ServerPlayer observer, UUID target) {
+                    return MeliusVanishBridge.canSee(server, observer, target);
+                }
+            };
+
     /** Test seam: forget the resolution (lazy resolve reruns). */
     static void resetForTest() {
         state = 0;

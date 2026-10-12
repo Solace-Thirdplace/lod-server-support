@@ -1,0 +1,24 @@
+{
+  "loader": {
+    "name": "java_plain",
+    "version": "1.0"
+  },
+  "license": "MIT",
+  "plugins": [
+    {
+      "id": "lsssoak",
+      "name": "LSS Sponge soak driver (dev only)",
+      "version": "1.0.0",
+      "entrypoint": "dev.vox.lss.spongesoak.SpongeSoakPlugin",
+      "description": "Dev-only soak scenario driver for scripts/soak.sh SOAK_PLATFORM=sponge. Never shipped.",
+      "dependencies": [
+        {
+          "id": "lodserversupport",
+          "version": "*",
+          "load-order": "after",
+          "optional": false
+        }
+      ]
+    }
+  ]
+}

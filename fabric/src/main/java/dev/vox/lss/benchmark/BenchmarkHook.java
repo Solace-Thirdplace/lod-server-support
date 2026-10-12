@@ -69,7 +69,7 @@ public final class BenchmarkHook {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             clientTick[0]++;
             if (clientTick[0] % LSSConstants.TICKS_PER_SECOND == 0 && LSSClientNetworking.isServerEnabled()) {
-                latestClientSnapshot = BenchmarkMetricsExporter.buildClientMetrics();
+                latestClientSnapshot = ClientMetricsExporter.buildClientMetrics();
             }
         });
 
@@ -79,9 +79,9 @@ public final class BenchmarkHook {
             // Use the latest snapshot since LSSClientNetworking.DISCONNECT may have already cleared state
             var snapshot = latestClientSnapshot;
             if (snapshot != null) {
-                BenchmarkMetricsExporter.writeClientSnapshot(outputFile, snapshot);
+                ClientMetricsExporter.writeClientSnapshot(outputFile, snapshot);
             } else {
-                BenchmarkMetricsExporter.exportClient(outputFile);
+                ClientMetricsExporter.exportClient(outputFile);
             }
             LSSLogger.info("[Benchmark] Exiting client");
             // halt(0) instead of exit(0): skip MC shutdown hooks for fast benchmark teardown
@@ -154,7 +154,7 @@ public final class BenchmarkHook {
                     fireClientAction(outputFile, actionName[0], actionAt[0]);
                 }
             }
-            latest.set(BenchmarkMetricsExporter.buildClientSnapshot());
+            latest.set(ClientMetricsExporter.buildClientSnapshot());
             if (clientTick[0] % (5 * LSSConstants.TICKS_PER_SECOND) == 0) {
                 appendSoakClientRow(outputFile, "snapshot", latest.get());
             }
@@ -162,7 +162,7 @@ public final class BenchmarkHook {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             LSSLogger.info("[Soak] Client disconnected, writing final snapshot");
-            var snapshot = latest.get() != null ? latest.get() : BenchmarkMetricsExporter.buildClientSnapshot();
+            var snapshot = latest.get() != null ? latest.get() : ClientMetricsExporter.buildClientSnapshot();
             appendSoakClientRow(outputFile, "disconnect", snapshot);
             // The LSS disconnect handler queued the cache save before us in registration
             // order; this drains the single-threaded IO executor so the write lands.

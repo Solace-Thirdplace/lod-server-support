@@ -14,6 +14,7 @@ FABRIC_DIR="$SCRIPT_DIR/test-server/fabric"
 PAPER_DIR="$SCRIPT_DIR/test-server/paper"
 FOLIA_DIR="$SCRIPT_DIR/test-server/folia"
 NEOFORGE_DIR="$SCRIPT_DIR/test-server/neoforge"
+SPONGE_DIR="$SCRIPT_DIR/test-server/sponge"
 # Legacy = an OLD LSS release (protocol 16) on the SAME Minecraft version, for eyeballing the
 # client-side v16 backward-compat path (a current v0.7.0+ client joining a pre-v0.7.0 server).
 # See docs/planning/v16-client-compat-design.md.
@@ -49,6 +50,11 @@ if [ -z "$NEOFORGE_VERSION" ]; then
     echo "ERROR: could not read neoforge_version from gradle.properties" >&2
     exit 1
 fi
+# The SpongeVanilla build the Sponge module's boot smoke pins (gradle.properties) —
+# sha1-verified, so the rig runs exactly the server CI smokes (sponge-support-plan.md §5.7).
+SPONGEVANILLA_VERSION="$(sed -n 's/^spongevanilla_version=//p' "$SCRIPT_DIR/gradle.properties" | tr -d '\r')"
+SPONGEVANILLA_SHA1="$(sed -n 's/^spongevanilla_sha1=//p' "$SCRIPT_DIR/gradle.properties" | tr -d '\r')"
+SPONGEVANILLA_URL="https://repo.spongepowered.org/repository/maven-releases/org/spongepowered/spongevanilla/${SPONGEVANILLA_VERSION}/spongevanilla-${SPONGEVANILLA_VERSION}-universal.jar"
 NEOFORGE_INSTALLER_URL="https://maven.neoforged.net/releases/net/neoforged/neoforge/${NEOFORGE_VERSION}/neoforge-${NEOFORGE_VERSION}-installer.jar"
 
 # --- Download URLs ---
@@ -325,6 +331,23 @@ build_neoforge_jar() {
         (cd "$SCRIPT_DIR" && ./gradlew :neoforge:shadowJar) >&2
     fi
     echo "$jar"
+}
+
+build_sponge_jar() {
+    local force="${1:-}" jar
+    # shadowJar is THE artifact (the plain jar task is disabled, the NeoForge rule).
+    jar="$SCRIPT_DIR/sponge/build/libs/lod-server-support-sponge.jar"
+    if [ -n "$force" ] || [ ! -f "$jar" ]; then
+        echo "Building Sponge LSS JAR..." >&2
+        (cd "$SCRIPT_DIR" && ./gradlew :sponge:shadowJar) >&2
+    fi
+    echo "$jar"
+}
+
+# True while the Sponge test server this script started is alive (its own pidfile —
+# never a process-name match). Jars must never be replaced under a running JVM.
+sponge_running() {
+    [ -f "$SPONGE_DIR/.server.pid" ] && kill -0 "$(cat "$SPONGE_DIR/.server.pid")" 2>/dev/null
 }
 
 write_server_properties() {
@@ -750,6 +773,52 @@ run_neoforge() {
 }
 
 # ============================================================
+# Sponge (best-effort + experimental tier — sponge-support-plan.md; SpongeVanilla only)
+# ============================================================
+
+setup_sponge() {
+    echo "=== Setting up SpongeVanilla server (${SPONGEVANILLA_VERSION}) ==="
+    local mods_dir="$SPONGE_DIR/mods"
+    local server_jar="$SPONGE_DIR/spongevanilla-${SPONGEVANILLA_VERSION}.jar"
+    mkdir -p "$SPONGE_DIR" "$mods_dir"
+    download "$SPONGEVANILLA_URL" "$server_jar"
+    if [ "$(sha1sum "$server_jar" | cut -d' ' -f1)" != "$SPONGEVANILLA_SHA1" ]; then
+        echo "ERROR: $server_jar does not match the pinned sha1 ($SPONGEVANILLA_SHA1) — delete it and retry" >&2
+        return 1
+    fi
+    if [ ! -f "$SPONGE_DIR/eula.txt" ]; then
+        echo "eula=true" > "$SPONGE_DIR/eula.txt"
+    fi
+    write_server_properties "$SPONGE_DIR" 25570 "LSS Test Server (Sponge)"
+    write_ops_json "$SPONGE_DIR"
+    # The SHARED config root, exactly where Fabric/NeoForge keep it (LoaderServices.configDir
+    # is Sponge's sharedRoot config dir) — the platform is "mod" (xplat server, backfill on).
+    write_lss_config "$SPONGE_DIR/config"
+
+    echo "=== Installing the Sponge plugin ==="
+    if sponge_running; then
+        echo "  The Sponge server is running — stop it before replacing its plugin jar." >&2
+        return 1
+    fi
+    local lss_jar
+    lss_jar=$(build_sponge_jar)
+    rm -f "$mods_dir"/lod-server-support-sponge*.jar "$mods_dir"/voxy-server-side-sponge*.jar
+    cp "$lss_jar" "$mods_dir/"
+    echo "  Installed: $(basename "$lss_jar")"
+}
+
+run_sponge() {
+    cd "$SPONGE_DIR"
+    # SpongeVanilla downloads + remaps vanilla and its libraries into ./libraries on the
+    # first boot (one-time). The plugin's mixins + access widener load from its manifest;
+    # Sponge logs a "plugin uses Mixins" notice for it at startup — expected.
+    java -Xmx${SERVER_RAM} -Xms${SERVER_RAM} -jar "spongevanilla-${SPONGEVANILLA_VERSION}.jar" nogui &
+    echo $! > .server.pid
+    wait $!
+    rm -f .server.pid
+}
+
+# ============================================================
 # Legacy (protocol-16 LSS server, for v16 client-compat eyeballing)
 # ============================================================
 
@@ -844,6 +913,8 @@ case "${1:-run}" in
         echo ""
         setup_neoforge
         echo ""
+        setup_sponge
+        echo ""
         echo "Setup complete. Run '$0 run' to start all servers."
         ;;
     update)
@@ -870,6 +941,17 @@ case "${1:-run}" in
         rm -f "$NEOFORGE_DIR/mods"/lod-server-support-neoforge*.jar
         cp "$neoforge_jar" "$NEOFORGE_DIR/mods/"
         echo "  NeoForge: $(basename "$neoforge_jar")"
+
+        if sponge_running; then
+            echo "  Sponge: SKIPPED — the Sponge server is running (stop it first; jars are never"
+            echo "          replaced under a running JVM)"
+        else
+            sponge_jar=$(build_sponge_jar force)
+            mkdir -p "$SPONGE_DIR/mods"
+            rm -f "$SPONGE_DIR/mods"/lod-server-support-sponge*.jar
+            cp "$sponge_jar" "$SPONGE_DIR/mods/"
+            echo "  Sponge: $(basename "$sponge_jar")"
+        fi
 
         echo "  Restart the servers to apply."
         ;;
@@ -1006,6 +1088,17 @@ case "${1:-run}" in
         echo ""
         run_neoforge
         ;;
+    run-sponge)
+        setup_sponge
+        echo ""
+        echo "=== Starting SpongeVanilla server (${SPONGEVANILLA_VERSION}) ==="
+        echo "  Connect to: localhost:25570"
+        echo "  Experimental + best-effort tier: SpongeVanilla only (SpongeNeo uses the"
+        echo "  NeoForge jar; SpongeForge is unsupported). Any Fabric/NeoForge client with LSS+Voxy gets a"
+        echo "  full LOD session — the wire is identical to every other loader."
+        echo ""
+        run_sponge
+        ;;
     run-legacy)
         setup_legacy
         echo ""
@@ -1032,7 +1125,7 @@ case "${1:-run}" in
         echo "Done."
         ;;
     *)
-        echo "Usage: $0 {setup|run|run-fabric|run-fabric-no-c2me|run-fabric-antixray|run-fabric-via|run-fabric-store|run-paper|run-paper-store|run-folia|run-neoforge|run-legacy|update|clean}"
+        echo "Usage: $0 {setup|run|run-fabric|run-fabric-no-c2me|run-fabric-antixray|run-fabric-via|run-fabric-store|run-paper|run-paper-store|run-folia|run-neoforge|run-sponge|run-legacy|update|clean}"
         echo "  (LSS_VIA=1 stages ViaVersion+ViaBackwards on run-paper too; LSS_VIA_GUARD=0 = guard kill-switch A/B)"
         echo ""
         echo "  setup      - Download and set up all servers"
@@ -1056,9 +1149,11 @@ case "${1:-run}" in
         echo "  run-neoforge - Set up and start the NeoForge server only (port 25569; the"
         echo "               stage-N best-effort loader — server-side LSS, same wire as"
         echo "               Fabric; Fabric clients join fine, channels are optional)"
+        echo "  run-sponge - Set up and start the SpongeVanilla server only (port 25570; the"
+        echo "               experimental Sponge plugin — pinned build from gradle.properties)"
         echo "  run-legacy - Set up and start an OLD LSS v${LEGACY_LSS_VERSION} (protocol 16) server (port 25568),"
         echo "               for eyeballing the client-side v16 backward-compat path"
-        echo "  update     - Rebuild and install LSS JARs for all servers incl. NeoForge (NOT the legacy one)"
+        echo "  update     - Rebuild and install LSS JARs for all servers incl. NeoForge and Sponge (NOT the legacy one)"
         echo "  clean      - Delete all test server directories"
         echo ""
         echo "Environment variables:"
