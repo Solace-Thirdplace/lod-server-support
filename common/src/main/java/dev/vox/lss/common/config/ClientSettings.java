@@ -16,8 +16,8 @@ public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility comp
         public CompatibilityBlockFallbacks { overrides = Collections.unmodifiableMap(new LinkedHashMap<>(overrides)); }
     }
     public record Compatibility(CompatibilityProtocols protocols, boolean v16Generation, CompatibilityBlockFallbacks blockFallbacks) {}
-    public record IntegrationsXaeroMap(boolean enabled, boolean backpressure) {}
-    public record Integrations(IntegrationsXaeroMap xaeroMap) {}
+    public record IntegrationsMapIngestion(boolean enabled, boolean backpressure) {}
+    public record Integrations(IntegrationsMapIngestion mapIngestion) {}
     public record FarPlayersDistance(int minBlocks, int maxBlocks) {}
     public record FarPlayersSharing(boolean enabled, int maxDistanceBlocks) {}
     public record FarPlayers(boolean enabled, FarPlayersDistance distance, boolean nameTags, boolean fullBright, int renderDistanceBlocks, int animationDistanceBlocks, FarPlayersSharing sharing) {}
@@ -47,8 +47,8 @@ public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility comp
         v.put("compatibility.v16_generation", s.compatibility().v16Generation());
         v.put("compatibility.block_fallbacks.default", s.compatibility().blockFallbacks().defaultBlock());
         v.put("compatibility.block_fallbacks.overrides", s.compatibility().blockFallbacks().overrides());
-        v.put("integrations.xaero_map.enabled", s.integrations().xaeroMap().enabled());
-        v.put("integrations.xaero_map.backpressure", s.integrations().xaeroMap().backpressure());
+        v.put("integrations.map_ingestion.enabled", s.integrations().mapIngestion().enabled());
+        v.put("integrations.map_ingestion.backpressure", s.integrations().mapIngestion().backpressure());
         v.put("far_players.enabled", s.farPlayers().enabled());
         v.put("far_players.distance.min_blocks", s.farPlayers().distance().minBlocks());
         v.put("far_players.distance.max_blocks", s.farPlayers().distance().maxBlocks());
@@ -89,12 +89,12 @@ public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility comp
         return new Compatibility(CompatibilityProtocols(v), (boolean)v.get("compatibility.v16_generation"), CompatibilityBlockFallbacks(v));
     }
     @SuppressWarnings("unchecked")
-    private static IntegrationsXaeroMap IntegrationsXaeroMap(Map<String,Object> v) {
-        return new IntegrationsXaeroMap((boolean)v.get("integrations.xaero_map.enabled"), (boolean)v.get("integrations.xaero_map.backpressure"));
+    private static IntegrationsMapIngestion IntegrationsMapIngestion(Map<String,Object> v) {
+        return new IntegrationsMapIngestion((boolean)v.get("integrations.map_ingestion.enabled"), (boolean)v.get("integrations.map_ingestion.backpressure"));
     }
     @SuppressWarnings("unchecked")
     private static Integrations Integrations(Map<String,Object> v) {
-        return new Integrations(IntegrationsXaeroMap(v));
+        return new Integrations(IntegrationsMapIngestion(v));
     }
     @SuppressWarnings("unchecked")
     private static FarPlayersDistance FarPlayersDistance(Map<String,Object> v) {

@@ -20,18 +20,19 @@ import dev.vox.lss.platform.LoaderServices;
  *
  * @param governorOn               {@code enableAdaptiveTransferRate} — the join-slow-start
  *                                 toggle is inert without it (its tooltip says so)
- * @param xaeroPresent             Xaero's World Map is installed — the map-bridge toggle is
- *                                 inert without it (its tooltip says so)
+ * @param mapModSupported          a supported map mod is installed (Xaero's World Map, or a
+ *                                 JourneyMap build whose internals resolved) — the map
+ *                                 ingestion toggle is inert without one (its tooltip says so)
  * @param farPlayerRenderAvailable this loader's tree renders far players
  *                                 ({@link FarPlayerRenderer#RENDER_AVAILABLE} — false on
  *                                 NeoForge v1, where the renderer-only options are hidden;
  *                                 "Share My Position" is the prefs carrier and always shows)
  */
-public record MenuContext(boolean governorOn, boolean xaeroPresent,
+public record MenuContext(boolean governorOn, boolean mapModSupported,
                           boolean farPlayerRenderAvailable, boolean nativeTerrain) {
 
-    public MenuContext(boolean governorOn, boolean xaeroPresent, boolean farPlayerRenderAvailable) {
-        this(governorOn, xaeroPresent, farPlayerRenderAvailable, true);
+    public MenuContext(boolean governorOn, boolean mapModSupported, boolean farPlayerRenderAvailable) {
+        this(governorOn, mapModSupported, farPlayerRenderAvailable, true);
     }
 
     /** Every fact ON: the default for tests and the tooltip-key enumeration. */
@@ -49,11 +50,14 @@ public record MenuContext(boolean governorOn, boolean xaeroPresent,
         } catch (Throwable t) {
             governor = false;
         }
-        boolean xaero;
+        boolean maps;
         try {
-            xaero = LoaderServices.get().isModLoaded("xaeroworldmap");
+            // An installed JourneyMap counts only when its internals resolved (the 1.21.10
+            // beta has no snapshot layer: its tooltip must not claim the toggle does anything).
+            maps = LoaderServices.get().isModLoaded("xaeroworldmap")
+                    || dev.vox.lss.compat.ModCompat.isJourneyMapSupported();
         } catch (Throwable t) {
-            xaero = false;
+            maps = false;
         }
         boolean nativeTerrain;
         try {
@@ -65,6 +69,6 @@ public record MenuContext(boolean governorOn, boolean xaeroPresent,
                     || !dev.vox.lss.networking.client.DhClientSession.selected();
         }
         catch (Throwable unavailable) { nativeTerrain = true; }
-        return new MenuContext(governor, xaero, FarPlayerRenderer.RENDER_AVAILABLE, nativeTerrain);
+        return new MenuContext(governor, maps, FarPlayerRenderer.RENDER_AVAILABLE, nativeTerrain);
     }
 }

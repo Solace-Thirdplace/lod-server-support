@@ -368,5 +368,10 @@ public final class ClientCommandActions {
         if (xaeroLine != null) {
             feedback.accept(Component.literal(xaeroLine).withStyle(ChatFormatting.GRAY));
         }
+        // JourneyMap map ingestion (map-ingestion plan §3.8, same conditional slot).
+        var journeyMapLine = details.journeyMapDiagLine();
+        if (journeyMapLine != null) {
+            feedback.accept(Component.literal(journeyMapLine).withStyle(ChatFormatting.GRAY));
+        }
     }
 }

@@ -19,7 +19,7 @@ class ClientStatusTextTest {
             check(List.of(new ClientStatusText.Message(ClientReloadText.outcomeKey(status),List.of())),languages);
         check(List.of(ClientReloadText.normalization(new dev.vox.lss.common.config.SettingsSchema.Normalization("lod.distance_chunks",-1,0))),languages);
         var defaults=SettingsSchema.client().defaults();
-        var settings=ClientSettingsStatus.capture(true,defaults,defaults,defaults,Set.of("integrations.xaero_map.enabled"));
+        var settings=ClientSettingsStatus.capture(true,defaults,defaults,defaults,Set.of("integrations.map_ingestion.enabled"));
         for (var discovery : ClientStatusSnapshot.Discovery.values())
             for (var integration : ClientStatusSnapshot.Availability.values())
                 for (boolean active : new boolean[]{false,true}) {

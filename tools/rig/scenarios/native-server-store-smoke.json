@@ -35,7 +35,7 @@
   },
   "client_config": {
     "lod.receive": true,
-    "integrations.xaero_map.enabled": false,
+    "integrations.map_ingestion.enabled": false,
     "lod.distance_chunks": 16
   },
   "fixture_capabilities_required": [
