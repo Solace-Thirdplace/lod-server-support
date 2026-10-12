@@ -125,9 +125,12 @@ class DirtyColumnBroadcaster {
                 // dimension (the getLastDimension filter above already matched it), so reuse
                 // the loop key — no per-player re-extraction of the same string.
                 int lodDist = config.lodDistanceForWorld(dimensionStr);
-                // No LOD service in this world (distance 0): no notices — the drain and the
-                // invalidation above still ran, so a re-enabled world re-serves fresh data.
-                if (lodDist <= 0) continue;
+                // No LOD service in this world (distance 0): clears and notices still go out,
+                // at the radius a legacy session was advertised. The done-bit clears keep a
+                // world turned back on (reload) from answering up_to_date off a pre-edit bit;
+                // a CURRENT client told "off" has no manager and drops the notice, while a
+                // legacy one (never told) needs it.
+                if (lodDist <= 0) lodDist = config.legacyAdvertisedDistance(0);
 
                 // Paginate: a single DirtyColumns payload caps at MAX_POSITIONS, so when a player
                 // has more in-range dirty positions than the cap, send multiple payloads rather

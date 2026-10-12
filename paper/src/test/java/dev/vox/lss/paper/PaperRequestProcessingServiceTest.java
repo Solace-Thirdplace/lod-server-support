@@ -610,13 +610,14 @@ class PaperRequestProcessingServiceTest {
     }
 
     @Test
-    void aReloadThatTurnsAWorldOffTellsItsPlayersAndDropsTheirBacklog() {
+    void aReloadThatTurnsAWorldOffTellsItsPlayersAndResetsTheirState() {
         MutablePaperSettings.set(config, "lod.distance.default_chunks", 512);
         var netherUuid = UUID.randomUUID();
         var netherState = service.registerPlayer(playerIn(netherUuid, level(Level.NETHER)),
                 LSSConstants.CAPABILITY_VOXEL_COLUMNS);
+        offer(netherState, new IncomingRequest(2, 2, -1L));
         var overworldUuid = UUID.randomUUID();
-        service.registerPlayer(playerIn(overworldUuid, level(Level.OVERWORLD)),
+        var overworldState = service.registerPlayer(playerIn(overworldUuid, level(Level.OVERWORLD)),
                 LSSConstants.CAPABILITY_VOXEL_COLUMNS);
         MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
         var sent = new java.util.HashMap<UUID, Boolean>();
@@ -626,9 +627,14 @@ class PaperRequestProcessingServiceTest {
 
         assertEquals(Boolean.FALSE, sent.get(netherUuid));
         assertEquals(Boolean.TRUE, sent.get(overworldUuid));
-        var cleared = netherState.takeIncomingBatch();
-        assertNotNull(cleared, "the off world's declared backlog is replaced by an empty batch");
-        assertEquals(0, cleared.requests().length);
+        // The dimension-change cycle: in-flight work retired, a fresh state (empty served-set,
+        // nothing declared) — a world turned back on cannot answer off an old done-bit.
+        assertTrue(netherState.registration().isRetired(), "the off world's old session is retired");
+        var fresh = service.getPlayers().get(netherUuid);
+        assertNotNull(fresh, "the player stays registered in the off world");
+        assertNotSame(netherState, fresh);
+        assertNull(fresh.takeIncomingBatch(), "nothing declared carries over");
+        assertSame(overworldState, service.getPlayers().get(overworldUuid), "served worlds keep their state");
     }
 
     // ---- PP-005: removed-vs-respawn branches ----
