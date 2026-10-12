@@ -1,10 +1,11 @@
 {
   "baseline": {
-    "1.21.1": "37ab45306fb02ce4f36bac5c99ca0a683c311c68",
-    "1.21.10": "3da849653e7a53b47399a046c590b6c705a10645",
-    "1.21.11": "bb03320c8cf0effa569fdd0648708b60b5abe4fd",
-    "26.1": "ddd54fc0ead4efb35c5fa4c91fb972c5de8f6d6f",
-    "26.2": "7f4e244745dc1fe43c5596bac997b59244db0fc4"
+    "1.21.1": "3d3d3bad0ab3fb8bd5aa26051de2828e86fb2a37",
+    "1.21.10": "75997c190a3cb0e2c8e7cd8986d3a064a2cded13",
+    "1.21.11": "d66abe763647d129d439c9bc648e45d9e206ecc0",
+    "26.1": "91d3f6aa779ac4440c31d150690d1ba06a40db7c",
+    "26.2": "9e3dc73da1c87037683b39acbc8a32ce846e4821",
+    "26.3": "950868bdbeffbdadd72a302326379ec8a0d51799"
   },
   "final_shared_invariants": [
     "common/build.gradle",
@@ -29,14 +30,16 @@
     "1.21.10": [],
     "1.21.11": [],
     "26.1": [],
-    "26.2": []
+    "26.2": [],
+    "26.3": []
   },
   "required_targets": [
     "1.21.1",
     "1.21.10",
     "1.21.11",
     "26.1",
-    "26.2"
+    "26.2",
+    "26.3"
   ],
   "reviewed_candidate_blobs": {
     "1.21.1": {
@@ -112,6 +115,24 @@
       "tools/rig/run_server_smoke.py": "1848405444bf0214f3edf39fbfb458cd97ed327a"
     },
     "26.2": {
+      "common/build.gradle": "0836715b699038e9d1d0415a3e1fc0db6ae44ef1",
+      "common/src/main/java/dev/vox/lss/common/store/SqliteDriverRuntime.java": "b002b264933f1a7c01732dd426f47c551b5c3d85",
+      "common/src/main/java/dev/vox/lss/common/store/SqliteLodStore.java": "07b733f50f4e7002e0114cab6a83b0cae816eff9",
+      "common/src/main/java/dev/vox/lss/common/store/StoreCodec.java": "075cf49bb6ade2912c881884c72ca2f56ec5f529",
+      "common/src/main/java/dev/vox/lss/common/store/StoreDirectoryLease.java": "ecc08ff4b009da7ba48c693ec986e3b33f9a0bc7",
+      "common/src/sqliteBridge/java/dev/vox/lss/jdbc/PrivateSqliteBridge.java": "4b5377481f2db2bbd9b9bba913cb92aa587d2f9f",
+      "common/src/test/java/dev/vox/lss/common/store/SqliteIsolationTest.java": "e364a6349e15fd21f066f968e7f8ec86f02e191f",
+      "common/src/test/java/dev/vox/lss/common/store/SqliteOwnershipTest.java": "0dcfc436e9cd3f68c8e21c44ca46665a01578b74",
+      "common/src/test/java/dev/vox/lss/common/store/SqliteRuntimeProbe.java": "2f2bdfb1bf034a19f627373576b92a25dd053b4e",
+      "gradle/sqlite-runtime.gradle": "813c9fd8c05488911c5b40029d6c79e1a9dbd993",
+      "gradle/sqlite-runtime.properties": "e0a17cf9546772e18ce0dbf40cde54d495a0c077",
+      "tools/packaging/classfile.py": "2897f4beed175a3e77ade973b28690b399e3bc92",
+      "tools/packaging/sqlite_capsule.py": "9e6803498fecf8c886a798179fd8233648b95269",
+      "tools/packaging/test_sqlite_capsule.py": "549185cd98f66bcc3ce5dc32dcfb44a4e46b0cce",
+      "tools/rig/check_server_smoke_report.py": "d2a207aefe0be51b5ba7b9ee9e688514a5a80293",
+      "tools/rig/run_server_smoke.py": "1848405444bf0214f3edf39fbfb458cd97ed327a"
+    },
+    "26.3": {
       "common/build.gradle": "0836715b699038e9d1d0415a3e1fc0db6ae44ef1",
       "common/src/main/java/dev/vox/lss/common/store/SqliteDriverRuntime.java": "b002b264933f1a7c01732dd426f47c551b5c3d85",
       "common/src/main/java/dev/vox/lss/common/store/SqliteLodStore.java": "07b733f50f4e7002e0114cab6a83b0cae816eff9",

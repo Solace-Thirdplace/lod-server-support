@@ -269,7 +269,7 @@ class DhColumnConverterTest {
     private static MappedRegistry<Biome> biomes;
     @BeforeAll static void bootstrap() {
         SharedConstants.tryDetectVersion(); Bootstrap.bootStrap();
-        var source=VanillaRegistries.createLookup().lookupOrThrow(Registries.BIOME);
+        var source=VanillaRegistries.createWorldLookup().lookupOrThrow(Registries.BIOME);
         biomes=new MappedRegistry<>(Registries.BIOME,Lifecycle.stable());
         source.listElements().forEach(h->biomes.register(h.key(),h.value(),RegistrationInfo.BUILT_IN));
         biomes.freeze();

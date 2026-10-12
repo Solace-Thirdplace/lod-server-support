@@ -210,7 +210,7 @@ def validate(root):
     for path in sorted((base/'validation').glob('*.json')):
         r=load(path);validate_record(r,profiles);records.append(r)
     refs=versioned(load(base/'source-refs.json'))
-    require(set(refs['sources'])=={'1.21.1','1.21.10','1.21.11','26.1','26.2'},'source set must contain five lines')
+    require(set(refs['sources'])=={'1.21.1','1.21.10','1.21.11','26.1','26.2','26.3'},'source set must contain six lines')
     rows=[]
     for line, source in sorted(refs['sources'].items()):
         require(source['schema_version']==1,'unsupported source schema')

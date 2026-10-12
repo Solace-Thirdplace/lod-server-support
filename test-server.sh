@@ -56,8 +56,8 @@ NEOFORGE_INSTALLER_URL="https://maven.neoforged.net/releases/net/neoforged/neofo
 
 # --- Download URLs ---
 FABRIC_SERVER_URL="https://meta.fabricmc.net/v2/versions/loader/${FABRIC_MC_VERSION}/${FABRIC_LOADER_VERSION}/${FABRIC_INSTALLER_VERSION}/server/jar"
-FABRIC_API_URL="https://cdn.modrinth.com/data/P7dR8mSH/versions/Cpy2Px2f/fabric-api-0.154.0%2B26.2.jar"
-C2ME_URL="https://cdn.modrinth.com/data/VSNURh3q/versions/nvOkOiyi/c2me-fabric-mc26.2-0.4.2-alpha.0.9.jar"
+FABRIC_API_URL="https://cdn.modrinth.com/data/P7dR8mSH/versions/v2j28coa/fabric-api-0.162.0%2B26.3.jar"
+C2ME_URL="https://cdn.modrinth.com/data/VSNURh3q/versions/ODMLK8M9/c2me-fabric-mc26.3-0.4.2-alpha.0.90.jar"
 # DrexHD AntiXray (Modrinth sml2FMaA), fabric-1.4.16+26.1 — listed compatible with MC 26.2.
 # `run-fabric-antixray` enables it as the live gate for LSS's AntiXray compat
 # (docs/planning/antixray-compat-design.md): a current LSS build must SURVIVE an LSS client
@@ -69,9 +69,10 @@ C2ME_URL="https://cdn.modrinth.com/data/VSNURh3q/versions/nvOkOiyi/c2me-fabric-m
 ANTIXRAY_URL="https://cdn.modrinth.com/data/sml2FMaA/versions/AK313N9m/antixray-fabric-1.4.16%2B26.1.jar"
 
 # --- Legacy (protocol-16) LSS server ---
-# The last pre-v0.7.0 release on this Minecraft line (26.2), pulled straight from GitHub
-# Releases (a real protocol-16 server, not a rebuild). MC 26.2 == the current line, so a
-# current client CAN join it — only the LSS protocol differs (16 vs 18), which is exactly
+# The last pre-v0.7.0 release for MC 26.2, pulled straight from GitHub Releases (a real
+# protocol-16 server, not a rebuild). No pre-v0.7.0 release exists for 26.3, so on this
+# line the legacy server only loads under a 26.2 launcher (use support/mc26.2's script);
+# a 26.2 client CAN join it — only the LSS protocol differs (16 vs 18), which is exactly
 # what the v16 client-compat path bridges. Bump this when a newer pre-v0.7.0 tag is preferred.
 LEGACY_LSS_VERSION="0.6.2"
 LEGACY_LSS_MC="26.2"
@@ -669,7 +670,7 @@ setup_folia() {
     write_lss_config "$FOLIA_DIR/plugins/LodServerSupport" paper
 
     echo "=== Installing Folia plugins ==="
-    echo "  Installing LSS (same jar as Paper — folia-supported: true, EXPERIMENTAL on 26.2)..."
+    echo "  Installing LSS (same jar as Paper — folia-supported where a Folia build exists, EXPERIMENTAL)..."
     local lss_jar
     lss_jar=$(build_paper_jar)
     rm -f "$plugins_dir"/lod-server-support-paper*.jar

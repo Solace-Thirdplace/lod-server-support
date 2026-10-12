@@ -30,7 +30,7 @@ final class CorpusRegistryAccess {
     private CorpusRegistryAccess() {}
 
     static RegistryAccess build() {
-        HolderLookup.Provider provider = VanillaRegistries.createLookup();
+        HolderLookup.Provider provider = VanillaRegistries.createWorldLookup();
         HolderLookup.RegistryLookup<Biome> src = provider.lookupOrThrow(Registries.BIOME);
         MappedRegistry<Biome> biomes = new MappedRegistry<>(Registries.BIOME, Lifecycle.stable());
         for (var key : List.of(Biomes.PLAINS, Biomes.DESERT, Biomes.JUNGLE, Biomes.SNOWY_TAIGA,

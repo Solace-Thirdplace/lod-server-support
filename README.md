@@ -2,13 +2,13 @@
 
 Enables players with [Voxy](https://modrinth.com/mod/voxy) to see fully rendered terrain out to hundreds of chunks on multiplayer servers without needing to explore the world first. Also includes **Far Players**: players far beyond normal render distance appear in the LOD terrain with name tags, equipment, and mounts.
 
-**Try it live**: join `lod-server-support.modrinth.gg` with Voxy and this mod installed. Supports Minecraft 26.2, 26.1, 1.21.11, 1.21.10, and 1.21.1.
+**Try it live**: join `lod-server-support.modrinth.gg` with Voxy and this mod installed. Supports Minecraft 26.3, 26.2, 26.1, 1.21.11, 1.21.10, and 1.21.1.
 
 https://github.com/user-attachments/assets/721fb344-890e-4e03-ab36-539444427f7b
 
 ## Compatibility
 
-Clients use the Fabric mod on every version; on 26.2, 26.1, and 1.21.1 a NeoForge client works as well. Supported servers:
+Clients use the Fabric mod on every version; on 26.3, 26.2, 26.1, and 1.21.1 a NeoForge client works as well. Supported servers:
 
 <!-- LSS SERVER MATRIX START -->
 | Minecraft line | Fabric / Paper | Folia | NeoForge shipping | Neo far renderer |
@@ -18,6 +18,7 @@ Clients use the Fabric mod on every version; on 26.2, 26.1, and 1.21.1 a NeoForg
 | 1.21.11 | maintained | experimental | maintained build only | unsupported |
 | 26.1 | maintained | experimental | shipped; best-effort | unsupported |
 | 26.2 | maintained | experimental | shipped; best-effort | unsupported |
+| 26.3 | maintained | unsupported | shipped; best-effort | unsupported |
 <!-- LSS SERVER MATRIX END -->
 
 NeoForge 1.21.1 has distinct native and Connector dependency routes. The recorded 2026-09-08 native Voxy 0.2.9-alpha trial was rejected; older successful reports do not establish current compatibility or its failure's upstream cause. Xaero-only legacy Sodium and the modern Connector Voxy route are separate profiles. Use the [dated profile inventory](docs/testing/astra-live-profiles.md) and exact dependency locks; do not combine their jars by filename.
@@ -56,7 +57,7 @@ LOD Server Support is backwards and forwards compatible from v0.4.0 through the 
 
 Install **LOD Server Support** on **both** the **server** (Fabric, Paper, or NeoForge on a line that ships it) and **every participating client** (the matching Fabric or NeoForge LSS mod, with Voxy or the enabled Xaero map bridge). The server and client both need LSS for its terrain download service.
 
-NeoForge ships on MC 1.21.1, 26.1 and 26.2; the 1.21.10/1.21.11 modules remain maintained builds. NeoForge far-player rendering is live on 1.21.1 and remains an intentional stub on the other lines. See the [loader/artifact matrix](docs/planning/per-version-surfaces.md#current-loader-and-artifact-surfaces-2026-09-08) and [validation profiles](docs/testing/astra-live-profiles.md) for the separate packaging, consumer and live-test boundaries.
+NeoForge ships on MC 1.21.1, 26.1, 26.2 and 26.3; the 1.21.10/1.21.11 modules remain maintained builds. NeoForge far-player rendering is live on 1.21.1 and remains an intentional stub on the other lines. See the [loader/artifact matrix](docs/planning/per-version-surfaces.md#current-loader-and-artifact-surfaces-2026-09-08) and [validation profiles](docs/testing/astra-live-profiles.md) for the separate packaging, consumer and live-test boundaries.
 
 ## Commands
 

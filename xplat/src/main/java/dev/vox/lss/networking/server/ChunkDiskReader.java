@@ -216,9 +216,12 @@ public class ChunkDiskReader extends AbstractChunkDiskReader {
             return BackgroundIoSubmit.schedule(handles,
                     (CompletableFuture<Optional<NbtSectionSerializer.RawChunkRecord>> f) -> {
                         try {
+                            // create=false, exactly vanilla read(pos) on this line: a missing
+                            // region file is null (cached absence) = the chunk is not on disk.
                             var region = ((dev.vox.lss.mixin.AccessorRegionFileStorage) (Object) handles.storage())
-                                    .lss$getRegionFile(pos);
-                            var record = RegionFileRawRead.read(region, pos);
+                                    .lss$getRegionFile(pos, false);
+                            Optional<NbtSectionSerializer.RawChunkRecord> record = region == null
+                                    ? Optional.empty() : RegionFileRawRead.read(region, pos);
                             // Count only PRESENT records (pre-D3 review L2-2): a
                             // not-found/corrupt fetch is no raw-path "serve", and on a
                             // miss-heavy backfill the diag token would climb at the miss

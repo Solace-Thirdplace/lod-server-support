@@ -77,7 +77,7 @@ class DhClientSessionTest {
 
     @BeforeAll static void bootstrap() {
         SharedConstants.tryDetectVersion(); Bootstrap.bootStrap();
-        var source=VanillaRegistries.createLookup().lookupOrThrow(Registries.BIOME);
+        var source=VanillaRegistries.createWorldLookup().lookupOrThrow(Registries.BIOME);
         biomes=new MappedRegistry<>(Registries.BIOME,Lifecycle.stable());
         source.listElements().forEach(h->biomes.register(h.key(),h.value(),RegistrationInfo.BUILT_IN));
         biomes.freeze();
@@ -633,7 +633,7 @@ class DhClientSessionTest {
     @Test void stalledMainThreadAbortsOnlyItsTileAndNeverRunsTheLateHandoff() throws Exception {
         var s=session();var position=new DhPosition(6,-1,1);int id=2;
         doReturn(-64).when(level).getMinY();doReturn(384).when(level).getHeight();
-        var dimension=VanillaRegistries.createLookup().lookupOrThrow(Registries.DIMENSION_TYPE)
+        var dimension=VanillaRegistries.createWorldLookup().lookupOrThrow(Registries.DIMENSION_TYPE)
                 .getOrThrow(net.minecraft.world.level.dimension.BuiltinDimensionTypes.OVERWORLD).value();
         doReturn(dimension).when(level).dimensionType();
         var ctor=PENDING.getDeclaredConstructor(DhPosition.class,boolean.class,long.class,long.class);ctor.setAccessible(true);
@@ -1014,7 +1014,7 @@ class DhClientSessionTest {
         doReturn(Level.OVERWORLD).when(level).dimension();
         doReturn(new RegistryAccess.ImmutableRegistryAccess(List.of(biomes)).freeze()).when(level).registryAccess();
         doReturn(minY).when(level).getMinY();doReturn(height).when(level).getHeight();
-        var dimension=VanillaRegistries.createLookup().lookupOrThrow(Registries.DIMENSION_TYPE)
+        var dimension=VanillaRegistries.createWorldLookup().lookupOrThrow(Registries.DIMENSION_TYPE)
                 .getOrThrow(net.minecraft.world.level.dimension.BuiltinDimensionTypes.OVERWORLD).value();
         doReturn(dimension).when(level).dimensionType();
         var cache=new ClientChunkCache(level,2);

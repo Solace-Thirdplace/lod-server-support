@@ -87,6 +87,20 @@ public class SerializerParityGameTests {
     private static final int END_VOID_DISK_CX = 44;
     private static final int END_VOID_DISK_CZ = 8;
 
+    /** LINE FLAVOR (26.3): the gametest server now builds EVERY dimension flat
+     *  ({@code WorldPresets.FLAT_ALL_DIMENSIONS}, bytecode-verified 2026-10-12), so the End has
+     *  a bedrock floor and no void columns. The all-air tests use this extra dimension instead,
+     *  added by the gametest datapack's override of that preset
+     *  ({@code data/minecraft/worldgen/world_preset/flat_all_dimensions.json} — vanilla's three
+     *  dimensions verbatim plus this one: the End dimension type, so no skylight, over an
+     *  air-only flat generator with features off, so no spawn platform). The gametest server
+     *  bakes its dimensions from that preset alone — a {@code data/<ns>/dimension} file is
+     *  never merged there. */
+    static final net.minecraft.resources.ResourceKey<Level> VOID_LEVEL = net.minecraft.resources.ResourceKey.create(
+            net.minecraft.core.registries.Registries.DIMENSION,
+            net.minecraft.resources.Identifier.fromNamespaceAndPath("lss", "void"));
+    static final String VOID_DIM = "lss:void";
+
     /**
      * R2-5's production range gate feeds {@code level.getMinSectionY()}/{@code getMaxSectionY()}
      * into the NBT serializers as an INCLUSIVE [min, max]. Nothing else would red if a future MC
@@ -393,6 +407,7 @@ public class SerializerParityGameTests {
                         fgResult.set(foreground.getPlayerQueue(fgId).poll());
                     }
                     var fg = fgResult.get();
+                    if (fg == null) waitWallClock(helper);
                     helper.assertTrue(fg != null, "waiting for the foreground read result");
                     helper.assertTrue(!fg.notFound() && !fg.saturated() && fg.sectionBytes() != null,
                             "foreground read of the saved superflat chunk must return content: " + fg
@@ -408,7 +423,9 @@ public class SerializerParityGameTests {
                         bgResult.set(background.getPlayerQueue(bgId).poll());
                     }
                     var bg = bgResult.get();
-                    helper.assertTrue(bg != null, "waiting for the background read result");
+                    if (bg == null) waitWallClock(helper);
+                    helper.assertTrue(bg != null, "waiting for the background read result; reader="
+                            + background.getDiagnostics());
                     helper.assertTrue(!bg.notFound() && !bg.saturated() && bg.sectionBytes() != null,
                             "background-priority read must return content, not not-found/saturated");
                     // B3 liveness receipt (review F2): byte parity alone cannot distinguish
@@ -507,9 +524,9 @@ public class SerializerParityGameTests {
      */
     @GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 200)
     public void dirtyContentFilterAllAirSentinelInEndVoid(GameTestHelper helper) {
-        ServerLevel endLevel = helper.getLevel().getServer().getLevel(Level.END);
-        helper.assertTrue(endLevel != null, "the End dimension must exist on the gametest server");
-        var dim = LSSConstants.DIM_STR_THE_END;
+        ServerLevel endLevel = helper.getLevel().getServer().getLevel(VOID_LEVEL);
+        helper.assertTrue(endLevel != null, "the lss:void gametest dimension must exist on the gametest server");
+        var dim = VOID_DIM;
 
         // This test builds a block, and the gametest world persists across runs — so derive the
         // chunk from the per-run random batch position (cx 28..43, cz -16..-9: inside the void
@@ -529,7 +546,8 @@ public class SerializerParityGameTests {
         }
         var live = SectionSerializer.serializeColumn(endLevel, chunk, cx, cz);
         helper.assertTrue(live.serializedSections() == null,
-                "premise: no all-air End void column found near chunk (" + cx + ", " + baseCz + ")");
+                "premise: no all-air End void column found near chunk (" + cx + ", " + baseCz + ")"
+                        + describeColumn(endLevel, chunk, cx, cz));
 
         var filter = new DirtyContentFilter();
         helper.assertTrue(filter.contentChanged(endLevel, chunk, dim),
@@ -563,22 +581,22 @@ public class SerializerParityGameTests {
      */
     @GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 200)
     public void allAirEndChunkDiskReadResolvesFoundNotMissing(GameTestHelper helper) {
-        ServerLevel endLevel = helper.getLevel().getServer().getLevel(Level.END);
-        helper.assertTrue(endLevel != null, "the End dimension must exist on the gametest server");
+        ServerLevel endLevel = helper.getLevel().getServer().getLevel(VOID_LEVEL);
+        helper.assertTrue(endLevel != null, "the lss:void gametest dimension must exist on the gametest server");
         int cx = END_VOID_DISK_CX;
         int cz = END_VOID_DISK_CZ;
 
         var chunk = endLevel.getChunk(cx, cz);
         helper.assertTrue(
                 SectionSerializer.serializeColumn(endLevel, chunk, cx, cz).serializedSections() == null,
-                "premise: the End void chunk serializes as all-air");
+                "premise: the End void chunk serializes as all-air" + describeColumn(endLevel, chunk, cx, cz));
         // Flush the freshly generated chunk to its region file so the read below hits real disk state.
         endLevel.save(null, true, false);
 
         var reader = new ChunkDiskReader(1, false);
         var readerId = UUID.randomUUID();
         reader.registerPlayer(readerId, registration(readerId));
-        reader.submitReadDirect(readerId, registration(readerId), LSSConstants.DIM_STR_THE_END, endLevel, cx, cz, 0, 0L);
+        reader.submitReadDirect(readerId, registration(readerId), VOID_DIM, endLevel, cx, cz, 0, 0L);
 
         var result = new AtomicReference<dev.vox.lss.common.processing.ChunkReadResult>();
         helper.succeedWhen(() -> {
@@ -806,10 +824,15 @@ public class SerializerParityGameTests {
                     state.flushSendQueue(1_073_741_824L, limiter, flushDiag, p -> {});
                     helper.assertTrue(state.getTotalSectionsSent() == 1,
                             "waiting for the built column to serve and flush");
-                    // The column becomes all-air: strip every superflat layer.
+                    // The column becomes all-air: strip every layer up to the surface heightmap.
+                    // LINE FLAVOR (26.3): the gametest flat preset is no longer the classic
+                    // four layers (bedrock + sandstone up to y=15 here), so derive the top.
+                    var stripChunk = level.getChunk(cx, cz);
                     for (int x = 0; x < 16; x++) {
                         for (int z = 0; z < 16; z++) {
-                            for (int y = -64; y <= -61; y++) {
+                            int top = stripChunk.getHeight(
+                                    net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE, x, z);
+                            for (int y = level.getMinY(); y <= top; y++) {
                                 level.setBlock(new BlockPos(cx * 16 + x, y, cz * 16 + z),
                                         Blocks.AIR.defaultBlockState(), 3);
                             }
@@ -822,7 +845,8 @@ public class SerializerParityGameTests {
                     var capture = proc.captureLoadedProbe(dim, packed, state.registration());
                     var emptied = capture.bind(SectionSerializer.serializeColumn(level, chunk, cx, cz));
                     helper.assertTrue(emptied.serializedSections() == null,
-                            "premise: the stripped column must serialize as all-air");
+                            "premise: the stripped column must serialize as all-air"
+                                    + describeColumn(level, chunk, cx, cz));
                     // Client re-request with its stored stamp; invalidation and fresh probe
                     // remain posted before one snapshot = one mailbox take.
                     GameTestSeeding.seedRequest(state, packed, LSSConstants.epochSeconds() + 10_000);
@@ -994,5 +1018,47 @@ public class SerializerParityGameTests {
                 default -> helper.fail("unexpected store parity step " + step.get());
             }
         });
+    }
+
+    /** Diagnostic for the all-air premises: every section that keeps a column from being
+     *  all-air (its first non-air block, or which light layer is non-zero). */
+    static String describeColumn(net.minecraft.server.level.ServerLevel level,
+                                 net.minecraft.world.level.chunk.LevelChunk chunk, int cx, int cz) {
+        var out = new StringBuilder();
+        var sections = chunk.getSections();
+        var engine = level.getLightEngine();
+        for (int i = 0; i < sections.length; i++) {
+            int sy = level.getMinSectionY() + i;
+            var pos = net.minecraft.core.SectionPos.of(cx, sy, cz);
+            var bl = engine.getLayerListener(net.minecraft.world.level.LightLayer.BLOCK).getDataLayerData(pos);
+            var sl = engine.getLayerListener(net.minecraft.world.level.LightLayer.SKY).getDataLayerData(pos);
+            boolean blOn = bl != null && !bl.isEmpty();
+            boolean slOn = sl != null && !sl.isEmpty();
+            String block = null;
+            if (!sections[i].hasOnlyAir()) {
+                find:
+                for (int y = 0; y < 16; y++) for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
+                    var st = sections[i].getBlockState(x, y, z);
+                    if (!st.isAir()) { block = st + "@" + x + "," + y + "," + z; break find; }
+                }
+            }
+            if (block != null || blOn) {
+                out.append(" [y=").append(sy).append(block != null ? " " + block : "")
+                        .append(blOn ? " blockLight" : "").append(slOn ? " skyLight" : "").append(']');
+            }
+        }
+        return out.length() == 0 ? " (no non-air/block-lit sections)" : out.toString();
+    }
+
+    /** Wall-denominate a tick-polled wait on real disk I/O (the TwoPlayerGameTests fix family):
+     *  an unthrottled gametest server burns its maxTicks budget in well under a second, while
+     *  a BACKGROUND-priority IOWorker read can queue behind a generation batch's saves. */
+    private static void waitWallClock(GameTestHelper helper) {
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            helper.fail("wall-clock wait interrupted");
+        }
     }
 }

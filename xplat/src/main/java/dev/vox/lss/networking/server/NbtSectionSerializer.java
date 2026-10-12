@@ -600,7 +600,7 @@ final class NbtSectionSerializer {
             blockIds = new int[n];
             long[] metas = new long[n];
             for (int i = 0; i < n; i++) {
-                var entry = BlockCodecHolder.ELEMENT.resolve(palette.get(i));
+                var entry = BlockCodecHolder.ELEMENT.resolve(upgradeLegacyBlockStateEntry(palette.get(i)));
                 metas[i] = entry.meta();
                 blockIds[i] = entry.globalId();
                 if (entry.hardError() != null) {
@@ -771,7 +771,8 @@ final class NbtSectionSerializer {
             blockStates = factory.createForBlockStates();
             knownAir = true;
         } else {
-            var blockStatesResult = blockStateCodec.parse(NbtOps.INSTANCE, blockStatesOpt.get());
+            var blockStatesResult = blockStateCodec.parse(NbtOps.INSTANCE,
+                    upgradeLegacyBlockStates(blockStatesOpt.get()));
             // Vanilla-lenient (resultOrPartial): a recoverable palette error — e.g. a
             // pre-DataFixer block rename in an upgraded world's unvisited chunk (this
             // path reads RAW region NBT, no DFU runs) — substitutes the container
@@ -1079,5 +1080,42 @@ final class NbtSectionSerializer {
                 idMap.size());
         factoryMemo = java.util.Map.entry(new java.lang.ref.WeakReference<>(registryAccess), scoped);
         return scoped;
+    }
+
+    /** LINE FLAVOR (26.3): {@code BlockStateFieldNamesFix} renamed block-state compounds'
+     *  {@code Name}→{@code id} and {@code Properties}→{@code properties}, and the 26.3 codec
+     *  REJECTS the old names. Vanilla runs that fix (DFU) when it LOADS a chunk; this path
+     *  reads RAW region NBT, so a chunk not yet re-saved by 26.3 — most of an upgraded world —
+     *  still carries the old names, and every entry would substitute air. Mirrors the fix per
+     *  entry on a COPY (the read tag may be a pending-write snapshot; it is never mutated). */
+    static net.minecraft.nbt.Tag upgradeLegacyBlockStateEntry(net.minecraft.nbt.Tag entry) {
+        if (!(entry instanceof CompoundTag c) || c.contains("id") || !c.contains("Name")) return entry;
+        var upgraded = new CompoundTag();
+        for (String key : c.keySet()) {
+            String renamed = key.equals("Name") ? "id" : key.equals("Properties") ? "properties" : key;
+            upgraded.put(renamed, c.get(key));
+        }
+        return upgraded;
+    }
+
+    /** The block_states compound with any legacy palette entries upgraded (the object
+     *  path's twin of {@link #upgradeLegacyBlockStateEntry}); the input itself when none. */
+    static CompoundTag upgradeLegacyBlockStates(CompoundTag blockStates) {
+        var palette = blockStates.getList("palette").orElse(null);
+        if (palette == null) return blockStates;
+        net.minecraft.nbt.ListTag upgradedPalette = null;
+        for (int i = 0; i < palette.size(); i++) {
+            var entry = palette.get(i);
+            var upgraded = upgradeLegacyBlockStateEntry(entry);
+            if (upgraded != entry) {
+                if (upgradedPalette == null) upgradedPalette = palette.copy();
+                upgradedPalette.set(i, upgraded);
+            }
+        }
+        if (upgradedPalette == null) return blockStates;
+        var copy = new CompoundTag();
+        for (String key : blockStates.keySet()) copy.put(key, blockStates.get(key));
+        copy.put("palette", upgradedPalette);
+        return copy;
     }
 }

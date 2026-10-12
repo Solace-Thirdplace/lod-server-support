@@ -11,9 +11,11 @@ import java.io.IOException;
 /**
  * Exposes {@code RegionFileStorage.getRegionFile} for the Phase 3 background-read split
  * (perf-round plan R1): the raw-fetch executor task resolves the region file exactly the
- * way vanilla's {@code read(pos)} does — the private method NEVER returns null (it
- * creates the region file on demand); chunk absence is signalled downstream by the
- * offset-0 / missing-stream shapes {@code RegionFileRawRead} mirrors.
+ * way vanilla's {@code read(pos)} does. LINE FLAVOR (26.3): the method gained a
+ * {@code create} flag and caches absence; vanilla's read passes {@code false}, which
+ * returns null for a missing region file (so does this caller — null = chunk absent).
+ * Otherwise absence is signalled downstream by the offset-0 / missing-stream shapes
+ * {@code RegionFileRawRead} mirrors.
  *
  * <p>Pinned by the mixin-config listing leg in {@code ChannelAccessorContractTest} —
  * an unregistered accessor resolves but is never applied, and every raw read would
@@ -23,5 +25,5 @@ import java.io.IOException;
 public interface AccessorRegionFileStorage {
 
     @Invoker("getRegionFile")
-    RegionFile lss$getRegionFile(ChunkPos pos) throws IOException;
+    RegionFile lss$getRegionFile(ChunkPos pos, boolean create) throws IOException;
 }

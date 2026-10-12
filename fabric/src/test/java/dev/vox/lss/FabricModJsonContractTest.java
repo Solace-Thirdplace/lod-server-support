@@ -29,8 +29,8 @@ class FabricModJsonContractTest {
     // The trailing '-' makes the upper bound prerelease-EXCLUSIVE: Fabric semver sorts
     // 26.3-rc below 26.3, so a bare '<26.3' would admit 26.3 prereleases — where the required
     // mixins over MC internals hard-crash at apply (final compat review 2026-07-27).
-    private static final String EXPECTED_MINECRAFT_DEPENDS = ">=26.2 <26.3-";
-    private static final String EXPECTED_MINECRAFT_VERSION_PREFIX = "26.2";
+    private static final String EXPECTED_MINECRAFT_DEPENDS = ">=26.3 <26.4-";
+    private static final String EXPECTED_MINECRAFT_VERSION_PREFIX = "26.3";
 
     private static JsonObject modJson;
     private static Properties gradleProps;

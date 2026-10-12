@@ -1,6 +1,6 @@
 # Contributor guide
 
-This checkout is the Minecraft **26.2** support line. Use **Java 25** for the platform build and **Java 21** for common tests. Actual platform MC targets, shipping and renderer availability are checked by [the compatibility catalog](docs/compatibility.md), with `.github/line.env` and build definitions authoritative. Run client gametests explicitly alongside the Fabric build; preserve this line’s loader and rendering adaptations.
+This checkout is the Minecraft **26.3** line (main). Use **Java 25** for the platform build and **Java 21** for common tests. Folia has no 26.3 build, so this line ships Paper/Purpur only (`folia-supported` is derived absent from `LINE_PAPER_LOADERS`); 26.2 lives on `support/mc26.2`. Actual platform MC targets, shipping and renderer availability are checked by [the compatibility catalog](docs/compatibility.md), with `.github/line.env` and build definitions authoritative. Run client gametests explicitly alongside the Fabric build; preserve this line’s loader and rendering adaptations.
 
 ## Commands
 

@@ -29,7 +29,7 @@ final class JourneyMapTestColumns {
     static {
         net.minecraft.SharedConstants.tryDetectVersion();
         net.minecraft.server.Bootstrap.bootStrap();
-        var source = VanillaRegistries.createLookup().lookupOrThrow(Registries.BIOME);
+        var source = VanillaRegistries.createWorldLookup().lookupOrThrow(Registries.BIOME);
         MappedRegistry<Biome> biomes = new MappedRegistry<>(Registries.BIOME, Lifecycle.stable());
         source.listElements().forEach(ref -> biomes.register(ref.key(), ref.value(), RegistrationInfo.BUILT_IN));
         biomes.freeze();

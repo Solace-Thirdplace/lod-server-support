@@ -10,7 +10,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(IntegratedServer.class)
 public class IntegratedServerLanHook {
-    // LINE-FACT(26.2): the overload census below is THIS line's bytecode — re-derive
+    // LINE-FACT(26.3): 26.3 replaced the 4-arg wrapper with a 3-arg (scope, guestCommands,
+    // port) one that /publish calls and that still delegates into the 2-arg overload the
+    // world-options screen calls directly (bytecode-verified 2026-10-11), so the 2-arg hook
+    // still covers both entry points exactly once. The 26.2 census follows — re-derive
     // on a port (LanHookContractTest resolves the pinned descriptor per line).
     // MC 26.2 has two publishServer overloads. The 4-arg (scope, gameType, allowCheats,
     // port) is a thin wrapper that delegates into THIS 2-arg overload — and the LAN screen

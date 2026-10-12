@@ -76,7 +76,7 @@ class PaperChunkGenerationServiceTest {
         Bootstrap.bootStrap();
         // Same biome-registry construction as NbtSectionSerializerTest (success path needs
         // a real LevelChunkSection for PaperSectionSerializer to serialize).
-        HolderLookup.Provider provider = VanillaRegistries.createLookup();
+        HolderLookup.Provider provider = VanillaRegistries.createWorldLookup();
         HolderLookup.RegistryLookup<Biome> src = provider.lookupOrThrow(Registries.BIOME);
         MappedRegistry<Biome> biomes = new MappedRegistry<>(Registries.BIOME, Lifecycle.stable());
         src.listElements().forEach(ref -> biomes.register(ref.key(), ref.value(), RegistrationInfo.BUILT_IN));

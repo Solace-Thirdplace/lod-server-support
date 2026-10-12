@@ -61,9 +61,17 @@ class MoveTraceHookContractTest {
         assertEquals(4, injectBodies.size(), "exactly four injects: post-ensure entry,"
                 + " too-quickly warn, wrongly warn, rejection teleport");
 
+        // LINE FLAVOR (26.3): the entry inject targets handleMovePlayer; the three event
+        // injects target handlePlayerPositionChange, where vanilla moved the checks.
+        assertEquals(1, injectBodies.stream().filter(b -> Pattern.compile(
+                        "method\\s*=\\s*\"handleMovePlayer\"").matcher(b).find()).count(),
+                "exactly the entry inject targets handleMovePlayer");
+        assertEquals(3, injectBodies.stream().filter(b -> Pattern.compile(
+                        "method\\s*=\\s*\"handlePlayerPositionChange\"").matcher(b).find()).count(),
+                "the three event injects target handlePlayerPositionChange");
+        assertTrue(source.contains("lss$fromMovePacket(x, y, z)"),
+                "event injects fire only for the captured move packet's own claim");
         for (String body : injectBodies) {
-            assertTrue(Pattern.compile("method\\s*=\\s*\"handleMovePlayer\"").matcher(body).find(),
-                    "every inject targets handleMovePlayer: " + body);
             assertTrue(Pattern.compile("require\\s*=\\s*0").matcher(body).find(),
                     "every inject carries require = 0 (degrade, never crash): " + body);
         }
@@ -140,7 +148,15 @@ class MoveTraceHookContractTest {
 
     @Test
     void handleMovePlayerBytecodeMatchesTheTargetingCensus() throws Exception {
-        MethodNode method = loadHandleMovePlayer();
+        // LINE FLAVOR (26.3): the census runs over handlePlayerPositionChange, which
+        // handleMovePlayer calls (directly) with the packet's resolved claim.
+        assertTrue(loadMethod("handleMovePlayer").instructions.toArray().length > 0);
+        assertTrue(java.util.Arrays.stream(loadMethod("handleMovePlayer").instructions.toArray())
+                        .anyMatch(i -> i instanceof MethodInsnNode c
+                                && c.name.equals("handlePlayerPositionChange")
+                                && c.desc.equals("(DDDFFZZ)V")),
+                "handleMovePlayer must delegate to handlePlayerPositionChange(DDDFFZZ)V");
+        MethodNode method = loadMethod("handlePlayerPositionChange");
 
         var warnsArray = new ArrayList<Integer>();   // warn(String, Object[])
         var warnsSingle = new ArrayList<Integer>();  // warn(String, Object)
@@ -219,14 +235,18 @@ class MoveTraceHookContractTest {
     }
 
     private static MethodNode loadHandleMovePlayer() throws Exception {
+        return loadMethod("handleMovePlayer");
+    }
+
+    private static MethodNode loadMethod(String name) throws Exception {
         try (InputStream in = ServerGamePacketListenerImpl.class.getResourceAsStream(
                 "/net/minecraft/server/network/ServerGamePacketListenerImpl.class")) {
             assertNotNull(in, "listener bytecode must be resource-loadable in the named namespace");
             var node = new ClassNode();
             new ClassReader(in).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
             List<MethodNode> matches = node.methods.stream()
-                    .filter(mn -> mn.name.equals("handleMovePlayer")).toList();
-            assertEquals(1, matches.size(), "exactly one handleMovePlayer overload expected");
+                    .filter(mn -> mn.name.equals(name)).toList();
+            assertEquals(1, matches.size(), "exactly one " + name + " overload expected");
             return matches.get(0);
         }
     }

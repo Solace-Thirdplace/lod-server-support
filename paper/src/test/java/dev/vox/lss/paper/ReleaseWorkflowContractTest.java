@@ -187,8 +187,8 @@ class ReleaseWorkflowContractTest {
         if (isMainline) {
             assertEquals("true", env("LINE_MAKE_LATEST"),
                     "main-line releases carry the Latest badge");
-            assertEquals("26.2", env("LINE_MC_FABRIC"),
-                    "mainline is the 26.2 line — a support cut must flip line.env in the "
+            assertEquals("26.3", env("LINE_MC_FABRIC"),
+                    "mainline is the 26.3 line — a support cut must flip line.env in the "
                             + "same commit that retargets gradle.properties");
         } else {
             assertEquals("false", env("LINE_MAKE_LATEST"),
@@ -202,7 +202,7 @@ class ReleaseWorkflowContractTest {
         // literal of any line may appear in the workflow body. This replaces the old
         // FORBIDDEN_LINE_TOKENS list — under parameterization the strongest form is
         // 'no line's token, not even ours'.
-        for (String token : new String[]{"26.2", "26.1", "1.21", "1.20"}) {
+        for (String token : new String[]{"26.3", "26.2", "26.1", "1.21", "1.20"}) {
             assertFalse(releaseYml.contains(token),
                     "release.yml must not hardcode MC " + token + " — line.env owns MC identity");
         }
@@ -370,9 +370,10 @@ class ReleaseWorkflowContractTest {
                 .contains("loaders: ${{ env.PAPER_LOADERS }}"));
         assertTrue(stepBlock("- name: Upload NeoForge to Modrinth").contains("loaders: neoforge"));
         if (isMainline) {
-            assertTrue(env("LINE_PAPER_LOADERS").contains("folia"),
-                    "the 26.2 Paper step advertises folia (jar declares folia-supported; "
-                            + "all four SOAK_PLATFORM=folia scenarios pass)");
+            // LINE FLAVOR (26.3): Folia has published no 26.3 build, so the mainline Paper
+            // step must NOT advertise folia (plugin.yml derives folia-supported: false).
+            assertTrue(!env("LINE_PAPER_LOADERS").contains("folia"),
+                    "the 26.3 Paper step must NOT advertise folia — no Folia 26.3 exists");
         }
     }
 
@@ -406,7 +407,7 @@ class ReleaseWorkflowContractTest {
                         .contains("java-version: ${{ env.LINE_JAVA_VERSION }}"),
                 "release.yml's Java version is line data (25 on 26.x, 21 on 1.21.x)");
         if (isMainline) {
-            assertEquals("25", env("LINE_JAVA_VERSION"), "MC 26.2 builds on Java 25");
+            assertEquals("25", env("LINE_JAVA_VERSION"), "MC 26.3 builds on Java 25");
         }
     }
 

@@ -74,7 +74,7 @@ class PaperIdentityTablesTest {
 
     @Test
     void biomeTableCoversTheRegistryBothDirections() {
-        var provider = net.minecraft.data.registries.VanillaRegistries.createLookup();
+        var provider = net.minecraft.data.registries.VanillaRegistries.createWorldLookup();
         var src = provider.lookupOrThrow(net.minecraft.core.registries.Registries.BIOME);
         var registry = new net.minecraft.core.MappedRegistry<>(
                 net.minecraft.core.registries.Registries.BIOME,

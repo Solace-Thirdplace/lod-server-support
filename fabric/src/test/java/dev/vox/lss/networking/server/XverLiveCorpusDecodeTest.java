@@ -52,7 +52,7 @@ class XverLiveCorpusDecodeTest {
         // The FULL vanilla biome lookup, exactly like the capture tool — the corpus
         // tests' minimal registry lacks live-terrain biomes (deep_dark, lush_caves…)
         // and a strict decode would red on its own line for the wrong reason.
-        var provider = net.minecraft.data.registries.VanillaRegistries.createLookup();
+        var provider = net.minecraft.data.registries.VanillaRegistries.createWorldLookup();
         var src = provider.lookupOrThrow(Registries.BIOME);
         var biomes = new net.minecraft.core.MappedRegistry<>(Registries.BIOME,
                 com.mojang.serialization.Lifecycle.stable());
