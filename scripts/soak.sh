@@ -589,9 +589,12 @@ cp "$SERVER_CONFIG_DIR/lss-server-config.yaml" "$RUN_RESULTS_DIR/server-config.y
 # OFF: the classic flat preset generates villages, and live villagers toggle doors and
 # path around (real block-state changes the content filter CORRECTLY marks dirty) —
 # whether a village churns during a quiet window depends on the villager state captured
-# at base-world save time, i.e. nondeterministic across base rebuilds.
+# at base-world save time, i.e. nondeterministic across base rebuilds. white-list=false is
+# explicit because Minecraft 26.3 turned the whitelist ON by default (the harness player is
+# never listed, so the join is refused and the scenario times out waiting for it).
 cat > "$SERVER_RUN_DIR/server.properties" <<'PROPS'
 online-mode=false
+white-list=false
 level-seed=soak-seed-42
 level-type=minecraft\:flat
 generate-structures=false

@@ -64,8 +64,8 @@ COMMON_FORBIDDEN = ("privatep4/", "com/seibel/", "net/caffeinemc/", "dev/vox/lss
 # classes, mod id `lss` / plugin name LodServerSupport, so they get the IDENTICAL safety
 # gate plus an identity guardrail (check_vss_*_identity). See docs/planning/ci-dual-publish.md.
 # Ship scope (user decision 2026-08-27, since v0.13.1): NeoForge SHIPS on the
-# 26.x lines too (the VoX/Foxy fork client pairing) — on THIS 26.2 line the
-# neoforge families ARE required release artifacts. The gate derives from
+# 26.x lines too (the VoX/Foxy fork client pairing) — on a line with
+# LINE_SHIP_NEOFORGE=true the neoforge families ARE required release artifacts. The gate derives from
 # .github/line.env LINE_SHIP_NEOFORGE (R2-5); any neoforge jar FOUND in
 # build/libs gets the full jar checks either way.
 def _line_env():
@@ -447,11 +447,10 @@ def check_paper_jar(jar, problems):
         ymltext = _read(jar, "plugin.yml")
         if _looks_unexpanded(ymltext):
             problems.append(f"{base}: plugin.yml has an unexpanded ${{version}} placeholder")
-        # Re-inverted 2026-08-01: Folia shipped its first MC 26.2 build (26.2-1, BETA), so
-        # the flag is declared again and the single jar must keep serving Folia. A jar that
-        # LOSES the flag silently stops loading on Folia servers, which is the failure this
-        # now guards (the previous inversion guarded the opposite risk, when no 26.2 Folia
-        # existed to load onto).
+        # The flag's direction is the line's Folia fact (line.env LINE_PAPER_LOADERS): where
+        # Folia publishes a build (26.2) a jar that LOSES the flag silently stops loading on
+        # Folia servers; where it does not (26.3) a jar that declares it advertises an
+        # untested platform. Both directions are checked.
         want_folia = "true" if FOLIA_SUPPORTED else "false"
         if not re.search(r"^folia-supported:\s*" + want_folia + r"\s*$", ymltext, re.MULTILINE):
             problems.append(f"{base}: plugin.yml folia-supported must be {want_folia} "
@@ -1875,10 +1874,9 @@ def _selftest_fixtures():
         check(any("declares default: op" in m and "vss.use" in m for m in p),
               f"flipped default not caught: {p}")
 
-        # a paper jar LOSING folia-supported must be caught: Folia ships a 26.2 build since
-        # 2026-07-28, so a jar without the flag silently stops loading on Folia servers
-        # (re-inverted 2026-08-01 — the previous direction guarded the opposite risk, back
-        # when no Folia 26.2 existed to load onto)
+        # a paper jar whose folia-supported flag disagrees with the line's Folia fact must
+        # be caught (lost on a Folia line = silently stops loading there; declared on a
+        # Folia-less line = an untested platform advertised)
         foliaflag_pap = os.path.join(td, "foliaflag-paper.jar")
         _make_jar(foliaflag_pap, {
             "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\n",

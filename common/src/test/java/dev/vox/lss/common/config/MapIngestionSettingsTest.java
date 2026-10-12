@@ -143,6 +143,22 @@ class MapIngestionSettingsTest {
         assertArrayEquals(old.bytes(), codec.editSplit(old, Map.of()).main());
     }
 
+    @Test void aSidecarOnlyChangeNeverCanonicalizes() {
+        // Toggling only an experimental (sidecar) option must keep the main file readable by
+        // v0.17 and older, which reject the canonical group as an unknown path.
+        var codec = new YamlSettingsCodec<>(SettingsSchema.client());
+        var old = codec.parse(bytes(oldFile(true, true)));
+        var out = codec.editSplit(old, Map.of("lod.dh.real_time_updates", false));
+        String main = new String(out.main(), StandardCharsets.UTF_8);
+        assertTrue(main.contains("  xaero_map:\n    enabled: true"), main);
+        assertFalse(main.contains("map_ingestion"), main);
+        assertNotNull(out.sidecar(), "the change itself lands in the sidecar");
+        assertTrue(codec.parse(out.main(), out.sidecar()).configured().integrations().mapIngestion().enabled());
+        // A change that touches the main file still canonicalizes in the same save.
+        var both = codec.editSplit(old, Map.of("lod.dh.real_time_updates", false, "lod.receive", false));
+        assertTrue(new String(both.main(), StandardCharsets.UTF_8).contains("  map_ingestion:\n    enabled: true"));
+    }
+
     @Test void startupLeavesAnUpgradedFileReadableByOlderVersions() throws Exception {
         // A development-key split rewrites the main file at startup; it must not rename the group.
         String devKeys = oldFile(false, true).replace("lod:\n", "lod:\n  source: lss\n");
