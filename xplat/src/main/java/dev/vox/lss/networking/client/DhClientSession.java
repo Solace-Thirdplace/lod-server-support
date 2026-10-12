@@ -969,7 +969,8 @@ public final class DhClientSession {
                     }
                     plan.cancelled().forEach(assembly::cancel);
                     receivedUpdates.incrementAndGet(); lastReply = System.nanoTime();
-                    var delivered = deliver(tile, p, false, 0, true, 0, null);
+                    int[] written = new int[1];
+                    var delivered = deliver(tile, p, false, 0, true, 0, null, written);
                     int touched = 0, described = 0;
                     for (int c = 0; c < 16; c++) {
                         if (completeColumn(tile, c)) described |= 1 << c;
@@ -980,10 +981,14 @@ public final class DhClientSession {
                         }
                     }
                     boolean completeEdit = delivered && (touched & ~described) == 0;
+                    // DH bakes sky light on the merged stored tile; a push that wrote columns
+                    // without describing the whole tile was baked without its neighbours.
+                    boolean refetch = written[0] != 0 && described != 0xFFFF;
                     main(() -> {
                         // The receipt keeps the pre-push stamp: a later conditional request then
                         // learns the server row changed. Incomplete edits are reacquired normally.
-                        if (plan.hadSnapshot() && completeEdit) policy.accepted(p, 1, 1, plan.previousStamp(), System.nanoTime());
+                        if (refetch) { policy.refetchAfterPush(p, System.nanoTime()); forgetReceipt(p); }
+                        else if (plan.hadSnapshot() && completeEdit) policy.accepted(p, 1, 1, plan.previousStamp(), System.nanoTime());
                         else { policy.invalidate(p); forgetReceipt(p); }
                     });
                 }
@@ -1208,7 +1213,7 @@ public final class DhClientSession {
                 }
                 var shape = new DhTerrainTile.WorldShape(level.getMinY(), level.getHeight(), level.dimensionType().hasSkyLight());
                 try (var tile = completed.decode(new DhTerrainDecoder(DhLimits.DEFAULT), profile, shape)) {
-                    deliver(tile, request.position, request.generation, tile.modifiedTimestamp(), false, response.requestId(), request);
+                    deliver(tile, request.position, request.generation, tile.modifiedTimestamp(), false, response.requestId(), request, null);
                     main(() -> pending.remove(response.requestId(), request));
                 }
             } catch (TimeoutException e) {
@@ -1245,9 +1250,10 @@ public final class DhClientSession {
          * {@code partial}: a push; only its complete columns are written.
          * {@code owner}: a whole reply is written only while its request is still pending;
          * a push, recovery or reset that cancelled it meanwhile voids the reply.
+         * {@code written}: when given, receives the mask of columns handed to Voxy.
          */
         boolean deliver(DhTerrainTile tile, DhPosition position, boolean generation, long stamp, boolean partial,
-                int requestId, Pending owner) throws Exception {
+                int requestId, Pending owner, int[] written) throws Exception {
             int tx = tile.position().x() * 4, tz = tile.position().z() * 4;
             int complete = 0;
             for (int c = 0; c < 16; c++) if (completeColumn(tile, c)) complete |= 1 << c;
@@ -1263,7 +1269,7 @@ public final class DhClientSession {
             skipped.addAndGet(16 - Integer.bitCount(eligible));
             VoxelColumnData[] data;
             try (var conversion = budget.reserve(Integer.bitCount(convert) * ((long) tile.world().height() / 16 * 65_536 + (long) tile.materials().size() * 128))) {
-                data = converter.convertTile(tile, convert);
+                data = converter.convertTile(tile, convert, partial);
             }
             int eligibleMask = eligible, completeMask = complete;
             return onMain(() -> {
@@ -1286,6 +1292,7 @@ public final class DhClientSession {
                     };
                     var column = data[c];
                     LSSApi.withIngestFailureHandle(level.dimension(), x, z, handle, () -> DhVoxyBridge.ingest(level, x, z, column));
+                    if (written != null) written[0] |= 1 << c;
                     if (!rejected.get()) { columns.incrementAndGet(); accepted |= 1 << c; }
                     else failedColumns.incrementAndGet();
                 }

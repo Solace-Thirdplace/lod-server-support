@@ -9,7 +9,7 @@ def export_binding(run,runtime,manifest,scenario,candidate_target,artifact):
  matches=[r for r in manifest.get('participants',[]) if r.get('role')=='server']
  if len(matches)!=1 or matches[0].get('profile_hash')!=digest(profile):raise ValueError('native server participant absent from collected manifest')
  platform=profile.get('platform');expected='server/'+('plugins' if platform=='paper' else 'mods')+'/lod-server-support-'+str(platform)+'.jar'
- if platform not in ('fabric','paper','neoforge') or candidate_target!=expected:raise ValueError('server smoke export must select the actual server candidate')
+ if platform not in ('fabric','paper','neoforge','sponge') or candidate_target!=expected:raise ValueError('server smoke export must select the actual server candidate')
  checksum=artifact(candidate_target)
  if not any(r.get('sha256')==checksum and platform in r.get('metadata',{}) for r in reference.get('candidate_artifacts',[])):raise ValueError('server candidate metadata/hash not bound to participant')
  if scenario.get('id')!='server-smoke' or scenario.get('version')!=2:raise ValueError('canonical server-smoke v2 required')
@@ -26,7 +26,7 @@ def validate_binding(record,profiles,require):
  from catalog import digest
  inputs=record['run_manifest'];server=profiles.get(inputs.get('server_profile_id'),{})
  require(inputs.get('execution_route')=='native-server-smoke' and inputs.get('scenario_version')==2,'server-smoke requires canonical native v2 evidence')
- require(server.get('platform') in ('fabric','paper','neoforge') and inputs.get('server_platform')==server.get('platform'),'server-smoke native platform/profile missing')
+ require(server.get('platform') in ('fabric','paper','neoforge','sponge') and inputs.get('server_platform')==server.get('platform'),'server-smoke native platform/profile missing')
  require(inputs.get('server_profile_hash')==digest(server),'stale native server profile evidence')
  platform=server.get('platform');target='server/'+('plugins' if platform=='paper' else 'mods')+'/lod-server-support-'+str(platform)+'.jar'
  require(inputs.get('candidate_target')==target and inputs.get('server_candidate_target')==target,'server-smoke record selected a client or foreign server candidate')
