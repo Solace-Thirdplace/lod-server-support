@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "9181e2c7142ce27926ea12be5b456a8585506e2a",
-    "1.21.10": "616c88a61cfe8bc6e7d10c571516847565b59d0b",
-    "1.21.11": "9a6e156092d49b0f83d5859e249f347f40e52599",
-    "26.1": "4b7cffc1b4d7cbb6b60b7eb4a6694bb66c4fe13e",
-    "26.2": "52823acf8bb1a706a5b3b684f243b156d2adbfa3",
-    "26.3": "c7c26b335e0d706393363966d89ed3b3dfef7291"
+    "1.21.1": "7907695dbb70fbc84fe5a7707077ab8ceda1c526",
+    "1.21.10": "317a4fc38f0baf2986c6f00ee96277b2273835d0",
+    "1.21.11": "be5c6d30c210a252ff1caade5f995bfe5081ba8b",
+    "26.1": "87e772930f247f13c9950042be03dfb9cddc629c",
+    "26.2": "6bdd6918bb6667d5d5bec74757c052ddebe111a4",
+    "26.3": "218da3b93d5ebe822896489dea19b2bf87ab763b"
   },
   "files": {
     ".github/line.env": {
@@ -7293,12 +7293,12 @@
       "kind": "adapted",
       "review": "2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: the DH release-gate delta (client-only common/dh + private XZ placement, Paper exclusion, XZ third-party notice, forbidden fixture mixin configs, dependency allowlists and selftests) is textually identical on all five lines except documented line facts: FABRIC_DEPENDENCY_ALLOWLIST suggests also voxy on 1.21.10/1.21.11/26.1/26.2, matching each line's fabric.mod.json; NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST is {\"sqlite_jdbc\"} on 1.21.1 only (issue #304) and empty elsewhere, with the optional-sqlite selftest written against the line's allowlist (equivalent to 1.21.1's specialized assertion); the dependency selftest fixture names the line's Minecraft version. Pre-existing per-line gate flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "a6d3a48bd8ce5037a50aef9b83471c0161f38568",
-        "1.21.10": "3e9846b8c0cf9c3ba7e39375afeeb4a3034a87b8",
-        "1.21.11": "27cdf2ed04fb633487a6d1db270fd0b2071d7f0f",
-        "26.1": "5f0a2091eca21e8b2ba8a3eccdd95db6c7cf9be2",
-        "26.2": "8cfbad16f4465d26928cbe2690cc0f284de5ead2",
-        "26.3": "8f7bf841f1c16323f502eb93fc560489507c20ab"
+        "1.21.1": "d383327d86909a4cd4d4156b2fdfbd9df644144c",
+        "1.21.10": "298dff02a3ac3005c36c541f289ef4ffe442a97b",
+        "1.21.11": "d24336bc74993019acae887aa2259eba1dacec81",
+        "26.1": "05b8507ba58cf43d5bb875a753ed35c6aa319ab7",
+        "26.2": "fa9188a744db9f03b128e14c290d0f80e834329e",
+        "26.3": "a7b2978f3c61e11ad1fc458584038cbcea7d35fd"
       },
       "surface": "line-adaptation:scripts/release_check.py",
       "tests": [
