@@ -256,4 +256,44 @@ class MemoizedNbtCodecTest {
                 "error results cache like successes (leniency runs above this cache)");
         assertEquals(1, decodes.get());
     }
+
+    /**
+     * The raw-format upgrade hook (26.3's block-state field rename) runs on a MISS only and
+     * the memo stays keyed by the RAW entry: a hit allocates nothing, the delegate sees the
+     * upgraded tag, and the caller's tag is never mutated.
+     */
+    @Test
+    void theUpgradeRunsOnlyOnAMissAndTheMemoKeysTheRawEntry() {
+        var upgrades = new AtomicInteger();
+        var seen = new java.util.ArrayList<Tag>();
+        Codec<String> capturing = new Codec<>() {
+            @Override
+            public <T> DataResult<Pair<String, T>> decode(DynamicOps<T> ops, T input) {
+                seen.add((Tag) input);
+                return DataResult.success(Pair.of("decoded", input));
+            }
+
+            @Override
+            public <T> DataResult<T> encode(String input, DynamicOps<T> ops, T prefix) {
+                return DataResult.success(prefix);
+            }
+        };
+        var m = new MemoizedNbtCodec<>(capturing, 16, "default", v -> MemoizedNbtCodec.packMeta(7, false, false),
+                tag -> {
+                    upgrades.incrementAndGet();
+                    var copy = ((CompoundTag) tag).copy();
+                    copy.putString("upgraded", "yes");
+                    return copy;
+                });
+        var raw = paletteEntry("minecraft:stone", "y");
+        var first = m.resolve(raw);
+        assertFalse(raw.contains("upgraded"), "the caller's entry is never mutated");
+        assertEquals(1, upgrades.get());
+        assertEquals("yes", ((CompoundTag) seen.get(0)).getString("upgraded"),
+                "the delegate decodes the upgraded entry");
+        assertSame(first, m.resolve(paletteEntry("minecraft:stone", "y")),
+                "an equal RAW entry hits the memo");
+        assertEquals(1, upgrades.get(), "a hit never re-runs the upgrade");
+        assertEquals(1, seen.size());
+    }
 }

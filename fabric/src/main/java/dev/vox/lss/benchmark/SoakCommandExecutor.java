@@ -46,7 +46,11 @@ public final class SoakCommandExecutor {
     }
 
     /** Setter AND exact readback. Dimension-qualified commands keep their prefix for the
-     * query, so Paper's per-world rules cannot pass by reading only the console's world. */
+     * query, so Paper's per-world rules cannot pass by reading only the console's world.
+     * The READBACK is the authority: Minecraft 26.3 fails a setter whose value is already
+     * set ("Game rule ... is already set to ..."), which a base world carrying the rules
+     * from an earlier run always hits, while a genuinely failed setter still reads back
+     * the wrong value. */
     public static boolean setGamerule(Commands commands, CommandSourceStack source, String command) {
         int split = command.lastIndexOf(' ');
         if (split < 0) throw new IllegalArgumentException("Missing gamerule value: " + command);
@@ -56,8 +60,7 @@ public final class SoakCommandExecutor {
             case "false" -> 0;
             default -> Integer.parseInt(literal);
         };
-        Result set = executeForResult(commands, source, command);
-        if (!set.success()) return false;
+        executeForResult(commands, source, command);
         Result read = executeForResult(commands, source, command.substring(0, split));
         return read.success() && read.value() == expected;
     }

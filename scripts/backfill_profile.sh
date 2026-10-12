@@ -168,6 +168,7 @@ cmd_run() {
     # server neither ticks the benchmark duration counter nor advances the walk.
     cat > "$server_run_dir/server.properties" <<'PROPS'
 online-mode=false
+white-list=false
 level-seed=benchmark-seed-42
 spawn-protection=0
 max-tick-time=-1

@@ -11,6 +11,7 @@ import net.minecraft.nbt.Tag;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.ToLongFunction;
+import java.util.function.UnaryOperator;
 
 /**
  * Decode-memoizing codec wrapper for the disk-read serve path (2026-07-29 profile:
@@ -82,6 +83,7 @@ final class PaperMemoizedNbtCodec<A> implements Codec<A> {
     private final Codec<A> delegate;
     private final int cap;
     private final ToLongFunction<A> metaFn;
+    private final UnaryOperator<Tag> upgrade;
     private final long defaultMeta;
     private final ConcurrentHashMap<Tag, Cached<A>> memo = new ConcurrentHashMap<>();
     private final AtomicBoolean capWarned = new AtomicBoolean();
@@ -93,9 +95,21 @@ final class PaperMemoizedNbtCodec<A> implements Codec<A> {
      * @param metaFn derives the packed transcoder meta from a decoded value
      */
     PaperMemoizedNbtCodec(Codec<A> delegate, int cap, A defaultValue, ToLongFunction<A> metaFn) {
+        this(delegate, cap, defaultValue, metaFn, UnaryOperator.identity());
+    }
+
+    /**
+     * @param upgrade applied to an entry only on a MISS, before the delegate decodes it —
+     *     the cache stays keyed by the RAW tag, so a raw-NBT format upgrade (26.3's
+     *     block-state field rename) costs nothing on the hit path; it must return its
+     *     input or a fresh tag, never mutate it
+     */
+    PaperMemoizedNbtCodec(Codec<A> delegate, int cap, A defaultValue, ToLongFunction<A> metaFn,
+            UnaryOperator<Tag> upgrade) {
         this.delegate = delegate;
         this.cap = cap;
         this.metaFn = metaFn;
+        this.upgrade = upgrade;
         this.defaultMeta = metaFn.applyAsLong(defaultValue);
     }
 
@@ -108,7 +122,8 @@ final class PaperMemoizedNbtCodec<A> implements Codec<A> {
 
     @SuppressWarnings("unchecked")
     private Cached<A> decodeAndCache(Tag tag) {
-        var fresh = (DataResult<Pair<A, Tag>>) (DataResult<?>) this.delegate.decode(NbtOps.INSTANCE, tag);
+        var fresh = (DataResult<Pair<A, Tag>>) (DataResult<?>) this.delegate.decode(NbtOps.INSTANCE,
+                this.upgrade.apply(tag));
         if (this.memo.size() < this.cap) {
             Tag key = tag.copy();
             // Normalize the remainder to the cached key so the entry doesn't pin the

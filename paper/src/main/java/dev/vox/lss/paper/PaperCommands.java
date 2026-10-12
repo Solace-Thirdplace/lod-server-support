@@ -266,7 +266,7 @@ public class PaperCommands implements CommandExecutor, TabCompleter {
         for (var line : DiagnosticsFormatter.formatDiagnostics(data)) {
             sender.sendMessage(line);
         }
-        String offLine = config.unservedWorldsDiagLineOrNull();
+        String offLine = service.unservedWorldsDiagLineOrNull();
         if (offLine != null) sender.sendMessage(offLine);
     }
 
