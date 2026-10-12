@@ -1,6 +1,6 @@
 # Contributor guide
 
-This checkout is the Minecraft **26.2** support line (`support/mc26.2`, cut from main when main moved to 26.3; releases tag `v<x.y.z>+mc26.2`). Use **Java 25** for the platform build and **Java 21** for common tests. Actual platform MC targets, shipping and renderer availability are checked by [the compatibility catalog](docs/compatibility.md), with `.github/line.env` and build definitions authoritative. Run client gametests explicitly alongside the Fabric build; preserve this line’s loader and rendering adaptations.
+This checkout is the Minecraft **26.2** support line (`support/mc26.2`, cut from main when main moved to 26.3; releases tag `v<x.y.z>+mc26.2`). Folia ships on this line (experimental). Use **Java 25** for the platform build and **Java 21** for common tests. Actual platform MC targets, shipping and renderer availability are checked by [the compatibility catalog](docs/compatibility.md), with `.github/line.env` and build definitions authoritative. Run client gametests explicitly alongside the Fabric build; preserve this line’s loader and rendering adaptations.
 
 ## Commands
 
@@ -8,10 +8,12 @@ This checkout is the Minecraft **26.2** support line (`support/mc26.2`, cut from
 python3 tools/verify/verify.py full --run
 bash tools/verify/run-gradle.sh vssJars
 bash tools/verify/run-gradle.sh :sponge:build :sponge:bootSmoke
-python3 scripts/release_check.py
+python3 scripts/release_check.py --version <x.y.z>
+python3 scripts/release_check.py --selftest
 python3 tools/tests/check_artifacts.py
 python3 tools/compat/catalog.py validate
 python3 tools/compat/catalog.py render --check
+python3 tools/compat/ci.py --report /tmp/compat-report.json
 python3 tools/verify/verify.py fast path/to/changed/file
 ```
 
@@ -26,15 +28,17 @@ Fast selection is advisory. Never weaken required build/release gates because a 
 - Settings retain defaults, sentinels, upgrade/adoption behavior, privacy, clamps, ownership and applied-but-unsaved feedback. Correlated changes validate on scratch and publish consistently before side effects.
 - Best-effort support and Folia’s experimental correctness status are distinct. A bounded soak does not remove the experimental label. Neo shipping, terrain consumers and far-player rendering are separate capabilities.
 - Never operate the user’s Windows foreground for an unattended test. Use private-display rigs, owned process identities, exact artifacts and the shared harness lock. Preserve normal servers, personal profiles/worlds and credentials. No automatic diagnostic/evidence upload.
+- A commit to any non-doc path on any line needs the six-line re-pin: identical `config/compatibility/source-refs.json`, `config/lines/classification.json` (basis + adapted `reviewed_blobs`), `config/lines/port-batch.json` baseline and rendered `docs/compatibility.md`, committed on all six lines, each pinning that line's pre-pin commit; `tools/compat/ci.py` reds on unexplained drift ([support-line tooling](docs/operations/support-lines.md)). `*.md` and `docs/*` are line-local.
+- Far players carry bare item ids + counts (`FarPlayerWire`): no trims, dye or glint on any line. The SeeU coexist gate is gone; the historical guide predates both.
 - Use isolated branches/worktrees for ports. No reset of dirty trees, blind keep-ours, target-branch merge, push, deployment or publication is implied by local validation.
 
 ## Distant Horizons adapter
 
-Experimental, client-side: lets Voxy clients show terrain from servers running Distant Horizons without LSS. On by default since 0.17.0 (`lod.source: distant_horizons`, user decision 2026-10-10). Native LSS always wins on any server that offers it. The DH settings live in the experimental sidecar (`lss-client-experimental.yaml`), which stores only nondefault values, so the main client file stays readable by older versions — with one exception: a client file saved with `integrations.map_ingestion` fails to load on 0.17.0 and older until the group is renamed back to `xaero_map`. The private live rig is `test-fixtures/dh-live` (see its PORTING.md); `dh-p4` is 1.21.1-only. This line needs the four-argument NeoForge `playBidirectional` (21.10+ registers the three-argument handler for the serverbound flow only); `NeoForgeDhTransportContractTest` pins it.
+Experimental, client-side: lets Voxy clients show terrain from servers running Distant Horizons without LSS. On by default since 0.17.0 (`lod.source: distant_horizons`, user decision 2026-10-10). Native LSS always wins on any server that offers it. The DH settings live in the experimental sidecar (`lss-client-experimental.yaml`), which stores only nondefault values, so the main client file stays readable by older versions — with one exception: a client file created or saved with `integrations.map_ingestion` fails to load on 0.17.0 and older until the group is renamed back to `xaero_map`. The private live rig is `test-fixtures/dh-live` (see its PORTING.md); `dh-p4` is 1.21.1-only. This line needs the four-argument NeoForge `playBidirectional` (21.10+ registers the three-argument handler for the serverbound flow only); `NeoForgeDhTransportContractTest` pins it.
 
 ## Map ingestion
 
-Client-side and reflection-only: writes delivered LOD columns into Xaero's World Map (1.42.0+) or JourneyMap (6.0.0+). The setting is neutral: `integrations.map_ingestion.enabled` (new files default ON; upgraded files keep the value written in them — a hand-trimmed file without the key follows the new default) plus `integrations.map_ingestion.backpressure`. The old `integrations.xaero_map` group is a read alias, rewritten to the canonical name only by a save with changes. JourneyMap is All Rights Reserved: never copy, decompile into the tree or ship its code. Resolve its classes with `Class.forName(name, false, loader)` so LSS never runs JourneyMap's static initializers. Bind members by exact descriptor; the binding-surface test checks them against the golden jars at the classfile level (on 1.21.x the intermediary Fabric jar is compared with Minecraft types erased). The day map is required; topography and biome are best-effort. The [plan](docs/planning/2026-10-11-map-ingestion-journeymap-plan.md) §11 records the as-built design and the live findings. `scripts/journeymap_smoke.sh` is the live gate. `map-throughput` and `xaero-memory` are the measurement soaks; both need a real-terrain `SOAK_WORLD_FROM`.
+Client-side and reflection-only: writes delivered LOD columns into Xaero's World Map (1.42.0+) or JourneyMap (6.0.0+). The setting is neutral: `integrations.map_ingestion.enabled` (new files default ON; upgraded files keep the value written in them — a hand-trimmed file without the key follows the new default) plus `integrations.map_ingestion.backpressure`. The old `integrations.xaero_map` group is a read alias, rewritten to the canonical name only by a save that changes a main-file value (never at startup or by a sidecar-only DH change). JourneyMap is All Rights Reserved: never copy, decompile into the tree or ship its code. Resolve its classes with `Class.forName(name, false, loader)` so LSS never runs JourneyMap's static initializers. Bind members by exact descriptor; the binding-surface test checks them against the golden jars at the classfile level (on 1.21.x the intermediary Fabric jar is compared with Minecraft types erased). The day map is required; topography and biome are best-effort. The [plan](docs/planning/2026-10-11-map-ingestion-journeymap-plan.md) §11 records the as-built design and the live findings. `scripts/journeymap_smoke.sh` is the live gate. `map-throughput` and `xaero-memory` are the measurement soaks; both need a real-terrain `SOAK_WORLD_FROM` (`xaero-memory` also needs `-Plss.xaeroRuntime=true` in `SOAK_CLIENT_GRADLE_ARGS`).
 
 ## Sponge server plugin
 
@@ -50,10 +54,10 @@ Experimental and best-effort on every line (exit criterion: plan §0.2). `sponge
 
 ## Local Test Servers
 
-Use [maintained disposable rigs](docs/operations/disposable-rigs.md) for automated testing and [support-line tooling](docs/operations/support-lines.md) for exact dependency/ref checks. Windows client-visible loopback may require `[::1]:port`; configure bind and visible endpoints separately. Never select a normal server for cleanup merely because its port matches.
+Use [maintained disposable rigs](docs/operations/disposable-rigs.md) for automated testing and [support-line tooling](docs/operations/support-lines.md) for exact dependency/ref checks. Windows client-visible loopback may require `[::1]:port`; configure bind and visible endpoints separately. Never select a normal server for cleanup merely because its port matches. Minecraft 26.3 defaults `white-list=true`, so every staged `server.properties` writes `white-list=false`. `test-server.sh` derives the Fabric loader from `loader_version` and re-fetches a download whose URL changed (hidden `.<file>.src` stamp).
 
 ## Releasing
 
-Existing publishing and branding rules are unchanged. Follow the [preserved release discipline](docs/history/contributor-guide-before-project-improvements.md#releasing) and current release scripts. Do not rerun a partially published release; recover from its original attached artifacts. Sponge publishes from release.yml only where `LINE_SHIP_SPONGE=true` (the last Modrinth step); run `:sponge:build --refresh-dependencies` right before tagging, because an expired RC or snapshot pin fails there, and recover a stranded Sponge publish by hand-uploading the GitHub-attached jar. VSS Sponge jars publish locally with the other VSS jars. This improvement task does not authorize merges or publication.
+Existing publishing and branding rules are unchanged. Follow the [preserved release discipline](docs/history/contributor-guide-before-project-improvements.md#releasing) and current release scripts. Do not rerun a partially published release; recover from its original attached artifacts. Sponge publishes from release.yml only where `LINE_SHIP_SPONGE=true` (the last Modrinth step); run `:sponge:build --refresh-dependencies` right before tagging, because an expired RC or snapshot pin fails there, and recover a stranded Sponge publish by hand-uploading the GitHub-attached jar. VSS Sponge jars publish locally with the other VSS jars. On this line the PR base is its support branch (never `main`), tags carry `+mc26.2` (`release.yml` refuses any other suffix) and `make_latest` is false. Each release's gate, pins and handoff are in `docs/planning/<date>-v<x.y.z>-release-preparation.md`, with the manifest under `docs/implementation/`. Local validation never authorizes merges, tags or publication.
 
 The [previous complete guide](docs/history/contributor-guide-before-project-improvements.md) preserves historical explanations and decisions. Its dated compatibility claims do not override current build definitions/catalogs. Keep stable links and historical evidence intact.
