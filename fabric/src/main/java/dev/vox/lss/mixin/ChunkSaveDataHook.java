@@ -15,9 +15,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * {@code SerializableChunkData.copyOf} (issue #69): {@code copyOf(level, chunk)} is the
  * synchronous "snapshot the live chunk for saving" choke point that BOTH chunk systems
  * share — vanilla's {@code ChunkMap.save} calls it directly, and Moonrise's replacement
- * pipeline ({@code NewChunkHolder.saveChunk}, which @Overwrites {@code ChunkMap.save}
- * into a dead throw-stub and saves through its own scheduler) calls the exact same
- * static (verified against Moonrise-Fabric 1.1.0 bytecode). Both callers reach it only
+ * pipeline ({@code NewChunkHolder.saveChunk}, which turns {@code ChunkMap.save} into a dead
+ * throw-stub with a HEAD inject and saves through its own scheduler) calls the exact same
+ * static (verified against Moonrise-Fabric 1.1.0 and, on 26.3, 1.2.0 bytecode; C2ME
+ * 0.4.2-alpha.0.90's overwritten {@code ChunkMap.save} and its async save path both call it
+ * too). Both callers reach it only
  * after {@code tryMarkSaved()}/needs-saving gating, so "copyOf ran" means a real save is
  * committing, the same evidence the old RETURN-value check gave. The hook body lives in
  * {@link LSSServerNetworking#onChunkSaveData} (mixin classes refuse classloading under
