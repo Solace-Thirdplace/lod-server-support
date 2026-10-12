@@ -758,9 +758,11 @@ public class GenerationLifecycleGameTests {
     // maxTicks 1200 (not 600): waits on real cold chunk generation (see FP-033's precedent below).
     @GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 1200)
     public void endVoidGenerationCompletionSeedsTheAllAirSentinel(GameTestHelper helper) {
-        ServerLevel endLevel = helper.getLevel().getServer().getLevel(Level.END);
-        helper.assertTrue(endLevel != null, "the End dimension must exist on the gametest server");
-        var dim = LSSConstants.DIM_STR_THE_END;
+        // LINE FLAVOR (26.3): the End is flat on the gametest server — see
+        // SerializerParityGameTests.VOID_LEVEL for the void dimension this uses instead.
+        ServerLevel endLevel = helper.getLevel().getServer().getLevel(SerializerParityGameTests.VOID_LEVEL);
+        helper.assertTrue(endLevel != null, "the lss:void gametest dimension must exist on the gametest server");
+        var dim = SerializerParityGameTests.VOID_DIM;
         // Void guarantee band (see SerializerParityGameTests): density contributes nothing
         // between the main island and the outer islands; salted, disjoint from other tests.
         var origin = chunkAt(helper.absolutePos(BlockPos.ZERO));

@@ -12,23 +12,31 @@ import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * The move-desync tracer's four observation points in {@code handleMovePlayer}
- * (move-desync-tracer-plan.md §1.2). Every body is one static-gate check plus a delegation
- * to {@link MoveDesyncHooks} (the {@code ChunkSaveDataHook} pattern — logic in a mixin is
- * untestable logic); all injects are {@code require = 0} and this class lives in the
- * non-required {@code lss-trace.mixins.json}, so any drift degrades to missing rows, never
- * a crash (§0 constraint 4).
+ * The move-desync tracer's four observation points (move-desync-tracer-plan.md §1.2). Every
+ * body is one static-gate check plus a delegation to {@link MoveDesyncHooks} (the
+ * {@code ChunkSaveDataHook} pattern — logic in a mixin is untestable logic); all injects are
+ * {@code require = 0} and this class lives in the non-required {@code lss-trace.mixins.json},
+ * so any drift degrades to missing rows, never a crash (§0 constraint 4).
  *
- * <p>Targeting scheme (reviews F-6/F-7, verified against the 26.2 bytecode): the two
- * vanilla warns have DISTINCT slf4j descriptors — {@code warn(String,Object[])} is the
- * "moved too quickly!" site, {@code warn(String,Object)} the "moved wrongly!" site — so no
- * ordinals are needed there ({@code remap = false}: slf4j is not an MC class). The
- * rejection teleport is anchored semantically: "the first {@code teleport(DDDFF)V} after
- * the wrongly-warn site" via a {@code @Slice}, which also fires for the SILENT
- * {@code isEntityCollidingWithAnythingNew} rejection (bytecode-ordered after the warn,
- * whether or not the warn executed at runtime). A bare ordinal would silently retarget if
- * vanilla reordered its teleports; the slice encodes what the code means, and the Tier 1
- * ASM contract scan is its tripwire.
+ * <p>LINE FLAVOR (26.3, bytecode-verified 2026-10-12): vanilla moved the position checks out
+ * of {@code handleMovePlayer} into the private
+ * {@code handlePlayerPositionChange(DDDFFZZ)V}, which {@code handleMovePlayer} calls with the
+ * packet's claim resolved against the player's current position — and which
+ * {@code handleAcceptTeleportPacket} ALSO calls. The entry capture stays on
+ * {@code handleMovePlayer} (post-ensure) and stashes the packet; the three event injects
+ * target {@code handlePlayerPositionChange} and fire only when its arguments are exactly that
+ * packet's claim ({@link #lss$fromMovePacket}), so the teleport-accept path never emits a row
+ * against a stale packet. The shared {@link MoveDesyncHooks} API is unchanged.
+ *
+ * <p>Targeting scheme (reviews F-6/F-7): the two vanilla warns have DISTINCT slf4j
+ * descriptors — {@code warn(String,Object[])} is the "moved too quickly!" site,
+ * {@code warn(String,Object)} the "moved wrongly!" site — so no ordinals are needed there
+ * ({@code remap = false}: slf4j is not an MC class). The rejection teleport is anchored
+ * semantically: "the first {@code teleport(DDDFF)V} after the wrongly-warn site" via a
+ * {@code @Slice}, which also fires for the SILENT {@code isEntityCollidingWithAnythingNew}
+ * rejection (bytecode-ordered after the warn, whether or not the warn executed at runtime).
+ * A bare ordinal would silently retarget if vanilla reordered its teleports; the slice encodes
+ * what the code means, and the Tier 1 ASM contract scan is its tripwire.
  */
 @Mixin(ServerGamePacketListenerImpl.class)
 public class MovementRejectHook {
@@ -53,6 +61,11 @@ public class MovementRejectHook {
      *  instead of a confidently-wrong zero triple (review C-10). */
     @Unique
     private boolean lss$startCaptured;
+
+    /** The packet the latest post-ensure entry captured (26.3: the event injects run in
+     *  {@code handlePlayerPositionChange}, which has no packet parameter). */
+    @Unique
+    private ServerboundMovePlayerPacket lss$movePacket;
 
     /** Packet-identity token, not a boolean (review F-3): {@code logged_wrongly} is "the
      *  wrongly warn fired for THIS packet", self-expiring with the packet — no HEAD clear
@@ -83,33 +96,50 @@ public class MovementRejectHook {
         this.lss$startY = self.player.getY();
         this.lss$startZ = self.player.getZ();
         this.lss$startCaptured = true;
+        this.lss$movePacket = packet;
         MoveDesyncHooks.onMoveHead(self);
     }
 
-    @Inject(method = "handleMovePlayer",
+    /** The captured packet when this position change is exactly its claim (the
+     *  {@code handleMovePlayer} call), else null (the teleport-accept call, or no capture). */
+    @Unique
+    private ServerboundMovePlayerPacket lss$fromMovePacket(double x, double y, double z) {
+        var packet = this.lss$movePacket;
+        if (packet == null || !this.lss$startCaptured) return null;
+        return packet.getX(this.lss$startX) == x && packet.getY(this.lss$startY) == y
+                && packet.getZ(this.lss$startZ) == z ? packet : null;
+    }
+
+    @Inject(method = "handlePlayerPositionChange",
             at = @At(value = "INVOKE",
                     target = "Lorg/slf4j/Logger;warn(Ljava/lang/String;[Ljava/lang/Object;)V",
                     remap = false),
             require = 0)
-    private void lss$onMovedTooQuickly(ServerboundMovePlayerPacket packet, CallbackInfo ci) {
+    private void lss$onMovedTooQuickly(double x, double y, double z, float yRot, float xRot,
+                                       boolean onGround, boolean horizontalCollision, CallbackInfo ci) {
         if (!MoveDesyncTracer.enabled()) return;
+        var packet = lss$fromMovePacket(x, y, z);
+        if (packet == null) return;
         var self = (ServerGamePacketListenerImpl) (Object) this;
         MoveDesyncHooks.onMovedTooQuickly(self, packet, lss$startX, lss$startY, lss$startZ, lss$startCaptured);
     }
 
-    @Inject(method = "handleMovePlayer",
+    @Inject(method = "handlePlayerPositionChange",
             at = @At(value = "INVOKE",
                     target = "Lorg/slf4j/Logger;warn(Ljava/lang/String;Ljava/lang/Object;)V",
                     remap = false),
             require = 0)
-    private void lss$onMovedWrongly(ServerboundMovePlayerPacket packet, CallbackInfo ci) {
+    private void lss$onMovedWrongly(double x, double y, double z, float yRot, float xRot,
+                                    boolean onGround, boolean horizontalCollision, CallbackInfo ci) {
         if (!MoveDesyncTracer.enabled()) return;
+        var packet = lss$fromMovePacket(x, y, z);
+        if (packet == null) return;
         var self = (ServerGamePacketListenerImpl) (Object) this;
         this.lss$wronglyPacket = packet;
         MoveDesyncHooks.onMovedWrongly(self, packet, lss$startX, lss$startY, lss$startZ, lss$startCaptured);
     }
 
-    @Inject(method = "handleMovePlayer",
+    @Inject(method = "handlePlayerPositionChange",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;teleport(DDDFF)V",
                     ordinal = 0),
@@ -117,8 +147,11 @@ public class MovementRejectHook {
                     target = "Lorg/slf4j/Logger;warn(Ljava/lang/String;Ljava/lang/Object;)V",
                     remap = false)),
             require = 0)
-    private void lss$onMoveRejected(ServerboundMovePlayerPacket packet, CallbackInfo ci) {
+    private void lss$onMoveRejected(double x, double y, double z, float yRot, float xRot,
+                                    boolean onGround, boolean horizontalCollision, CallbackInfo ci) {
         if (!MoveDesyncTracer.enabled()) return;
+        var packet = lss$fromMovePacket(x, y, z);
+        if (packet == null) return;
         var self = (ServerGamePacketListenerImpl) (Object) this;
         MoveDesyncHooks.onMoveRejected(self, packet, lss$wronglyPacket == packet,
                 lss$startX, lss$startY, lss$startZ, lss$startCaptured);

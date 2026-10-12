@@ -177,6 +177,52 @@ class NbtSectionSerializerTest {
     }
 
     @Test
+    void legacyNamePropertiesPaletteEntriesSerializeIdenticallyToTheCurrentFormat() {
+        // LINE FLAVOR (26.3): a chunk saved before 26.3 carries {Name, Properties} palette
+        // entries the 26.3 codec rejects (BlockStateFieldNamesFix renamed them; vanilla's DFU
+        // runs on LOAD, this path reads raw region NBT). Both the transcode path (small
+        // palette) and the object-path fallback (>256 entries) must upgrade them — serving
+        // exactly the current-format bytes, never air.
+        var small = FACTORY.createForBlockStates();
+        small.set(0, 0, 0, Blocks.STONE.defaultBlockState());
+        small.set(1, 0, 0, Blocks.OAK_STAIRS.defaultBlockState()
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, net.minecraft.core.Direction.EAST));
+        var wide = FACTORY.createForBlockStates();
+        int i = 0;
+        for (var state : Block.BLOCK_STATE_REGISTRY) {
+            if (i == 300) break;
+            wide.set(i & 15, (i >> 8) & 15, (i >> 4) & 15, state);
+            i++;
+        }
+        for (var states : List.of(small, wide)) {
+            var current = sectionFrom(0, states, FACTORY.createForBiomes());
+            var legacy = current.copy();
+            var palette = legacy.getCompound("block_states").orElseThrow().getList("palette").orElseThrow();
+            boolean sawProperties = false;
+            for (int k = 0; k < palette.size(); k++) {
+                var old = new CompoundTag();
+                if (palette.get(k) instanceof StringTag st) {
+                    old.putString("Name", st.value());
+                } else {
+                    var c = (CompoundTag) palette.get(k);
+                    old.put("Name", c.get("id"));
+                    if (c.contains("properties")) {
+                        old.put("Properties", c.get("properties"));
+                        sawProperties = true;
+                    }
+                }
+                palette.set(k, old);
+            }
+            assertTrue(sawProperties, "premise: a non-default state carries legacy Properties");
+            byte[] expected = NbtSectionSerializer.serializeChunkNbt(chunkNbt("minecraft:full", current), REGISTRY_ACCESS);
+            byte[] actual = NbtSectionSerializer.serializeChunkNbt(chunkNbt("minecraft:full", legacy), REGISTRY_ACCESS);
+            assertNotNull(expected, "premise: the current-format section serves");
+            assertArrayEquals(expected, actual,
+                    "a pre-26.3 palette (" + palette.size() + " entries) must serve the current-format bytes");
+        }
+    }
+
+    @Test
     void lightBytesPreserved() {
         byte[] bl = light(0, (byte) 0x10);
         byte[] sl = light(5, (byte) 0x0F);
@@ -504,14 +550,7 @@ class NbtSectionSerializerTest {
         s.put("block_states", FACTORY.blockStatesContainerCodec()
                 .encodeStart(NbtOps.INSTANCE, sec.getStates()).getOrThrow());
         var palette = s.getCompound("block_states").orElseThrow().getList("palette").orElseThrow();
-        boolean renamed = false;
-        for (var e : palette) {
-            var pe = (CompoundTag) e;
-            if ("minecraft:dirt".equals(pe.getStringOr("Name", ""))) {
-                pe.putString("Name", "lss:renamed_away");
-                renamed = true;
-            }
-        }
+        boolean renamed = renamePaletteEntry(palette, "minecraft:dirt", "lss:renamed_away") == 1;
         assertTrue(renamed, "premise: the dirt palette entry was renamed");
 
         byte[] wire = NbtSectionSerializer.serializeChunkNbt(
@@ -894,19 +933,8 @@ class NbtSectionSerializerTest {
         states.set(2, 0, 0, Blocks.GLASS.defaultBlockState());
         var s = sectionFrom(0, states, FACTORY.createForBiomes());
         var palette = s.getCompound("block_states").orElseThrow().getList("palette").orElseThrow();
-        int renamed = 0;
-        for (var e : palette) {
-            var pe = (CompoundTag) e;
-            var name = pe.getStringOr("Name", "");
-            if ("minecraft:dirt".equals(name)) {
-                pe.putString("Name", "lss:gone_one");
-                renamed++;
-            }
-            if ("minecraft:glass".equals(name)) {
-                pe.putString("Name", "lss:gone_two");
-                renamed++;
-            }
-        }
+        int renamed = renamePaletteEntry(palette, "minecraft:dirt", "lss:gone_one")
+                + renamePaletteEntry(palette, "minecraft:glass", "lss:gone_two");
         assertEquals(2, renamed, "premise: both entries were renamed away");
 
         byte[] wire = NbtSectionSerializer.serializeChunkNbt(
@@ -1234,14 +1262,7 @@ class NbtSectionSerializerTest {
         sec.setBlockState(1, 0, 0, Blocks.DIRT.defaultBlockState());
         var s = sectionNbtFor(1, sec);
         var palette = s.getCompound("block_states").orElseThrow().getList("palette").orElseThrow();
-        boolean renamed = false;
-        for (var e : palette) {
-            var pe = (CompoundTag) e;
-            if ("minecraft:dirt".equals(pe.getStringOr("Name", ""))) {
-                pe.putString("Name", "lss:renamed_away");
-                renamed = true;
-            }
-        }
+        boolean renamed = renamePaletteEntry(palette, "minecraft:dirt", "lss:renamed_away") == 1;
         assertTrue(renamed, "premise: the dirt palette entry was renamed");
         var chunk = chunkNbt("minecraft:full", s);
         byte[] transcoded = NbtSectionSerializer.serializeChunkNbt(chunk, REGISTRY_ACCESS,
@@ -1415,5 +1436,23 @@ class NbtSectionSerializerTest {
                 "premise: the mixed column took the sized-buffer route, not the direct emit");
         assertEquals(before, NbtSectionSerializer.SIZE_MISMATCH_FALLBACKS.get(),
                 "exact sizing fell back to the copy path — getSerializedSize drifted from write");
+    }
+
+    /** LINE FLAVOR (26.3): vanilla writes a property-less block state as a bare StringTag
+     *  palette entry (a state with properties stays {Name, Properties}); renames either shape
+     *  in place and returns how many entries it renamed. */
+    private static int renamePaletteEntry(net.minecraft.nbt.ListTag palette, String from, String to) {
+        int renamed = 0;
+        for (int i = 0; i < palette.size(); i++) {
+            var e = palette.get(i);
+            if (e instanceof net.minecraft.nbt.StringTag st && from.equals(st.value())) {
+                palette.set(i, net.minecraft.nbt.StringTag.valueOf(to));
+                renamed++;
+            } else if (e instanceof CompoundTag pe && from.equals(pe.getStringOr("Name", ""))) {
+                pe.putString("Name", to);
+                renamed++;
+            }
+        }
+        return renamed;
     }
 }
