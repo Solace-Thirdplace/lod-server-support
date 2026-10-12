@@ -1,5 +1,6 @@
 package dev.vox.lss.compat;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.vox.lss.testutil.SourcePaths;
@@ -73,5 +74,13 @@ class JourneyMapWiringContractTest {
         String src = Files.readString(SourcePaths.mainSource("dev/vox/lss/compat/JourneyMapLineSurface.java"));
         assertTrue(src.contains("level.getMinSectionY(), level.getSectionsCount(), level.getMinY(), level.getMaxY() + 1);"),
                 "a lost +1 writes an inclusive max: a build-limit top renders as void (plan review M2)");
+    }
+
+    /** LINE FLAVOR (1.21.10): no supported JourneyMap exists for this Minecraft version, so the
+     *  unsupported state must not tell the player to install a newer one (post-0.17 review). */
+    @Test
+    void theUnsupportedHintNeverAsksForAVersionThatDoesNotExist() {
+        assertFalse(JourneyMapLineSurface.UNSUPPORTED_HINT.contains("or newer"), JourneyMapLineSurface.UNSUPPORTED_HINT);
+        assertTrue(JourneyMapLineSurface.UNSUPPORTED_HINT.contains("not supported"), JourneyMapLineSurface.UNSUPPORTED_HINT);
     }
 }

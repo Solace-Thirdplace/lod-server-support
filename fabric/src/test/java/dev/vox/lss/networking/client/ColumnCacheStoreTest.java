@@ -568,6 +568,82 @@ class ColumnCacheStoreTest {
         return m;
     }
 
+    // ---- the map-only mark (review O5-1): a map-only download must not seal Voxy's terrain ----
+
+    @Test
+    void aMapOnlySessionMarksTheBucketItSaves() {
+        var dim = testDimension("maponly_mark");
+        final String server = "test-maponly-mark";
+        try {
+            ColumnCacheStore.mergeSave(server, dim, mapOf(100L, 1000L), new LongOpenHashSet(), 0, 0, true);
+            assertTrue(Files.exists(ColumnCacheStore.mapOnlyMarker(server, dim)));
+            assertEquals(1000L, ColumnCacheStore.load(server, dim, false).get(100L),
+                    "a map-only session reads its own stamps back (its map has that terrain)");
+            ColumnCacheStore.mergeSave(server, dim, mapOf(200L, 2000L), new LongOpenHashSet(), 0, 0, true);
+            var loaded = ColumnCacheStore.load(server, dim, false);
+            assertEquals(1000L, loaded.get(100L), "map-only sessions merge as always");
+            assertEquals(2000L, loaded.get(200L));
+        } finally {
+            ColumnCacheStore.clearForServer(server);
+        }
+        assertFalse(Files.exists(ColumnCacheStore.mapOnlyMarker(server, dim)), "a clear takes the mark with the bucket");
+    }
+
+    @Test
+    void aSessionWithVoxyIgnoresAMarkedBucketAndItsSaveReplacesItAndClearsTheMark() {
+        var dim = testDimension("maponly_voxy");
+        final String server = "test-maponly-voxy";
+        try {
+            ColumnCacheStore.mergeSave(server, dim, mapOf(100L, 1000L, 200L, 2000L), new LongOpenHashSet(), 0, 0, true);
+            assertTrue(ColumnCacheStore.load(server, dim, true).isEmpty(),
+                    "Voxy never received the map-only terrain: nothing may answer up_to_date for it");
+            // The Voxy session re-received 200 only; 100 must not come back from the old file.
+            ColumnCacheStore.mergeSave(server, dim, mapOf(200L, 2500L), new LongOpenHashSet(), 0, 0, false);
+            assertFalse(Files.exists(ColumnCacheStore.mapOnlyMarker(server, dim)), "the Voxy save clears the mark");
+            var loaded = ColumnCacheStore.load(server, dim, true);
+            assertEquals(1, loaded.size(), "the map-only stamps were replaced, never merged: " + loaded);
+            assertEquals(2500L, loaded.get(200L));
+        } finally {
+            ColumnCacheStore.clearForServer(server);
+        }
+    }
+
+    @Test
+    void anUnmarkedBucketLoadsAsAlwaysForEveryReader() {
+        var dim = testDimension("maponly_unmarked");
+        final String server = "test-maponly-unmarked";
+        try {
+            ColumnCacheStore.save(server, dim, mapOf(100L, 1000L));
+            assertEquals(1000L, ColumnCacheStore.load(server, dim, true).get(100L),
+                    "caches from before the mark (no marker file) stay valid for Voxy");
+            ColumnCacheStore.mergeSave(server, dim, mapOf(200L, 2000L), new LongOpenHashSet(), 0, 0, false);
+            assertFalse(Files.exists(ColumnCacheStore.mapOnlyMarker(server, dim)));
+            assertEquals(2, ColumnCacheStore.load(server, dim, true).size());
+        } finally {
+            ColumnCacheStore.clearForServer(server);
+        }
+    }
+
+    @Test
+    void theProbeIsReadOnTheCallerThreadForLoadsAndSaves() throws Exception {
+        var dim = testDimension("maponly_probe");
+        final String server = "test-maponly-probe";
+        var old = ColumnCacheStore.mapOnlyProbe;
+        try {
+            ColumnCacheStore.mapOnlyProbe = () -> true;
+            ColumnCacheStore.mergeSaveAsync(server, dim, mapOf(100L, 1000L), new LongOpenHashSet(), 0, 0);
+            ColumnCacheStore.flushPendingIo();
+            assertTrue(Files.exists(ColumnCacheStore.mapOnlyMarker(server, dim)));
+            assertFalse(ColumnCacheStore.loadStateAsync(server, dim).get().leaves.isEmpty());
+            ColumnCacheStore.mapOnlyProbe = () -> false;
+            assertTrue(ColumnCacheStore.loadStateAsync(server, dim).get().leaves.isEmpty(),
+                    "a session with Voxy loads a map-only bucket empty");
+        } finally {
+            ColumnCacheStore.mapOnlyProbe = old;
+            ColumnCacheStore.clearForServer(server);
+        }
+    }
+
     @Test
     void mergeSavePreservesFileOnlyEntriesAndMemoryWins() {
         var dim = testDimension("merge_basic");

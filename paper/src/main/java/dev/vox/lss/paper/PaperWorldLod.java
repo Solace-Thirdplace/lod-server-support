@@ -81,6 +81,28 @@ final class PaperWorldLod {
         }
     }
 
+    /** The loaded worlds with no LOD service, resolved the way requests are (Bukkit name,
+     *  then dimension id, then the default): a {@code by_world} entry that overrides a
+     *  {@code by_dimension} 0 is served and not listed, and a world falling through to a
+     *  {@code default_chunks} of 0 is. The config-only list ({@code config.unservedWorlds()})
+     *  names the overrides as written, which on Paper can disagree with what is served. A
+     *  failure to enumerate degrades to that config-only list. */
+    static java.util.List<String> unservedWorlds(PaperConfig config, MinecraftServer server) {
+        var off = new java.util.ArrayList<String>();
+        try {
+            for (ServerLevel level : server.getAllLevels()) {
+                if (distance(config, level) > 0) continue;
+                String name = worldName(level);
+                String id = dimensionId(level);
+                off.add(name == null ? String.valueOf(id)
+                        : id == null ? "world " + name : "world " + name + " (" + id + ")");
+            }
+        } catch (Throwable ignored) {
+            return config.unservedWorlds();
+        }
+        return java.util.List.copyOf(off);
+    }
+
     static String dimensionId(ServerLevel level) {
         try {
             var dim = level.dimension();

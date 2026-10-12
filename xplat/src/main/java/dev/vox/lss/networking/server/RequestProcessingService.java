@@ -779,6 +779,7 @@ public class RequestProcessingService {
         postSnapshot(lifecycle, generationReady, config);
         this.drainSendActions();
         this.drainGenerationTicketRequests();
+        this.lastActiveCount = lifecycle.activeCount;
         flushSendQueues(lifecycle.activeCount, config);
         tickDirtyBroadcast(config);
         tickFarPlayers(config);
@@ -963,6 +964,23 @@ public class RequestProcessingService {
         }
     }
 
+    /** Test seam: delivers a mid-session SessionConfig push (the dimension-change push and
+     *  the reload re-push). Production default is {@code LoaderServices.sendToPlayer};
+     *  gametests record the pushes to pin their {@code enabled}/distance fields. */
+    @FunctionalInterface
+    public interface SessionConfigPusher {
+        void push(ServerPlayer player, SessionConfigS2CPayload payload) throws Exception;
+    }
+
+    private volatile SessionConfigPusher sessionConfigPusher =
+            (player, payload) -> dev.vox.lss.platform.LoaderServices.get().sendToPlayer(player, payload);
+
+    /** Test seam (see {@link SessionConfigPusher}); {@code null} restores the production send. */
+    public void setSessionConfigPusher(SessionConfigPusher pusher) {
+        this.sessionConfigPusher = pusher != null ? pusher
+                : (player, payload) -> dev.vox.lss.platform.LoaderServices.get().sendToPlayer(player, payload);
+    }
+
     /**
      * Push a fresh SessionConfig to every CURRENT-dialect (v20) session after a
      * explicit settings reload changing terrain distance (SET plan §"Pushing the new distance").
@@ -994,6 +1012,12 @@ public class RequestProcessingService {
                 int capabilities = state.getCapabilities();
                 removePlayer(player.getUUID());
                 registerPlayer(player, capabilities);
+                // Far players keep running in an off world, but the client ends its far-player
+                // session on the enabled=false below (its tracker forgets the epoch), so the
+                // roster must re-send exactly as on a dimension change — otherwise every
+                // later update carries the old epoch, is dropped, and the proxies vanish until
+                // the player changes dimension or rejoins.
+                this.farPlayerService.onViewerDimensionChange(player.getUUID());
             }
             var payload = new SessionConfigS2CPayload(
                     LSSConstants.PROTOCOL_VERSION,
@@ -1003,7 +1027,7 @@ public class RequestProcessingService {
                     net.minecraft.SharedConstants.getCurrentVersion()
                             .dataVersion().version());
             try {
-                dev.vox.lss.platform.LoaderServices.get().sendToPlayer(player, payload);
+                this.sessionConfigPusher.push(player, payload);
                 pushed++;
             } catch (Exception e) {
                 LSSLogger.error("Session-config re-push failed for " + state.getPlayerName(), e);
@@ -1192,6 +1216,15 @@ public class RequestProcessingService {
         }
     }
 
+    // The last tick's bandwidth-sharing player count (tick thread; a gametest observation point).
+    private int lastActiveCount;
+
+    /** How many players the last tick split the global bandwidth between (players in a world
+     *  with no LOD service are not counted). Tick thread. */
+    public int lastBandwidthSharingPlayerCount() {
+        return this.lastActiveCount;
+    }
+
     private record LifecycleResult(
             SnapshotBuffers buffers,
             int activeCount,
@@ -1235,8 +1268,13 @@ public class RequestProcessingService {
             if (removed) continue;
             // Counted AFTER the removal check (R2-11): a disconnecting player must not
             // dilute getPerPlayerAllocation for its final tick. Idle-but-connected
-            // players DO count — the pinned SP-062 dilution.
-            activeCount++;
+            // players DO count — the pinned SP-062 dilution — but a player parked in a
+            // world with no LOD service (distance 0) does not: every ask it could make is
+            // range-filtered, so it can never spend, and counting it would only shrink the
+            // served players' shares. It counts again from its first tick in a served world.
+            if (dev.vox.lss.common.config.ServerConfigBase.servesWorld(lodDistanceFor(state.getPlayer()))) {
+                activeCount++;
+            }
 
             // Captured BEFORE checkDimensionChange() mutates the stored dimension, so
             // the conditional re-push below can compare the OLD world's distance.
@@ -1264,7 +1302,7 @@ public class RequestProcessingService {
                         prevDim == null ? null : prevDim.location().toString());
                 if (newDist != prevDist && this.dialects.isCurrent(player.getUUID())) {
                     try {
-                        dev.vox.lss.platform.LoaderServices.get().sendToPlayer(player,
+                        this.sessionConfigPusher.push(player,
                                 new SessionConfigS2CPayload(
                                         LSSConstants.PROTOCOL_VERSION,
                                         // 0 = no LOD service in this world: the client parks
