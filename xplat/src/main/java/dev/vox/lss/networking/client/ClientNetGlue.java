@@ -163,12 +163,19 @@ public final class ClientNetGlue {
         return columnProcessor.awaitDecodeIdle(timeoutMs);
     }
 
+    /** The LAN host self-handshake needs a consumer other than the map backends. */
+    static boolean hostHandshakeHasConsumer() {
+        return dev.vox.lss.compat.ModCompat.hasNonMapConsumers();
+    }
+
     public static void triggerHostHandshake() {
         Minecraft.getInstance().execute(() -> {
             sessionGate.onHostServiceReady(); // remember publication even when downloads are OFF
             if (!LSSClientConfig.CONFIG.receiveServerLods()) return;
             if (sessionGate.getRequestManager() != null) return;
-            if (!LSSApi.hasVoxelConsumers()) return; // no LOD consumer -> stay silent
+            // No LOD consumer -> stay silent. Map ingestion alone is multiplayer-only: a host
+            // with only a map mod must not generate a LOD disc around itself (review).
+            if (!hostHandshakeHasConsumer()) return;
             try {
                 LoaderServices.get().sendToServer(new HandshakeC2SPayload(
                         LSSConstants.PROTOCOL_VERSION, LSSConstants.CAPABILITY_VOXEL_COLUMNS

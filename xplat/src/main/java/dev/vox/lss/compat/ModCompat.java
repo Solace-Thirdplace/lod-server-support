@@ -68,6 +68,31 @@ public final class ModCompat {
         return voxyLoaded;
     }
 
+    /** The map backends' column consumers this launch, registered or not. */
+    private static java.util.List<dev.vox.lss.api.VoxelColumnConsumer> mapConsumers() {
+        var out = new java.util.ArrayList<dev.vox.lss.api.VoxelColumnConsumer>(2);
+        var xaero = XaeroMapCompat.mapConsumer();
+        if (xaero != null) out.add(xaero);
+        var journeyMap = journeyMapLoaded ? JourneyMapCompat.mapConsumer() : null;
+        if (journeyMap != null) out.add(journeyMap);
+        return out;
+    }
+
+    /** Whether a column consumer other than the map backends is registered — Voxy or another
+     *  mod's LSSApi reader. Map ingestion alone is multiplayer-only: it never makes a LAN host
+     *  fetch LODs from its own integrated server (that generates terrain around the host).
+     *  Any thread. */
+    public static boolean hasNonMapConsumers() {
+        return dev.vox.lss.api.LSSApi.hasVoxelConsumersOtherThan(mapConsumers());
+    }
+
+    /** Whether the map backends are this session's ONLY column consumers: what such a session
+     *  receives never reached Voxy, so its column cache must not answer for a later Voxy
+     *  session (the cache's map-only mark). Any thread. */
+    public static boolean isMapOnlyIngestion() {
+        return dev.vox.lss.api.LSSApi.hasVoxelConsumers() && !hasNonMapConsumers();
+    }
+
     /** The live Voxy storage root's directory name, or null when unobservable —
      *  see {@code VoxyCompat.observeStorageDirName} (its own two-handle domain). */
     public static String observeVoxyStorageDirName() {
