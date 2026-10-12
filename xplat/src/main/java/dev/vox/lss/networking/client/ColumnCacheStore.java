@@ -90,6 +90,19 @@ public class ColumnCacheStore {
     static Path cacheRoot() {
         return cacheDir();
     }
+
+    /**
+     * Whether map backends are this session's ONLY column consumers (no Voxy, no other LSSApi
+     * reader). Read on the CALLER thread when a load or save is queued. A session like that
+     * marks the bucket it saves ({@code <dimension>.maponly} beside the file): its stamps cover
+     * terrain only a map received. A session WITH another reader ignores a marked file — its
+     * stamps would answer up_to_date for terrain Voxy never got — and its next save replaces
+     * the file and clears the mark. Unmarked files (every cache from before the mark) load as
+     * always. A seam for tests.
+     */
+    static volatile java.util.function.BooleanSupplier mapOnlyProbe =
+            dev.vox.lss.compat.ModCompat::isMapOnlyIngestion;
+
     // Daemon thread — saves use atomic rename so JVM shutdown mid-write won't corrupt,
     // but the save may be lost. Acceptable for a rebuildable client cache.
     private static final ExecutorService IO_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
@@ -99,10 +112,20 @@ public class ColumnCacheStore {
     });
 
     public static Long2LongOpenHashMap load(String serverAddress, ResourceKey<Level> dimension) {
+        return load(serverAddress, dimension, false);
+    }
+
+    /** @param ignoreMapOnly a session with a non-map reader: a map-only file loads empty */
+    static Long2LongOpenHashMap load(String serverAddress, ResourceKey<Level> dimension, boolean ignoreMapOnly) {
         var map = new Long2LongOpenHashMap();
         map.defaultReturnValue(-1L);
         var file = getCacheFile(serverAddress, dimension);
         if (!Files.exists(file)) return map;
+        if (ignoreMapOnly && Files.exists(mapOnlyMarker(serverAddress, dimension))) {
+            LSSLogger.info("Column cache for " + dimensionKey(dimension) + " was filled by map ingestion alone"
+                    + " (no Voxy) — ignoring it, so terrain the map received is downloaded again for Voxy");
+            return map;
+        }
 
         try (var in = new DataInputStream(new BufferedInputStream(
                 Files.newInputStream(file), IO_BUFFER_BYTES))) {
@@ -150,8 +173,9 @@ public class ColumnCacheStore {
      */
     static CompletableFuture<ColumnStateMap.LoadedState> loadStateAsync(
             String serverAddress, ResourceKey<Level> dimension) {
+        boolean ignoreMapOnly = !mapOnlyProbe.getAsBoolean();
         return CompletableFuture.supplyAsync(
-                () -> ColumnStateMap.buildLoaded(load(serverAddress, dimension)), IO_EXECUTOR);
+                () -> ColumnStateMap.buildLoaded(load(serverAddress, dimension, ignoreMapOnly)), IO_EXECUTOR);
     }
 
     /** Test-only queue-a-plain-save helper (FIFO/flush ordering tests). NOT for production:
@@ -167,7 +191,12 @@ public class ColumnCacheStore {
     }
 
     public static void save(String serverAddress, ResourceKey<Level> dimension, Long2LongOpenHashMap columns) {
-        if (columns.isEmpty()) return;
+        write(serverAddress, dimension, columns);
+    }
+
+    /** The {@link #save} body; true once the file is in place. */
+    private static boolean write(String serverAddress, ResourceKey<Level> dimension, Long2LongOpenHashMap columns) {
+        if (columns.isEmpty()) return false;
         SAVE_WRITES_FOR_TEST.incrementAndGet();
 
         var file = getCacheFile(serverAddress, dimension);
@@ -193,11 +222,13 @@ public class ColumnCacheStore {
                 Files.move(tmpFile, file, StandardCopyOption.REPLACE_EXISTING);
             }
             LSSLogger.info("Saved " + columns.size() + " cached column entries for " + dimensionKey(dimension));
+            return true;
         } catch (IOException e) {
             LSSLogger.warn("Failed to save column cache to " + file, e);
             try { Files.deleteIfExists(tmpFile); } catch (IOException e2) {
                 LSSLogger.warn("Failed to clean up temporary cache file " + tmpFile, e2);
             }
+            return false;
         }
     }
 
@@ -224,8 +255,9 @@ public class ColumnCacheStore {
         var mapCopy = new Long2LongOpenHashMap(columns);
         mapCopy.defaultReturnValue(-1L);
         var removalsCopy = removals == null ? new LongOpenHashSet() : new LongOpenHashSet(removals);
+        boolean mapOnly = mapOnlyProbe.getAsBoolean();
         IO_EXECUTOR.execute(() -> mergeSave(serverAddress, dimension, mapCopy, removalsCopy,
-                centerCx, centerCz));
+                centerCx, centerCz, mapOnly));
     }
 
     /**
@@ -241,24 +273,52 @@ public class ColumnCacheStore {
                                               ColumnStateMap.DetachedState state,
                                               int centerCx, int centerCz) {
         if (state.isEmpty()) return;
-        IO_EXECUTOR.execute(() -> mergeSaveDetached(serverAddress, dimension, state, centerCx, centerCz));
+        boolean mapOnly = mapOnlyProbe.getAsBoolean();
+        IO_EXECUTOR.execute(() -> mergeSaveDetached(serverAddress, dimension, state, centerCx, centerCz, mapOnly));
     }
 
     /** IO-thread body of {@link #mergeSaveDetachedAsync}; package-visible for inline tests. */
     static void mergeSaveDetached(String serverAddress, ResourceKey<Level> dimension,
                                   ColumnStateMap.DetachedState state,
                                   int centerCx, int centerCz) {
+        mergeSaveDetached(serverAddress, dimension, state, centerCx, centerCz, false);
+    }
+
+    static void mergeSaveDetached(String serverAddress, ResourceKey<Level> dimension,
+                                  ColumnStateMap.DetachedState state,
+                                  int centerCx, int centerCz, boolean mapOnly) {
         var overlay = new Long2LongOpenHashMap(Math.max(16, state.entries));
         overlay.defaultReturnValue(-1L);
         state.forEachPresent(overlay::put);
-        mergeSave(serverAddress, dimension, overlay, state.removals, centerCx, centerCz);
+        mergeSave(serverAddress, dimension, overlay, state.removals, centerCx, centerCz, mapOnly);
     }
 
     /** IO-thread body of {@link #mergeSaveAsync}; package-visible so tests can run it inline. */
     static void mergeSave(String serverAddress, ResourceKey<Level> dimension,
                           Long2LongOpenHashMap columns, LongOpenHashSet removals,
                           int centerCx, int centerCz) {
-        var merged = load(serverAddress, dimension);
+        mergeSave(serverAddress, dimension, columns, removals, centerCx, centerCz, false);
+    }
+
+    /** @param mapOnly the saving session's only readers were map backends (see {@link #mapOnlyProbe}) */
+    static void mergeSave(String serverAddress, ResourceKey<Level> dimension,
+                          Long2LongOpenHashMap columns, LongOpenHashSet removals,
+                          int centerCx, int centerCz, boolean mapOnly) {
+        Path marker = mapOnlyMarker(serverAddress, dimension);
+        boolean marked = Files.exists(marker);
+        if (mapOnly && !marked) {
+            // Marked BEFORE the stamps land: a crash in between must never leave map-only
+            // stamps unmarked on disk.
+            try {
+                Files.createDirectories(marker.getParent());
+                Files.write(marker, new byte[0]);
+            } catch (IOException e) {
+                LSSLogger.warn("Failed to mark the column cache for " + dimensionKey(dimension) + " as map-only", e);
+            }
+        }
+        // A session with another reader never inherits a map-only file's stamps: they would
+        // answer up_to_date for terrain only the map received (its own load ignored them too).
+        var merged = !mapOnly && marked ? emptyStamps() : load(serverAddress, dimension);
         var removalIter = removals.iterator();
         while (removalIter.hasNext()) {
             merged.remove(removalIter.nextLong());
@@ -267,13 +327,27 @@ public class ColumnCacheStore {
         if (merged.size() > mergeEvictionCap) {
             merged = evictFarthest(merged, centerCx, centerCz, mergeEvictionCap);
         }
+        boolean written;
         if (merged.isEmpty()) {
             // save() skips empty maps; a removals-only merge that emptied the file must
             // actually delete it, or the dishonest stamps survive.
-            deleteCacheFile(serverAddress, dimension);
+            written = deleteCacheFile(serverAddress, dimension);
         } else {
-            save(serverAddress, dimension, merged);
+            written = write(serverAddress, dimension, merged);
         }
+        if (!mapOnly && marked && written) {
+            try {
+                Files.deleteIfExists(marker);
+            } catch (IOException e) {
+                LSSLogger.warn("Failed to clear the map-only mark of the column cache for " + dimensionKey(dimension), e);
+            }
+        }
+    }
+
+    private static Long2LongOpenHashMap emptyStamps() {
+        var map = new Long2LongOpenHashMap();
+        map.defaultReturnValue(-1L);
+        return map;
     }
 
     /**
@@ -297,11 +371,13 @@ public class ColumnCacheStore {
         return kept;
     }
 
-    private static void deleteCacheFile(String serverAddress, ResourceKey<Level> dimension) {
+    private static boolean deleteCacheFile(String serverAddress, ResourceKey<Level> dimension) {
         try {
             Files.deleteIfExists(getCacheFile(serverAddress, dimension));
+            return true;
         } catch (IOException e) {
             LSSLogger.warn("Failed to delete emptied column cache for " + dimensionKey(dimension), e);
+            return false;
         }
     }
 
@@ -665,6 +741,10 @@ public class ColumnCacheStore {
 
     private static Path getCacheFile(String serverAddress, ResourceKey<Level> dimension) {
         return getServerDir(serverAddress).resolve(dimensionKey(dimension) + ".bin");
+    }
+
+    static Path mapOnlyMarker(String serverAddress, ResourceKey<Level> dimension) {
+        return getServerDir(serverAddress).resolve(dimensionKey(dimension) + ".maponly");
     }
 
     private static String dimensionKey(ResourceKey<Level> dimension) {
