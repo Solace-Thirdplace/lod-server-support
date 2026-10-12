@@ -18,6 +18,7 @@ Use the matching Fabric or shipped NeoForge artifact. Server support and rendere
 | 1.21.11 | maintained | experimental | maintained build only | unsupported |
 | 26.1 | maintained | experimental | shipped; best-effort | unsupported |
 | 26.2 | maintained | experimental | shipped; best-effort | unsupported |
+| 26.3 | maintained | unsupported | shipped; best-effort | unsupported |
 <!-- LSS SERVER MATRIX END -->
 
 On 1.21.10 there is no Folia build upstream. The in-game options page renders through Sodium 0.7.x's own settings screen from v0.13.0 (earlier 1.21.10 builds had no page) — every setting also remains in the JSON config files.
