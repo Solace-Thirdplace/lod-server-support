@@ -9,7 +9,7 @@ import net.minecraft.world.level.biome.Biome;
  * level's height facts and the biome identifier accessor. Every other JourneyMap file is
  * identical on every line.
  *
- * <p>LINE FLAVOR (26.2): {@code getMinSectionY/getMinY/getMaxY} (max inclusive) and
+ * <p>LINE FLAVOR (26.2/26.3): {@code getMinSectionY/getMinY/getMaxY} (max inclusive) and
  * {@code ResourceKey.identifier()}.
  */
 final class JourneyMapLineSurface {

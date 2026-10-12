@@ -61,6 +61,14 @@ final class JourneyMapSession {
     static final long IDENTITY_POLL_MILLIS = 1000;
     static final long START_TIMEOUT_MILLIS = 30_000;
     static final long SLOW_BATCH_MILLIS = 10_000;
+    /** A batch STARTED this long ago without finishing means JourneyMap's task thread is stuck
+     *  inside it: the session latches dead (its queue would otherwise hold the stream and churn
+     *  re-serves for the rest of the process). The slot is never reclaimed — the thread may
+     *  still write its result. */
+    static final long WEDGED_BATCH_MILLIS = 6 * SLOW_BATCH_MILLIS;
+    /** A not-mapping / no-world-directory hold inside an LSS session that outlasts this is no
+     *  longer a switch in progress: it turns inert, so it stops holding the stream. */
+    static final long STUCK_HOLD_MILLIS = 30_000;
     static final long DEFAULT_RENDER_DELAY_MILLIS = 500;
     /** A batch runs for at most this many of JourneyMap's renderDelays (its own mapping
      *  tasks may run three), then idles half of one: JourneyMap's queued tasks run first,
@@ -178,6 +186,7 @@ final class JourneyMapSession {
                     XaeroSession::reportDroppedProduction,
                     System::currentTimeMillis);
             session.memory = MapMemoryGuard.PRODUCTION;
+            session.connected = XaeroSession::productionConnected;
             session.maybeRegister();
             instance = session;
             LSSLogger.info(LSSClientConfig.CONFIG.mapIngestionEnabled()
@@ -276,8 +285,16 @@ final class JourneyMapSession {
             return new ModCompat.JourneyMapStatus(unsupported || unavailableReason != null ? "unavailable"
                     : discoveryComplete ? "absent" : "unknown", false, 0);
         }
+        var batch = session.inFlight;
         return new ModCompat.JourneyMapStatus("available", session.dead,
-                session.sessionEndPending ? 0 : session.queuedGauge + (session.inFlight != null ? session.inFlight.entries.size() : 0));
+                session.sessionEndPending ? 0 : session.queuedGauge + (batch != null ? batch.entries.size() : 0));
+    }
+
+    /** The backend's column consumer, whether or not it is registered right now (ModCompat's
+     *  "is a map the only reader" checks compare against it); null without an instance. */
+    static VoxelColumnConsumer mapConsumer() {
+        var session = instance;
+        return session == null ? null : session.consumer;
     }
 
     static void resetFacadeForTest() {
@@ -300,6 +317,9 @@ final class JourneyMapSession {
     final VoxelColumnConsumer consumer;
     MapMemoryGuard memory = MapMemoryGuard.NEVER;
     SnapshotDecoder decoder = this::decodeWithBindings;
+    /** A connection exists (the title screen has none): a disabled backend releases its
+     *  consumer at once only without one. Production reads the client's connection. */
+    BooleanSupplier connected = () -> true;
     boolean registered; // main thread only
 
     // ---- queue (decode thread offers, main thread drains) ----
@@ -322,6 +342,14 @@ final class JourneyMapSession {
     boolean heapHolding; // main thread only
     int consecutiveFailedBatches; // main thread only
     int consecutiveFailedColumns; // main thread only
+    int consecutivePumpFailures; // main thread only
+    /** When the current not-mapping / no-world-directory hold began (0 = not holding). */
+    long holdSinceMillis; // main thread only
+    /** The client level's dimension at the last pump: a change sweeps other dimensions' entries. */
+    Object lastLevelDimension; // main thread only
+    /** Bumped at every settled session end: a batch from an older session applies nothing. */
+    long sessionEpoch; // main thread only
+    boolean wedgeWarned; // main thread only
 
     // ---- identity + batches (main thread) ----
     Identity observed;
@@ -369,7 +397,9 @@ final class JourneyMapSession {
     /** Live chunks the edge sweep rendered, by position → the client's LevelChunk instance,
      *  held weakly so a disconnect never pins the old level (JM thread). */
     final java.util.HashMap<Long, java.lang.ref.WeakReference<Object>> edgeDone = new java.util.HashMap<>();
-    Identity edgeIdentity; // JM thread
+    /** The map the edge sweep last drew into — weakly: a disconnect must never pin the old
+     *  level (and its whole chunk cache) or JourneyMap's old task controller (JM thread). */
+    EdgeKey edgeKey; // JM thread
 
     JourneyMapSession(JourneyMapBindings h, Host host, BooleanSupplier enabled, BooleanSupplier sessionActive,
                       Consumer<VoxelColumnConsumer> registrar, Consumer<VoxelColumnConsumer> deregistrar,
@@ -419,6 +449,21 @@ final class JourneyMapSession {
         }
 
         @Override public int hashCode() { return Objects.hash(this.dimension, this.worldDir, this.worldId); }
+    }
+
+    /** {@link Identity} without strong references to the level and controller. */
+    record EdgeKey(java.lang.ref.WeakReference<Object> controller, java.lang.ref.WeakReference<Object> level,
+                   Object dimension, File worldDir, String worldId) {
+        static EdgeKey of(Identity id) {
+            return new EdgeKey(new java.lang.ref.WeakReference<>(id.controller()),
+                    new java.lang.ref.WeakReference<>(id.level()), id.dimension(), id.worldDir(), id.worldId());
+        }
+
+        boolean matches(Identity id) {
+            return this.controller.get() == id.controller() && this.level.get() == id.level()
+                    && Objects.equals(this.dimension, id.dimension()) && Objects.equals(this.worldDir, id.worldDir())
+                    && Objects.equals(this.worldId, id.worldId());
+        }
     }
 
     record Rendered(Object dimension, int chunkX, int chunkZ, File worldDir, long atMillis) {}
@@ -480,6 +525,16 @@ final class JourneyMapSession {
         }
     }
 
+    /** Disabled with no connection (the title screen): release the consumer now, so the next
+     *  handshake does not advertise LOD reception for a map the player just turned off
+     *  (review). With a connection registration stays add-only until the session ends. */
+    void settleOfflineRegistration() {
+        if (this.registered && !this.enabled.getAsBoolean() && !this.connected.getAsBoolean()) {
+            this.deregistrar.accept(this.consumer);
+            this.registered = false;
+        }
+    }
+
     /** Any thread: the thread-safe half; the pump settles the rest. */
     void onSessionEnd() {
         this.acquisitionGeneration.incrementAndGet(); // every outstanding receipt goes inactive
@@ -508,6 +563,11 @@ final class JourneyMapSession {
         this.dead = false; // the death latch is session-scoped
         this.consecutiveFailedBatches = 0;
         this.consecutiveFailedColumns = 0;
+        this.consecutivePumpFailures = 0;
+        this.holdSinceMillis = 0;
+        this.lastLevelDimension = null;
+        this.sessionEpoch++; // a still-running batch of this session applies nothing later
+        this.wedgeWarned = false;
         this.lastRegionKey = Long.MIN_VALUE;
         this.replay.clear();
         synchronized (this.context) {
@@ -582,6 +642,7 @@ final class JourneyMapSession {
     /** Latest-wins by position, oldest-evicting within the count and byte bounds. */
     void offerEncoded(Entry entry) {
         var evicted = new ArrayList<Entry>(0);
+        var stale = new ArrayList<Entry>(0);
         synchronized (this.queueLock) {
             if (!entry.receipt.active()) {
                 // The session ended while this column was encoding: it must never reach the
@@ -589,10 +650,25 @@ final class JourneyMapSession {
                 entry.receipt.close();
                 return;
             }
+            if (this.inertReason != null || this.dead || !this.enabled.getAsBoolean()) {
+                // Re-checked under the lock: the pump went inert (or died, or was switched
+                // off) while this column was encoding, and its clear already ran — queued
+                // now, the entry would strand its acceptance lease (review).
+                this.droppedInert.incrementAndGet();
+                entry.receipt.close();
+                return;
+            }
             var previous = this.queue.remove(entry.key());
             if (previous != null) {
                 this.queuedBytes -= previous.bytes.length;
-                previous.receipt.close(); // superseded by the newer delivery of the same column
+                if (Objects.equals(previous.dimension, entry.dimension)) {
+                    previous.receipt.close(); // superseded by the newer delivery of the same column
+                } else {
+                    // Same position, another dimension: the old column was never written and
+                    // its dimension's stamps persist — report it (the Xaero queue's rule).
+                    this.droppedStale.incrementAndGet();
+                    stale.add(previous);
+                }
             }
             this.queue.put(entry.key(), entry);
             this.queuedBytes += entry.bytes.length;
@@ -605,6 +681,7 @@ final class JourneyMapSession {
             }
             updateOccupancyLocked();
         }
+        this.pendingReports.addAll(stale);
         for (var e : evicted) {
             this.droppedOverflow.incrementAndGet();
             // The Xaero overflow rule: reported for its re-serve only while governed and not
@@ -634,7 +711,7 @@ final class JourneyMapSession {
     // ---- backpressure (main thread) ----
 
     int reportBackpressure() {
-        return this.governor.report(this.backpressureEnabled.getAsBoolean(), active(), this.occupancy, this.heapHolding);
+        return this.governor.report(this.backpressureEnabled.getAsBoolean(), active(), this.occupancy, false, this.heapHolding);
     }
 
     boolean active() {
@@ -646,6 +723,7 @@ final class JourneyMapSession {
     void pump() {
         if (this.sessionEndPending) settleSessionEnd();
         maybeRegister();
+        settleOfflineRegistration();
         this.governor.notePump();
         try {
             if (this.dead) return;
@@ -655,9 +733,19 @@ final class JourneyMapSession {
                 return;
             }
             pumpInner();
+            this.consecutivePumpFailures = 0;
         } catch (Throwable t) {
             if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
             warn("pump failed (contained)", t);
+            // A pump that throws every tick (JourneyMap internals drifting at call time, not
+            // bind time) would hold the queue and duty-cycle the governor for the whole
+            // session: it latches like the Xaero bridge's commit failures (review).
+            if (++this.consecutivePumpFailures >= DEATH_LATCH && !this.dead) {
+                this.dead = true;
+                clearQueue();
+                LSSLogger.error("JourneyMap map ingestion: " + DEATH_LATCH + " consecutive pump failures —"
+                        + " disabling it for this session (LODs are unaffected)", t);
+            }
         } finally {
             drainPendingReports();
         }
@@ -668,6 +756,10 @@ final class JourneyMapSession {
         // Set again below only if this pump reaches the heap check: a stale hold must not
         // keep the long pace box while the session waits on something else (re-review).
         this.heapHolding = false;
+        // Likewise the not-mapping / no-world-directory hold clock: only an uninterrupted
+        // run of holding pumps ages it.
+        long holdSince = this.holdSinceMillis;
+        this.holdSinceMillis = 0;
         long now = now();
         Object client = this.h.getInstance.invoke();
         Object level = this.host.level();
@@ -675,6 +767,14 @@ final class JourneyMapSession {
             this.waitingReason = "no_world";
             return;
         }
+        Object levelDimension = this.host.dimension(level);
+        if (this.lastLevelDimension != null && !Objects.equals(levelDimension, this.lastLevelDimension)) {
+            // The client changed dimension: JourneyMap stops mapping for the switch, so the
+            // identity change that would report the departed dimension's queued columns may
+            // come late or never — report them now, whatever JourneyMap is doing (review).
+            sweepForeignDimensions(levelDimension);
+        }
+        this.lastLevelDimension = levelDimension;
         if (!(boolean) this.h.enabled.invoke(client)) {
             inert("journeymap_disabled", null);
             return;
@@ -693,6 +793,12 @@ final class JourneyMapSession {
         boolean mapping = Boolean.TRUE.equals(this.h.isMapping.invoke(client))
                 && (this.h.isMappingSuspended == null || !(boolean) this.h.isMappingSuspended.invoke(client));
         if (!mapping) {
+            if (holdStuck(now, holdSince)) {
+                // Not a dimension or world switch any more (JourneyMap never started, an
+                // import suspended it): stop holding the stream.
+                inert("not_mapping", null);
+                return;
+            }
             this.inertReason = null;
             this.waitingReason = "not_mapping";
             this.observed = null;
@@ -720,6 +826,10 @@ final class JourneyMapSession {
             this.renderDelayMillis = delay instanceof Integer d && d > 0 ? d : DEFAULT_RENDER_DELAY_MILLIS;
         }
         if (this.observed.worldDir() == null) {
+            if (holdStuck(now, holdSince)) {
+                inert("no_world_dir", null, false); // keep the identity: the poll stays at 1 Hz
+                return;
+            }
             this.waitingReason = "no_world_dir";
             return;
         }
@@ -766,6 +876,10 @@ final class JourneyMapSession {
      * dimension, so a silent drop there would leave a permanent hole on the way back.
      */
     private void inert(String reason, Object dimension) {
+        inert(reason, dimension, true);
+    }
+
+    private void inert(String reason, Object dimension, boolean forgetIdentity) {
         if (!reason.equals(this.inertReason)) {
             this.inertReason = reason;
             List<Entry> cleared;
@@ -785,7 +899,36 @@ final class JourneyMapSession {
             }
         }
         this.waitingReason = null;
-        this.observed = null;
+        if (forgetIdentity) this.observed = null;
+    }
+
+    /** True once a not-mapping / no-world-directory hold has lasted {@link #STUCK_HOLD_MILLIS}
+     *  inside an LSS session (outside one nothing is offered, so nothing is held).
+     *  {@code holdSince} is the previous pump's clock, cleared by any pump that did not hold. */
+    private boolean holdStuck(long now, long holdSince) {
+        if (!this.sessionActive.getAsBoolean()) return false;
+        this.holdSinceMillis = holdSince == 0 ? now : holdSince;
+        return now - this.holdSinceMillis >= STUCK_HOLD_MILLIS;
+    }
+
+    /** Reports queued columns of any dimension but {@code dimension}: they can never be
+     *  written here, and client stamps persist per dimension (a silent drop is a hole). */
+    private void sweepForeignDimensions(Object dimension) {
+        var foreign = new ArrayList<Entry>();
+        synchronized (this.queueLock) {
+            var it = this.queue.values().iterator();
+            while (it.hasNext()) {
+                var e = it.next();
+                if (!Objects.equals(e.dimension, dimension)) {
+                    it.remove();
+                    this.queuedBytes -= e.bytes.length;
+                    foreign.add(e);
+                }
+            }
+            updateOccupancyLocked();
+        }
+        this.droppedStale.addAndGet(foreign.size());
+        this.pendingReports.addAll(foreign);
     }
 
     /** A late world id (JourneyMap restarted mapping in a new directory): columns rendered
@@ -819,21 +962,7 @@ final class JourneyMapSession {
         }
         // Columns of another dimension can never be written here: report them for the return.
         if (previous == null || !Objects.equals(previous.dimension(), next.dimension())) {
-            var foreign = new ArrayList<Entry>();
-            synchronized (this.queueLock) {
-                var it = this.queue.values().iterator();
-                while (it.hasNext()) {
-                    var e = it.next();
-                    if (!Objects.equals(e.dimension, next.dimension())) {
-                        it.remove();
-                        this.queuedBytes -= e.bytes.length;
-                        foreign.add(e);
-                    }
-                }
-                updateOccupancyLocked();
-            }
-            this.droppedStale.addAndGet(foreign.size());
-            this.pendingReports.addAll(foreign);
+            sweepForeignDimensions(next.dimension());
         }
     }
 
@@ -905,6 +1034,19 @@ final class JourneyMapSession {
                 batch.slowCounted = true;
                 this.slowBatches.incrementAndGet();
             }
+            if (batch.startedAtMillis != 0 && now - batch.startedAtMillis > WEDGED_BATCH_MILLIS && !this.dead) {
+                // JourneyMap's task thread is stuck inside our batch: no batch can follow, so a
+                // live session would hold the stream and churn re-serves forever (review). The
+                // slot stays occupied — the thread may still finish and write its result.
+                this.dead = true;
+                clearQueue();
+                if (!this.wedgeWarned) {
+                    this.wedgeWarned = true;
+                    LSSLogger.error("JourneyMap map ingestion: a map batch has run for "
+                            + (now - batch.startedAtMillis) / 1000 + " s — JourneyMap's task thread looks"
+                            + " stuck; disabling map ingestion for this session (LODs are unaffected)");
+                }
+            }
             return;
         }
         if (state != Batch.DONE) return;
@@ -919,6 +1061,12 @@ final class JourneyMapSession {
     }
 
     void applyResult(Batch batch, Result r) {
+        if (batch.epoch != this.sessionEpoch) {
+            // A batch that outlived its session: its receipts are dead, and its renders went
+            // to the old session's map — never replay them into the next server's (review).
+            batch.entries.forEach(e -> e.receipt.close());
+            return;
+        }
         if (r != null) {
             this.optionalRefusals.addAndGet(r.optionalRefusals);
             this.edgeRendered.addAndGet(r.edgeRendered);
@@ -973,20 +1121,43 @@ final class JourneyMapSession {
         }
     }
 
-    /** Time-boxed remainder: back into the queue unless a newer delivery replaced it. */
+    /** Time-boxed remainder: back into the queue unless a newer delivery replaced it, within
+     *  the queue's bounds (an entry that no longer fits is an overflow drop). */
     void requeue(List<Entry> entries) {
         if (entries.isEmpty()) return;
         this.requeued.addAndGet(entries.size());
+        var stale = new ArrayList<Entry>(0);
+        var overflow = new ArrayList<Entry>(0);
         synchronized (this.queueLock) {
             for (var e : entries) {
-                if (!e.receipt.active() || this.queue.containsKey(e.key())) {
+                if (!e.receipt.active()) {
                     e.receipt.close();
+                    continue;
+                }
+                var newer = this.queue.get(e.key());
+                if (newer != null) {
+                    if (Objects.equals(newer.dimension, e.dimension)) {
+                        e.receipt.close(); // a newer delivery of the same column replaced it
+                    } else {
+                        stale.add(e); // the position, but another dimension: report (the offer rule)
+                    }
+                    continue;
+                }
+                if (this.queue.size() >= this.maxQueue || this.queuedBytes + e.bytes.length > this.maxQueueBytes) {
+                    overflow.add(e);
                     continue;
                 }
                 this.queue.put(e.key(), e);
                 this.queuedBytes += e.bytes.length;
             }
             updateOccupancyLocked();
+        }
+        this.droppedStale.addAndGet(stale.size());
+        this.pendingReports.addAll(stale);
+        for (var e : overflow) {
+            this.droppedOverflow.incrementAndGet();
+            if (this.backpressureEnabled.getAsBoolean() && !this.governor.wedged) this.pendingReports.add(e);
+            else e.receipt.close();
         }
     }
 
@@ -1040,6 +1211,8 @@ final class JourneyMapSession {
         final boolean edge;
         final long playerChunk;
         final AtomicInteger state = new AtomicInteger(QUEUED);
+        /** The session the batch was built in (main thread). */
+        final long epoch = sessionEpoch;
         long submittedAtMillis; // main thread
         volatile long startedAtMillis;
         volatile long finishedAtMillis;
@@ -1166,9 +1339,11 @@ final class JourneyMapSession {
         var oursKeys = new ArrayList<Long>();
         var prepared = new java.util.HashMap<Long, Object>();
         var work = new Prepare(id, dataCache, batchKeys, present, ours, oursKeys, prepared, r);
+        boolean stopped = false;
         try {
             for (var e : ordered) {
-                if (!this.sessionActive.getAsBoolean() || now() > deadline) {
+                if (!stopped && stopRequested(client, id)) stopped = true;
+                if (stopped || !this.sessionActive.getAsBoolean() || now() > deadline) {
                     // JourneyMap's own pacing: about one renderDelay of work per batch, then the
                     // pump idles it. A finished session's receipts close.
                     r.requeued.add(e);
@@ -1218,6 +1393,13 @@ final class JourneyMapSession {
         } finally {
             for (int i = 0; i < ours.size(); i++) release(dataCache, allowCached, oursKeys.get(i), ours.get(i));
         }
+        if (stopped) {
+            // JourneyMap is stopping this mapping (its stopMapping blocks the main thread on this
+            // task): hand the thread back at once and leave its renderer to the next mapping —
+            // every column re-serves into it.
+            r.abandoned = true;
+            return;
+        }
         this.h.updateTextures.invoke(this.h.regionImageCache.invoke(), false, true);
         if (!identityStillMatches(id)) {
             // Rendered under an identity that ended mid-batch (a dimension switch, a late
@@ -1236,6 +1418,14 @@ final class JourneyMapSession {
                 }
             }
         }
+    }
+
+    /** JourneyMap is shutting this mapping down (it interrupts its task thread from
+     *  {@code stopMapping}, then waits up to 5 s on the main thread) or already replaced its
+     *  task controller: a batch must stop at the next column (review). */
+    private boolean stopRequested(Object client, Identity id) throws Throwable {
+        return Thread.currentThread().isInterrupted()
+                || this.h.getMultithreadTaskController.invoke(client) != id.controller();
     }
 
     /** East, south-west, south and south-east: the batch neighbours a column's render reads
@@ -1331,9 +1521,9 @@ final class JourneyMapSession {
      */
     void renderEdge(Batch batch, Result r, Object client, Object controller, List<Object> types) throws Throwable {
         Identity id = batch.identity;
-        if (!id.equals(this.edgeIdentity)) {
+        if (this.edgeKey == null || !this.edgeKey.matches(id)) {
             this.edgeDone.clear();
-            this.edgeIdentity = id;
+            this.edgeKey = EdgeKey.of(id);
         }
         // JourneyMap's own surface range: the game render distance, capped by its surface
         // maximum (0 = uncapped). The band reaches past the VANILLA area, whatever JourneyMap's
@@ -1350,6 +1540,8 @@ final class JourneyMapSession {
         long deadline = batch.startedAtMillis + batch.timeBoxMillis;
         var keep = new java.util.HashMap<Long, java.lang.ref.WeakReference<Object>>();
         int lookups = 0;
+        boolean stopped = false;
+        sweep:
         for (int dz = -reach; dz <= reach; dz++) {
             for (int dx = -reach; dx <= reach; dx++) {
                 if (Math.sqrt(dx * dx + dz * dz) <= inside) continue;
@@ -1366,6 +1558,10 @@ final class JourneyMapSession {
                     continue;
                 }
                 if (now() > deadline || lookups >= EDGE_LOOKUPS_PER_SWEEP) continue; // a later sweep
+                if (stopRequested(client, id)) {
+                    stopped = true;
+                    break sweep;
+                }
                 lookups++;
                 Object live = this.h.getChunkMD.invoke(dataCache, mcChunkKey(x, z));
                 if (live == null || !(boolean) this.h.hasLevelChunk.invoke(live)) continue;
@@ -1387,6 +1583,11 @@ final class JourneyMapSession {
         }
         this.edgeDone.clear();
         this.edgeDone.putAll(keep);
+        if (stopped) {
+            this.edgeDone.clear(); // redo under the next mapping
+            r.abandoned = true;
+            return;
+        }
         if (r.edgeRendered > 0) this.h.updateTextures.invoke(this.h.regionImageCache.invoke(), false, true);
         if (!identityStillMatches(id)) {
             this.edgeDone.clear(); // rendered into a map that just ended: redo under the new one
@@ -1445,6 +1646,7 @@ final class JourneyMapSession {
                 + ", replayed=" + this.replayed.get()
                 + ", requeued=" + this.requeued.get()
                 + ", slow_batches=" + this.slowBatches.get()
+                + inFlightAge()
                 + ", dropped_overflow=" + this.droppedOverflow.get()
                 + ", dropped_stale=" + this.droppedStale.get()
                 + ", dropped_inert=" + this.droppedInert.get()
@@ -1458,6 +1660,13 @@ final class JourneyMapSession {
                 + ", bp=" + this.governor.token(this.backpressureEnabled.getAsBoolean(), active(), this.occupancy)
                 + ", heap=" + this.memory.token()
                 + (this.h.version != null ? ", version=" + this.h.version : "");
+    }
+
+    /** {@code , inflight_ms=<age>} while a batch runs on JourneyMap's thread, else empty. */
+    private String inFlightAge() {
+        var batch = this.inFlight;
+        if (batch == null || batch.state.get() != Batch.STARTED || batch.startedAtMillis == 0) return "";
+        return ", inflight_ms=" + Math.max(0, now() - batch.startedAtMillis);
     }
 
     long counterForTest(String name) {

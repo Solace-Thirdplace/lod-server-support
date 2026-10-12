@@ -354,6 +354,7 @@ final class XaeroSession {
             bridge.openRegionCap = openRegionCapFor(Runtime.getRuntime().maxMemory(),
                     Integer.getInteger("lss.xaero.openRegionWindow", -1));
             bridge.memory = MapMemoryGuard.PRODUCTION;
+            bridge.connected = XaeroSession::productionConnected;
             bridge.maybeRegister();
             instance = bridge;
             LSSLogger.info(LSSClientConfig.CONFIG.mapIngestionEnabled()
@@ -449,6 +450,13 @@ final class XaeroSession {
     }
 
     /** Test seam: forget the static facade state. */
+    /** The bridge's column consumer, whether or not it is registered right now (ModCompat's
+     *  "is a map the only reader" checks compare against it); null without an instance. */
+    static VoxelColumnConsumer mapConsumer() {
+        var bridge = instance;
+        return bridge == null ? null : bridge.consumer;
+    }
+
     static void resetFacadeForTest() {
         instance = null;
         resolveFailed = false;
@@ -474,6 +482,9 @@ final class XaeroSession {
     final VoxelColumnConsumer consumer;
     /** Whether the consumer is currently registered with LSSApi. Main thread only. */
     boolean registered;
+    /** A connection exists (the title screen has none): a disabled bridge releases its
+     *  consumer at once only without one. Production reads the client's connection. */
+    java.util.function.BooleanSupplier connected = () -> true;
 
     final AtomicLong written = new AtomicLong();
     final AtomicLong skippedNative = new AtomicLong();
@@ -525,6 +536,9 @@ final class XaeroSession {
     // Halt time-box (main thread only — the poll runs on the client tick).
     long haltSinceMillis;
     double haltPeakOccupancy; // in-window peak; re-base = recede from THIS
+    /** The previous report's pacing hold (window or heap): its END re-bases the halt window —
+     *  the held time was pacing, never evidence of a stuck writer (main thread only). */
+    boolean lastPaceHold;
     volatile boolean haltWedged;
     long wedgeSinceMillis;       // main thread only (duty-cycle clock)
     long lastWedgeWarnMillis;    // rate-limits the cyclical wedge warn
@@ -632,6 +646,26 @@ final class XaeroSession {
     }
 
     /**
+     * Disabled with NO connection (the title screen): release the consumer now, so the next
+     * handshake does not advertise LOD reception for a map the player just turned off
+     * (review). The add-only rule exists for a live connection, where a mid-session
+     * deregistration turns every arriving column into an ingest failure; without one nothing
+     * can arrive. Both map backends share it.
+     */
+    void settleOfflineRegistration() {
+        if (this.registered && !this.enabled.getAsBoolean() && !this.connected.getAsBoolean()) {
+            this.deregistrar.accept(this.consumer);
+            this.registered = false;
+        }
+    }
+
+    /** The client has a play connection (null on the title screen and before JOIN). */
+    static boolean productionConnected() {
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        return mc != null && mc.getConnection() != null;
+    }
+
+    /**
      * Session teardown (the loaders' disconnect events): drop the session's queue,
      * re-arm the death latches (session-scoped — one bad session must not disable
      * the feature until restart), and settle registration for the NEXT handshake
@@ -677,6 +711,7 @@ final class XaeroSession {
         // clear; this half runs at the next pump top, after any such ladder.
         this.undrainablePumps = 0;
         this.haltSinceMillis = 0;
+        this.lastPaceHold = false;
         this.pumpDrainable = true;
         this.haltWedged = false;
         this.wedgeSinceMillis = 0;
@@ -749,10 +784,19 @@ final class XaeroSession {
      * gate-BLOCKED pump with a live watchdog REPORTS — the queue is the pressure
      * gauge during exactly the contention episodes the old -1-on-blocked
      * doctrine went silent for; the halt time-box below (progress-rebased) is
-     * what keeps a long structural block from stopping the fill for good.
+     * what keeps a long structural block from stopping the fill for good. A HEAP
+     * hold (map-ingestion plan §4.3) reports the full halt — the belt stops every
+     * write, so an occupancy-scaled report would keep filling the queue with the
+     * memory the belt is protecting — and the END of any pacing hold opens a fresh
+     * window, so held time never ages into a wedge on the first report after it.
      * Main client thread (the LSSApi poll).
      */
     int reportBackpressure() {
+        boolean hold = this.windowBound || this.heapHolding;
+        boolean released = this.lastPaceHold && !hold;
+        this.lastPaceHold = hold;
+        double occupancy = this.heapHolding
+                ? Math.max(this.acquisition.occupancy, BP_HALT_OCCUPANCY) : this.acquisition.occupancy;
         if (!this.backpressureEnabled.getAsBoolean()) return noSignal();
         if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
             return noSignal();
@@ -764,7 +808,7 @@ final class XaeroSession {
             // BP_WEDGE_REARM_MILLIS governance re-enters through the normal path
             // (the halt re-engages at once on a still-full queue, arrivals stop,
             // and the writer finally out-drains a silenced stream).
-            if (this.acquisition.occupancy < BP_WEDGE_REARM_OCCUPANCY
+            if (occupancy < BP_WEDGE_REARM_OCCUPANCY
                     || nowMillis() - this.wedgeSinceMillis > BP_WEDGE_REARM_MILLIS) {
                 this.haltWedged = false;
             } else {
@@ -773,7 +817,7 @@ final class XaeroSession {
         }
         if (nowMillis() - this.lastPumpMillis > this.bpPumpStaleMillis) return noSignal();
         int halt = dev.vox.lss.networking.client.LodRequestManager.INGEST_BACKLOG_HALT_SECTIONS;
-        int report = (int) Math.round(halt * Math.min(1.0, this.acquisition.occupancy / BP_HALT_OCCUPANCY));
+        int report = (int) Math.round(halt * Math.min(1.0, occupancy / BP_HALT_OCCUPANCY));
         if (report >= halt) {
             // The halt TIME-BOX: pacing is the bridge's right, stopping is not. A
             // full report with the queue not RECEDING across the whole window means
@@ -789,8 +833,8 @@ final class XaeroSession {
             // timer surviving a no-signal interval fired a false wedge on the
             // first governing poll back).
             long now = nowMillis();
-            double occ = this.acquisition.occupancy;
-            if (this.haltSinceMillis == 0) {
+            double occ = occupancy;
+            if (this.haltSinceMillis == 0 || released) {
                 this.haltSinceMillis = now;
                 this.haltPeakOccupancy = occ;
             } else if (occ < this.haltPeakOccupancy - BP_HALT_PROGRESS_EPS) {
@@ -1078,6 +1122,7 @@ final class XaeroSession {
     void pump() {
         if (this.sessionEndPending) settleSessionEnd();
         maybeRegister();
+        settleOfflineRegistration();
         if (this.dead) {
             // A dead bridge must not pin Xaero's regions/tile chunks (each leaf
             // texture holds a direct buffer) for the rest of the session (review B).

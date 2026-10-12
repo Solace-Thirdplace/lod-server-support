@@ -142,7 +142,7 @@ class JourneyMapBindingSurfaceTest {
 
     @Test
     void theOptionalSuspendedProbeIsPresentOnThisLine() throws Exception {
-        // LINE FLAVOR (26.2, JourneyMap 6.0.10): isMappingSuspended exists; 6.0.0 lacks it
+        // LINE FLAVOR (26.2/26.3, JourneyMap 6.0.10): isMappingSuspended exists; 6.0.0 lacks it
         // and the bindings tolerate that (the 1.21.11 line pins its absence instead).
         assertTrue(boundSurface().stream().anyMatch(b -> b.name().equals("isMappingSuspended")),
                 "so both jar checks above require it here");

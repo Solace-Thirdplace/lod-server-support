@@ -326,6 +326,23 @@ class XaeroMapCompatTest {
     }
 
     @Test
+    void aBridgeDisabledOnTheTitleScreenReleasesItsConsumerAtOnce() {
+        // Review O2-2: with no connection nothing can arrive, so the add-only rule does not
+        // apply — the next handshake must not advertise LOD reception for a disabled map.
+        boolean[] connected = {true};
+        this.bridge.connected = () -> connected[0];
+        this.enabled = false;
+        this.bridge.pump();
+        assertEquals(1, this.registered.size(), "connected: add-only until the session ends");
+        connected[0] = false;
+        this.bridge.pump();
+        assertTrue(this.registered.isEmpty());
+        this.enabled = true;
+        this.bridge.pump();
+        assertEquals(1, this.registered.size());
+    }
+
+    @Test
     void sessionEndClearsQueueAndReArmsTheDeathLatch() {
         latchTheBridgeDead();
         assertTrue(this.bridge.deadForTest(), "premise: the latch fired");
@@ -3576,6 +3593,9 @@ class XaeroMapCompatTest {
         assertEquals(1, this.bridge.heapHolds.get());
         assertTrue(this.bridge.heapHolding);
         assertTrue(this.bridge.describe().contains(", heap=halt(0.90)"), this.bridge.describe());
+        assertEquals(dev.vox.lss.networking.client.LodRequestManager.INGEST_BACKLOG_HALT_SECTIONS,
+                this.bridge.reportBackpressure(),
+                "plan §4.3: the belt stops the stream instead of filling the queue it protects");
         fraction[0] = 0.60;
         this.clockMillis += MapMemoryGuard.SAMPLE_INTERVAL_MILLIS;
         this.bridge.pump();

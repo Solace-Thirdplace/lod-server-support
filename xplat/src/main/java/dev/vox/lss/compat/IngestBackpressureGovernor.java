@@ -18,7 +18,12 @@ import java.util.function.LongSupplier;
  * peak for {@value #HALT_WEDGE_MILLIS} ms (widened to {@value #PACE_HOLD_MILLIS} ms while the
  * backend declares a pacing hold). A wedge re-arms once occupancy falls below
  * {@value #REARM_OCCUPANCY} or after {@value #REARM_MILLIS} ms: a map may pace the fill,
- * never stop it. Main client thread only.
+ * never stop it. A pacing hold that ENDS opens a fresh window: the time it spent holding was
+ * pacing, never evidence of a stuck writer, so it must not age into a wedge on the first
+ * report after the release. A HEAP hold (map-ingestion plan §4.3) reports the full halt:
+ * map writers stop allocating then, and an occupancy-scaled report would keep filling their
+ * queues with exactly the memory the belt is trying to keep free. Main client thread only,
+ * except {@link #wedged}, which the decode thread reads.
  */
 final class IngestBackpressureGovernor {
     static final double HALT_OCCUPANCY = 0.75;
@@ -34,7 +39,10 @@ final class IngestBackpressureGovernor {
     long lastPumpMillis;
     long haltSinceMillis;
     double haltPeakOccupancy;
-    boolean wedged;
+    /** The previous report's pacing hold: its end re-bases the halt window. */
+    boolean lastPaceHold;
+    /** Volatile: the decode thread reads it to decide whether an overflow drop is reported. */
+    volatile boolean wedged;
     long wedgeSinceMillis;
     long lastWedgeWarnMillis;
 
@@ -56,6 +64,7 @@ final class IngestBackpressureGovernor {
     void reset() {
         this.haltSinceMillis = 0;
         this.haltPeakOccupancy = 0;
+        this.lastPaceHold = false;
         this.wedged = false;
         this.wedgeSinceMillis = 0;
     }
@@ -64,10 +73,19 @@ final class IngestBackpressureGovernor {
      * @param enabled   the composed backpressure switch
      * @param active    the backend can drain at all (alive, enabled, in a session)
      * @param occupancy the bounded queue's fill fraction, max of count and bytes
-     * @param paceHold  the backend is deliberately holding (heap belt, a mapping settle) —
+     * @param paceHold  the backend is deliberately holding (a mapping settle, a window) —
      *                  pacing, not a stuck writer
      */
     int report(boolean enabled, boolean active, double occupancy, boolean paceHold) {
+        return report(enabled, active, occupancy, paceHold, false);
+    }
+
+    /** @param heapHold the heap belt holds every write: a pacing hold that reports the full halt */
+    int report(boolean enabled, boolean active, double occupancy, boolean paceHold, boolean heapHold) {
+        boolean hold = paceHold || heapHold;
+        boolean released = this.lastPaceHold && !hold;
+        this.lastPaceHold = hold;
+        if (heapHold) occupancy = Math.max(occupancy, HALT_OCCUPANCY);
         if (!enabled || !active) return noSignal();
         long now = now();
         if (this.wedged) {
@@ -84,8 +102,8 @@ final class IngestBackpressureGovernor {
             this.haltSinceMillis = 0;
             return report;
         }
-        long window = paceHold ? PACE_HOLD_MILLIS : HALT_WEDGE_MILLIS;
-        if (this.haltSinceMillis == 0) {
+        long window = hold ? PACE_HOLD_MILLIS : HALT_WEDGE_MILLIS;
+        if (this.haltSinceMillis == 0 || released) {
             this.haltSinceMillis = now;
             this.haltPeakOccupancy = occupancy;
         } else if (occupancy < this.haltPeakOccupancy - PROGRESS_EPS) {
