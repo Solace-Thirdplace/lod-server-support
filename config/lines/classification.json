@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "80a3ee8996c96d73c2e75105614448b97ea92469",
-    "1.21.10": "8bd257a951bf01d0f95bb0cab466306ae31d1413",
-    "1.21.11": "91de14161d4fafd409b2808c8fd9903e9f45b937",
-    "26.1": "f47c724ad176522858b2881770e58e53550071aa",
-    "26.2": "654891522b16cf9b0681fe809755a07c4e231382",
-    "26.3": "4ab456e6d34673399211b40749332ba88eba122f"
+    "1.21.1": "3d3d3bad0ab3fb8bd5aa26051de2828e86fb2a37",
+    "1.21.10": "75997c190a3cb0e2c8e7cd8986d3a064a2cded13",
+    "1.21.11": "d66abe763647d129d439c9bc648e45d9e206ecc0",
+    "26.1": "91d3f6aa779ac4440c31d150690d1ba06a40db7c",
+    "26.2": "9e3dc73da1c87037683b39acbc8a32ce846e4821",
+    "26.3": "950868bdbeffbdadd72a302326379ec8a0d51799"
   },
   "files": {
     ".github/line.env": {
@@ -35,7 +35,7 @@
         "1.21.11": "098204d1bef88e909f01594866705fe52397e92b",
         "26.1": "736510b6ce24aac0e44915474bf67d663e30cb63",
         "26.2": "77f1234c6f58fce2e5fa567b0cdac00da486e844",
-        "26.3": "77f1234c6f58fce2e5fa567b0cdac00da486e844"
+        "26.3": "a17f44138053396b61608ca45623773ab9b8aa2b"
       },
       "surface": "line-adaptation:.github/workflows/build.yml",
       "tests": [
@@ -10448,7 +10448,22 @@
       "kind": "identical"
     },
     "tools/verify/private-client-tests.init.gradle": {
-      "kind": "identical"
+      "axes": "26.3 only: the client windows through SDL, which probes the WSLg Wayland compositor; SDL_VIDEO_DRIVER=x11 keeps private client runs on the private Xvfb (GLFW lines need no pin).",
+      "kind": "adapted",
+      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green.",
+      "reviewed_blobs": {
+        "1.21.1": "07f58ffa3d604a6af553027a505f219eadaee618",
+        "1.21.10": "07f58ffa3d604a6af553027a505f219eadaee618",
+        "1.21.11": "07f58ffa3d604a6af553027a505f219eadaee618",
+        "26.1": "07f58ffa3d604a6af553027a505f219eadaee618",
+        "26.2": "07f58ffa3d604a6af553027a505f219eadaee618",
+        "26.3": "fb45ebd178c4c47ff1d161831e9c8e1e6817119c"
+      },
+      "surface": "private-client-display",
+      "tests": [
+        "test_private_client_run.py",
+        "runClientGameTest under verify.py"
+      ]
     },
     "tools/verify/run-gradle.sh": {
       "kind": "identical"
