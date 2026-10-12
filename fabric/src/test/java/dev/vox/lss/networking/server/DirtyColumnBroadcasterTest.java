@@ -276,6 +276,31 @@ class DirtyColumnBroadcasterTest {
     }
 
     @Test
+    void aWorldWithDistanceZeroStillClearsDoneBitsAtTheLegacyRadius() {
+        // 0 = no LOD service in that world, but its players' done-bits must still clear (a
+        // world reloaded back on must not answer up_to_date off a pre-edit bit) and legacy
+        // sessions (never told "off") still need the notice — at the radius they were
+        // advertised, the largest configured distance (8 here).
+        var rig = new Rig(List.of(Level.OVERWORLD, Level.NETHER));
+        MutableServerSettings.set(rig.config, "lod.distance.default_chunks", 8);
+        MutableServerSettings.set(rig.config, "lod.distance.by_world", new java.util.LinkedHashMap<>());
+        MutableServerSettings.dimension(rig.config, LSSConstants.DIM_STR_THE_NETHER, 0);
+        var overworldPlayer = rig.addPlayer(Level.OVERWORLD, 0, 0);
+        var netherPlayer = rig.addPlayer(Level.NETHER, 0, 0);
+        rig.tracker.markDirty(LSSConstants.DIM_STR_THE_NETHER, 0, 0);
+        rig.tracker.markDirty(LSSConstants.DIM_STR_THE_NETHER, 20, 0);
+        rig.tracker.markDirty(LSSConstants.DIM_STR_OVERWORLD, 1, 1);
+        rig.fire();
+
+        long inRange = PositionUtil.packPosition(0, 0);
+        assertArrayEquals(new long[]{inRange}, only(clearsFor(rig, netherPlayer)),
+                "the off world's done-bits clear within the legacy radius");
+        assertArrayEquals(new long[]{inRange}, only(sentTo(rig, netherPlayer)));
+        assertArrayEquals(new long[]{PositionUtil.packPosition(1, 1)}, only(sentTo(rig, overworldPlayer)));
+        assertEquals(0, rig.tracker.pendingCount(), "the off world's marks are drained");
+    }
+
+    @Test
     void rangeGateUsesRawLodDistanceWithoutTheRequestGateBuffer() {
         var rig = new Rig(List.of(Level.OVERWORLD));
         MutableServerSettings.set(rig.config, "lod.distance.default_chunks", 8);

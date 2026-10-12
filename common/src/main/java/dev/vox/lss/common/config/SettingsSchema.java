@@ -52,7 +52,7 @@ public final class SettingsSchema<T> {
                 case "lod.dh.sync_on_load", "lod.dh.real_time_updates", "lod.voxy_border_fill" -> true;
                 default -> null;
             };
-            if (raw==null && spec.path().endsWith("by_world")) raw=Map.of();
+            if (raw==null && spec.path().equals("lod.distance.by_world")) raw=Map.of();
             if (paper && spec.path().equals("storage.lod_store.resweep_interval_seconds")) raw=300;
             Object value=typed(spec,raw);
             defs.put(spec.path(),value);
@@ -120,7 +120,8 @@ public final class SettingsSchema<T> {
             if (d.kind()==Kind.INTEGER_MAP) {
                 @SuppressWarnings("unchecked") var map=(Map<String,Integer>)v;
                 var clamped=new LinkedHashMap<String,Integer>();
-                map.forEach((key,val)->clamped.put(key,Math.max(1,Math.min(2048,val))));
+                // 0 = no LOD service in that dimension/world; negatives normalize to it (with a note).
+                map.forEach((key,val)->clamped.put(key,val<=0 ? 0 : Math.max(1,Math.min(2048,val))));
                 normalized.put(d.path(),Collections.unmodifiableMap(clamped));
             }
         }
@@ -269,9 +270,11 @@ public final class SettingsSchema<T> {
         return "";
     }
     private static double[] range(String p,boolean client) {
-        if(p.endsWith("by_dimension")||p.endsWith("by_world"))return new double[]{1,2048,0};
+        // Exact paths: a suffix match also caught the client's cache.split_by_world (a boolean).
+        // 0 = no LOD service in that dimension/world (default: everywhere not overridden).
+        if(p.equals("lod.distance.by_dimension")||p.equals("lod.distance.by_world"))return new double[]{1,2048,1};
         if(p.endsWith("mib_per_second"))return new double[]{1.0/1024,1024,0};
-        if(p.equals("lod.distance.default_chunks"))return new double[]{1,2048,0};
+        if(p.equals("lod.distance.default_chunks"))return new double[]{1,2048,1};
         if(p.equals("lod.distance_chunks"))return new double[]{0,2048,0};
         if(p.startsWith("generation.concurrency."))return new double[]{1,512,0};
         if(p.equals("generation.timeout_ticks"))return new double[]{20,12000,0};
