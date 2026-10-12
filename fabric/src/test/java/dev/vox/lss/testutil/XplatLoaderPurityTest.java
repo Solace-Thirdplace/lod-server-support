@@ -23,12 +23,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>{@code org.spongepowered} (the Mixin library — loader-neutral, bundled by
  * both loaders) is allowed ONLY in the mixin package, where the shared
  * {@code @Accessor} interfaces live; the per-loader {@code @Inject} shims stay
- * in their loader modules.
+ * in their loader modules. The Sponge PLATFORM (its API, plugin model, configurate and
+ * implementation packages — sponge-support-plan.md §1.2) is a loader like Fabric or
+ * NeoForge: forbidden everywhere in xplat, the mixin package included.
  */
 class XplatLoaderPurityTest {
 
     private static final Pattern LOADER_REFERENCE = Pattern.compile(
-            "net\\.fabricmc|net\\.neoforged|com\\.terraformersmc|net\\.caffeinemc");
+            "net\\.fabricmc|net\\.neoforged|com\\.terraformersmc|net\\.caffeinemc"
+                    + "|org\\.spongepowered\\.(?:api|plugin|configurate|common|vanilla)\\b");
     private static final Pattern MIXIN_LIBRARY = Pattern.compile("org\\.spongepowered");
 
     @Test

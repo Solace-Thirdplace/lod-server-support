@@ -77,6 +77,15 @@ public interface LoaderServices {
     }
 
     /**
+     * The far-player vanish source (sponge-support-plan.md §1.5). Default: the reflective
+     * Melius Vanish bridge (absent mod = visible). Sponge answers from its native
+     * {@code Keys.VANISH_STATE}.
+     */
+    default VanishVisibility vanishVisibility() {
+        return dev.vox.lss.compat.MeliusVanishBridge.VISIBILITY;
+    }
+
+    /**
      * The installed impl. When no entrypoint has installed one yet (Tier-1 JUnit
      * runs under fabric-loader-junit never run entrypoints), falls back to the
      * loader module's {@link java.util.ServiceLoader} registration

@@ -77,6 +77,9 @@ class DhReceiptStoreTest {
         assertFalse(loaded.containsKey(new DhPosition(6, 0, 0)), "The oldest receipts are dropped first");
         assertFalse(new DhReceiptStore.Entry(5, DhReceiptStore.CONVERSION_VERSION - 1).current());
         assertFalse(new DhReceiptStore.Entry(0, DhReceiptStore.CONVERSION_VERSION).current());
+        // 0.17.x receipts (version 5) cover tiles whose real-time pushes were stored with zero
+        // sky light; they must re-download so the server's baked reply replaces the black columns.
+        assertFalse(new DhReceiptStore.Entry(1, 5).current());
     }
     @Test void bucketsAreBoundedLeastRecentlyWrittenFirst() throws Exception {
         var dir = root.resolve(DhReceiptStore.DIRECTORY);

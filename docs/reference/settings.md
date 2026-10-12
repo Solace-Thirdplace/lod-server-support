@@ -41,7 +41,7 @@ rewrites it. New files enable map ingestion; migration from JSON keeps an absent
 group, so a file created or saved by a newer build loads there only after renaming
 `map_ingestion:` back to `xaero_map:` under `integrations:` (or deleting the file).
 
-## Fabric / NeoForge server
+## Fabric / NeoForge / Sponge server
 
 | YAML path | Type | Default | Range / units | Timing | Applicability |
 | --- | --- | --- | --- | --- | --- |
