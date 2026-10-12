@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "f7e2ceb571ab173058f78bfbd656e298f1e8250b",
-    "1.21.10": "08a027f83e15c7512a0e37054cecc0b66abb3d59",
-    "1.21.11": "a26aed69bd3a5abea290e361504e5e60cb4cd98a",
-    "26.1": "f92b974e386a1add34d81a2d3dcfb275880c3f13",
-    "26.2": "9cd45edb54416ee86692769d03166718b86ed3fe",
-    "26.3": "f12ebaa65219a36c3f5543b45d37f3baf82aeab0"
+    "1.21.1": "f82f4bd2983b3f143d201d6319b6ad5fe5c92280",
+    "1.21.10": "5c17cfaee66bcf49aee77c90b178a9940b0518f2",
+    "1.21.11": "e780c525f8996fc3a0752f6f8e7131b6cb333023",
+    "26.1": "96db328f828f7cfc20774b7a7ed3d45484db2673",
+    "26.2": "110b2e3320f9515bf1786b23f0490849a62ae5a3",
+    "26.3": "d514f7bf8f70374d684d279a993e41040077aa06"
   },
   "files": {
     ".github/line.env": {
@@ -5359,14 +5359,14 @@
     "gradle.properties": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 Astra manual-test follow-ups and 26.3 compat pass: test-server.sh derives the Fabric loader from gradle.properties and re-fetches changed pins (URL stamps), latest C2ME per line, 26.3 AntiXray build, Moonrise/C2ME verification notes; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: reviewed diff changes only mod_version from 0.16.0 to 0.17.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged.",
+      "review": "2026-10-12 0.18.0 release pin: reviewed diff changes only mod_version from 0.17.0 to 0.18.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged. 2026-10-12 Astra manual-test follow-ups and 26.3 compat pass: test-server.sh derives the Fabric loader from gradle.properties and re-fetches changed pins (URL stamps), latest C2ME per line, 26.3 AntiXray build, Moonrise/C2ME verification notes; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: reviewed diff changes only mod_version from 0.16.0 to 0.17.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "38eb2ddfda79a24a79e6b9df200a75c999dd0329",
-        "1.21.10": "7d37fa1d022c221c0c64ae3895144b294e9dc464",
-        "1.21.11": "f4ebc148383fcd757bd1bb15bedca3e90cf3d47e",
-        "26.1": "66e54396a2ca1041761cc78129bf5b0d851b131b",
-        "26.2": "7b735b3615afdbc46c248a11f1e3fd8694a622d6",
-        "26.3": "81f9c37576cb0d9077745fd35d7e9ebead439b24"
+        "1.21.1": "a085d5492ce37804999d22be155cf624f219842e",
+        "1.21.10": "b22ff14cd12931a59ae5571a6f2f7684396a858f",
+        "1.21.11": "f0a4c3f323f849b0ce8b5848a47f5b25f65110c2",
+        "26.1": "adeec35ad999dabd064b959f297e2fc6fb0a6d8d",
+        "26.2": "4c52aa445f1dc1d774022b3894680a327cceb208",
+        "26.3": "95c22432117b1a42179f23a0391be4ca643a3d10"
       },
       "surface": "build-toolchain",
       "tests": [
