@@ -5,11 +5,11 @@ This snapshot describes build capabilities. A capability is not live validation.
 
 | Line | Fabric / Paper / Neo targets | Java (common) | Neo shipped | Neo far renderer | Paper loaders | Client gametests | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1.21.1 | 1.21.1 / 1.21.1 / 1.21.1 | 21 (21) | true | available | paper, purpur | False | `5a7ce085b79ed6fc68a730bfd4a73630234aa19a` |
-| 1.21.10 | 1.21.10 / 1.21.10 / 1.21.10 | 21 (21) | false | unsupported | paper, purpur | True | `fa91339df9e84092ef453048dee19c61010137e9` |
-| 1.21.11 | 1.21.11 / 1.21.11 / 1.21.11 | 21 (21) | false | unsupported | paper, purpur, folia | True | `1e41ebb86f11763b2faba0880407c82c40745d84` |
-| 26.1 | 26.1.2 / 26.1.2 / 26.1.2 | 25 (21) | true | unsupported | paper, purpur, folia | True | `a1cb482a231ca3fdaf0162bae0832658b359eebd` |
-| 26.2 | 26.2 / 26.2 / 26.2 | 25 (21) | true | unsupported | paper, purpur, folia | True | `3c63ee5ff1cea6e473144b186d06e26d5c4d8c91` |
+| 1.21.1 | 1.21.1 / 1.21.1 / 1.21.1 | 21 (21) | true | available | paper, purpur | False | `37ab45306fb02ce4f36bac5c99ca0a683c311c68` |
+| 1.21.10 | 1.21.10 / 1.21.10 / 1.21.10 | 21 (21) | false | unsupported | paper, purpur | True | `3da849653e7a53b47399a046c590b6c705a10645` |
+| 1.21.11 | 1.21.11 / 1.21.11 / 1.21.11 | 21 (21) | false | unsupported | paper, purpur, folia | True | `bb03320c8cf0effa569fdd0648708b60b5abe4fd` |
+| 26.1 | 26.1.2 / 26.1.2 / 26.1.2 | 25 (21) | true | unsupported | paper, purpur, folia | True | `ddd54fc0ead4efb35c5fa4c91fb972c5de8f6d6f` |
+| 26.2 | 26.2 / 26.2 / 26.2 | 25 (21) | true | unsupported | paper, purpur, folia | True | `7f4e244745dc1fe43c5596bac997b59244db0fc4` |
 
 Dependency locks and feature-specific validation records are line-local under `config/compatibility/`. Installed jars are unverified until an exact run identity has accepted evidence. Blocked dependency profiles cannot be launched as validated profiles.
 
