@@ -39,10 +39,14 @@ class FabricFarPlayerSnapshotsHiddenTest {
         // per-tick memo (fold B3).
         String src = java.nio.file.Files.readString(dev.vox.lss.testutil.RepoPaths
                 .locate("xplat/src/main/java/dev/vox/lss/networking/server/RequestProcessingService.java"));
-        assertTrue(src.contains("var observer = server.getPlayerList().getPlayer(viewer);")
-                        && src.contains("MeliusVanishBridge.canSee(server, observer, target);")
+        // Since sponge-support-plan.md §1.5 the calls go through the loader's VanishVisibility
+        // seam (the Melius bridge by default) — the same three calls, the same argument order.
+        assertTrue(src.contains("var vanish = dev.vox.lss.platform.LoaderServices.get().vanishVisibility();")
+                        && src.contains("if (!vanish.present()) return true;")
+                        && src.contains("var observer = server.getPlayerList().getPlayer(viewer);")
+                        && src.contains("vanish.canSee(server, observer, target);")
                         && src.contains("vanishMemo.computeIfAbsent(target,")
-                        && src.contains("MeliusVanishBridge.isVanished(server, t)"),
+                        && src.contains("vanish.isVanished(server, t)"),
                 "the vanish adapter must resolve the observer from the VIEWER, pass the TARGET uuid,"
                         + " and memoize isVanished per target per tick");
     }
