@@ -31,7 +31,9 @@ public final class YamlSettingsCodec<T> {
     }
 
     /** Experimental client keys live in a sidecar file, so the main file stays readable by
-     *  older versions that reject unknown keys. Reads still accept them in the main file
+     *  older versions that reject unknown keys (one user-approved exception: the renamed
+     *  {@code integrations.map_ingestion} group, written by new files and saves — map-ingestion
+     *  plan §2.4). Reads still accept them in the main file
      *  (development builds wrote them there); every write moves them out. */
     public static final List<String> SIDECAR_PATHS = List.of("lod.source", "lod.dh.sync_on_load",
             "lod.dh.real_time_updates", "lod.voxy_border_fill");
@@ -86,18 +88,20 @@ public final class YamlSettingsCodec<T> {
      *  Client sidecar paths never stay in the main file: they go to the sidecar, which holds
      *  only nondefault values plus any value the old main file still carried (so a failed
      *  main rewrite cannot revert an explicit choice). */
-    public Output editSplit(Document<T> document, Map<String,Object> changes) {
+    public Output editSplit(Document<T> document, Map<String,Object> requested) {
+        // Renamed groups: alias keys in a change set are written under their canonical path.
+        var changes = schema.canonicalChanges(requested);
         var values = new LinkedHashMap<>(schema.values(document.configured()));
-        for (var entry : changes.entrySet()) {
-            if (!schema.descriptorsByPath().containsKey(entry.getKey())) throw new SettingsException("Unknown settings path: " + entry.getKey());
-            values.put(entry.getKey(), entry.getValue());
-        }
+        values.putAll(changes);
         // Emit the validated requested values, whose numeric classes match the schema.
         // Normalized/clamped values remain separate and must never overwrite the draft.
         var configured = schema.values(schema.fromValues(values).configured());
         boolean client = schema.isClient();
         MappingNode root = (MappingNode) compose(document.bytes());
         boolean touched = false;
+        // Only a save that changes something canonicalizes renamed groups: the startup
+        // development-key split edits with an empty change set and must not rewrite them.
+        if (client && !changes.isEmpty()) touched = canonicalizeAliasGroups(root, configured);
         for (var entry : changes.entrySet()) {
             if (client && SIDECAR_PATHS.contains(entry.getKey())) continue;
             replace(root, entry.getKey().split("\\."), 0, node(configured.get(entry.getKey())));
@@ -119,6 +123,58 @@ public final class YamlSettingsCodec<T> {
         parse(main);
         if (sidecar != null) parse(main, sidecar);
         return new Output(main, sidecar);
+    }
+    /** Replaces each renamed group with the template's canonical group (its comments
+     *  included) carrying the configured values; a document holding both drops the alias. */
+    private boolean canonicalizeAliasGroups(MappingNode root, Map<String,Object> configured) {
+        boolean changed = false;
+        for (var group : SettingsSchema.CLIENT_ALIAS_GROUPS.entrySet()) {
+            String[] alias = group.getKey().split("\\."), canonical = group.getValue().split("\\.");
+            MappingNode parent = mappingAt(root, alias, alias.length - 1);
+            int aliasIndex = parent == null ? -1 : indexOf(parent, alias[alias.length - 1]);
+            if (aliasIndex < 0) continue;
+            int canonicalIndex = indexOf(parent, canonical[canonical.length - 1]);
+            if (canonicalIndex >= 0) {
+                // Both groups: the configured values merged them (canonical wins, the alias
+                // fills leaves the canonical group lacks) — keep every merged leaf in the
+                // canonical group before the alias goes, or a save would reset alias-only
+                // values to their defaults (review).
+                if (parent.getValue().get(canonicalIndex).getValueNode() instanceof MappingNode canonicalGroup) {
+                    String prefix = group.getValue() + ".";
+                    for (var leaf : configured.entrySet())
+                        if (leaf.getKey().startsWith(prefix))
+                            replace(canonicalGroup, leaf.getKey().substring(prefix.length()).split("\\."), 0, node(leaf.getValue()));
+                }
+                parent.getValue().remove(aliasIndex);
+                changed = true;
+                continue;
+            }
+            MappingNode templateParent = mappingAt((MappingNode) compose(defaults()), canonical, canonical.length - 1);
+            NodeTuple templatePair = templateParent.getValue().get(indexOf(templateParent, canonical[canonical.length - 1]));
+            var templateGroup = (MappingNode) templatePair.getValueNode();
+            String prefix = group.getValue() + ".";
+            for (var leaf : configured.entrySet())
+                if (leaf.getKey().startsWith(prefix))
+                    replace(templateGroup, leaf.getKey().substring(prefix.length()).split("\\."), 0, node(leaf.getValue()));
+            parent.getValue().set(aliasIndex, templatePair);
+            changed = true;
+        }
+        return changed;
+    }
+    private static MappingNode mappingAt(MappingNode root, String[] path, int depth) {
+        MappingNode current = root;
+        for (int i = 0; i < depth; i++) {
+            int index = indexOf(current, path[i]);
+            if (index < 0 || !(current.getValue().get(index).getValueNode() instanceof MappingNode next)) return null;
+            current = next;
+        }
+        return current;
+    }
+    private static int indexOf(MappingNode mapping, String key) {
+        var pairs = mapping.getValue();
+        for (int i = 0; i < pairs.size(); i++)
+            if (pairs.get(i).getKeyNode() instanceof ScalarNode scalar && scalar.getValue().equals(key)) return i;
+        return -1;
     }
     public byte[] generate(Map<String,Object> values) { return edit(parse(defaults()), values); }
     public Output generateSplit(Map<String,Object> values) { return editSplit(parse(defaults()), values); }

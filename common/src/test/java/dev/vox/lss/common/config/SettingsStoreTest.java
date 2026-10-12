@@ -108,7 +108,7 @@ class SettingsStoreTest {
     @Test void migrationCommentsSurviveSubsequentMenuSave()throws Exception {
         Files.writeString(file("lss-client-config.json"),"{\"farPlayersShareSelf\":false}");var s=new SettingsStore<>(dir,"lss",SettingsSchema.client());var migrated=s.initialize();
         var saved=s.saveDraft(migrated.hash(),Map.of("far_players.name_tags",false));assertFalse(saved.normalized().farPlayers().sharing().enabled());
-        String text=new String(saved.bytes(),StandardCharsets.UTF_8);assertTrue(text.contains("Showing other players and sharing your own position are independent"));assertTrue(text.contains("saved on the map"));
+        String text=new String(saved.bytes(),StandardCharsets.UTF_8);assertTrue(text.contains("Showing other players and sharing your own position are independent"));assertTrue(text.contains("without removing terrain already saved"));
     }
     @Test void migrationRetainsExplicitRecognizedInactiveGroups()throws Exception {
         Files.writeString(file("lss-server-config.json"),"{\"lodStoreBackfill\":false,\"lodStoreBackfillColumnsPerSecond\":25}");
