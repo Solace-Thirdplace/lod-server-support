@@ -5,7 +5,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** The main client file must stay readable by v0.16.0, which rejects unknown keys.
+/** The main client file must stay readable by v0.16.0, which rejects unknown keys —
+ *  with one user-approved exception (2026-10-11, map-ingestion plan §2.4): files created or
+ *  saved by ≥0.18 carry {@code integrations.map_ingestion}, which ≤0.17 rejects.
  *  Allow DH Server Terrain ({@code lod.source}) defaults to {@code distant_horizons}
  *  (user decision 2026-10-10), so the sidecar records only the opt-out {@code lss}. */
 class DhDefaultDowngradeTest {

@@ -14,6 +14,9 @@ public final class ClientConfigTestSupport {
             @SuppressWarnings("unchecked") var handle = (SettingsHandle<ClientSettings>) field.get(LSSClientConfig.CONFIG);
             var prior = handle.state();
             var values = new LinkedHashMap<>(prior.effective().values());
+            // ClientSettings.fromValues ignores unknown keys; a renamed path must fail loudly
+            // instead of silently leaving the test on the persistent config's value.
+            if (!values.containsKey(path)) throw new AssertionError("Unknown settings path: " + path);
             values.put(path, value);
             ClientSettings next = ClientSettings.fromValues(values);
             var state = SettingsHandle.class.getDeclaredField("state");

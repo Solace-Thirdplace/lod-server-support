@@ -69,9 +69,11 @@ class DiagnosticPrivacyTest {
                 "alice@example.test /home/alice/token abcdef12-3456-7890-abcd-abcdef123456",
                 "alice@example.test /home/alice/token abcdef12-3456-7890-abcd-abcdef123456",
                 "alice@example.test /home/alice/token abcdef12-3456-7890-abcd-abcdef123456",
+                "alice@example.test /home/alice/token abcdef12-3456-7890-abcd-abcdef123456",
                 "alice@example.test /home/alice/token abcdef12-3456-7890-abcd-abcdef123456");
         var versions = new DiagnosticVersions(Map.of(DiagnosticVersions.Component.LSS, "1.2.3+mc1.21.1",
-                DiagnosticVersions.Component.XAERO, "/home/alice/token"));
+                DiagnosticVersions.Component.XAERO, "/home/alice/token",
+                DiagnosticVersions.Component.JOURNEYMAP, "/home/alice/journeymap"));
         var snapshot = new ClientStatusSnapshot(1, 1, 123, true, true, true, true, true, true,
                 20, 512, 128, 50, 1000, 0, -1, 0, 0, 0, 0,
                 ClientStatusSnapshot.Discovery.NEGOTIATED, ClientStatusSnapshot.Availability.AVAILABLE, details, versions);

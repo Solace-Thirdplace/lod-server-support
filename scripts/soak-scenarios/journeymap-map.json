@@ -1,0 +1,125 @@
+{
+  "snapshotIntervalSeconds": 5,
+  "joinTimeoutSeconds": 240,
+  "steps": [
+    {
+      "anchor": 1,
+      "at": 2,
+      "cmd": "gamerule minecraft:random_tick_speed 0"
+    },
+    {
+      "anchor": 1,
+      "at": 2,
+      "cmd": "gamerule minecraft:spawn_mobs false"
+    },
+    {
+      "anchor": 1,
+      "at": 2,
+      "cmd": "gamerule minecraft:mob_griefing false"
+    },
+    {
+      "anchor": 1,
+      "at": 3,
+      "cmd": "gamerule minecraft:fire_spread_radius_around_player 0"
+    },
+    {
+      "anchor": 1,
+      "at": 3,
+      "cmd": "gamerule minecraft:advance_time false"
+    },
+    {
+      "anchor": 1,
+      "at": 4,
+      "cmd": "tp @a 0 150 0"
+    },
+    {
+      "anchor": 1,
+      "at": 20,
+      "cmd": "forceload add 224 48 239 63"
+    },
+    {
+      "anchor": 1,
+      "at": 20,
+      "cmd": "forceload add -192 240 -177 255"
+    },
+    {
+      "anchor": 1,
+      "at": 20,
+      "cmd": "forceload add 80 -288 95 -273"
+    },
+    {
+      "anchor": 1,
+      "at": 22,
+      "cmd": "fill 224 -61 48 239 -61 51 minecraft:red_wool"
+    },
+    {
+      "anchor": 1,
+      "at": 22,
+      "cmd": "fill 224 -61 48 227 -61 63 minecraft:red_wool"
+    },
+    {
+      "anchor": 1,
+      "at": 22,
+      "cmd": "fill -192 -61 252 -177 -61 255 minecraft:lapis_block"
+    },
+    {
+      "anchor": 1,
+      "at": 22,
+      "cmd": "fill -180 -61 240 -177 -61 255 minecraft:lapis_block"
+    },
+    {
+      "anchor": 1,
+      "at": 22,
+      "cmd": "fill 80 -61 -288 95 -61 -285 minecraft:gold_block"
+    },
+    {
+      "anchor": 1,
+      "at": 22,
+      "cmd": "fill 92 -61 -288 95 -61 -273 minecraft:gold_block"
+    },
+    {
+      "anchor": 1,
+      "at": 24,
+      "cmd": "save-all flush"
+    },
+    {
+      "anchor": 1,
+      "at": 26,
+      "cmd": "forceload remove 224 48 239 63"
+    },
+    {
+      "anchor": 1,
+      "at": 26,
+      "cmd": "forceload remove -192 240 -177 255"
+    },
+    {
+      "anchor": 1,
+      "at": 26,
+      "cmd": "forceload remove 80 -288 95 -273"
+    },
+    {
+      "anchor": 1,
+      "at": 40,
+      "cmd": "save-all flush"
+    },
+    {
+      "anchor": 1,
+      "at": 60,
+      "cmd": "save-all flush"
+    },
+    {
+      "anchor": 1,
+      "at": 90,
+      "cmd": "save-all flush"
+    },
+    {
+      "anchor": 1,
+      "at": 120,
+      "cmd": "save-all flush"
+    }
+  ],
+  "end": {
+    "anchor": 1,
+    "at": 200
+  }
+}
