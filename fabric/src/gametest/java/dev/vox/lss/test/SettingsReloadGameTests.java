@@ -151,6 +151,12 @@ public class SettingsReloadGameTests {
                     LSSConstants.V18_COMPAT_PROTOCOL_VERSION, LSSConstants.CAPABILITY_VOXEL_COLUMNS), player, service, legacy::add);
             check(legacy.size() == 1 && legacy.getFirst().enabled() && legacy.getFirst().lodDistanceChunks() == 96,
                     "A legacy session must stay enabled with the server's largest distance");
+            var v16 = new ArrayList<dev.vox.lss.networking.payloads.SessionConfigS2CPayload>();
+            LSSServerNetworking.handleHandshake(new dev.vox.lss.networking.payloads.HandshakeC2SPayload(
+                    LSSConstants.V16_COMPAT_PROTOCOL_VERSION, LSSConstants.CAPABILITY_VOXEL_COLUMNS), player, service, v16::add);
+            check(v16.size() == 1 && v16.getFirst().v16Wire() && v16.getFirst().enabled()
+                            && v16.getFirst().lodDistanceChunks() == 96,
+                    "A v16 session gets the same legacy treatment in its own 6-field shape, got " + v16);
         } finally {
             service.removePlayer(player.getUUID());
             service.getDialectTracker().onDisconnect(player.getUUID());

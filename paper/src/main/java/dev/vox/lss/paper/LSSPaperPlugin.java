@@ -666,22 +666,27 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
 
         boolean v16 = decision.dialect() == HandshakeGate.WireDialect.V16;
         boolean v18 = decision.dialect() == HandshakeGate.WireDialect.V18;
-        // 0 = no LOD service in this world (the Fabric twin): a CURRENT session is told
-        // enabled=false (and re-told on dimension change); legacy dialects get no later push,
-        // so they keep a serving distance and the request filter enforces the off world.
-        int worldLod = PaperWorldLod.distance(config, nmsPlayer);
         boolean legacyDialect = decision.dialect() != HandshakeGate.WireDialect.CURRENT;
-        int lodDistance = legacyDialect ? config.legacyAdvertisedDistance(worldLod) : worldLod;
-        boolean enabledHere = decision.effectiveEnabled()
-                && (legacyDialect || dev.vox.lss.common.config.ServerConfigBase.servesWorld(worldLod));
-        Runnable reply = () -> configSender.send(decision.dialect(),
-                enabledHere,
-                lodDistance,
-                // The caps ARE the old client's pacing — the server's real admission values
-                // (ignored by the V18 sender branch; see the v16 compat design §4.1).
-                LSSConstants.SYNC_ON_LOAD_SLOT_CAP,
-                config.generationLimits().perPlayer(),
-                config.enableChunkGeneration());
+        Runnable reply = () -> {
+            // 0 = no LOD service in this world (the Fabric twin): a CURRENT session is told
+            // enabled=false (and re-told on dimension change); legacy dialects get no later
+            // push, so they keep a serving distance and the request filter enforces the off
+            // world. Resolved when the reply SENDS — for a registering handshake that is the
+            // pump's Register drain, the same moment the state records its dimension — so a
+            // world change between the handshake and registration cannot strand the client.
+            int worldLod = PaperWorldLod.distance(config, nmsPlayer);
+            int lodDistance = legacyDialect ? config.legacyAdvertisedDistance(worldLod) : worldLod;
+            boolean enabledHere = decision.effectiveEnabled()
+                    && (legacyDialect || dev.vox.lss.common.config.ServerConfigBase.servesWorld(worldLod));
+            configSender.send(decision.dialect(),
+                    enabledHere,
+                    lodDistance,
+                    // The caps ARE the old client's pacing — the server's real admission values
+                    // (ignored by the V18 sender branch; see the v16 compat design §4.1).
+                    LSSConstants.SYNC_ON_LOAD_SLOT_CAP,
+                    config.generationLimits().perPlayer(),
+                    config.enableChunkGeneration());
+        };
 
         if (decision.outcome() == HandshakeGate.Outcome.NO_CONSUMER) {
             // Reply-only outcome: no state will exist, so the inline reply cannot race it.

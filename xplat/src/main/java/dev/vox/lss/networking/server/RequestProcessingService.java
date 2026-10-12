@@ -978,7 +978,7 @@ public class RequestProcessingService {
         var config = serviceConfig;
         int pushed = 0;
         int legacy = 0;
-        for (var state : this.players.values()) {
+        for (var state : List.copyOf(this.players.values())) {
             if (this.dialects.dialectOf(state.getPlayerUUID())
                     != dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT) {
                 legacy++;
@@ -987,11 +987,14 @@ public class RequestProcessingService {
             var player = state.getPlayer();
             int dist = lodDistanceFor(player);
             if (dist <= 0) {
-                // The reload turned this player's world off: drop the backlog it already
-                // declared (the client's own backpressure clear has this shape) — the client
-                // stops declaring on the enabled=false below.
-                state.offerIncomingBatch(new dev.vox.lss.common.processing.IncomingBatch(
-                        new dev.vox.lss.common.processing.IncomingRequest[0]));
+                // The reload turned this player's world off: abandon its in-flight work the
+                // way a dimension change does (remove + fresh register — retires admitted
+                // reads/generations and resets the served-set, so a world later turned back
+                // on cannot answer up_to_date off a done-bit from before). The client stops
+                // declaring on the enabled=false below.
+                int capabilities = state.getCapabilities();
+                removePlayer(player.getUUID());
+                registerPlayer(player, capabilities);
             }
             var payload = new SessionConfigS2CPayload(
                     LSSConstants.PROTOCOL_VERSION,

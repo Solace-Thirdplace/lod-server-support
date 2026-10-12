@@ -37,7 +37,8 @@ final class PaperWorldLod {
      *  level is gone (the previous world unloaded within the tick — a near-impossible
      *  window for a world a player just left) it falls back to the dim-id key, which a
      *  name-keyed override would miss; the only cost is a skipped re-push that self-heals
-     *  on the client's next rejoin (safe direction — never wrong terrain). */
+     *  on the client's next rejoin (never wrong terrain — though with distance 0 the skip
+     *  can leave a client told "off" in a served world until it rejoins). */
     static int distanceForDimKey(PaperConfig config, MinecraftServer server, ResourceKey<Level> key) {
         if (key == null) return config.lodDistanceChunks();
         ServerLevel level = null;

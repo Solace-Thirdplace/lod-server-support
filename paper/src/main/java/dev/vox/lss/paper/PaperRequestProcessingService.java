@@ -866,7 +866,7 @@ public class PaperRequestProcessingService {
     public int[] repushSessionConfig() {
         int pushed = 0;
         int legacy = 0;
-        for (var state : this.players.values()) {
+        for (var state : java.util.List.copyOf(this.players.values())) {
             if (this.dialects.dialectOf(state.getPlayerUUID())
                     != dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT) {
                 legacy++;
@@ -875,10 +875,13 @@ public class PaperRequestProcessingService {
             try {
                 int dist = PaperWorldLod.distance(this.config, state.getPlayer());
                 if (dist <= 0) {
-                    // The reload turned this player's world off: drop its declared backlog
-                    // (the Fabric twin) — the client stops declaring on the enabled=false.
-                    state.offerIncomingBatch(new dev.vox.lss.common.processing.IncomingBatch(
-                            new dev.vox.lss.common.processing.IncomingRequest[0]));
+                    // The reload turned this player's world off: abandon its in-flight work
+                    // via the dimension-change remove + fresh register (the Fabric twin) — a
+                    // world later turned back on cannot answer up_to_date off an old done-bit.
+                    var player = state.getPlayer();
+                    int capabilities = state.getCapabilities();
+                    removePlayer(player.getUUID());
+                    registerPlayer(player, capabilities);
                 }
                 // 0 = no LOD service in this world.
                 this.sessionConfigSender.send(state.getPlayer(), this.config, this.config.enabled() && dist > 0);
