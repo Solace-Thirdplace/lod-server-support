@@ -70,7 +70,7 @@ class ClientIdentityResolverTest {
 
     @BeforeAll
     static void setup() {
-        var src = VanillaRegistries.createLookup().lookupOrThrow(Registries.BIOME);
+        var src = VanillaRegistries.createWorldLookup().lookupOrThrow(Registries.BIOME);
         var biomes = new MappedRegistry<>(Registries.BIOME, Lifecycle.stable());
         biomes.register(Biomes.PLAINS, src.getOrThrow(Biomes.PLAINS).value(), RegistrationInfo.BUILT_IN);
         biomes.register(Biomes.DESERT, src.getOrThrow(Biomes.DESERT).value(), RegistrationInfo.BUILT_IN);

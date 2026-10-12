@@ -58,7 +58,7 @@ class V20SettlingExperimentTool {
     private static final Pattern REGION_NAME = Pattern.compile("r\\.(-?\\d+)\\.(-?\\d+)\\.mca");
 
     private static RegistryAccess buildFullBiomeRegistry() {
-        var provider = VanillaRegistries.createLookup();
+        var provider = VanillaRegistries.createWorldLookup();
         var src = provider.lookupOrThrow(Registries.BIOME);
         MappedRegistry<Biome> biomes = new MappedRegistry<>(Registries.BIOME, Lifecycle.stable());
         src.listElements().forEach(ref -> biomes.register(ref.key(), ref.value(), RegistrationInfo.BUILT_IN));

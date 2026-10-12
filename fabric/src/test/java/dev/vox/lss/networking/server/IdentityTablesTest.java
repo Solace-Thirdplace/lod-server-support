@@ -36,7 +36,7 @@ class IdentityTablesTest {
 
     @BeforeAll
     static void setup() {
-        var biomes = VanillaRegistries.createLookup().lookupOrThrow(Registries.BIOME);
+        var biomes = VanillaRegistries.createWorldLookup().lookupOrThrow(Registries.BIOME);
         var registry = new net.minecraft.core.MappedRegistry<>(Registries.BIOME,
                 com.mojang.serialization.Lifecycle.stable());
         biomes.listElements().forEach(ref -> registry.register(ref.key(), ref.value(),
