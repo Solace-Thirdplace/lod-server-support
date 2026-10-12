@@ -20,9 +20,9 @@ class AliasCorroborationTest {
     private static final String CANONICAL = "play.example.com";
     private static final String ALT = "alt.example.com";
 
-    private static AliasCorroboration.Result eval(boolean voxy, boolean xaero,
+    private static AliasCorroboration.Result eval(boolean voxy, boolean mapStore,
                                                   String observed, String connect) {
-        return AliasCorroboration.evaluate(voxy, xaero, observed, connect, CANONICAL);
+        return AliasCorroboration.evaluate(voxy, mapStore, observed, connect, CANONICAL);
     }
 
     private static void assertApplies(AliasCorroboration.Result r, String token) {
@@ -96,10 +96,10 @@ class AliasCorroborationTest {
     }
 
     @Test
-    void anArmedXaeroBridgeFallsBackEvenWhenVoxyCorroborates() {
-        assertFallsBack(eval(true, true, CANONICAL, ALT), "xaero-armed");
-        assertFallsBack(eval(false, true, null, ALT), "xaero-armed",
-                "the Xaero gate outranks the no-consumer APPLY too");
+    void anArmedMapStoreFallsBackEvenWhenVoxyCorroborates() {
+        assertFallsBack(eval(true, true, CANONICAL, ALT), "map-store-armed");
+        assertFallsBack(eval(false, true, null, ALT), "map-store-armed",
+                "the map-store gate outranks the no-consumer APPLY too");
     }
 
     private static void assertFallsBack(AliasCorroboration.Result r, String token, String why) {

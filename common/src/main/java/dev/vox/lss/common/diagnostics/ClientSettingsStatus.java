@@ -13,10 +13,10 @@ public record ClientSettingsStatus(boolean available, Values saved, Values confi
             .map(SettingsSchema.Descriptor::path).collect(java.util.stream.Collectors.toUnmodifiableSet());
     /** Deliberate scalar allowlist. Addresses, alias members and fallback mappings stay private. */
     public record Values(boolean receptionEnabled, int distanceChunks, int maxColumnsPerSecond,
-                         boolean xaeroMapEnabled, boolean sharingEnabled) {
+                         boolean mapIngestionEnabled, boolean sharingEnabled) {
         static Values from(ClientSettings settings) {
             return new Values(settings.lod().receive(), settings.lod().distanceChunks(),
-                    settings.lod().download().maxColumnsPerSecond(), settings.integrations().xaeroMap().enabled(),
+                    settings.lod().download().maxColumnsPerSecond(), settings.integrations().mapIngestion().enabled(),
                     settings.farPlayers().sharing().enabled());
         }
     }

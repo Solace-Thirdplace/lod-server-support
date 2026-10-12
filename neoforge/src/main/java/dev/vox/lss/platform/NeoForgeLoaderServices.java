@@ -34,6 +34,7 @@ public class NeoForgeLoaderServices implements LoaderServices {
         values.put(dev.vox.lss.common.diagnostics.DiagnosticVersions.Component.LOADER, ModList.get().getModContainerById("neoforge").map(mod -> mod.getModInfo().getVersion().toString()).orElse("absent"));
         values.put(dev.vox.lss.common.diagnostics.DiagnosticVersions.Component.SODIUM, ModList.get().getModContainerById("sodium").map(mod -> mod.getModInfo().getVersion().toString()).orElse("absent"));
         values.put(dev.vox.lss.common.diagnostics.DiagnosticVersions.Component.XAERO, ModList.get().getModContainerById("xaeroworldmap").map(mod -> mod.getModInfo().getVersion().toString()).orElse("absent"));
+        values.put(dev.vox.lss.common.diagnostics.DiagnosticVersions.Component.JOURNEYMAP, ModList.get().getModContainerById("journeymap").map(mod -> mod.getModInfo().getVersion().toString()).orElse("absent"));
         values.put(dev.vox.lss.common.diagnostics.DiagnosticVersions.Component.VOXY, ModList.get().getModContainerById("voxy").map(mod -> mod.getModInfo().getVersion().toString()).orElse("absent"));
         values.put(dev.vox.lss.common.diagnostics.DiagnosticVersions.Component.CONNECTOR, ModList.get().getModContainerById("connector").map(mod -> mod.getModInfo().getVersion().toString()).orElse("absent"));
         values.put(dev.vox.lss.common.diagnostics.DiagnosticVersions.Component.C2ME, ModList.get().getModContainerById("c2me").map(mod -> mod.getModInfo().getVersion().toString()).orElse("absent"));
