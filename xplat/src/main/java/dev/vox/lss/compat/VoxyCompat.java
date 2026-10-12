@@ -713,9 +713,11 @@ class VoxyCompat {
     private static MethodHandle resetGetStorageBasePath;
     private static Class<?> rendererHolderInterface;
     private static MethodHandle rendererHolderShutdown;
-    // LINE-FACT(26.2): the holder ladder below is verified against THIS line's Voxy
+    // LINE-FACT(26.3): the holder ladder below is verified against THIS line's Voxy
     // build — re-derive on a port (the 26.2 render-extract rework moved the rebuild
-    // call; other lines' Voxy builds differ again).
+    // call; other lines' Voxy builds differ again). 26.3: Voxy's `263` branch reload
+    // (VoxyCommands) is the same holder-shutdown / instance-cycle / levelExtractor
+    // .allChanged() sequence (source-verified 2026-10-11).
     // Rung 1 only: IVoxyRenderSystemHolder.getNullableHolder() — the 26.2 Voxy build's
     // own reload obtains the holder through this static (bytecode-verified 2026-08-13),
     // which abstracts away WHICH vanilla class carries the mixin. Null on rung 2.

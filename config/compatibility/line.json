@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "facts": {
-    "line": "26.2",
+    "line": "26.3",
     "targets": {
-      "fabric": "26.2",
-      "paper": "26.2",
-      "neoforge": "26.2"
+      "fabric": "26.3",
+      "paper": "26.3",
+      "neoforge": "26.3"
     },
     "java": 25,
     "common_java": 21,
@@ -14,8 +14,7 @@
     "neoforge_renderer": "unsupported",
     "paper_loaders": [
       "paper",
-      "purpur",
-      "folia"
+      "purpur"
     ],
     "fabric_client_gametests": true
   },
