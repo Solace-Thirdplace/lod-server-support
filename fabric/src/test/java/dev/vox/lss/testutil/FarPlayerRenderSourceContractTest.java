@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * and is pinned unconditionally; the NeoForge twin is pinned only where it renders
  * ({@code RENDER_AVAILABLE = true} — on this line it is a stub).
  *
- * <p>The expected strings are LINE FACTS (this 26.2 line: {@code LightCoordsUtil} + the
+ * <p>The expected strings are LINE FACTS (this 26.3 line: {@code LightCoordsUtil} + the
  * extract/submit pipeline, the frustum from the extracted camera state, {@code submitText}
  * tags, the pose-scaling {@code LiftedSubmitCollector} in place of 1.21.1's per-vertex
  * {@code LiftedBufferSource}, no batch to end, a real {@code WalkAnimationState.stop()}) —
@@ -119,7 +119,7 @@ class FarPlayerRenderSourceContractTest {
                 tree + ": every tag (proxy or real) must honour the hide-GUI key (fold D3)");
         assertTrue(src.contains("for (var realPlayer : level.players())")
                         && src.contains("if (active.contains(realPlayer.getUUID())) continue;")
-                        && src.contains("&& !minecraft.levelRenderer.isSectionCompiledAndVisible(realBlock)) continue;")
+                        && src.contains("&& !minecraft.levelRenderer.isSectionCompiledAndVisible(realBlock, sectionFadeMillis)) continue;")
                         && src.contains("double cameraDistanceSq = cameraPosition.distanceToSqr(realPosition);")
                         && src.contains("double range = realPlayer.getAttributeValue(Attributes.NAME_TAG_DISTANCE);")
                         && src.contains("if (cameraDistanceSq < range * range) continue;")
@@ -165,7 +165,8 @@ class FarPlayerRenderSourceContractTest {
                         && src.contains("return tiers.getOrDefault(type, 2);")
                         && src.contains("float pull = lift * (1.0f + 0.8f * tier);")
                         && src.contains("boolean inner = slot == EquipmentSlot.LEGS;")
-                        && src.contains("liftTiers.put(RenderTypes.armorCutoutNoCull(layer.getTextureLocation(layerType)), inner ? 0 : 1);")
+                        && src.contains("liftTiers.put(RenderTypes.armorCutoutNoCull(texture), inner ? 0 : 1);")
+                        && src.contains("liftTiers.put(RenderTypes.armorCutoutNoCullGlint(texture), inner ? 0 : 1);")
                         && src.contains("((AccessorEntityRenderDispatcher) dispatcher).lss$getEquipmentAssets()"),
                 tree + ": overlapping armor pieces must sit on different lift tiers");
         assertTrue(src.contains("return root == null ? this : new LiftedSubmitCollector(root.order(order), this);"),
