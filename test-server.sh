@@ -37,7 +37,15 @@ if [ -z "$LINE_JAVA_VERSION" ]; then
 fi
 # --- Fabric versions ---
 FABRIC_MC_VERSION="$MC_LINE_VERSION"
-FABRIC_LOADER_VERSION="0.19.3"
+# Derived from gradle.properties loader_version (the loader this line BUILDS against), like
+# NEOFORGE_VERSION below. A hand pin drifted once: 26.3's C2ME build crashes at startup under
+# loader 0.19.3's bundled MixinExtras 0.5.4 (ClassCastException in
+# FactoryRedirectWrapperMixinTransformer) and loads under the line's 0.19.5.
+FABRIC_LOADER_VERSION="${FABRIC_LOADER_VERSION:-$(sed -n 's/^loader_version=//p' "$SCRIPT_DIR/gradle.properties" | tr -d '\r')}"
+if [ -z "$FABRIC_LOADER_VERSION" ]; then
+    echo "ERROR: could not read loader_version from gradle.properties" >&2
+    exit 1
+fi
 FABRIC_INSTALLER_VERSION="1.1.1"
 
 # --- Paper/Folia versions ---
@@ -58,7 +66,7 @@ NEOFORGE_INSTALLER_URL="https://maven.neoforged.net/releases/net/neoforged/neofo
 FABRIC_SERVER_URL="https://meta.fabricmc.net/v2/versions/loader/${FABRIC_MC_VERSION}/${FABRIC_LOADER_VERSION}/${FABRIC_INSTALLER_VERSION}/server/jar"
 FABRIC_API_URL="https://cdn.modrinth.com/data/P7dR8mSH/versions/v2j28coa/fabric-api-0.162.0%2B26.3.jar"
 C2ME_URL="https://cdn.modrinth.com/data/VSNURh3q/versions/ODMLK8M9/c2me-fabric-mc26.3-0.4.2-alpha.0.90.jar"
-# DrexHD AntiXray (Modrinth sml2FMaA), fabric-1.4.16+26.1 — listed compatible with MC 26.2.
+# DrexHD AntiXray (Modrinth sml2FMaA), fabric-1.4.16+26.3 — the line's own build.
 # `run-fabric-antixray` enables it as the live gate for LSS's AntiXray compat
 # (docs/planning/antixray-compat-design.md): a current LSS build must SURVIVE an LSS client
 # join — the crash shim binds AntiXray's ScopedValue context around LSS serialization, and
@@ -66,7 +74,7 @@ C2ME_URL="https://cdn.modrinth.com/data/VSNURh3q/versions/ODMLK8M9/c2me-fabric-m
 # lines and the /lsslod diag Xray line). Only a pre-shim LSS build still crashes (unbound
 # ScopedValue NoSuchElementException in the probe serve — the stack-trace source for the
 # upstream issue draft). Every other run command parks the jar as .jar.disabled.
-ANTIXRAY_URL="https://cdn.modrinth.com/data/sml2FMaA/versions/AK313N9m/antixray-fabric-1.4.16%2B26.1.jar"
+ANTIXRAY_URL="https://cdn.modrinth.com/data/sml2FMaA/versions/8CvHIf1r/antixray-fabric-1.4.16%2B26.3.jar"
 
 # --- Legacy (protocol-16) LSS server ---
 # The last pre-v0.7.0 release for MC 26.2, pulled straight from GitHub Releases (a real
@@ -96,6 +104,10 @@ case "$FABRIC_API_URL" in *"${MC_LINE_VERSION}"*) : ;; *)
 esac
 case "$C2ME_URL" in *"mc${MC_LINE_VERSION}"*) : ;; *)
     echo "ERROR: C2ME_URL does not mention mc${MC_LINE_VERSION} — stale line data" >&2
+    exit 1 ;;
+esac
+case "$ANTIXRAY_URL" in *"%2B${MC_LINE_VERSION}.jar") : ;; *)
+    echo "ERROR: ANTIXRAY_URL is not the mc${MC_LINE_VERSION} build — stale line data" >&2
     exit 1 ;;
 esac
 C2ME_MODRINTH_ID="$(sed -n 's/^c2me_modrinth_version=//p' "$SCRIPT_DIR/gradle.properties" | tr -d '\r')"
@@ -211,12 +223,26 @@ fi
 # Helpers
 # ============================================================
 
+# Downloads are cached by FILENAME, so each one records its source URL in a hidden stamp
+# beside it (loaders and Bukkit only scan visible *.jar files). A changed pin (loader, C2ME,
+# AntiXray, ...) evicts the cached copy; without the stamp a bump never reached an existing rig
+# (26.3's loader bump kept running the cached 0.19.3 launcher).
+download_stamp() {
+    echo "$(dirname "$1")/.$(basename "$1").src"
+}
+
 download() {
     local url="$1"
     local dest="$2"
+    local stamp
+    stamp="$(download_stamp "$dest")"
     if [ -f "$dest" ]; then
-        echo "  Already exists: $(basename "$dest")"
-        return 0
+        if [ "$(cat "$stamp" 2>/dev/null)" = "$url" ]; then
+            echo "  Already exists: $(basename "$dest")"
+            return 0
+        fi
+        echo "  Pin changed, replacing: $(basename "$dest")"
+        rm -f "$dest"
     fi
     echo "  Downloading: $(basename "$dest")"
     # --remove-on-error: on a 404/failure, curl has already truncated/created $dest; without
@@ -224,6 +250,17 @@ download() {
     # run, silently installing a broken jar. Most likely to bite the legacy jar (its URL is the
     # one edited when LEGACY_LSS_VERSION is bumped).
     curl -fsSL --remove-on-error -o "$dest" "$url"
+    printf '%s\n' "$url" > "$stamp"
+}
+
+# A copy parked as .jar.disabled by an A/B run is skipped by its download guard, so it is
+# dropped here when its pin changed; the guard then fetches the current pin.
+drop_stale_parked() {
+    local dest="$1" url="$2"
+    if [ -f "$dest.disabled" ] && [ "$(cat "$(download_stamp "$dest")" 2>/dev/null)" != "$url" ]; then
+        rm -f "$dest.disabled"
+        echo "  Dropped stale parked copy: $(basename "$dest")"
+    fi
 }
 
 # Downloads the latest stable build of a PaperMC-family server (paper|folia) via
@@ -461,6 +498,7 @@ setup_fabric() {
     download "$FABRIC_API_URL" "$mods_dir/fabric-api.jar"
     # Skip the download while a no-c2me A/B run has it parked as .jar.disabled —
     # otherwise every such run re-downloads a jar it is about to disable.
+    drop_stale_parked "$mods_dir/c2me.jar" "$C2ME_URL"
     if [ ! -f "$mods_dir/c2me.jar.disabled" ]; then
         download "$C2ME_URL" "$mods_dir/c2me.jar"
     fi
@@ -921,6 +959,7 @@ case "${1:-run}" in
         echo ""
         echo "=== Enabling AntiXray (DrexHD) for this run ==="
         # Skip the download while a previous run has it parked as .jar.disabled.
+        drop_stale_parked "$FABRIC_DIR/mods/antixray.jar" "$ANTIXRAY_URL"
         if [ ! -f "$FABRIC_DIR/mods/antixray.jar.disabled" ]; then
             download "$ANTIXRAY_URL" "$FABRIC_DIR/mods/antixray.jar"
         fi
