@@ -2,25 +2,45 @@ package dev.vox.lss.common.config;
 
 import dev.vox.lss.common.LSSLogger;
 
-/** Logs the worlds with no LOD service (distance 0) at service start and whenever the distance
- *  settings change on a reload — so a typo that turns a world off is visible in the log, not
- *  only in {@code /lsslod diag}. One instance per service, called from its tick. */
+import java.util.List;
+
+/** Logs the worlds with no LOD service (distance 0) at service start and whenever that set
+ *  changes on a reload — so a typo that turns a world off is visible in the log, not only in
+ *  {@code /lsslod diag}. Unrelated distance edits log nothing. One instance per service,
+ *  called from its tick (one thread). */
 public final class UnservedWorldsLog {
-    private ServerSettings.LodDistance last;
+    /** Where the lines go (a seam for tests). */
+    interface Sink { void log(boolean warn, String message); }
+
+    private final Sink sink;
+    private ServerSettings.LodDistance lastDistance;
+    private List<String> lastOff;
+    private boolean lastAllOff;
+
+    public UnservedWorldsLog() {
+        this((warn, message) -> { if (warn) LSSLogger.warn(message); else LSSLogger.info(message); });
+    }
+
+    UnservedWorldsLog(Sink sink) { this.sink = sink; }
 
     public void note(ServerConfigBase config) {
         var distance = config.snapshot().lod().distance();
-        if (distance == this.last || distance.equals(this.last)) return;
-        boolean first = this.last == null;
-        this.last = distance;
+        if (distance == this.lastDistance || distance.equals(this.lastDistance)) return;
+        this.lastDistance = distance;
         var off = config.unservedWorlds();
-        if (!off.isEmpty()) {
-            LSSLogger.info("LOD service is off (distance 0) in: " + String.join(", ", off));
-        } else if (!first) {
-            LSSLogger.info("LOD service is on in every world");
+        boolean allOff = config.maxConfiguredLodDistanceChunks() <= 0;
+        boolean first = this.lastOff == null;
+        if (!off.equals(this.lastOff)) {
+            if (!off.isEmpty()) {
+                this.sink.log(false, "LOD service is off (distance 0) in: " + String.join(", ", off));
+            } else if (!first) {
+                this.sink.log(false, "LOD service is on in every world");
+            }
         }
-        if (config.maxConfiguredLodDistanceChunks() <= 0) {
-            LSSLogger.warn("Every LOD distance is 0: no world is served LODs (far players still run)");
+        if (allOff && (first || !this.lastAllOff)) {
+            this.sink.log(true, "Every LOD distance is 0: no world is served LODs (far players still run)");
         }
+        this.lastOff = off;
+        this.lastAllOff = allOff;
     }
 }

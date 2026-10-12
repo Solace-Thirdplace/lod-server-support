@@ -108,17 +108,19 @@ public class ServerConfigBase {
     /** The distance a legacy-dialect session is told at its handshake. Legacy sessions get no
      *  mid-session SessionConfig, so one handshaking in an off world is told the server's
      *  largest distance (it stays enabled for the worlds that are served) and the request
-     *  filter enforces the off world. */
+     *  filter enforces the off world. The largest counts {@code default_chunks} even when every
+     *  real dimension overrides it, so it can exceed every served world's distance — harmless,
+     *  the request filter still bounds each world. */
     public final int legacyAdvertisedDistance(int worldDistance) {
         return worldDistance > 0 ? worldDistance : Math.max(1, maxConfiguredLodDistanceChunks());
     }
 
-    /** The configured overrides that turn LODs off, for diagnostics: {@code default} when
+    /** The configured overrides that turn LODs off, for diagnostics: {@code unlisted dimensions} when
      *  {@code default_chunks} is 0, then dimension IDs, then (Paper) world names. */
     public final List<String> unservedWorlds() {
         var distance = snapshot().lod().distance();
         var off = new java.util.ArrayList<String>();
-        if (distance.defaultChunks() <= 0) off.add("default");
+        if (distance.defaultChunks() <= 0) off.add("unlisted dimensions (default_chunks)");
         distance.byDimension().forEach((k, v) -> { if (v <= 0) off.add(k); });
         if (paperPlatform) distance.byWorld().forEach((k, v) -> { if (v <= 0) off.add("world " + k); });
         return List.copyOf(off);

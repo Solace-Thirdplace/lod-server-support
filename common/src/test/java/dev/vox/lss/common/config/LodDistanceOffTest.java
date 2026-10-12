@@ -71,4 +71,29 @@ class LodDistanceOffTest {
         assertTrue(ServerConfigBase.servesWorld(1));
         assertTrue(!ServerConfigBase.servesWorld(0));
     }
+
+    @Test
+    void theUnservedLogFiresOnlyWhenTheOffSetChanges() {
+        var lines = new java.util.ArrayList<String>();
+        var log = new UnservedWorldsLog((warn, message) -> lines.add((warn ? "WARN " : "") + message));
+        log.note(config(512, Map.of()));                                  // boot, all served: silent
+        log.note(config(512, Map.of("minecraft:the_nether", 0)));          // nether off
+        log.note(config(256, Map.of("minecraft:the_nether", 0)));          // unrelated edit: silent
+        log.note(config(256, Map.of()));                                  // back on
+        log.note(config(128, Map.of()));                                  // unrelated edit: silent
+        log.note(config(0, Map.of()));                                    // everything off
+        log.note(config(0, Map.of()));                                    // unchanged: silent
+        assertEquals(java.util.List.of(
+                "LOD service is off (distance 0) in: minecraft:the_nether",
+                "LOD service is on in every world",
+                "LOD service is off (distance 0) in: unlisted dimensions (default_chunks)",
+                "WARN Every LOD distance is 0: no world is served LODs (far players still run)"), lines);
+    }
+
+    private static ServerConfigBase config(int defaultChunks, Map<String, Integer> byDimension) {
+        var decoded = SettingsSchema.server(false).fromValues(Map.of(
+                "lod.distance.default_chunks", defaultChunks,
+                "lod.distance.by_dimension", byDimension));
+        return new ServerConfigBase(decoded.normalized(), false);
+    }
 }

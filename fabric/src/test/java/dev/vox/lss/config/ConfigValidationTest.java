@@ -52,7 +52,7 @@ class ConfigValidationTest {
         assertEquals(0, c.lodDistanceForWorld("minecraft:the_end"));
         assertEquals(0, c.lodDistanceForWorld("mod:other"));
         assertEquals(256, c.maxConfiguredLodDistanceChunks());
-        assertEquals(List.of("default"), c.unservedWorlds());
+        assertEquals(List.of("unlisted dimensions (default_chunks)"), c.unservedWorlds());
     }
     @Test void everyWorldOffStillAdvertisesAPositiveLegacyDistance() {
         var c = config(Map.of("lod.distance.default_chunks", 0, "lod.distance.by_dimension", Map.of()));
