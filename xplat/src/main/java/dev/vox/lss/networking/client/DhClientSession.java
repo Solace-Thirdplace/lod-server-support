@@ -1263,7 +1263,7 @@ public final class DhClientSession {
             skipped.addAndGet(16 - Integer.bitCount(eligible));
             VoxelColumnData[] data;
             try (var conversion = budget.reserve(Integer.bitCount(convert) * ((long) tile.world().height() / 16 * 65_536 + (long) tile.materials().size() * 128))) {
-                data = converter.convertTile(tile, convert);
+                data = converter.convertTile(tile, convert, partial);
             }
             int eligibleMask = eligible, completeMask = complete;
             return onMain(() -> {
