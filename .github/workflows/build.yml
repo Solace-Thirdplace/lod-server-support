@@ -195,6 +195,14 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v5
 
+      # LINE FLAVOR (26.3): the client renders through renderpearl. On the runner's Xvfb the
+      # OpenGL backend finds no matching GLX visual, so 26.3 falls back to Vulkan, which needs
+      # Mesa's lavapipe with a window-system surface; the runner image ships a Vulkan loader
+      # without one (VK_KHR_surface missing) and the client would hang with no window until
+      # the step timeout. Same driver stack the local private-Xvfb runs use.
+      - name: Install Mesa Vulkan (lavapipe) for the 26.3 client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mesa-vulkan-drivers
+
       # Retry-once for the same reason as Tier 2 above — this tier additionally sees the
       # vanilla 26.2 TicketStorage purge crash under ticket churn (CLAUDE.md flake catalog).
       - name: Tier 3 client gametests (retry once on flake)

@@ -3,6 +3,10 @@ allprojects {
     tasks.matching { it.name == 'runClientGameTest' }.configureEach { task ->
         if (!task.hasProperty('useXvfb')) throw new GradleException('Client gametest lacks private Xvfb capability')
         task.useXvfb.set(true)
+        // LINE FLAVOR (26.3): the client windows through SDL, which probes the WSLg Wayland
+        // compositor (XDG_RUNTIME_DIR/wayland-0) even with WAYLAND_DISPLAY unset; pin the X11
+        // driver so the window can only land on the private Xvfb, never the user's desktop.
+        task.environment('SDL_VIDEO_DRIVER', 'x11')
         task.doFirst {
             if (!task.useXvfb.get()) throw new GradleException('Refusing client gametest without private Xvfb')
         }
