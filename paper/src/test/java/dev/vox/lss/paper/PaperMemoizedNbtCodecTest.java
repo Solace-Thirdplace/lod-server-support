@@ -289,7 +289,7 @@ class PaperMemoizedNbtCodecTest {
         var first = m.resolve(raw);
         assertFalse(raw.contains("upgraded"), "the caller's entry is never mutated");
         assertEquals(1, upgrades.get());
-        assertEquals("yes", ((CompoundTag) seen.get(0)).getString("upgraded").orElse(""),
+        assertEquals("yes", ((CompoundTag) seen.get(0)).getString("upgraded"),
                 "the delegate decodes the upgraded entry");
         assertSame(first, m.resolve(paletteEntry("minecraft:stone", "y")),
                 "an equal RAW entry hits the memo");
