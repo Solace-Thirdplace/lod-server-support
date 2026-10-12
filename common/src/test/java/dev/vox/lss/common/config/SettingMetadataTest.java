@@ -24,6 +24,6 @@ class SettingMetadataTest {
             assertEquals(SettingsSchema.Timing.H, fields.get(key).timing(), key);
         for (String key : List.of("storage.lod_store.enabled", "privacy.xray.mode", "storage.disk.reader_threads"))
             assertEquals(SettingsSchema.Timing.R, fields.get(key).timing(), key);
-        assertEquals(SettingsSchema.Timing.S, SettingsSchema.client().descriptorsByPath().get("integrations.xaero_map.enabled").timing());
+        assertEquals(SettingsSchema.Timing.S, SettingsSchema.client().descriptorsByPath().get("integrations.map_ingestion.enabled").timing());
     }
 }

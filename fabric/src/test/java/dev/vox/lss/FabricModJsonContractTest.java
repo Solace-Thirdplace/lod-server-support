@@ -71,6 +71,11 @@ class FabricModJsonContractTest {
         org.junit.jupiter.api.Assertions.assertEquals("*",
                 suggests.get("xaeroworldmap").getAsString(),
                 "suggests.xaeroworldmap must be the literal any-version wildcard");
+        // Same rule for JourneyMap (map-ingestion plan §3.2): the binding probe classifies
+        // unsupported/unrecognized builds at runtime; no range is claimed.
+        org.junit.jupiter.api.Assertions.assertEquals("*",
+                suggests.get("journeymap").getAsString(),
+                "suggests.journeymap must be the literal any-version wildcard");
         for (String key : new String[]{"suggests_sodium", "suggests_voxy",
                 "sodium_version", "modmenu_version",
                 "moonrise_modrinth_version", "c2me_modrinth_version"}) {

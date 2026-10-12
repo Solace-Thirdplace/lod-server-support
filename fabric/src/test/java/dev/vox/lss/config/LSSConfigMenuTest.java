@@ -54,7 +54,7 @@ class LSSConfigMenuTest {
     }
 
 
-    /** Sodium 0.8 registers the page once at game start; the Xaero native-only tooltip must
+    /** Sodium 0.8 registers the page once at game start; the map ingestion native-only tooltip must
      *  follow the CURRENT terrain source, not the context captured at registration (D-25). */
     @Test
     void contextDependentTooltipsIgnoreTheRegistrationContext() {
@@ -62,15 +62,15 @@ class LSSConfigMenuTest {
         var stale = new dev.vox.lss.config.menu.MenuContext(true, true, true, false);
         var builder = new RecordingConfigBuilder();
         new LSSConfigMenu().registerDraft(builder, draft, stale);
-        var xaero = ClientOptionCatalog.find(ClientOptionCatalog.ID_XAERO_MAP_BRIDGE).orElseThrow();
+        var maps = ClientOptionCatalog.find(ClientOptionCatalog.ID_MAP_INGESTION).orElseThrow();
         var live = dev.vox.lss.config.menu.MenuContext.current();
         assertTrue(live.nativeTerrain(), "unit context reads native terrain");
         builder.mods.get(0).pages.forEach(p -> p.groups.forEach(g -> g.options.forEach(o -> {
             var recorded = (RecordedOption<?>) o;
-            if (recorded.id.toString().equals(xaero.id()))
-                assertEquals(xaero.tooltip().resolve(live), recorded.tooltip.getString());
+            if (recorded.id.toString().equals(maps.id()))
+                assertEquals(maps.tooltip().resolve(live), recorded.tooltip.getString());
         })));
-        assertNotEquals(xaero.tooltip().resolve(stale), xaero.tooltip().resolve(live));
+        assertNotEquals(maps.tooltip().resolve(stale), maps.tooltip().resolve(live));
     }
 
     @Test
