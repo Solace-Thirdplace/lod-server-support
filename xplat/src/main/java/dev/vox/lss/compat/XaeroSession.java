@@ -536,9 +536,14 @@ final class XaeroSession {
     // Halt time-box (main thread only — the poll runs on the client tick).
     long haltSinceMillis;
     double haltPeakOccupancy; // in-window peak; re-base = recede from THIS
-    /** The previous report's pacing hold (window or heap): its END re-bases the halt window —
-     *  the held time was pacing, never evidence of a stuck writer (main thread only). */
-    boolean lastPaceHold;
+    /** The previous report's heap hold: its END re-bases the halt window — the belt's held
+     *  time was pacing, never evidence of a stuck writer (main thread only). */
+    boolean lastHeapHold;
+    /** The open-region window stopped holding work back while it was still turning over (a
+     *  genuine release, not a stall): the next report re-bases the halt window too. A hold
+     *  that drops because the window stopped turning over, or because a gate held the pump,
+     *  keeps its age — that writer is stuck again (main thread only). */
+    boolean windowReleased;
     volatile boolean haltWedged;
     long wedgeSinceMillis;       // main thread only (duty-cycle clock)
     long lastWedgeWarnMillis;    // rate-limits the cyclical wedge warn
@@ -711,7 +716,8 @@ final class XaeroSession {
         // clear; this half runs at the next pump top, after any such ladder.
         this.undrainablePumps = 0;
         this.haltSinceMillis = 0;
-        this.lastPaceHold = false;
+        this.lastHeapHold = false;
+        this.windowReleased = false;
         this.pumpDrainable = true;
         this.haltWedged = false;
         this.wedgeSinceMillis = 0;
@@ -787,14 +793,15 @@ final class XaeroSession {
      * what keeps a long structural block from stopping the fill for good. A HEAP
      * hold (map-ingestion plan §4.3) reports the full halt — the belt stops every
      * write, so an occupancy-scaled report would keep filling the queue with the
-     * memory the belt is protecting — and the END of any pacing hold opens a fresh
-     * window, so held time never ages into a wedge on the first report after it.
+     * memory the belt is protecting — and the END of a heap hold or a genuine window
+     * release opens a fresh window, so paced time never ages into a wedge on the first
+     * report after it.
      * Main client thread (the LSSApi poll).
      */
     int reportBackpressure() {
-        boolean hold = this.windowBound || this.heapHolding;
-        boolean released = this.lastPaceHold && !hold;
-        this.lastPaceHold = hold;
+        boolean released = (this.lastHeapHold && !this.heapHolding) || this.windowReleased;
+        this.lastHeapHold = this.heapHolding;
+        this.windowReleased = false;
         double occupancy = this.heapHolding
                 ? Math.max(this.acquisition.occupancy, BP_HALT_OCCUPANCY) : this.acquisition.occupancy;
         if (!this.backpressureEnabled.getAsBoolean()) return noSignal();
@@ -1551,8 +1558,9 @@ final class XaeroSession {
         // already-open regions do not clear it: a trickle that cannot recede the occupancy
         // is exactly what the window makes, and the short time box would wedge it
         // (re-review; the turnover clause bounds a window that is wide enough).
-        this.windowBound = windowWaited
-                && nowMillis() - this.windowProgressMillis <= BP_PACE_HOLD_MILLIS;
+        boolean turningOver = nowMillis() - this.windowProgressMillis <= BP_PACE_HOLD_MILLIS;
+        if (this.windowBound && !windowWaited && turningOver) this.windowReleased = true;
+        this.windowBound = windowWaited && turningOver;
         this.openRegionsGauge = this.openRegions.size();
         if (generation != this.acquisition.acquisitionGeneration.get()) return;
         this.acquisition.probeOwed(mp, dimensionId, waiting);

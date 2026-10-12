@@ -73,10 +73,8 @@ public final class ModCompat {
         var out = new java.util.ArrayList<dev.vox.lss.api.VoxelColumnConsumer>(2);
         var xaero = XaeroMapCompat.mapConsumer();
         if (xaero != null) out.add(xaero);
-        if (journeyMapLoaded) {
-            var journeyMap = JourneyMapCompat.mapConsumer();
-            if (journeyMap != null) out.add(journeyMap);
-        }
+        var journeyMap = journeyMapLoaded ? JourneyMapCompat.mapConsumer() : null;
+        if (journeyMap != null) out.add(journeyMap);
         return out;
     }
 

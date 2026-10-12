@@ -18,12 +18,13 @@ import java.util.function.LongSupplier;
  * peak for {@value #HALT_WEDGE_MILLIS} ms (widened to {@value #PACE_HOLD_MILLIS} ms while the
  * backend declares a pacing hold). A wedge re-arms once occupancy falls below
  * {@value #REARM_OCCUPANCY} or after {@value #REARM_MILLIS} ms: a map may pace the fill,
- * never stop it. A pacing hold that ENDS opens a fresh window: the time it spent holding was
- * pacing, never evidence of a stuck writer, so it must not age into a wedge on the first
- * report after the release. A HEAP hold (map-ingestion plan §4.3) reports the full halt:
- * map writers stop allocating then, and an occupancy-scaled report would keep filling their
- * queues with exactly the memory the belt is trying to keep free. Main client thread only,
- * except {@link #wedged}, which the decode thread reads.
+ * never stop it. A HEAP hold (map-ingestion plan §4.3) reports the full halt: map writers stop
+ * allocating then, and an occupancy-scaled report would keep filling their queues with exactly
+ * the memory the belt is trying to keep free. When the heap hold ENDS the halt window starts
+ * fresh: the belt's held time was pacing, never evidence of a stuck writer, and must not age
+ * into a wedge on the first report after the release. (A pacing hold that merely drops — a
+ * hold that stopped making progress — keeps its age: that writer is stuck again.) Main client
+ * thread only, except {@link #wedged}, which the decode thread reads.
  */
 final class IngestBackpressureGovernor {
     static final double HALT_OCCUPANCY = 0.75;
@@ -39,8 +40,8 @@ final class IngestBackpressureGovernor {
     long lastPumpMillis;
     long haltSinceMillis;
     double haltPeakOccupancy;
-    /** The previous report's pacing hold: its end re-bases the halt window. */
-    boolean lastPaceHold;
+    /** The previous report's heap hold: its end re-bases the halt window. */
+    boolean lastHeapHold;
     /** Volatile: the decode thread reads it to decide whether an overflow drop is reported. */
     volatile boolean wedged;
     long wedgeSinceMillis;
@@ -64,7 +65,7 @@ final class IngestBackpressureGovernor {
     void reset() {
         this.haltSinceMillis = 0;
         this.haltPeakOccupancy = 0;
-        this.lastPaceHold = false;
+        this.lastHeapHold = false;
         this.wedged = false;
         this.wedgeSinceMillis = 0;
     }
@@ -83,8 +84,8 @@ final class IngestBackpressureGovernor {
     /** @param heapHold the heap belt holds every write: a pacing hold that reports the full halt */
     int report(boolean enabled, boolean active, double occupancy, boolean paceHold, boolean heapHold) {
         boolean hold = paceHold || heapHold;
-        boolean released = this.lastPaceHold && !hold;
-        this.lastPaceHold = hold;
+        boolean released = this.lastHeapHold && !heapHold;
+        this.lastHeapHold = heapHold;
         if (heapHold) occupancy = Math.max(occupancy, HALT_OCCUPANCY);
         if (!enabled || !active) return noSignal();
         long now = now();

@@ -36,15 +36,15 @@ class IngestBackpressureGovernorTest {
     }
 
     @Test
-    void theEndOfAPacingHoldOpensAFreshWindowInsteadOfAWedge() {
-        // Review O2-1: the halt clock aged under the 60 s pacing box; when the hold released the
+    void theEndOfAHeapHoldOpensAFreshWindowInsteadOfAWedge() {
+        // Review O2-1: the halt clock aged under the 60 s pacing box; when the belt released, the
         // window dropped back to 7 s and the first report found a "stuck" writer.
         long[] clock = {1_000_000L};
         var governor = new IngestBackpressureGovernor("test", () -> clock[0]);
         int halt = LodRequestManager.INGEST_BACKLOG_HALT_SECTIONS;
-        for (int s = 0; s < 30; s++) { // 30 s of a full, held queue — pacing, not stuck
+        for (int s = 0; s < 30; s++) { // 30 s of a full, heap-held queue — pacing, not stuck
             governor.notePump();
-            assertEquals(halt, governor.report(true, true, 1.0, true));
+            assertEquals(halt, governor.report(true, true, 1.0, false, true));
             clock[0] += 1000;
         }
         governor.notePump();
@@ -58,6 +58,19 @@ class IngestBackpressureGovernorTest {
         clock[0] += 2000;
         governor.notePump();
         assertEquals(-1, governor.report(true, true, 1.0, false), "a genuinely stuck writer still wedges after 7 s");
+    }
+
+    @Test
+    void aPacingHoldThatDropsKeepsItsAge() {
+        // A window or settle hold that ends is NOT a release: the pinned design treats a hold
+        // that stopped turning over (or a gated pump) as a stuck writer again at once.
+        long[] clock = {1_000_000L};
+        var governor = new IngestBackpressureGovernor("test", () -> clock[0]);
+        governor.notePump();
+        governor.report(true, true, 1.0, true);
+        clock[0] += IngestBackpressureGovernor.HALT_WEDGE_MILLIS + 1;
+        governor.notePump();
+        assertEquals(-1, governor.report(true, true, 1.0, false));
     }
 
     @Test
