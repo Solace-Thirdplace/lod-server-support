@@ -15,6 +15,10 @@ import net.minecraft.world.level.biome.Biome;
 final class JourneyMapLineSurface {
     private JourneyMapLineSurface() {}
 
+    /** What the unsupported state tells the player (diag line, binding failure): an upgrade
+     *  hint where a supported JourneyMap exists for this line, a plain statement where none does. */
+    static final String UNSUPPORTED_HINT = "JourneyMap is not supported on Minecraft 1.21.10: its only build, a 6.0.0 beta, lacks the chunk-snapshot layer";
+
     /** The client level's vertical layout; {@code maxYExclusive} is one past the top block. */
     record LevelFacts(int minSectionY, int sectionCount, int minY, int maxYExclusive) {}
 
