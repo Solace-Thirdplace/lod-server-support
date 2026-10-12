@@ -110,6 +110,23 @@ restart or reconnect; it does not rewrite comments or normalized values.
 | `privacy.xray` | Anti-xray policy and fallback masking. Changes require a restart. |
 | `far_players` | Distant player display/sharing policies and distances in blocks. Players control local rendering manually. |
 
+**Turning LODs off in a dimension.** Set its distance to `0`: no LOD terrain is sent there
+(players stay connected to LSS, and far players keep working). Add `default_chunks: 0` to
+serve only the dimensions you list. Paper's `by_world` takes world names and works the
+same way. After `/lsslod reload`, `/lsslod diag` lists the worlds that are off. Clients
+older than LSS 0.10 only learn about the change when they reconnect; until then the
+server simply sends them nothing in that dimension.
+
+```yaml
+lod:
+  distance:
+    default_chunks: 512
+    by_dimension:
+      "minecraft:overworld": 512
+      "minecraft:the_nether": 0   # no LODs in the Nether
+      "minecraft:the_end": 512
+```
+
 The client cache uses `cache.use_world_sub_buckets` to separate remote worlds and
 `cache.address_aliases` to group equivalent addresses. With Voxy, aliases also need
 matching LoD Mirror/storage corroboration; otherwise LSS retains separate address
