@@ -18,7 +18,7 @@
       "purpur"
     ],
     "fabric_client_gametests": false,
-    "sponge_shipping": false
+    "sponge_shipping": true
   },
   "support_tier": "best-effort",
   "capability_states": [
