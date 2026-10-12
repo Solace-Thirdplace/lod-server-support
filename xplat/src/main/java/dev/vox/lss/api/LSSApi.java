@@ -111,6 +111,25 @@ public final class LSSApi {
     }
 
     /**
+     * Whether a registered consumer is not one of {@code excluded} (by identity). Internal: LSS's
+     * own map backends use it to tell "a map is the only reader" apart from Voxy or another
+     * LOD mod. Thread-safe.
+     */
+    public static boolean hasVoxelConsumersOtherThan(java.util.Collection<? extends VoxelColumnConsumer> excluded) {
+        for (var consumer : columnConsumers) {
+            boolean listed = false;
+            for (var e : excluded) {
+                if (e == consumer) {
+                    listed = true;
+                    break;
+                }
+            }
+            if (!listed) return true;
+        }
+        return false;
+    }
+
+    /**
      * Check whether the connected server has LOD distribution enabled.
      */
     public static boolean isServerEnabled() {

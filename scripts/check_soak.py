@@ -1906,6 +1906,50 @@ def make_disc_completeness(scenario, run=1):
     return check
 
 
+# The xaero-memory law (map-ingestion plan §4.1/§4.3; post-0.17 review F1-5): the scenario named
+# for the unfocused-window OOM fix must judge memory itself, not leave it to a manual read.
+XAERO_MEMORY_HEAP_CEILING = 0.9
+# Consecutive 5 s windows the heap may sit at the ceiling without a heap hold: the belt's
+# duty cycle releases for 10 s after a 60 s halt, so a shorter run proves nothing.
+XAERO_MEMORY_STALL_WINDOWS = 3
+XAERO_MEMORY_READING_GRACE_MS = 30_000
+
+
+@named_check("xaero-memory", ["client.xaero.open_regions", "client.xaero.open_region_cap",
+                               "client.xaero.heap_fraction", "client.xaero.heap_holds"])
+def check_xaero_memory(ctx):
+    """Every snapshot keeps the open-region window within its cap; the heap guard has a
+    reading once the run is under way (-1 = no allow-listed old-generation pool: the belt
+    would be inert); and a heap at or above 90% across XAERO_MEMORY_STALL_WINDOWS windows
+    must coincide with heap holds rising — the belt engaging, not the client running out."""
+    for run, snaps in sorted(ctx.runs.items()):
+        rows = [s for s in snaps if isinstance(s.get("xaero"), dict) and "open_regions" in s["xaero"]]
+        if not rows:
+            yield Violation("xaero-memory", f"run{run}",
+                            "no xaero group in the client snapshots (is Xaero's World Map installed?)", {})
+            continue
+        t0 = rows[0]["wallMs"]
+        for s in rows:
+            x = s["xaero"]
+            if x["open_region_cap"] > 0 and x["open_regions"] > x["open_region_cap"]:
+                yield Violation("xaero-memory", f"run{run} wallMs={s['wallMs']}",
+                                "open regions exceed the window cap",
+                                {"open_regions": x["open_regions"], "open_region_cap": x["open_region_cap"]})
+            if s["wallMs"] - t0 >= XAERO_MEMORY_READING_GRACE_MS and x["heap_fraction"] == -1:
+                yield Violation("xaero-memory", f"run{run} wallMs={s['wallMs']}",
+                                "the heap guard has no reading — the heap belt is inert", {"heap_fraction": -1})
+                break
+        for i in range(len(rows) - XAERO_MEMORY_STALL_WINDOWS):
+            window = rows[i:i + XAERO_MEMORY_STALL_WINDOWS + 1]
+            if all(w["xaero"]["heap_fraction"] >= XAERO_MEMORY_HEAP_CEILING for w in window) \
+                    and window[-1]["xaero"]["heap_holds"] <= window[0]["xaero"]["heap_holds"]:
+                yield Violation("xaero-memory", f"run{run} wallMs={window[0]['wallMs']}..{window[-1]['wallMs']}",
+                                "the heap stayed at or above 90% with no heap hold — the belt did not engage",
+                                {"heap_fraction": [w["xaero"]["heap_fraction"] for w in window],
+                                 "heap_holds": [w["xaero"]["heap_holds"] for w in window]})
+                break
+
+
 @named_check("rate-limit-storm", ["server.service.superseded", "server.generation.completed"])
 def check_rate_limit_storm(ctx):
     """Small fresh disc (lodDistance 12) declared at the FULL constant want-set budget.
@@ -3413,7 +3457,7 @@ CHECKS = {
     # after this checker): here the run must stay a lawful, complete resync.
     "journeymap-map": [make_handshake_check("journeymap-map"),
                        make_disc_completeness("journeymap-map")],
-    "xaero-memory": [make_handshake_check("xaero-memory")],
+    "xaero-memory": [make_handshake_check("xaero-memory"), check_xaero_memory],
     "map-throughput": [make_handshake_check("map-throughput"),
                        make_disc_completeness("map-throughput")],
     "rate-limit-storm": [check_rate_limit_storm,
@@ -5293,6 +5337,33 @@ def selftest():
     cases[0] += 1
     assert validate_config_overrides({"privacy.xray.hidden_blocks": [1, 2]}), \
         "config allowlist: non-string list entries must be rejected"
+
+    # ---- xaero-memory: the window cap and the heap belt (review F1-5) ----
+    def xm_ctx(rows):
+        snaps = [_cli(1000 + 5000 * i, over={"xaero": dict(zip(
+            ("open_regions", "open_region_cap", "heap_fraction", "heap_holds"), r))})
+            for i, r in enumerate(rows)]
+        return Ctx(scenario="xaero-memory", server_snaps=[_srv(1000)], commands=[], joins=[],
+                   ends=[], runs={1: snaps}, qpoints=[], config={})
+    steady = [(10, 32, 0.4, 0)] * 10
+    clean("xaero-memory steady fill within the window", list(check_xaero_memory(xm_ctx(steady))))
+    clean("xaero-memory a high heap with the belt engaging",
+          list(check_xaero_memory(xm_ctx(steady[:4] + [(10, 32, 0.95, 1 + i) for i in range(6)]))))
+    clean("xaero-memory a high heap across the belt's 10 s release is tolerated",
+          list(check_xaero_memory(xm_ctx(steady[:4] + [(10, 32, 0.95, 5), (10, 32, 0.95, 5),
+                                                       (10, 32, 0.95, 5), (10, 32, 0.95, 6)]))))
+    clean("xaero-memory no reading yet inside the grace window",
+          list(check_xaero_memory(xm_ctx([(0, 32, -1.0, 0)] * 6 + [(5, 32, 0.4, 0)] * 4))))
+    hits("xaero-memory open regions past the cap",
+         list(check_xaero_memory(xm_ctx(steady[:5] + [(40, 32, 0.4, 0)] + steady[:4]))), "xaero-memory")
+    hits("xaero-memory the guard never reads the heap",
+         list(check_xaero_memory(xm_ctx([(10, 32, -1.0, 0)] * 10))), "xaero-memory")
+    hits("xaero-memory a full heap with no hold",
+         list(check_xaero_memory(xm_ctx(steady[:4] + [(10, 32, 0.95, 0)] * 6))), "xaero-memory")
+    hits("xaero-memory a recording without Xaero",
+         list(check_xaero_memory(Ctx(scenario="xaero-memory", server_snaps=[_srv(1000)], commands=[],
+                                     joins=[], ends=[], runs={1: [_cli(1000)]}, qpoints=[], config={}))),
+         "xaero-memory")
 
     # ---- session-version assertion (C6 negotiated-protocol observability) ----
     sv_rows = [{"event": "snapshot", "session_version": 0},
