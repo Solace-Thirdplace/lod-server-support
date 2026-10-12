@@ -296,6 +296,8 @@ public class LSSServerCommands {
         for (var line : DiagnosticsFormatter.formatDiagnostics(data)) {
             source.sendSuccess(() -> Component.literal(line), false);
         }
+        String offLine = config.unservedWorldsDiagLineOrNull();
+        if (offLine != null) source.sendSuccess(() -> Component.literal(offLine), false);
         return 1;
     }
 

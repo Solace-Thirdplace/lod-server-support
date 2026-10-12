@@ -471,7 +471,14 @@ public final class ServerReceiverGlue {
         boolean v19 = decision.dialect() == HandshakeGate.WireDialect.V19;
         // The player's current world decides the advertised distance (the ONE xplat
         // extraction helper — static, so this works even when service == null below).
-        int lod = ServerWorldLod.distance(config, player);
+        // 0 = no LOD service in this world: a CURRENT session is told enabled=false (and
+        // re-told on every dimension change). Legacy dialects get no mid-session pushes, so
+        // they keep a serving distance and the request filter enforces the off world.
+        int worldLod = ServerWorldLod.distance(config, player);
+        boolean legacyDialect = decision.dialect() != HandshakeGate.WireDialect.CURRENT;
+        int lod = legacyDialect ? config.legacyAdvertisedDistance(worldLod) : worldLod;
+        boolean enabledHere = decision.effectiveEnabled()
+                && (legacyDialect || dev.vox.lss.common.config.ServerConfigBase.servesWorld(worldLod));
         if (service != null) {
             if (!v16) {
                 // A cross-dialect re-handshake must shed the stale v16 ingress-shim
@@ -488,7 +495,7 @@ public final class ServerReceiverGlue {
         }
         responder.send(v16
                 ? SessionConfigS2CPayload.v16Legacy(
-                        decision.effectiveEnabled(),
+                        enabledHere,
                         lod,
                         // The caps ARE the old client's pacing — advertise the server's real
                         // admission values (see the v16 compat design §4.1).
@@ -502,7 +509,7 @@ public final class ServerReceiverGlue {
                         v18 ? LSSConstants.V18_COMPAT_PROTOCOL_VERSION
                             : v19 ? LSSConstants.V19_COMPAT_PROTOCOL_VERSION
                                   : LSSConstants.PROTOCOL_VERSION,
-                        decision.effectiveEnabled(),
+                        enabledHere,
                         lod,
                         service == null ? config.enableChunkGeneration() : service.generationEnabledForSession(),
                         // v20-only append (the encoder omits it for the echo versions).

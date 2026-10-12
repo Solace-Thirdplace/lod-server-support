@@ -47,9 +47,9 @@ group, so a file created or saved by a newer build loads there only after renami
 | --- | --- | --- | --- | --- | --- |
 | service.enabled | boolean | true |  | R | all |
 | service.require_permission | boolean | false |  | H | all |
-| lod.distance.default_chunks | integer | 512 | 1–2048 chunks | H | all |
-| lod.distance.by_dimension | integer_map | {"minecraft:overworld":512,"minecraft:the_nether":64,"minecraft:the_end":512} | 1–2048 | H | all |
-| lod.distance.by_world | integer_map | {} | 1–2048 | H | paper |
+| lod.distance.default_chunks | integer | 512 | 0 sentinel; 1–2048 chunks | H | all |
+| lod.distance.by_dimension | integer_map | {"minecraft:overworld":512,"minecraft:the_nether":64,"minecraft:the_end":512} | 0 sentinel; 1–2048 | H | all |
+| lod.distance.by_world | integer_map | {} | 0 sentinel; 1–2048 | H | paper |
 | generation.enabled | boolean | true |  | H | all |
 | generation.concurrency.global | integer | 40 | 1–512 | H | all |
 | generation.concurrency.per_player | integer | 40 | 1–512 | H | all |
@@ -111,8 +111,8 @@ service:
 # times the area; a large configured radius does not mean it fills instantly.
 lod:
   distance:
-    default_chunks: 512 # Fallback for dimensions not listed below; range 1–2048.
-    by_dimension: # These are fresh-install defaults; migration preserves existing limits.
+    default_chunks: 512 # Fallback for dimensions not listed below; range 1–2048, 0 = off.
+    by_dimension: # Fresh-install defaults; 0 turns LODs off in that dimension.
       "minecraft:overworld": 512 # Overworld radius in chunks.
       "minecraft:the_nether": 64 # Nether radius in chunks.
       "minecraft:the_end": 512 # End radius in chunks.
@@ -264,9 +264,9 @@ far_players:
 | --- | --- | --- | --- | --- | --- |
 | service.enabled | boolean | true |  | R | all |
 | service.require_permission | boolean | false |  | H | all |
-| lod.distance.default_chunks | integer | 512 | 1–2048 chunks | H | all |
-| lod.distance.by_dimension | integer_map | {"minecraft:overworld":512,"minecraft:the_nether":64,"minecraft:the_end":512} | 1–2048 | H | all |
-| lod.distance.by_world | integer_map | {} | 1–2048 | H | paper |
+| lod.distance.default_chunks | integer | 512 | 0 sentinel; 1–2048 chunks | H | all |
+| lod.distance.by_dimension | integer_map | {"minecraft:overworld":512,"minecraft:the_nether":64,"minecraft:the_end":512} | 0 sentinel; 1–2048 | H | all |
+| lod.distance.by_world | integer_map | {} | 0 sentinel; 1–2048 | H | paper |
 | generation.enabled | boolean | true |  | H | all |
 | generation.concurrency.global | integer | 40 | 1–512 | H | all |
 | generation.concurrency.per_player | integer | 40 | 1–512 | H | all |
@@ -328,12 +328,12 @@ service:
 # times the area; a large configured radius does not mean it fills instantly.
 lod:
   distance:
-    default_chunks: 512 # Fallback for dimensions not listed below; range 1–2048.
-    by_dimension: # These are fresh-install defaults; migration preserves existing limits.
+    default_chunks: 512 # Fallback for dimensions not listed below; range 1–2048, 0 = off.
+    by_dimension: # Fresh-install defaults; 0 turns LODs off in that dimension.
       "minecraft:overworld": 512 # Overworld radius in chunks.
       "minecraft:the_nether": 64 # Nether radius in chunks.
       "minecraft:the_end": 512 # End radius in chunks.
-    by_world: {} # Paper world-name overrides; take priority over dimension entries.
+    by_world: {} # Paper world-name overrides (0 = off); take priority over dimension entries.
 
 # Lets LOD requests create terrain that does not yet exist in the world.
 # This costs world-generation CPU time and grows the normal world files, independently
@@ -507,7 +507,7 @@ paper:
 | scan.retain_completed_prefix | boolean | true |  | S | all |
 | scan.quadtree | boolean | true |  | S | all |
 | scan.region_summaries | boolean | true |  | S | all |
-| cache.split_by_world | boolean | true | 1–2048 | S | all |
+| cache.split_by_world | boolean | true |  | S | all |
 | cache.address_aliases | string_groups | [] |  | S | all |
 | compatibility.protocols.v16 | boolean | true |  | S | all |
 | compatibility.protocols.v19 | boolean | true |  | S | all |
