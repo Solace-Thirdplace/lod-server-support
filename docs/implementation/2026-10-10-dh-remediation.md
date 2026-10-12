@@ -182,3 +182,32 @@ Found by the rig and fixed:
   stored receipts, so Support clients keep and revalidate receipts like official ones.
 - Two fixture defects (a double settings save racing the async reload; the old
   official-15 expectation), fixed in the fixtures.
+
+## Addendum 2026-10-12: real-time pushes arrive without sky light
+
+Found live on the 26.3 DH-only rig: LOD chunks just past the vanilla view turned black
+as the player moved. Official DH 3.3.4 bakes sky light only when it merges an update
+into its stored tile (`FullDataUpdaterV2`, detail 6), and it sends the real-time push
+before that merge, so a pushed column carries block light and zero sky light. A DH
+client re-bakes on storing it; LSS converted the push as it arrived.
+
+- Pushes are now baked on receipt with a port of DH's `bakeDataSourceSkyLight`
+  (`DhSkyLightBake`) and DH's block opacity rule. Replies are already baked by the
+  server and are converted unchanged.
+- A push baked alone lacks sideways light from the tile's stored neighbours (DH bakes
+  the merged tile): measured on 365 real tiles, 30% of single-chunk bakes come out
+  darker near chunk borders. So a push that writes columns without describing the whole
+  tile schedules one full refetch of the tile two seconds later, and the server's
+  merged, baked reply replaces the approximation. Later pushes in the burst never
+  postpone it. Push-only servers (no sync, no generation) keep the local bake.
+- The bake's sideways spread is capped (16M span visits; real tiles use at most 2.04M),
+  so a hostile tile cannot stall the DH worker, and nothing is baked when a push writes
+  no column.
+- `CONVERSION_VERSION` 6 (X-5's receipts). Receipts only cover replies, whose
+  conversion did not change: the bump is a one-time cleanup, not a converter change.
+  0.17.x receipts stop counting as current, so every tile is fetched in full again as
+  the player returns to it, and the server's baked reply overwrites any column that a
+  0.17.x client stored black. Sync alone would not heal them: a push for an unchanged
+  chunk leaves the server's row timestamp unchanged, and without sync held receipts are
+  never rechecked. Cost: one cold download per world and dimension, Nether and End
+  included (unaffected there).

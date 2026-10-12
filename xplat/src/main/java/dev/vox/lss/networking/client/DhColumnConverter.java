@@ -40,10 +40,11 @@ final class DhColumnConverter {
      *  selected complete column converts. Unselected/incomplete columns stay null. */
     VoxelColumnData[] convertTile(DhTerrainTile tile, int columnMask) { return convertTile(tile,columnMask,false); }
     /** {@code bakeSkyLight}: a DH 3.3 real-time push is sent before DH bakes sky light
-     *  (it arrives at zero); rebuild it first, as a DH client does when storing it. */
+     *  (it arrives at zero); rebuild it first, as a DH client does when storing it.
+     *  Nothing is baked when no column is selected (e.g. a push vanilla already holds). */
     VoxelColumnData[] convertTile(DhTerrainTile tile, int columnMask, boolean bakeSkyLight) {
         var materials=materials(tile);
-        if(bakeSkyLight) {
+        if(bakeSkyLight && columnMask!=0) {
             int[] opacity=new int[materials.size()];
             for(int i=0;i<opacity.length;i++) opacity[i]=dhOpacity(materials.get(i).state);
             tile.bakeSkyLight(opacity);

@@ -71,6 +71,16 @@ class DhColumnConverterTest {
         assertEquals(16,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.STONE.defaultBlockState()));
         assertEquals(16,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.SNOW.defaultBlockState()));
         assertEquals(16,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.OAK_LEAVES.defaultBlockState()));
+        assertEquals(16,DhColumnConverter.dhOpacity(net.minecraft.world.level.block.Blocks.OAK_STAIRS.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.StairBlock.WATERLOGGED,true)),"a waterlogged block that occludes is opaque");
+    }
+    @Test void aPushThatWritesNoColumnIsNotBaked() throws Exception {
+        var budget=new DhMemoryBudget(DhLimits.DEFAULT.ownedBytes());
+        try(var push=unbakedPattern(budget)) {
+            new DhColumnConverter(biomes).convertTile(push,0,true);
+            for(int i=0;i<push.spanCount(0);i++) assertEquals(0,push.span(0,i).skyLight());
+        }
+        assertEquals(0,budget.used());
     }
     private static DhTerrainTile unbakedPattern(DhMemoryBudget budget) throws Exception {
         byte[][] blobs=new byte[8][];var raw=new ByteArrayOutputStream();var points=new DataOutputStream(raw);

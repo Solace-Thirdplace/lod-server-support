@@ -36,6 +36,9 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockMakers;
 import org.objenesis.ObjenesisStd;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.lang.reflect.*;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -1222,6 +1225,46 @@ class DhClientSessionTest {
             assertTrue(sent.isEmpty(),"Push-only support must not issue a synchronization/generation request");
             invoke(s,"retire");assertEquals(0,budget(s).used());
         }
+    }
+    /** DH 3.3 sends a push before baking sky light; the push path bakes it, then refetches the merged tile. */
+    @Test void aZeroSkyPushIsLitOnIngestAndSchedulesOneMergedTileRefetch() throws Exception {
+        try(var bridge=new DeliveryBridge()) {
+            var s=updateSession();var tile=new DhPosition(6,0,0);
+            capture(codec(s).encode(new DhMessage.Split(4300,unbakedChunkPush(tile),true)),System.nanoTime()).receive();
+            long pushed=System.nanoTime();
+            capture(codec(s).encode(new DhMessage.PartialUpdate("test-world",4300,List.of())),System.nanoTime()).receive();
+            pumpUntil(()->frameCount(s)==0,"zero-sky push did not settle");
+            assertEquals(1,counter(s,"receivedUpdates"),()->"Update rejected: "+read(s,SESSION,"problem"));
+            var floorFace=me.cortex.voxy.common.world.service.VoxelIngestService.calls.stream()
+                    .filter(c->c.chunkX()==0 && c.chunkZ()==0 && c.sectionY()==0).findFirst().orElseThrow();
+            assertEquals(15,floorFace.skyLight().get(0,0,0),"the air above the floor must be lit, not the push's zero");
+            assertEquals(7,me.cortex.voxy.common.world.service.VoxelIngestService.calls.stream()
+                    .filter(c->c.chunkX()==0 && c.chunkZ()==0 && c.sectionY()==-1).findFirst().orElseThrow()
+                    .blockLight().get(0,15,0),"block light passes through");
+            assertFalse(policy(s).hasSnapshot(tile));assertEquals(0,policy(s).timestamp(tile));
+            assertFalse(policy(s).due(tile,pushed),"the refetch waits for the push burst to settle");
+            assertTrue(policy(s).due(tile,System.nanoTime()+DhSessionPolicy.PUSH_REFETCH_DELAY_NANOS),"one full refetch is scheduled");
+            invoke(s,"retire");assertEquals(0,budget(s).used());
+        }
+    }
+    /** One chunk column (tile columns x,z 0..15) of AIR over stone, sky light 0 everywhere, stone block light 7. */
+    private static byte[] unbakedChunkPush(DhPosition position) throws IOException {
+        byte[][] blobs=new byte[8][];var raw=new ByteArrayOutputStream();var points=new DataOutputStream(raw);
+        byte[] generation=new byte[4096];
+        for(int c=0;c<4096;c++) {
+            if(c/64>=16 || c%64>=16) {points.writeShort(0);continue;}
+            generation[c]=9;points.writeShort(2);
+            points.writeLong(1L|320L<<32|64L<<44);
+            points.writeLong(64L<<32|7L<<60);
+        }
+        blobs[0]=raw.toByteArray();for(int i=1;i<=4;i++)blobs[i]=new byte[0];
+        blobs[5]=generation;blobs[6]=new byte[4096];
+        var map=new ByteArrayOutputStream();var strings=new DataOutputStream(map);strings.writeInt(2);
+        strings.writeUTF("minecraft:plains_DH-BSW_minecraft:stone_STATE_");strings.writeUTF("minecraft:plains_DH-BSW_AIR");blobs[7]=map.toByteArray();
+        var dto=new ByteArrayOutputStream();var out=new DataOutputStream(dto);
+        out.writeLong(position.packed());out.writeInt(0);for(var blob:blobs){out.writeInt(blob.length);out.write(blob);}
+        out.writeByte(1);out.writeByte(0);out.writeBoolean(false);out.writeBoolean(false);out.writeBoolean(false);out.writeLong(200);out.writeLong(100);
+        return dto.toByteArray();
     }
     private Object updateSession() throws Exception { return updateSession(-64,384); }
     private Object updateSession(int minY,int height) throws Exception {
