@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "318a651767451128015ac520beb14520c93b4348",
-    "1.21.10": "c7d9e72b405941dc4172069a3a96c9865865ddad",
-    "1.21.11": "8bcb1e76bbc498b4ace409a85062a1da1d2d2eb0",
-    "26.1": "0a92d846f2c154c43bfee822e465394673f04c5b",
-    "26.2": "4a1cd39e2ab7e6a0e4d9e230e32f6958fb13ef00",
-    "26.3": "b06705b0c869c62e0b9efe87a9dfc04cd3685d1b"
+    "1.21.1": "f7e2ceb571ab173058f78bfbd656e298f1e8250b",
+    "1.21.10": "08a027f83e15c7512a0e37054cecc0b66abb3d59",
+    "1.21.11": "a26aed69bd3a5abea290e361504e5e60cb4cd98a",
+    "26.1": "f92b974e386a1add34d81a2d3dcfb275880c3f13",
+    "26.2": "9cd45edb54416ee86692769d03166718b86ed3fe",
+    "26.3": "f12ebaa65219a36c3f5543b45d37f3baf82aeab0"
   },
   "files": {
     ".github/line.env": {
@@ -2274,14 +2274,14 @@
     "fabric/src/main/java/dev/vox/lss/mixin/ChunkSaveDataHook.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Implementation candidate; independent final change review must cover residual logic before handoff.",
+      "review": "2026-10-12 Astra manual-test follow-ups and 26.3 compat pass: test-server.sh derives the Fabric loader from gradle.properties and re-fetches changed pins (URL stamps), latest C2ME per line, 26.3 AntiXray build, Moonrise/C2ME verification notes; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Implementation candidate; independent final change review must cover residual logic before handoff.",
       "reviewed_blobs": {
         "1.21.1": "c7a3e48ca878e06efa914d6a7a14d55a9d8812e2",
         "1.21.10": "f5a6c245c24878f1c141d97df966a77ee7171f1f",
         "1.21.11": "f5a6c245c24878f1c141d97df966a77ee7171f1f",
         "26.1": "f5a6c245c24878f1c141d97df966a77ee7171f1f",
         "26.2": "f5a6c245c24878f1c141d97df966a77ee7171f1f",
-        "26.3": "f5a6c245c24878f1c141d97df966a77ee7171f1f"
+        "26.3": "ac6630c35f2c3eef2f9b0bac97f7aa51f4613e8f"
       },
       "surface": "chunk-save-hook",
       "tests": [
@@ -5359,13 +5359,13 @@
     "gradle.properties": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: reviewed diff changes only mod_version from 0.16.0 to 0.17.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged.",
+      "review": "2026-10-12 Astra manual-test follow-ups and 26.3 compat pass: test-server.sh derives the Fabric loader from gradle.properties and re-fetches changed pins (URL stamps), latest C2ME per line, 26.3 AntiXray build, Moonrise/C2ME verification notes; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: reviewed diff changes only mod_version from 0.16.0 to 0.17.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged.",
       "reviewed_blobs": {
         "1.21.1": "38eb2ddfda79a24a79e6b9df200a75c999dd0329",
         "1.21.10": "7d37fa1d022c221c0c64ae3895144b294e9dc464",
         "1.21.11": "f4ebc148383fcd757bd1bb15bedca3e90cf3d47e",
         "26.1": "66e54396a2ca1041761cc78129bf5b0d851b131b",
-        "26.2": "8343708b20749faf5dd6e3e7a02e4453f3236774",
+        "26.2": "7b735b3615afdbc46c248a11f1e3fd8694a622d6",
         "26.3": "81f9c37576cb0d9077745fd35d7e9ebead439b24"
       },
       "surface": "build-toolchain",
@@ -9464,14 +9464,14 @@
     "test-server.sh": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. YAML staging/codec helpers, platform-specific soak YAML, historical JSON-only comparison arms, parser relocation/resource/license assertions and loader discovery reviewed. Feature deltas match exactly across all five pre-existing script flavors; inherited platform/version guards remain intact. Corrected canonical v16 generation echo. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-12 Astra manual-test follow-ups and 26.3 compat pass: test-server.sh derives the Fabric loader from gradle.properties and re-fetches changed pins (URL stamps), latest C2ME per line, 26.3 AntiXray build, Moonrise/C2ME verification notes; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. YAML staging/codec helpers, platform-specific soak YAML, historical JSON-only comparison arms, parser relocation/resource/license assertions and loader discovery reviewed. Feature deltas match exactly across all five pre-existing script flavors; inherited platform/version guards remain intact. Corrected canonical v16 generation echo. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
-        "1.21.1": "2fcd5106c3d1f7d371fb287caef12cd7471b1be4",
-        "1.21.10": "b804932cfa76c38854728d65ebcb7652b81d1635",
-        "1.21.11": "134a8d46ade6c6c566a6392f568fbe863bbaee99",
-        "26.1": "e32ba3c6e68f4de317f8a7410d7d36b7d3670223",
-        "26.2": "986091ca90b553506278c5066537be38a1b6c70f",
-        "26.3": "8cf5ccee00573b8b6b3e86195d07ae377f6a17bd"
+        "1.21.1": "7f46f272e08e91d4de80c248c7b984ee097aac85",
+        "1.21.10": "facb6a121031c45149e2453e07d471924899eb88",
+        "1.21.11": "26259b222c35e5fe28855319dbcef5ac1719730c",
+        "26.1": "e9b76ffd085ef13af173ab5ab3763d7b8b028abb",
+        "26.2": "399240b3b8709d14fb63494632cf685b620be5e4",
+        "26.3": "c09cdd0140f1a3749a2b03a6eddab5a47080dbf0"
       },
       "surface": "line-adaptation:test-server.sh",
       "tests": [
@@ -10550,14 +10550,14 @@
     "xplat/src/main/java/dev/vox/lss/compat/MoonriseReadCompat.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Implementation candidate; independent final change review must cover residual logic before handoff.",
+      "review": "2026-10-12 Astra manual-test follow-ups and 26.3 compat pass: test-server.sh derives the Fabric loader from gradle.properties and re-fetches changed pins (URL stamps), latest C2ME per line, 26.3 AntiXray build, Moonrise/C2ME verification notes; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Implementation candidate; independent final change review must cover residual logic before handoff.",
       "reviewed_blobs": {
         "1.21.1": "bf490c0a3f10d0075f3da4fe7ddb8ee55cf490f9",
         "1.21.10": "8ad17eed2c1590e590c1c9154f5490967bceee79",
         "1.21.11": "aacf9e6f17d6a002d4e8530d3e0b2661f480b4c5",
         "26.1": "8f8cce2641451c7c88c80d50f30cf42bc3dd6008",
         "26.2": "17e9f56f311523bd516be48fe04d54f156a2f41a",
-        "26.3": "17e9f56f311523bd516be48fe04d54f156a2f41a"
+        "26.3": "464a4c41370235a45e7369408009409b2f3767b3"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/compat/MoonriseReadCompat.java",
       "tests": [
