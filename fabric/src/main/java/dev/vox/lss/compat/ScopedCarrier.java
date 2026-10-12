@@ -38,7 +38,9 @@ public final class ScopedCarrier {
      * own inner values, which win over ours. CAVEAT for the next AntiXray version bump:
      * binding a value of NULL makes {@code isBound()} TRUE-with-null — a future reader
      * that guards with isBound() and then dereferences would NPE instead of taking its
-     * benign skip path. Verified safe against 1.4.16 only; re-check on upgrade.
+     * benign skip path. Verified safe against 1.4.16 (re-checked on 1.4.16+26.3, which
+     * grew to seven ScopedValues: the extra three are isBound()-guarded or packet-path
+     * only); re-check on upgrade.
      */
     static final String[] BOUND_FIELDS = {
             "PACKET_INFO", "CHUNK_SECTION_INDEX", "PALETTE_ENTRIES", "PRESET_VALUES"};

@@ -8,12 +8,15 @@ name: Release NeoForge (backfill)
 # Modrinth versions (the documented release pitfall). Future releases need none
 # of this: with LINE_SHIP_NEOFORGE=true, release.yml ships NeoForge normally.
 #
-# Dispatch it ON THE TAG'S OWN LINE BRANCH (main for v0.13.1,
-# support/mc26.1-v0.13 for v0.13.1+mc26.1): the workflow file + line.env are
-# read from the branch — which must already carry LINE_SHIP_NEOFORGE=true —
-# while the SOURCES are checked out from the tag. The guards make a duplicate
-# or wrong-line dispatch a loud no-op: suffix equality, the ship flag, the
-# release must exist, and it must not already carry a NeoForge asset.
+# Dispatch it ON THE TAG'S OWN LINE BRANCH (support/mc26.2 for the unsuffixed
+# tags up to v0.17.0, which were 26.2 builds; support/mc26.1-v0.13 for
+# v0.13.1+mc26.1): the workflow file + line.env are read from the branch — which
+# must already carry LINE_SHIP_NEOFORGE=true — while the SOURCES are checked out
+# from the tag. The guards make a duplicate or wrong-line dispatch a loud no-op:
+# suffix equality, the ship flag, the release must exist, it must not already
+# carry a NeoForge asset, and the tag's own minecraft_version must be this
+# branch's NeoForge line (an unsuffixed tag is NOT necessarily main's version —
+# main moved from 26.2 to 26.3 after v0.17.0).
 
 on:
   workflow_dispatch:
@@ -69,6 +72,15 @@ jobs:
 
       - name: Check out the tag's sources
         run: git checkout "refs/tags/${{ inputs.tag }}"
+
+      - name: Guard the tag's Minecraft version
+        run: |
+          set -euo pipefail
+          TAG_MC=$(sed -n 's/^minecraft_version=//p' gradle.properties | tr -d '[:space:]')
+          if [ "${TAG_MC}" != "${LINE_MC_NEOFORGE}" ]; then
+            echo "::error::tag ${{ inputs.tag }} was built for Minecraft '${TAG_MC}' but this branch publishes NeoForge for '${LINE_MC_NEOFORGE}' — dispatch on the branch of the tag's own Minecraft line"
+            exit 1
+          fi
 
       - name: Read the release notes (Modrinth changelog)
         id: release_notes

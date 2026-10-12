@@ -24,10 +24,16 @@ public final class UnservedWorldsLog {
     UnservedWorldsLog(Sink sink) { this.sink = sink; }
 
     public void note(ServerConfigBase config) {
+        note(config, config::unservedWorlds);
+    }
+
+    /** {@code unserved} resolves the off list only when the distance settings changed (Paper
+     *  passes its per-loaded-world resolution; the config-only list is the default). */
+    public void note(ServerConfigBase config, java.util.function.Supplier<List<String>> unserved) {
         var distance = config.snapshot().lod().distance();
         if (distance == this.lastDistance || distance.equals(this.lastDistance)) return;
         this.lastDistance = distance;
-        var off = config.unservedWorlds();
+        var off = unserved.get();
         boolean allOff = config.maxConfiguredLodDistanceChunks() <= 0;
         boolean first = this.lastOff == null;
         if (!off.equals(this.lastOff)) {
