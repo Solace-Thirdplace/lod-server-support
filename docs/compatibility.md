@@ -5,12 +5,12 @@ This snapshot describes build capabilities. A capability is not live validation.
 
 | Line | Fabric / Paper / Neo targets | Java (common) | Neo shipped | Neo far renderer | Paper loaders | Client gametests | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1.21.1 | 1.21.1 / 1.21.1 / 1.21.1 | 21 (21) | true | available | paper, purpur | False | `3d3d3bad0ab3fb8bd5aa26051de2828e86fb2a37` |
-| 1.21.10 | 1.21.10 / 1.21.10 / 1.21.10 | 21 (21) | false | unsupported | paper, purpur | True | `75997c190a3cb0e2c8e7cd8986d3a064a2cded13` |
-| 1.21.11 | 1.21.11 / 1.21.11 / 1.21.11 | 21 (21) | false | unsupported | paper, purpur, folia | True | `d66abe763647d129d439c9bc648e45d9e206ecc0` |
-| 26.1 | 26.1.2 / 26.1.2 / 26.1.2 | 25 (21) | true | unsupported | paper, purpur, folia | True | `91d3f6aa779ac4440c31d150690d1ba06a40db7c` |
-| 26.2 | 26.2 / 26.2 / 26.2 | 25 (21) | true | unsupported | paper, purpur, folia | True | `9e3dc73da1c87037683b39acbc8a32ce846e4821` |
-| 26.3 | 26.3 / 26.3 / 26.3 | 25 (21) | true | unsupported | paper, purpur | True | `950868bdbeffbdadd72a302326379ec8a0d51799` |
+| 1.21.1 | 1.21.1 / 1.21.1 / 1.21.1 | 21 (21) | true | available | paper, purpur | False | `7e33f1975740236c45ce8ff7f118dc034ce20f08` |
+| 1.21.10 | 1.21.10 / 1.21.10 / 1.21.10 | 21 (21) | false | unsupported | paper, purpur | True | `6d46f775d090feeb47a8145216252fabd67ad632` |
+| 1.21.11 | 1.21.11 / 1.21.11 / 1.21.11 | 21 (21) | false | unsupported | paper, purpur, folia | True | `f02a64746a3704a047779aca1b3b93f7ddd87f76` |
+| 26.1 | 26.1.2 / 26.1.2 / 26.1.2 | 25 (21) | true | unsupported | paper, purpur, folia | True | `7101effe6f32b70d45f54b1735ccadc5d913b917` |
+| 26.2 | 26.2 / 26.2 / 26.2 | 25 (21) | true | unsupported | paper, purpur, folia | True | `95582baf88c3e582cb08c29a23bba55597c48aae` |
+| 26.3 | 26.3 / 26.3 / 26.3 | 25 (21) | true | unsupported | paper, purpur | True | `c6cdcbab0f63475548735f1ba5ecd9e51777c1f9` |
 
 Dependency locks and feature-specific validation records are line-local under `config/compatibility/`. Installed jars are unverified until an exact run identity has accepted evidence. Blocked dependency profiles cannot be launched as validated profiles.
 
