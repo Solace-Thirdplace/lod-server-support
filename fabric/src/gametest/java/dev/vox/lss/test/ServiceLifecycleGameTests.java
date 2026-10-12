@@ -1366,6 +1366,175 @@ public class ServiceLifecycleGameTests {
         return false;
     }
 
+    /** A far-player viewer snapshot for driving {@code FarPlayerBroadcastService.tick} directly. */
+    private static dev.vox.lss.common.farplayers.FarPlayerBroadcastService.PlayerSnapshot viewerSnapshot(
+            java.util.UUID uuid, String dimension) {
+        return new dev.vox.lss.common.farplayers.FarPlayerBroadcastService.PlayerSnapshot(
+                uuid, "viewer", dimension, 0, 64, 0, 0f, 0f, 0f, (byte) 0, 0, 0, 0,
+                false, false, true, false, 0L, new String[0], new int[0], null);
+    }
+
+    /**
+     * Distance 0 through the reload re-push with a live (mock) player in the world being
+     * turned off: the CURRENT session is told exactly {@code enabled=false, 0}, its state is
+     * replaced (in-flight work retired, served-set reset), nothing it asks is accepted, and
+     * the far-player roster re-sends at a bumped epoch — the client ends its far-player
+     * session on that enabled=false, so without the full roster every later update carries
+     * an epoch it no longer knows and far players vanish until a dimension change or rejoin.
+     */
+    @GameTest(structure = "fabric-gametest-api-v1:empty")
+    public void aReloadThatTurnsTheWorldOffParksThePlayerAndReSendsTheFarPlayerRoster(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var viewer = placeMockServerPlayer(helper);
+        var config = new ServiceSettingsFixture();
+        config.set("lod.distance.default_chunks", 64);
+        var service = new RequestProcessingService(server, config);
+        String world = level.dimension().location().toString();
+        try {
+            var replies = new ArrayList<SessionConfigS2CPayload>();
+            LSSServerNetworking.handleHandshake(
+                    new HandshakeC2SPayload(LSSConstants.PROTOCOL_VERSION,
+                            LSSConstants.CAPABILITY_VOXEL_COLUMNS | LSSConstants.CAPABILITY_FAR_PLAYERS),
+                    viewer, service, replies::add);
+            helper.assertTrue(replies.size() == 1 && replies.getFirst().enabled()
+                            && replies.getFirst().lodDistanceChunks() == 64,
+                    "premise: a served world at 64, got " + replies);
+            var fp = service.getFarPlayerService();
+            fp.onPrefs(viewer.getUUID(), new dev.vox.lss.common.farplayers.FarPlayerWire.Prefs(true, 0, 0, true, 0));
+            var fullRosterEpochs = new ArrayList<Integer>();
+            dev.vox.lss.common.farplayers.FarPlayerBroadcastService.FrameSender sender = (to, channel, body) -> {
+                if (to.equals(viewer.getUUID()) && channel.equals(LSSConstants.CHANNEL_FAR_PLAYER_ROSTER)) {
+                    var roster = dev.vox.lss.common.farplayers.FarPlayerWire.decodeRoster(body);
+                    if (roster.full()) fullRosterEpochs.add(roster.epoch());
+                }
+                return true;
+            };
+            var settings = new dev.vox.lss.common.farplayers.FarPlayerBroadcastService.Settings(
+                    "on", 2048, 0, false, java.util.List.of(), 10);
+            var online = java.util.List.of(viewerSnapshot(viewer.getUUID(), world));
+            long now = 1_000_000L;
+            fp.tick(now, online, settings, sender);
+            helper.assertTrue(fullRosterEpochs.size() == 1, "premise: the first full roster went out");
+
+            var before = service.getPlayers().get(viewer.getUUID());
+            var pushes = new ArrayList<SessionConfigS2CPayload>();
+            service.setSessionConfigPusher((to, payload) -> { if (to == viewer) pushes.add(payload); });
+            config.set("lod.distance.by_dimension", java.util.Map.of(world, 0));
+            service.repushSessionConfig();
+
+            helper.assertTrue(pushes.size() == 1 && !pushes.getFirst().enabled()
+                            && pushes.getFirst().lodDistanceChunks() == 0,
+                    "the off world is pushed as exactly enabled=false, distance 0, got " + pushes);
+            var after = service.getPlayers().get(viewer.getUUID());
+            helper.assertTrue(after != null && after != before && before.registration().isRetired(),
+                    "the player stays registered with a fresh state; the old one is retired");
+            int cx = viewer.getBlockX() >> 4, cz = viewer.getBlockZ() >> 4;
+            service.handleBatchRequest(viewer, new BatchChunkRequestC2SPayload(
+                    new long[]{PositionUtil.packPosition(cx, cz)}, new long[]{-1L}, 1));
+            helper.assertTrue(after.getTotalRequestsReceived() == 0,
+                    "nothing is accepted in the off world, not even the player's own chunk");
+
+            now += dev.vox.lss.common.farplayers.FarPlayerBroadcastService.FULL_ROSTER_MIN_INTERVAL_MILLIS + 1;
+            fp.tick(now, online, settings, sender);
+            helper.assertTrue(fullRosterEpochs.size() == 2 && fullRosterEpochs.get(1) > fullRosterEpochs.get(0),
+                    "the reload-off re-sends a full far-player roster at a bumped epoch, got " + fullRosterEpochs);
+        } finally {
+            service.shutdown();
+            server.getPlayerList().remove(viewer);
+        }
+        helper.succeed();
+    }
+
+    /**
+     * Distance 0 across a dimension change (xplat — the Paper twin is pinned in
+     * PaperRequestProcessingServiceTest): portalling INTO an off world pushes exactly
+     * {@code enabled=false, 0} and its asks are range-filtered; portalling back out pushes
+     * {@code enabled=true} with the served distance. Dropping the {@code newDist > 0}
+     * conjunct would push {@code enabled=true, 0}, which the client clamps to 1 and then
+     * declares against a filter that accepts nothing, forever.
+     */
+    @GameTest(structure = "fabric-gametest-api-v1:empty")
+    public void enteringAndLeavingAnOffWorldPushesDisabledThenEnabled(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var endLevel = server.getLevel(Level.END);
+        helper.assertTrue(endLevel != null, "the End dimension must exist on the gametest server");
+        var mock = placeMockServerPlayer(helper);
+        var config = new ServiceSettingsFixture();
+        config.set("lod.distance.default_chunks", 64);
+        config.set("lod.distance.by_dimension", java.util.Map.of("minecraft:the_end", 0));
+        var service = new RequestProcessingService(server, config);
+        try {
+            LSSServerNetworking.handleHandshake(
+                    new HandshakeC2SPayload(LSSConstants.PROTOCOL_VERSION, LSSConstants.CAPABILITY_VOXEL_COLUMNS),
+                    mock, service, reply -> { });
+            var pushes = new ArrayList<SessionConfigS2CPayload>();
+            service.setSessionConfigPusher((to, payload) -> { if (to == mock) pushes.add(payload); });
+
+            mock.setServerLevel(endLevel);
+            service.tick();
+            helper.assertTrue(pushes.size() == 1 && !pushes.getFirst().enabled()
+                            && pushes.getFirst().lodDistanceChunks() == 0,
+                    "entering the off world pushes enabled=false, 0, got " + pushes);
+            var parked = service.getPlayers().get(mock.getUUID());
+            helper.assertTrue(parked != null, "the player stays registered in the off world");
+            int cx = mock.getBlockX() >> 4, cz = mock.getBlockZ() >> 4;
+            service.handleBatchRequest(mock, new BatchChunkRequestC2SPayload(
+                    new long[]{PositionUtil.packPosition(cx, cz)}, new long[]{-1L}, 1));
+            helper.assertTrue(parked.getTotalRequestsReceived() == 0,
+                    "an ask in the off world is range-filtered, not accepted");
+
+            mock.setServerLevel(level);
+            service.tick();
+            helper.assertTrue(pushes.size() == 2 && pushes.get(1).enabled()
+                            && pushes.get(1).lodDistanceChunks() == 64,
+                    "leaving the off world pushes enabled=true with the served distance, got " + pushes);
+        } finally {
+            mock.setServerLevel(level);
+            service.shutdown();
+            server.getPlayerList().remove(mock);
+        }
+        helper.succeed();
+    }
+
+    /**
+     * SP-062 counts idle-but-connected players toward the per-player bandwidth share; a
+     * player parked in a world with no LOD service can never spend (every ask is
+     * range-filtered), so it must not shrink the share of the players being served.
+     */
+    @GameTest(structure = "fabric-gametest-api-v1:empty")
+    public void playersParkedInAnOffWorldDoNotDiluteTheBandwidthShare(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var endLevel = server.getLevel(Level.END);
+        helper.assertTrue(endLevel != null, "the End dimension must exist on the gametest server");
+        var config = new ServiceSettingsFixture();
+        config.set("lod.distance.default_chunks", 64);
+        config.set("lod.distance.by_dimension", java.util.Map.of("minecraft:the_end", 0));
+        var service = new RequestProcessingService(server, config);
+        var mocks = new ArrayList<net.minecraft.server.level.ServerPlayer>();
+        try {
+            for (int i = 0; i < 4; i++) {
+                var mock = placeMockServerPlayer(helper);
+                mocks.add(mock);
+                if (i >= 2) mock.setServerLevel(endLevel);
+                service.registerPlayer(mock, LSSConstants.CAPABILITY_VOXEL_COLUMNS);
+            }
+            service.tick();
+            helper.assertTrue(service.lastBandwidthSharingPlayerCount() == 2,
+                    "only the two players in a served world share the bandwidth, got "
+                            + service.lastBandwidthSharingPlayerCount());
+        } finally {
+            service.shutdown();
+            for (var mock : mocks) {
+                mock.setServerLevel(level);
+                server.getPlayerList().remove(mock);
+            }
+        }
+        helper.succeed();
+    }
+
     /**
      * Far players E1 (FARP §7-A): the SERVER EGRESS surface through the production
      * handshake — a crafted handshake WITH the capability bit subscribes (one without

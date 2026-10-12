@@ -143,8 +143,8 @@ public final class MoonriseReadCompat {
     /**
      * Match the exact overload by shape: static, named {@code loadDataAsync}, 7 params of
      * {@code (ServerLevel, int, int, <enum>, BiConsumer, boolean, <enum>)}. The enum classes
-     * come out of the match (shaded-package immune). Verified unambiguous in 1.1.0 — the
-     * other loadDataAsync overloads have 5 or 6 params.
+     * come out of the match (shaded-package immune). Verified unambiguous in 1.1.0 and 1.2.0
+     * (26.3) — the other loadDataAsync overloads have 5 or 6 params.
      */
     private static Method findLoadDataAsync(Class<?> io) {
         for (Method m : io.getMethods()) {

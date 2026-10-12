@@ -306,6 +306,7 @@ write_server_properties() {
         echo "  Creating server.properties (port $port)"
         cat > "$dir/server.properties" << EOF
 online-mode=false
+white-list=false
 spawn-protection=0
 view-distance=4
 simulation-distance=4
