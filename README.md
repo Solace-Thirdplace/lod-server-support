@@ -2,7 +2,7 @@
 
 Enables players with [Voxy](https://modrinth.com/mod/voxy) to see fully rendered terrain out to hundreds of chunks on multiplayer servers without needing to explore the world first. Also includes **Far Players**: players far beyond normal render distance appear in the LOD terrain with name tags, equipment, and mounts.
 
-**Try it live**: join `lod-server-support.modrinth.gg` with Voxy and this mod installed. Supports Minecraft 26.2, 26.1, 1.21.11, and 1.21.1.
+**Try it live**: join `lod-server-support.modrinth.gg` with Voxy and this mod installed. Supports Minecraft 26.3, 26.2, 26.1, 1.21.11, 1.21.10, and 1.21.1.
 
 https://github.com/user-attachments/assets/721fb344-890e-4e03-ab36-539444427f7b
 
@@ -18,6 +18,7 @@ Use the matching Fabric or shipped NeoForge artifact. Server support and rendere
 | 1.21.11 | maintained | experimental | maintained build only | unsupported |
 | 26.1 | maintained | experimental | shipped; best-effort | unsupported |
 | 26.2 | maintained | experimental | shipped; best-effort | unsupported |
+| 26.3 | maintained | unsupported | shipped; best-effort | unsupported |
 <!-- LSS SERVER MATRIX END -->
 
 NeoForge 1.21.1 has distinct native and Connector dependency routes. The recorded 2026-09-08 native Voxy 0.2.9-alpha trial was rejected; older successful reports do not establish current compatibility or its failure's upstream cause. Xaero-only legacy Sodium and the modern Connector Voxy route are separate profiles. Use the [dated profile inventory](docs/testing/astra-live-profiles.md) and exact dependency locks; do not combine their jars by filename.
