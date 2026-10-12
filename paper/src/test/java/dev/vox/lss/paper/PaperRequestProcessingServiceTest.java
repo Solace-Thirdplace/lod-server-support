@@ -585,6 +585,58 @@ class PaperRequestProcessingServiceTest {
         assertTrue(sent.isEmpty(), "a legacy-dialect session gets no mid-session v20 push");
     }
 
+    @Test
+    void enteringAnOffWorldPushesDisabledAndLeavingItPushesEnabled() {
+        // 0 = no LOD service in that world: a CURRENT session is told enabled=false on the way
+        // in (it parks its session) and enabled=true on the way out (the distances differ).
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 512);
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        var uuid = UUID.randomUUID();
+        var player = playerIn(uuid, level(Level.OVERWORLD));
+        service.getDialectTracker().onHandshake(uuid, dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT);
+        service.registerPlayer(player, 1);
+        var sent = new ArrayList<String>();
+        service.setSessionConfigSender((p, cfg, enabled) -> sent.add(PaperWorldLod.distance(cfg, p) + ":" + enabled));
+
+        var nether = level(Level.NETHER);
+        when(player.level()).thenReturn(nether);
+        service.tick();
+        var overworld = level(Level.OVERWORLD);
+        when(player.level()).thenReturn(overworld);
+        service.tick();
+
+        assertEquals(List.of("0:false", "512:true"), sent);
+        assertNotNull(service.getPlayers().get(uuid), "the player stays registered in the off world");
+    }
+
+    @Test
+    void aReloadThatTurnsAWorldOffTellsItsPlayersAndResetsTheirState() {
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 512);
+        var netherUuid = UUID.randomUUID();
+        var netherState = service.registerPlayer(playerIn(netherUuid, level(Level.NETHER)),
+                LSSConstants.CAPABILITY_VOXEL_COLUMNS);
+        offer(netherState, new IncomingRequest(2, 2, -1L));
+        var overworldUuid = UUID.randomUUID();
+        var overworldState = service.registerPlayer(playerIn(overworldUuid, level(Level.OVERWORLD)),
+                LSSConstants.CAPABILITY_VOXEL_COLUMNS);
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        var sent = new java.util.HashMap<UUID, Boolean>();
+        service.setSessionConfigSender((player, cfg, enabled) -> sent.put(player.getUUID(), enabled));
+
+        service.repushSessionConfig();
+
+        assertEquals(Boolean.FALSE, sent.get(netherUuid));
+        assertEquals(Boolean.TRUE, sent.get(overworldUuid));
+        // The dimension-change cycle: in-flight work retired, a fresh state (empty served-set,
+        // nothing declared) — a world turned back on cannot answer off an old done-bit.
+        assertTrue(netherState.registration().isRetired(), "the off world's old session is retired");
+        var fresh = service.getPlayers().get(netherUuid);
+        assertNotNull(fresh, "the player stays registered in the off world");
+        assertNotSame(netherState, fresh);
+        assertNull(fresh.takeIncomingBatch(), "nothing declared carries over");
+        assertSame(overworldState, service.getPlayers().get(overworldUuid), "served worlds keep their state");
+    }
+
     // ---- PP-005: removed-vs-respawn branches ----
 
     @Test
