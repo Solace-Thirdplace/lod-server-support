@@ -95,9 +95,12 @@ class PaperDirtyColumnBroadcaster {
                 // could disagree with the loop key. (Level-keyed twin of the Fabric side.)
                 int lodDist = PaperWorldLod.distance(config, level);
                 // No LOD service in this world (distance 0): clears and notices still go out
-                // at the legacy-advertised radius (twin of the Fabric side) — the clears keep a
-                // world turned back on from answering up_to_date off a pre-edit done-bit.
-                if (lodDist <= 0) lodDist = config.legacyAdvertisedDistance(0);
+                // (twin of the Fabric side) — the clears keep a world turned back on from
+                // answering up_to_date off a pre-edit done-bit, so they reach every bit the
+                // session may hold, out to the served-set sweep radius (bits served before a
+                // reload turned the world off can lie beyond today's largest distance).
+                if (lodDist <= 0) lodDist = Math.max(config.legacyAdvertisedDistance(0),
+                        this.offThreadProcessor.diskReadDoneSweepRadiusChunks());
 
                 // Paginate (twin of the Fabric broadcaster): a single dirty-columns frame caps
                 // at MAX_POSITIONS, so when a player has more in-range dirty positions than the
