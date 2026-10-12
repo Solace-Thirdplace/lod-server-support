@@ -1,13 +1,13 @@
 ### New Features
 
-- **Map filling on by default** — Downloaded LOD terrain fills Xaero's World Map for new installs, with or without Voxy. (JourneyMap's 1.21.10 beta is not supported.)
-- **Turn LODs off per world** — Server admins can set a world's LOD distance to 0 to switch LOD service off there; players are told why.
-- **Sponge server support (experimental)** — LSS now runs on SpongeVanilla servers; drop the jar into `mods/`. Thanks to StealWonders for the original port.
+- **Map filling on by default** — New installs fill Xaero's World Map with LOD terrain.
+- **LODs off per world** — Set a world's LOD distance to 0 to turn LODs off there.
+- **Sponge (experimental)** — Runs on SpongeVanilla servers; put the jar in `mods/`. Thanks to StealWonders for the original port.
 
 ### Bug Fixes
 
-- **Adding Voxy after map-only use** — Terrain downloaded only for a map is now downloaded again when you add Voxy, instead of leaving gaps. For a map-only cache from 0.17 or older, run `/lss clearcache` once.
+- **Adding Voxy after map-only use** — Map-only terrain now downloads again for Voxy instead of leaving gaps. For older caches, run `/lss clearcache` once.
 
 ### Support
 
-- **Platforms** — Fabric, Paper/Purpur and Sponge (experimental) for Minecraft 1.21.10. Distant Horizons compatibility needs the Fabric client on this version.
+- **Platforms** — Fabric, Paper/Purpur and Sponge (experimental) for Minecraft 1.21.10.
