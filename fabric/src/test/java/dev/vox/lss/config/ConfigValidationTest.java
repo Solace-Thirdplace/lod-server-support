@@ -34,6 +34,32 @@ class ConfigValidationTest {
         assertTrue(c.effectiveTimestampCacheMB() > config(Map.of("lod.distance.default_chunks", 8,
                 "lod.distance.by_dimension", Map.of())).effectiveTimestampCacheMB());
     }
+    @Test void zeroTurnsOneDimensionOffAndNothingElse() {
+        var c = config(Map.of("lod.distance.default_chunks", 512,
+                "lod.distance.by_dimension", Map.of("minecraft:the_nether", 0)));
+        assertEquals(0, c.lodDistanceForWorld("minecraft:the_nether"));
+        assertEquals(512, c.lodDistanceForWorld("minecraft:overworld"));
+        assertEquals(512, c.maxConfiguredLodDistanceChunks(), "an off world never sizes caches or sweeps");
+        assertEquals(List.of("minecraft:the_nether"), c.unservedWorlds());
+        assertEquals("LODs off (distance 0): minecraft:the_nether", c.unservedWorldsDiagLineOrNull());
+        assertEquals(512, c.legacyAdvertisedDistance(0), "a legacy session in an off world stays on for the served ones");
+        assertEquals(64, c.legacyAdvertisedDistance(64));
+    }
+    @Test void aZeroDefaultServesOnlyTheListedDimensions() {
+        var c = config(Map.of("lod.distance.default_chunks", 0,
+                "lod.distance.by_dimension", Map.of("minecraft:overworld", 256)));
+        assertEquals(256, c.lodDistanceForWorld("minecraft:overworld"));
+        assertEquals(0, c.lodDistanceForWorld("minecraft:the_end"));
+        assertEquals(0, c.lodDistanceForWorld("mod:other"));
+        assertEquals(256, c.maxConfiguredLodDistanceChunks());
+        assertEquals(List.of("unlisted dimensions (default_chunks)"), c.unservedWorlds());
+    }
+    @Test void everyWorldOffStillAdvertisesAPositiveLegacyDistance() {
+        var c = config(Map.of("lod.distance.default_chunks", 0, "lod.distance.by_dimension", Map.of()));
+        assertEquals(0, c.maxConfiguredLodDistanceChunks());
+        assertEquals(1, c.legacyAdvertisedDistance(0));
+        assertNull(config(Map.of()).unservedWorldsDiagLineOrNull(), "fresh defaults serve every world");
+    }
     @Test void autoReadGateResolvesAgainstTheActualPoolAndAttachedStore() {
         var c = config(Map.of());
         assertEquals(8, c.effectiveMaxConcurrentDiskReads(8, false));
