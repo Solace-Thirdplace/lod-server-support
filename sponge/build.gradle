@@ -10,7 +10,7 @@ import java.util.zip.ZipOutputStream
 
 // The SpongeVanilla server plugin (sponge-support-plan.md). Server-only: compiles the
 // SERVER half of the xplat source set (§1.2) plus the Sponge glue under src/main.
-// This file is BYTE-IDENTICAL on all five lines — every per-line value comes from
+// This file is BYTE-IDENTICAL on all six lines — every per-line value comes from
 // gradle.properties (Sponge pins, minecraft_version) or .github/line.env (Java release).
 plugins {
     id 'java'
@@ -69,6 +69,11 @@ def xplatClientExcludes = [
         'dev/vox/lss/compat/Voxy*.java',
         'dev/vox/lss/compat/DhVoxyBridge.java',
         'dev/vox/lss/compat/ModCompat.java',
+        // Map ingestion (JourneyMap backend, the shared ingest pacing and the heap belt) is
+        // client-only, like the Xaero bridge above.
+        'dev/vox/lss/compat/JourneyMap*.java',
+        'dev/vox/lss/compat/IngestBackpressureGovernor.java',
+        'dev/vox/lss/compat/MapMemoryGuard.java',
 ] + clientMixinExcludes
 ext.xplatClientExcludes = xplatClientExcludes
 
