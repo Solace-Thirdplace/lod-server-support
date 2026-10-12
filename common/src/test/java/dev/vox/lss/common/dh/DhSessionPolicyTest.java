@@ -219,5 +219,17 @@ class DhSessionPolicyTest {
         p.cooldown(tile,4_000_000_000L); assertEquals(18,p.timestamp(tile));
         assertFalse(p.generationNeeded(tile));
     }
+    /** A push baked without its stored neighbours refetches the merged tile once the burst settles. */
+    @Test void aPushRefetchReplacesTheHeldReceiptAndIsNeverPostponedByLaterPushes() {
+        var p=new DhSessionPolicy(); var tile=new DhPosition(6,0,0); long delay=DhSessionPolicy.PUSH_REFETCH_DELAY_NANOS;
+        p.accepted(tile,1,1,42,0); assertFalse(p.due(tile,Long.MAX_VALUE));
+        p.refetchAfterPush(tile,1_000);
+        assertFalse(p.hasSnapshot(tile)); assertEquals(0,p.timestamp(tile)); assertEquals(1,p.acquisitionPriority(tile));
+        assertFalse(p.due(tile,1_000+delay-1)); assertTrue(p.due(tile,1_000+delay));
+        p.refetchAfterPush(tile,1_000+delay/2);
+        assertTrue(p.due(tile,1_000+delay),"a later push in the burst keeps the scheduled refetch");
+        p.refetchAfterPush(tile,1_000+2*delay);
+        assertFalse(p.due(tile,1_000+3*delay-1),"after the refetch time passed, a new push starts a new window");
+    }
 
 }

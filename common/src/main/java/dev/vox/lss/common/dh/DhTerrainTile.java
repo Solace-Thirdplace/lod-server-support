@@ -58,6 +58,9 @@ public final class DhTerrainTile implements AutoCloseable {
     public Coverage coverage(int column) { open(); return coverage[column]; }
     public int generation(int column) { open(); return generation[column] & 255; }
     public int worldCompression(int column) { open(); return worldCompression[column] & 255; }
+    /** Rebuild sky light from the spans as a DH client does on storing a full-detail tile;
+     *  {@code opacity} is indexed by material (see {@link DhSkyLightBake}). Block light is kept. */
+    public void bakeSkyLight(int[] opacity) { open(); DhSkyLightBake.bake(columns, opacity, world.sky() ? 15 : 0); }
     static int id(long value) { return (int) (value & 0x7fffffffL); }
     static int height(long value) { return (int) (value >>> 32 & 4095); }
     static int bottom(long value) { return (int) (value >>> 44 & 4095); }

@@ -46,7 +46,7 @@ def render(data: dict | None = None) -> str:
               "`enableXaeroMapBridge` off. **Downgrade exception:** LSS 0.17 and older reject the new",
               "group, so a file created or saved by a newer build loads there only after renaming",
               "`map_ingestion:` back to `xaero_map:` under `integrations:` (or deleting the file).", ""]
-    for key, title in [("server", "Fabric / NeoForge server"), ("paper", "Paper / Folia server"), ("client", "Client")]:
+    for key, title in [("server", "Fabric / NeoForge / Sponge server"), ("paper", "Paper / Folia server"), ("client", "Client")]:
         schema = data[key]
         output += ["## " + title, "", "| YAML path | Type | Default | Range / units | Timing | Applicability |", "| --- | --- | --- | --- | --- | --- |"]
         for descriptor in schema["descriptors"]:

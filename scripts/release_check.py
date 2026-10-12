@@ -50,6 +50,13 @@ NEOFORGE_FORBIDDEN = ("dev/vox/lss/benchmark/", "dev/vox/lss/neoforge/gametest/"
                       # the Sodium 0.8 config-API compile-only stubs (LSSConfigMenu
                       # NeoForge twin) — shipping them collides with Sodium's module
                       "net/caffeinemc/")
+# The Sponge shadow jar flattens the SERVER half of xplat + common
+# (sponge-support-plan.md §1.2/§2.4): benchmark/ and the client tree are excluded from its
+# compile, the dev-only smoke/soak companions are their own jars, and no other loader's
+# API may appear.
+SPONGE_FORBIDDEN = ("dev/vox/lss/benchmark/", "dev/vox/lss/spongesmoke/", "dev/vox/lss/spongesoak/",
+                    "dev/vox/lss/networking/client/", "dev/vox/lss/config/menu/",
+                    "net/fabricmc/", "net/neoforged/", "net/caffeinemc/")
 # Dev-only namespaces that would live in common/ (e.g. a deduped soak-driver twin): common
 # ships on BOTH platforms — nested in the Fabric jar, shaded into the Paper jar.
 COMMON_FORBIDDEN = ("privatep4/", "com/seibel/", "net/caffeinemc/", "dev/vox/lss/common/soak/", "dev/vox/lss/common/benchmark/",
@@ -67,10 +74,17 @@ COMMON_FORBIDDEN = ("privatep4/", "com/seibel/", "net/caffeinemc/", "dev/vox/lss
 # line (VoX/Foxy fork client pairing). Families gated on SHIP_NEOFORGE (found jars still get full jar
 # checks); mirrors .github/line.env LINE_SHIP_NEOFORGE — flip BOTH together.
 SHIP_NEOFORGE = True
+# Sponge (sponge-support-plan.md §0.3): the Sponge families are required release
+# artifacts only where the line ships Sponge (a sponge jar FOUND in build/libs gets the
+# full jar checks either way). Mirrors .github/line.env LINE_SHIP_SPONGE — flip BOTH
+# together (ReleaseWorkflowContractTest cross-pins the pair; this line predates R2-5).
+SHIP_SPONGE = True
 RELEASE_GLOBS = ("lod-server-support-fabric-*.jar", "lod-server-support-paper-*.jar",
                  "voxy-server-side-fabric-*.jar", "voxy-server-side-paper-*.jar") + ((
                  "lod-server-support-neoforge-*.jar",
-                 "voxy-server-side-neoforge-*.jar") if SHIP_NEOFORGE else ())
+                 "voxy-server-side-neoforge-*.jar") if SHIP_NEOFORGE else ()) + ((
+                 "lod-server-support-sponge-*.jar",
+                 "voxy-server-side-sponge-*.jar") if SHIP_SPONGE else ())
 CI_NAME_SUFFIX = "0.4.0+26.1.2.jar"  # a representative CI filename for glob round-tripping
 # The Fabric jar's mapping namespace for THIS line: 26.x fabric-loom ships official-mapped
 # jars; 1.21.x fabric-loom-remap ships intermediary. A forward merge swapping the loom
@@ -78,6 +92,9 @@ CI_NAME_SUFFIX = "0.4.0+26.1.2.jar"  # a representative CI filename for glob rou
 # real server of this line — so the manifest attribute is pinned like Paper's namespace.
 FABRIC_MAPPING_NAMESPACE = "official"
 SOAK_JAR_PREFIX = "lss-paper-soak"
+# The Sponge dev-only companions (boot smoke §5.2, soak §5.4): built outside build/libs,
+# and their names must never match a release glob even if one is copied there.
+SPONGE_DEV_JAR_PREFIXES = ("lss-sponge-smoke", "lss-sponge-soak")
 
 
 def _names(jar):
@@ -253,9 +270,11 @@ def _paper_dh_allowed(class_name):
                for entry in PAPER_DH_REFERENCE_ALLOWLIST)
 
 
-def check_paper_dh_absent(jar, problems):
+def check_paper_dh_absent(jar, problems, platform="Paper"):
     """X-7: the client-only DH codec, its private XZ and the XZ license stay out of
-    Paper (LSS and VSS); only the allowlisted client-only classes may still name them."""
+    Paper (LSS and VSS) — and out of Sponge, the other server-only jar
+    (sponge-support-plan.md §1.8); only the allowlisted client-only classes may still
+    name them."""
     base = os.path.basename(jar)
     try:
         for label, archive in _yaml_archives(jar):
@@ -263,19 +282,19 @@ def check_paper_dh_absent(jar, problems):
             for name in archive.namelist():
                 flat = re.sub(r"^META-INF/versions/[0-9]+/", "", name)
                 if flat.startswith(DH_PACKAGE) and not name.endswith("/"):
-                    problems.append(f"{where}: Paper ships client-only DH class {name}")
+                    problems.append(f"{where}: {platform} ships client-only DH class {name}")
                 elif flat.startswith(XZ_PREFIX) and not name.endswith("/"):
-                    problems.append(f"{where}: Paper ships private XZ entry {name}")
+                    problems.append(f"{where}: {platform} ships private XZ entry {name}")
                 elif name == XZ_LICENSE:
-                    problems.append(f"{where}: Paper ships the XZ license without XZ")
+                    problems.append(f"{where}: {platform} ships the XZ license without XZ")
                 elif name.endswith(".class") and not flat.startswith(("org/", "com/")):
                     owner = flat[:-len(".class")]
                     if _links_package(archive.read(name), DH_PACKAGE) and not _paper_dh_allowed(owner):
                         problems.append(f"{where}: {name} links client-only {DH_PACKAGE} — "
-                                        "absent on Paper, so this class would fail to link "
+                                        f"absent on {platform}, so this class would fail to link "
                                         "(allowlist only classes a server never executes)")
     except zipfile.BadZipFile as error:
-        problems.append(f"{base}: unreadable Paper archive ({error})")
+        problems.append(f"{base}: unreadable {platform} archive ({error})")
 
 
 def check_dh_codec(jar, loader, problems):
@@ -313,10 +332,11 @@ def check_dh_codec(jar, loader, problems):
                                 "upstream text (not just the token)")
     except zipfile.BadZipFile as error:
         problems.append(f"{base}: unreadable DH codec archive ({error})")
-    if loader == "paper":
+    if loader in ("paper", "sponge"):
+        platform = "Paper" if loader == "paper" else "Sponge"
         if owners:
-            problems.append(f"{base}: Paper must not carry the client-only DH codec/XZ")
-        check_paper_dh_absent(jar, problems)
+            problems.append(f"{base}: {platform} must not carry the client-only DH codec/XZ")
+        check_paper_dh_absent(jar, problems, platform)
         return
     if len(owners) != 1:
         problems.append(f"{base}: expected exactly one DH codec/XZ owner, found {len(owners)}")
@@ -784,7 +804,9 @@ def check_neoforge_jar(jar, problems):
 # config (legacy Sodium hook, move tracer) targets optional or drift-prone code and must
 # soft-fail. Fixture/rig configs never ship. Rules are generic so deleting or adding a
 # mixin class needs no edit here.
-PRIMARY_MIXIN_CONFIG = {"fabric": "lss.mixins.json", "neoforge": "lss.neoforge.mixins.json"}
+PRIMARY_MIXIN_CONFIG = {"fabric": "lss.mixins.json", "neoforge": "lss.neoforge.mixins.json",
+                        # Sponge declares configs in the jar MANIFEST (MixinConfigs).
+                        "sponge": "lss.sponge.mixins.json"}
 FORBIDDEN_MIXIN_CONFIG = re.compile(r"(^lss-dh-|fixture|^lss-rig-|^lss-smoke|p4)", re.IGNORECASE)
 # Dependency surfaces a release may declare. A stray hard dependency (for example on
 # distanthorizons, which the DH adapter must never require) changes who can load the
@@ -798,10 +820,22 @@ FABRIC_DEPENDENCY_ALLOWLIST = {
 NEOFORGE_DEPENDENCY_ALLOWLIST = {"neoforge", "minecraft"}
 # Allowed only as type="optional": the external SQLite JDBC library mod (issue #304
 # line work) may be declared optional, never required.
+# The Sponge plugin depends on the platform API only (sponge_plugins.json).
+SPONGE_DEPENDENCY_ALLOWLIST = {"spongeapi"}
 NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST = set()  # 1.21.1-only (issue #304); SQLite is private here
 
 
+def _manifest_attribute(jar, key):
+    """A main-section MANIFEST.MF attribute (continuation lines joined), or None."""
+    text = re.sub(r"\r?\n ", "", _manifest(jar))
+    m = re.search(r"(?m)^" + re.escape(key) + r":\s*(.*?)\s*$", text)
+    return m.group(1) if m else None
+
+
 def _declared_mixin_configs(jar, loader):
+    if loader == "sponge":
+        value = _manifest_attribute(jar, "MixinConfigs")
+        return {c.strip() for c in (value or "").split(",") if c.strip()}
     if loader == "fabric":
         try:
             meta = json.loads(_read(jar, "fabric.mod.json"))
@@ -857,6 +891,17 @@ def check_mixin_configs(jar, loader, problems):
 
 def check_dependency_allowlist(jar, loader, problems):
     base = os.path.basename(jar)
+    if loader == "sponge":
+        try:
+            meta = json.loads(_read(jar, "META-INF/sponge_plugins.json"))
+        except (KeyError, json.JSONDecodeError):
+            return  # check_sponge_jar flags a missing/invalid descriptor
+        for plugin in meta.get("plugins") or []:
+            for dep in plugin.get("dependencies") or []:
+                if dep.get("id") not in SPONGE_DEPENDENCY_ALLOWLIST:
+                    problems.append(f"{base}: sponge_plugins.json declares unexpected dependency "
+                                    f"{dep.get('id')!r} — release dependency surfaces are allowlisted")
+        return
     if loader == "fabric":
         try:
             meta = json.loads(_read(jar, "fabric.mod.json"))
@@ -1357,19 +1402,26 @@ def check_glob_hygiene(problems, soak_jars):
     shipped_prefixes = ("lod-server-support-fabric", "lod-server-support-paper",
                         "voxy-server-side-fabric", "voxy-server-side-paper") + ((
                         "lod-server-support-neoforge",
-                        "voxy-server-side-neoforge") if SHIP_NEOFORGE else ())
+                        "voxy-server-side-neoforge") if SHIP_NEOFORGE else ()) + ((
+                        "lod-server-support-sponge",
+                        "voxy-server-side-sponge") if SHIP_SPONGE else ())
     for prefix in shipped_prefixes:
         ci_name = f"{prefix}-{CI_NAME_SUFFIX}"
         if not any(fnmatch.fnmatch(ci_name, g) for g in RELEASE_GLOBS):
             problems.append(f"CI name {ci_name} matches no release glob")
     if any(fnmatch.fnmatch(f"{SOAK_JAR_PREFIX}-{CI_NAME_SUFFIX}", g) for g in RELEASE_GLOBS):
         problems.append("CI-named soak jar matches a release glob")
+    for prefix in SPONGE_DEV_JAR_PREFIXES:
+        for name in (f"{prefix}.jar", f"{prefix}-{CI_NAME_SUFFIX}"):
+            if any(fnmatch.fnmatch(name, g) for g in RELEASE_GLOBS):
+                problems.append(f"Sponge dev jar name {name} matches a release glob")
 
 
 def discover(problems, expected_version=None, root=ROOT):
     fab_libs = os.path.join(root, "fabric", "build", "libs")
     pap_libs = os.path.join(root, "paper", "build", "libs")
     neo_libs = os.path.join(root, "neoforge", "build", "libs")
+    spo_libs = os.path.join(root, "sponge", "build", "libs")
     # `voxy-server-side-*` and `lod-server-support-*` are disjoint prefixes, so neither
     # discovery list contaminates the other.
     fab = _jars_in(fab_libs, "lod-server-support-fabric")
@@ -1378,7 +1430,10 @@ def discover(problems, expected_version=None, root=ROOT):
     vpap = _jars_in(pap_libs, "voxy-server-side-paper")
     neo = _jars_in(neo_libs, "lod-server-support-neoforge")
     vneo = _jars_in(neo_libs, "voxy-server-side-neoforge")
-    soak = _jars_in(pap_libs, SOAK_JAR_PREFIX)
+    spo = _jars_in(spo_libs, "lod-server-support-sponge")
+    vspo = _jars_in(spo_libs, "voxy-server-side-sponge")
+    soak = _jars_in(pap_libs, SOAK_JAR_PREFIX) + [
+        j for prefix in SPONGE_DEV_JAR_PREFIXES for j in _jars_in(spo_libs, prefix)]
     # All six families must be present — a release ships all six, and a missing family
     # (e.g. the vssJar finalizer silently unwired) must fail the gate, not shrink it.
     required = [(fab, "lod-server-support-fabric", "run :fabric:build"),
@@ -1388,6 +1443,9 @@ def discover(problems, expected_version=None, root=ROOT):
     if SHIP_NEOFORGE:
         required += [(neo, "lod-server-support-neoforge", "run :neoforge:build"),
                      (vneo, "voxy-server-side-neoforge", "the neoforge vssJar task did not run")]
+    if SHIP_SPONGE:
+        required += [(spo, "lod-server-support-sponge", "run :sponge:build"),
+                     (vspo, "voxy-server-side-sponge", "the sponge vssJar finalizer did not run")]
     for jars, what, hint in required:
         if not jars:
             problems.append(f"no {what} jar found in build/libs — {hint}")
@@ -1409,6 +1467,9 @@ def discover(problems, expected_version=None, root=ROOT):
         if SHIP_NEOFORGE:
             neo = _require_version(neo, "lod-server-support-neoforge", expected_version, problems, mc=mc)
             vneo = _require_version(vneo, "voxy-server-side-neoforge", expected_version, problems, mc=mc)
+        if SHIP_SPONGE:
+            spo = _require_version(spo, "lod-server-support-sponge", expected_version, problems, mc=mc)
+            vspo = _require_version(vspo, "voxy-server-side-sponge", expected_version, problems, mc=mc)
         # With --version the ambiguity guard is off, but release.yml's upload globs are
         # greedy: any OTHER versioned jar sitting beside the selected one would be attached
         # to the release too. Flag them (the suffixless local dev names stay tolerated).
@@ -1419,6 +1480,9 @@ def discover(problems, expected_version=None, root=ROOT):
         if SHIP_NEOFORGE:
             greedy += [(neo, _jars_in(neo_libs, "lod-server-support-neoforge"), "lod-server-support-neoforge"),
                        (vneo, _jars_in(neo_libs, "voxy-server-side-neoforge"), "voxy-server-side-neoforge")]
+        if SHIP_SPONGE:
+            greedy += [(spo, _jars_in(spo_libs, "lod-server-support-sponge"), "lod-server-support-sponge"),
+                       (vspo, _jars_in(spo_libs, "voxy-server-side-sponge"), "voxy-server-side-sponge")]
         for sel, allj, prefix in greedy:
             stale = [os.path.basename(j) for j in allj
                      if j not in sel and os.path.basename(j) != f"{prefix}.jar"]
@@ -1433,6 +1497,9 @@ def discover(problems, expected_version=None, root=ROOT):
         if SHIP_NEOFORGE:
             _flag_ambiguous(neo, "lod-server-support-neoforge", problems)
             _flag_ambiguous(vneo, "voxy-server-side-neoforge", problems)
+        if SHIP_SPONGE:
+            _flag_ambiguous(spo, "lod-server-support-sponge", problems)
+            _flag_ambiguous(vspo, "voxy-server-side-sponge", problems)
     for jar in fab:
         check_fabric_jar(jar, problems)
         check_mixin_configs(jar, "fabric", problems)
@@ -1479,7 +1546,29 @@ def discover(problems, expected_version=None, root=ROOT):
     # branding fields may differ — and must). A vss jar without its LSS counterpart cannot
     # be pair-verified and is a failure: the repackage task guarantees the source jar exists.
     # LSS jars must carry the LSS branding values (a rewrite regression could flip them).
-    for jar in fab + pap + neo:
+    for jar in spo + vspo:
+        check_sponge_jar(jar, problems)
+        check_mixin_configs(jar, "sponge", problems)
+        check_dependency_allowlist(jar, "sponge", problems)
+        check_yaml_parser(jar, "sponge", problems)
+        # Flat shade, exactly Paper's layout (zstd natives stripped to the matrix; SQLite
+        # in the private capsule).
+        check_store_natives_paper(jar, problems)
+        check_third_party_notices(jar, False, problems)
+        if fab:
+            check_cross_loader_classes_sponge(fab[0], jar, problems, root)
+    for jar in vspo:
+        check_vss_sponge_identity(jar, problems)
+        check_brand_properties(jar, _BRAND_VSS, problems)
+        src = _vss_counterpart(jar, spo, "voxy-server-side-sponge", "lod-server-support-sponge")
+        if src is None:
+            problems.append(f"{os.path.basename(jar)}: no matching lod-server-support-sponge "
+                            "jar to pair-verify against (stale vss jar?)")
+        else:
+            check_vss_pair_sponge(src, jar, problems)
+            # Flat shade like Paper: the dev/vox/lss/** class digest + the capsule pair.
+            check_wire_identity_paper(src, jar, problems)
+    for jar in fab + pap + neo + spo:
         check_brand_properties(jar, _BRAND_LSS, problems)
     for jar in vfab:
         check_fabric_jar(jar, problems)
@@ -1512,12 +1601,161 @@ def discover(problems, expected_version=None, root=ROOT):
             check_vss_pair_paper(src, jar, problems)
             check_wire_identity_paper(src, jar, problems)
     check_glob_hygiene(problems, soak)
-    for jar in fab + pap + vfab + vpap + neo + vneo:
+    for jar in fab + pap + vfab + vpap + neo + vneo + spo + vspo:
         sqlite_capsule.check(jar, problems)
-    for loader, jars in (("fabric", fab + vfab), ("paper", pap + vpap), ("neoforge", neo + vneo)):
+    for loader, jars in (("fabric", fab + vfab), ("paper", pap + vpap), ("neoforge", neo + vneo),
+                         ("sponge", spo + vspo)):
         for jar in jars:
             check_dh_codec(jar, loader, problems)
-    return fab, pap, vfab, vpap, neo, vneo, soak
+    return fab, pap, vfab, vpap, neo, vneo, spo, vspo, soak
+
+# ---------------------------------------------------------------- Sponge (plan §2.4)
+
+def _sponge_plugin(jar):
+    """The single plugin entry of META-INF/sponge_plugins.json, or None."""
+    try:
+        meta = json.loads(_read(jar, "META-INF/sponge_plugins.json"))
+    except (KeyError, json.JSONDecodeError):
+        return None
+    plugins = meta.get("plugins") or []
+    return plugins[0] if len(plugins) == 1 and isinstance(plugins[0], dict) else None
+
+
+def check_sponge_jar(jar, problems):
+    """The SpongeVanilla plugin jar (sponge-support-plan.md §1.8): a parsable one-plugin
+    descriptor with an expanded, numeric version (SpongeVanilla refuses anything else),
+    an entrypoint that exists in the jar, the spongeapi dependency, no other loader's
+    descriptor, the manifest MixinConfigs/Access-Widener resolving to shipped resources,
+    the flattened common classes, and no dev-only/client/other-loader package."""
+    names = set(_names(jar))
+    base = os.path.basename(jar)
+    _scan_forbidden(jar, base, SPONGE_FORBIDDEN + COMMON_FORBIDDEN, problems)
+    for other in ("fabric.mod.json", "META-INF/neoforge.mods.toml", "plugin.yml"):
+        if other in names:
+            problems.append(f"{base}: a Sponge jar must not carry {other}")
+    plugin = _sponge_plugin(jar)
+    if plugin is None:
+        problems.append(f"{base}: META-INF/sponge_plugins.json missing, invalid, or not exactly one plugin")
+    else:
+        version = str(plugin.get("version", ""))
+        if _looks_unexpanded(version) or not version[:1].isdigit():
+            problems.append(f"{base}: sponge_plugins.json version {version!r} must be an expanded "
+                            "numeric version (SpongeVanilla refuses a version not starting with a digit)")
+        entry = str(plugin.get("entrypoint", "")).replace(".", "/") + ".class"
+        if entry == ".class" or entry not in names:
+            problems.append(f"{base}: sponge_plugins.json entrypoint {plugin.get('entrypoint')!r} "
+                            "is not a class in the jar")
+        if not any(d.get("id") == "spongeapi" for d in plugin.get("dependencies") or []):
+            problems.append(f"{base}: sponge_plugins.json must declare the spongeapi dependency")
+    configs = _declared_mixin_configs(jar, "sponge")
+    if PRIMARY_MIXIN_CONFIG["sponge"] not in configs:
+        problems.append(f"{base}: manifest MixinConfigs must declare {PRIMARY_MIXIN_CONFIG['sponge']}")
+    aw = _manifest_attribute(jar, "Access-Widener")
+    if not aw or aw not in names:
+        problems.append(f"{base}: manifest Access-Widener {aw!r} does not name a shipped resource "
+                        "(the headless serializer's PalettedContainer widening would be absent)")
+    if not any(n.startswith("dev/vox/lss/common/") and n.endswith(".class") for n in names):
+        problems.append(f"{base}: shaded jar missing the shared common/ classes")
+    # shadowJar shades the whole runtimeClasspath; the server provides all of these.
+    for leak in SPONGE_PROVIDED_LEAKS:
+        if any(n.startswith(leak) and n.endswith(".class") for n in names):
+            problems.append(f"{base}: {leak} classes leaked into the shadow jar — the shade "
+                            "configuration must never include the server's own classpath")
+
+
+# Packages SpongeVanilla itself provides; a shaded copy would shadow or clash with them.
+SPONGE_PROVIDED_LEAKS = ("net/minecraft/", "com/mojang/", "org/spongepowered/", "net/kyori/",
+                         "com/google/inject/", "io/netty/")
+
+
+def check_vss_sponge_identity(jar, problems):
+    """The VSS Sponge rebrand: the plugin id/name flip (LOCAL identity on Sponge — the
+    loader instantiates the metadata entrypoint, and the lss:* wire is untouched)."""
+    base = os.path.basename(jar)
+    plugin = _sponge_plugin(jar)
+    if plugin is None:
+        return  # check_sponge_jar already flagged it
+    if plugin.get("id") != "voxyserverside":
+        problems.append(f"{base}: vss Sponge plugin id must be 'voxyserverside', got {plugin.get('id')!r}")
+    if plugin.get("name") != "Voxy Server Side":
+        problems.append(f"{base}: vss Sponge plugin name must be 'Voxy Server Side'")
+
+
+# sponge_plugins.json plugin keys the VSS rebrand MAY change; everything else (entrypoint,
+# version, dependencies, contributors, loader, license) must be identical to the LSS jar.
+VSS_SPONGE_ALLOWED_DIFF = {"id", "name", "description", "links"}
+
+
+def check_vss_pair_sponge(lss_jar, vss_jar, problems):
+    vbase = os.path.basename(vss_jar)
+    try:
+        lmeta = json.loads(_read(lss_jar, "META-INF/sponge_plugins.json"))
+        vmeta = json.loads(_read(vss_jar, "META-INF/sponge_plugins.json"))
+    except (KeyError, json.JSONDecodeError):
+        return  # per-jar checks already flagged it
+    if {k: v for k, v in lmeta.items() if k != "plugins"} != {k: v for k, v in vmeta.items() if k != "plugins"}:
+        problems.append(f"{vbase}: sponge_plugins.json top-level keys differ from the LSS jar")
+    lp, vp = _sponge_plugin(lss_jar), _sponge_plugin(vss_jar)
+    if lp is None or vp is None:
+        return
+    for key in sorted(set(lp) | set(vp)):
+        if key not in VSS_SPONGE_ALLOWED_DIFF and lp.get(key) != vp.get(key):
+            problems.append(f"{vbase}: sponge_plugins.json {key!r} differs from the LSS jar "
+                            f"outside the branding keys {sorted(VSS_SPONGE_ALLOWED_DIFF)}")
+    if lp == vp:
+        problems.append(f"{vbase}: sponge_plugins.json is identical to the LSS jar (rebrand no-opped)")
+    if lp.get("id") != "lodserversupport":
+        problems.append(f"{os.path.basename(lss_jar)}: LSS Sponge plugin id must be 'lodserversupport'")
+    for name in set(_names(lss_jar)) ^ set(_names(vss_jar)):
+        problems.append(f"{vbase}: entry set differs from the LSS jar ({name}) — the rebrand must "
+                        "rewrite entries in place, never add or remove them")
+
+
+def _sponge_xplat_excludes(root=ROOT):
+    """The xplat client excludes sponge/build.gradle compiles with: its literal pattern
+    list plus the client array of fabric's lss.mixins.json (the same derivation)."""
+    patterns = []
+    try:
+        with open(os.path.join(root, "sponge", "build.gradle"), encoding="utf-8") as f:
+            text = f.read()
+        block = re.search(r"def xplatClientExcludes = \[(.*?)\]", text, re.S)
+        if block:
+            patterns += re.findall(r"'([^']+)'", block.group(1))
+        with open(os.path.join(root, "fabric", "src", "main", "resources", "lss.mixins.json"),
+                  encoding="utf-8") as f:
+            patterns += [f"dev/vox/lss/mixin/{c}.java" for c in json.load(f).get("client") or []]
+    except (OSError, json.JSONDecodeError):
+        return None
+    return patterns
+
+
+def check_cross_loader_classes_sponge(fabric_jar, sponge_jar, problems, root=ROOT):
+    """The server-scoped cross-loader PRESENCE check (plan §2.4): every class the fabric
+    jar ships that was compiled from a NON-excluded xplat source must also be in the
+    sponge jar — an over-broad exclude (or a dropped srcDir) cannot silently remove
+    server surface. Mapping is by top-level class to its xplat source file."""
+    base = os.path.basename(sponge_jar)
+    patterns = _sponge_xplat_excludes(root)
+    if patterns is None:
+        problems.append(f"{base}: cannot read the sponge xplat excludes — cross-loader check skipped")
+        return
+    xplat = os.path.join(root, "xplat", "src", "main", "java")
+    sponge_names = set(_names(sponge_jar))
+    missing = []
+    for n in _names(fabric_jar):
+        if not (n.startswith("dev/vox/lss/") and n.endswith(".class")):
+            continue
+        source = n[:-len(".class")].split("$", 1)[0] + ".java"
+        if not os.path.isfile(os.path.join(xplat, source)):
+            continue  # not an xplat class (fabric-tree twin or loader glue)
+        if any(fnmatch.fnmatch(source, pat.replace("**", "*")) for pat in patterns):
+            continue
+        if n not in sponge_names:
+            missing.append(n)
+    if missing:
+        problems.append(f"{base}: xplat server classes present in the fabric jar but missing here "
+                        f"({len(missing)}): {sorted(missing)[:5]} — an exclude or srcDir drift "
+                        "dropped server surface")
 
 
 def _jars_in(d, prefix):
@@ -2751,7 +2989,10 @@ def _selftest_fixtures():
         _write_tree_neoforge("lod-server-support-neoforge.jar", TOML_LSS, BRAND_LSS)
         _write_tree_neoforge("voxy-server-side-neoforge.jar", TOML_VSS, BRAND_VSS)
         p = []
-        fab_d, pap_d, vfab_d, vpap_d, neo_d, vneo_d, _ = discover(p, root=droot)
+        fab_d, pap_d, vfab_d, vpap_d, neo_d, vneo_d, spo_d, vspo_d, _ = discover(p, root=droot)
+        # This tree carries the original six families; the Sponge family's presence
+        # polarity (required only where SHIP_SPONGE) has its own case below.
+        p = [issue for issue in p if "-sponge jar found" not in issue]
         check(p == [] and len(fab_d) == len(pap_d) == len(vfab_d) == len(vpap_d)
               == len(neo_d) == len(vneo_d) == 1,
               f"clean synthetic tree flagged by discover: {p}")
@@ -3044,6 +3285,169 @@ def _selftest_fixtures():
               f"vss neoforge TOML line-count corruption not caught: {p}")
         _write_tree_neoforge("voxy-server-side-neoforge.jar", TOML_VSS, BRAND_VSS)
 
+        # ---- Sponge (sponge-support-plan.md §2.4): one firing case per gate ----
+        spo_manifest = ("Manifest-Version: 1.0\nMixinConfigs: lss.sponge.mixins.json\n"
+                        "Access-Widener: lss-sponge.accesswidener\n")
+
+        def _sponge_meta(vss=False, **over):
+            plugin = {"id": "voxyserverside" if vss else "lodserversupport",
+                      "entrypoint": "dev.vox.lss.sponge.LSSSpongePlugin",
+                      "name": "Voxy Server Side" if vss else "LOD Server Support",
+                      "description": "vss" if vss else "lss", "version": "0.7.0",
+                      "links": {"homepage": "https://modrinth.com/plugin/"
+                                + ("voxy-server-side" if vss else "lod-server-support")},
+                      "contributors": [{"name": "VoX"}],
+                      "dependencies": [{"id": "spongeapi", "version": "[20.0.0-SNAPSHOT,21.0.0)",
+                                        "load-order": "after", "optional": False}]}
+            plugin.update(over)
+            return {"loader": {"name": "java_plain", "version": "1.0"}, "license": "MIT",
+                    "plugins": [plugin]}
+
+        def _sponge_entries(meta, brand, extra=None, drop=()):
+            entries = {
+                "META-INF/sponge_plugins.json": json.dumps(meta),
+                "lss-brand.properties": brand,
+                "dev/vox/lss/sponge/LSSSpongePlugin.class": "x",
+                "dev/vox/lss/common/PositionUtil.class": "x",
+                "dev/vox/lss/networking/server/RequestProcessingService.class": "x",
+                "lss.sponge.mixins.json": json.dumps({"required": True, "package": "dev.vox.lss.mixin",
+                                                      "mixins": ["ServerTickHook"],
+                                                      "injectors": {"defaultRequire": 1}}),
+                "dev/vox/lss/mixin/ServerTickHook.class": "x",
+                "lss-sponge.accesswidener": "accessWidener v2 named\n",
+                "THIRD-PARTY-NOTICES": notices,
+            }
+            entries.update(_store_paper_entries())
+            entries.update(_yaml_entries(dh=False))
+            entries.update(extra or {})
+            for d in drop:
+                entries.pop(d, None)
+            return entries
+
+        def _sponge_jar(name, meta=None, brand=None, extra=None, drop=(), manifest=spo_manifest):
+            path = os.path.join(td, name)
+            _make_jar(path, _sponge_entries(meta or _sponge_meta(), brand or BRAND_LSS, extra, drop),
+                      manifest=manifest)
+            return path
+
+        def _sponge_problems(path):
+            p = []
+            check_sponge_jar(path, p)
+            check_mixin_configs(path, "sponge", p)
+            check_dependency_allowlist(path, "sponge", p)
+            check_dh_codec(path, "sponge", p)
+            check_yaml_parser(path, "sponge", p)
+            check_store_natives_paper(path, p)
+            check_third_party_notices(path, False, p)
+            sqlite_capsule.check(path, p)
+            return p
+
+        good_spo = _sponge_jar("lod-server-support-sponge.jar")
+        p = _sponge_problems(good_spo)
+        check(p == [], f"clean Sponge jar rejected: {p}")
+        for label, kwargs, expected in (
+                ("no-descriptor", {"drop": ("META-INF/sponge_plugins.json",)}, "sponge_plugins.json missing"),
+                ("unexpanded-version", {"meta": _sponge_meta(version="${version}")}, "expanded numeric version"),
+                ("nonnumeric-version", {"meta": _sponge_meta(version="unspecified")}, "expanded numeric version"),
+                ("missing-entrypoint", {"drop": ("dev/vox/lss/sponge/LSSSpongePlugin.class",)}, "entrypoint"),
+                ("no-api-dependency", {"meta": _sponge_meta(dependencies=[])}, "spongeapi dependency"),
+                ("stray-dependency", {"meta": _sponge_meta(dependencies=[
+                    {"id": "spongeapi", "version": "*"}, {"id": "distanthorizons", "version": "*"}])},
+                 "unexpected dependency"),
+                ("fabric-descriptor", {"extra": {"fabric.mod.json": "{}"}}, "must not carry fabric.mod.json"),
+                ("leaked-benchmark", {"extra": {"dev/vox/lss/benchmark/SoakScenarioDriver.class": "x"}},
+                 "dev/vox/lss/benchmark/"),
+                ("leaked-smoke", {"extra": {"dev/vox/lss/spongesmoke/SmokePlugin.class": "x"}},
+                 "dev/vox/lss/spongesmoke/"),
+                ("leaked-client", {"extra": {"dev/vox/lss/networking/client/ColumnStateMap.class": "x"}},
+                 "dev/vox/lss/networking/client/"),
+                ("no-mixin-manifest", {"manifest": "Manifest-Version: 1.0\nAccess-Widener: lss-sponge.accesswidener\n"},
+                 "MixinConfigs must declare"),
+                ("dangling-aw", {"drop": ("lss-sponge.accesswidener",)}, "Access-Widener"),
+                ("undeclared-config", {"extra": {"lss-extra.mixins.json": "{}"}}, "not declared"),
+                ("missing-mixin-class", {"drop": ("dev/vox/lss/mixin/ServerTickHook.class",)},
+                 "is not in the jar"),
+                ("fabric-style-dh", {"extra": dict({DH_CODEC: b"\xca\xfe\xba\xbe\x00\x00\x00\x41"},
+                                                   **{x: b"\xca\xfe\xba\xbe\x00\x00\x00\x34" for x in XZ_REQUIRED})},
+                 "Sponge must not carry the client-only DH codec"),
+                ("leaked-minecraft", {"extra": {"net/minecraft/server/MinecraftServer.class": "x"}},
+                 "net/minecraft/ classes leaked"),
+                ("leaked-sponge-api", {"extra": {"org/spongepowered/api/Sponge.class": "x"}},
+                 "org/spongepowered/ classes leaked"),
+                ("no-common", {"drop": tuple(k for k in _sponge_entries(_sponge_meta(), BRAND_LSS)
+                                             if k.startswith("dev/vox/lss/common/") and k.endswith(".class"))},
+                 "common/ classes")):
+            p = _sponge_problems(_sponge_jar(f"spo-{label}.jar", **kwargs))
+            check(any(expected in issue for issue in p), f"Sponge {label} accepted: {p}")
+
+        good_vspo = _sponge_jar("voxy-server-side-sponge.jar", meta=_sponge_meta(vss=True), brand=BRAND_VSS)
+        p = []
+        check_vss_sponge_identity(good_vspo, p)
+        check_vss_pair_sponge(good_spo, good_vspo, p)
+        check_wire_identity_paper(good_spo, good_vspo, p)
+        check(p == [], f"clean Sponge VSS pair rejected: {p}")
+        for label, meta, extra, expected in (
+                ("forked-entrypoint", _sponge_meta(vss=True, entrypoint="dev.vox.lss.sponge.Other"), None,
+                 "'entrypoint' differs"),
+                ("forked-version", _sponge_meta(vss=True, version="9.9.9"), None, "'version' differs"),
+                ("lss-id-kept", _sponge_meta(vss=False, name="Voxy Server Side", description="vss"), None,
+                 "plugin id must be 'voxyserverside'"),
+                ("class-drift", _sponge_meta(vss=True), {"dev/vox/lss/common/PositionUtil.class": "y"},
+                 "class bytes differ")):
+            v = _sponge_jar(f"vspo-{label}.jar", meta=meta, brand=BRAND_VSS, extra=extra)
+            p = []
+            check_vss_sponge_identity(v, p)
+            check_vss_pair_sponge(good_spo, v, p)
+            check_wire_identity_paper(good_spo, v, p)
+            check(any(expected in issue for issue in p), f"Sponge VSS {label} accepted: {p}")
+        p = []
+        check_vss_pair_sponge(good_spo, good_spo, p)
+        check(any("rebrand no-opped" in issue for issue in p), f"un-rebranded VSS Sponge jar accepted: {p}")
+
+        # Server-scoped cross-loader presence: an xplat SERVER class the fabric jar ships
+        # must be in the sponge jar; an excluded client class need not be.
+        client_dir = os.path.join(ROOT, "xplat", "src", "main", "java", "dev", "vox", "lss", "networking", "client")
+        client_class = "dev/vox/lss/networking/client/" + sorted(
+            f for f in os.listdir(client_dir) if f.endswith(".java"))[0][:-5] + ".class"
+        fab_x = os.path.join(td, "fab-cross.jar")
+        _make_jar(fab_x, {"dev/vox/lss/networking/server/RequestProcessingService.class": "x",
+                          client_class: "x", "dev/vox/lss/LSSMod.class": "x"})
+        p = []
+        check_cross_loader_classes_sponge(fab_x, good_spo, p)
+        check(p == [], f"sponge cross-loader check flagged excluded/fabric-only classes: {p}")
+        p = []
+        check_cross_loader_classes_sponge(fab_x, _sponge_jar(
+            "spo-dropped-server.jar", drop=("dev/vox/lss/networking/server/RequestProcessingService.class",)), p)
+        check(any("xplat server classes" in issue for issue in p), f"dropped server surface accepted: {p}")
+
+        # Discovery: the missing-family polarity follows SHIP_SPONGE, and a present clean
+        # pair adds no sponge problem.
+        sroot = os.path.join(td, "sponge-tree")
+        os.makedirs(os.path.join(sroot, "sponge", "build", "libs"))
+        p = []
+        discover(p, root=sroot)
+        missing_family = any("no lod-server-support-sponge jar" in issue for issue in p)
+        check(missing_family == SHIP_SPONGE,
+              f"missing Sponge family polarity must follow SHIP_SPONGE={SHIP_SPONGE}: {p}")
+        for name, meta, brand in (("lod-server-support-sponge.jar", _sponge_meta(), BRAND_LSS),
+                                  ("voxy-server-side-sponge.jar", _sponge_meta(vss=True), BRAND_VSS)):
+            _make_jar(os.path.join(sroot, "sponge", "build", "libs", name),
+                      _sponge_entries(meta, brand), manifest=spo_manifest)
+        p = []
+        res = discover(p, root=sroot)
+        check(len(res) == 9 and len(res[6]) == 1 and len(res[7]) == 1, f"discover did not return the sponge pair: {res}")
+        sponge_issues = [issue for issue in p if "sponge" in issue.lower()]
+        check(sponge_issues == [], f"clean discovered Sponge pair flagged: {sponge_issues}")
+        _make_jar(os.path.join(sroot, "sponge", "build", "libs", "voxy-server-side-sponge.jar"),
+                  _sponge_entries(_sponge_meta(vss=False), BRAND_VSS), manifest=spo_manifest)
+        p = []
+        discover(p, root=sroot)
+        check(any("plugin id must be 'voxyserverside'" in issue for issue in p),
+              f"discover did not wire the Sponge VSS identity check: {p}")
+        p = []
+        check_glob_hygiene(p, [])
+        check(not any("Sponge dev jar" in issue for issue in p), f"Sponge dev jar names match a release glob: {p}")
+
     print(f"release_check selftest OK: {n} cases")
     return 0
 
@@ -3065,9 +3469,9 @@ def main(argv):
         return _selftest()
 
     problems = []
-    fab, pap, vfab, vpap, neo, vneo, soak = discover(problems, expected_version=args.version)
-    print(f"release_check: lss(fabric={len(fab)} paper={len(pap)} neoforge={len(neo)}) "
-          f"vss(fabric={len(vfab)} paper={len(vpap)} neoforge={len(vneo)}) soak={len(soak)}")
+    fab, pap, vfab, vpap, neo, vneo, spo, vspo, soak = discover(problems, expected_version=args.version)
+    print(f"release_check: lss(fabric={len(fab)} paper={len(pap)} neoforge={len(neo)} sponge={len(spo)}) "
+          f"vss(fabric={len(vfab)} paper={len(vpap)} neoforge={len(vneo)} sponge={len(vspo)}) soak={len(soak)}")
     if problems:
         print(f"FAIL: {len(problems)} release problem(s):")
         for m in problems:
