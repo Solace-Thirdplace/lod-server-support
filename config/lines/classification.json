@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "7907695dbb70fbc84fe5a7707077ab8ceda1c526",
-    "1.21.10": "317a4fc38f0baf2986c6f00ee96277b2273835d0",
-    "1.21.11": "be5c6d30c210a252ff1caade5f995bfe5081ba8b",
-    "26.1": "87e772930f247f13c9950042be03dfb9cddc629c",
-    "26.2": "6bdd6918bb6667d5d5bec74757c052ddebe111a4",
-    "26.3": "218da3b93d5ebe822896489dea19b2bf87ab763b"
+    "1.21.1": "07903d4294f1d52de72815db63a55a1b6f8c9db2",
+    "1.21.10": "6744f1d3af42f0a0d40f7af3313b7e252f019cfb",
+    "1.21.11": "1d4b6cea333051d0f8f020833c9da3353696c3b9",
+    "26.1": "9c37b8e404cc6fa9cbcc333f878c2777ffc152e0",
+    "26.2": "11aecb228da50295696dda0bd60097d2a03cfd17",
+    "26.3": "aeca32a117c582ae1cf27eed310a421f7b3bc756"
   },
   "files": {
     ".github/line.env": {
@@ -266,6 +266,9 @@
       "kind": "identical"
     },
     "common/src/main/java/dev/vox/lss/common/dh/DhSessionPolicy.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/dh/DhSkyLightBake.java": {
       "kind": "identical"
     },
     "common/src/main/java/dev/vox/lss/common/dh/DhTerrainDecoder.java": {
@@ -658,6 +661,9 @@
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/dh/DhSessionPolicyTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/dh/DhSkyLightBakeTest.java": {
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/dh/DhTerrainDecoderTest.java": {
@@ -3472,14 +3478,14 @@
     "fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java": {
       "axes": "Light-block API, BuiltInRegistries get vs getValue, ResourceLocation vs Identifier, ResourceKey location()/identifier(). Assertions and expected values byte-identical.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: API flavour substitutions only.",
+      "review": "2026-10-12 0.18.0 DH push sky-light fix: DhSkyLightBake ports DH 3.3.4's bakeDataSourceSkyLight, the converter applies it to real-time pushes (sent unbaked), and CONVERSION_VERSION 6 re-downloads tiles stored by 0.17.x; identical on every line except the 1.21.1 propagatesSkylightDown(BlockGetter,BlockPos) arity in DhColumnConverter; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: API flavour substitutions only.",
       "reviewed_blobs": {
-        "1.21.1": "ac685c451caf7c17732977a056ad20dca1e26324",
-        "1.21.10": "55f4d1dfa28d2df4bc86093992b92ded2598d5b5",
-        "1.21.11": "ebcab3e67e6e685400565c81569650790f865439",
-        "26.1": "48ac9e469120797f01dd0f4e605f61e6dcbfb2ae",
-        "26.2": "48ac9e469120797f01dd0f4e605f61e6dcbfb2ae",
-        "26.3": "3a0707e146d648a0d993db90f6b6dbc389a29243"
+        "1.21.1": "6237ba66dafe699e193d8ea2d68106c6624f8f5a",
+        "1.21.10": "4493c077d08009715b833224c8aca4ec6a674604",
+        "1.21.11": "b694138e1b0fc4a8ccd736ce39b80c65157e54e8",
+        "26.1": "2c24845dbffb2fa9c2a6b0502ef3eb0243fbd67f",
+        "26.2": "2c24845dbffb2fa9c2a6b0502ef3eb0243fbd67f",
+        "26.3": "89e876e8608e9bf31c907772c0c5c3ce1bef4448"
       },
       "surface": "dh-client-adapter:fabric/src/test/java/dev/vox/lss/networking/client/DhColumnConverterTest.java",
       "tests": [
@@ -11204,14 +11210,14 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java": {
       "axes": "MC API flavours only: ResourceKey location()/identifier(), ChunkPos fields vs x()/z() record accessors, getMinBuildHeight() vs getMinY(). Session, queue, budget and receipt logic byte-identical.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: 1.21.10 only getMinY; 1.21.11 adds identifier(); 26.1/26.2 add ChunkPos accessors. No logic, constant or message differences.",
+      "review": "2026-10-12 0.18.0 DH push sky-light fix: DhSkyLightBake ports DH 3.3.4's bakeDataSourceSkyLight, the converter applies it to real-time pushes (sent unbaked), and CONVERSION_VERSION 6 re-downloads tiles stored by 0.17.x; identical on every line except the 1.21.1 propagatesSkylightDown(BlockGetter,BlockPos) arity in DhColumnConverter; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: 1.21.10 only getMinY; 1.21.11 adds identifier(); 26.1/26.2 add ChunkPos accessors. No logic, constant or message differences.",
       "reviewed_blobs": {
-        "1.21.1": "9bc8013e57cc5dbab610396200a7d525ec1bfa8f",
-        "1.21.10": "4aecf08e31c823eb212206e89427fd7eda13f787",
-        "1.21.11": "2bf8293aa27b9c521f5739c94390e491cde2575d",
-        "26.1": "8cf927b79ad8f748666e2941e389d27c897c15ac",
-        "26.2": "8cf927b79ad8f748666e2941e389d27c897c15ac",
-        "26.3": "8cf927b79ad8f748666e2941e389d27c897c15ac"
+        "1.21.1": "f8b04f84ecdf94149887c1e328d92d45c280bb18",
+        "1.21.10": "c3545bb9b4c4e9f1a81973a3a41fe9d271cc3bff",
+        "1.21.11": "abc96e956c1e7b8e6f098c1148c69b6655871ac2",
+        "26.1": "882a21ecc39eb99a44611fa4a0d2f066abb5f3c9",
+        "26.2": "882a21ecc39eb99a44611fa4a0d2f066abb5f3c9",
+        "26.3": "882a21ecc39eb99a44611fa4a0d2f066abb5f3c9"
       },
       "surface": "dh-client-adapter:xplat/src/main/java/dev/vox/lss/networking/client/DhClientSession.java",
       "tests": [
@@ -11227,14 +11233,14 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/DhColumnConverter.java": {
       "axes": "Section construction (1.21.1 Registry<Biome> SectionConstruction; 1.21.10+ PalettedContainerFactory), registryOrThrow vs lookupOrThrow, ImmutableRegistryAccess freeze() on 1.21.x, light-block API (getLightBlock(getter,pos) / getLightBlock() / getLightDampening()). Conversion logic byte-identical.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: only the section-construction, registry-lookup and light-block API flavours. Comments name the flavour per line (26.x comment generalizes the 1.21.x form to the 1.21.1 seam; comment-only).",
+      "review": "2026-10-12 0.18.0 DH push sky-light fix: DhSkyLightBake ports DH 3.3.4's bakeDataSourceSkyLight, the converter applies it to real-time pushes (sent unbaked), and CONVERSION_VERSION 6 re-downloads tiles stored by 0.17.x; identical on every line except the 1.21.1 propagatesSkylightDown(BlockGetter,BlockPos) arity in DhColumnConverter; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-10 0.17.0 release pin: Per-line diff against 1.21.1 reviewed: only the section-construction, registry-lookup and light-block API flavours. Comments name the flavour per line (26.x comment generalizes the 1.21.x form to the 1.21.1 seam; comment-only).",
       "reviewed_blobs": {
-        "1.21.1": "df306c220361e5737a8aa841176b323cc8b487e1",
-        "1.21.10": "d2186d6823ba947cf49f9686da511345c985c515",
-        "1.21.11": "05dcebf1b3896b94b2d7aeb4c98e894cbf4628e2",
-        "26.1": "9213d58a7305df533ca86e183020148aa9738cea",
-        "26.2": "9213d58a7305df533ca86e183020148aa9738cea",
-        "26.3": "9213d58a7305df533ca86e183020148aa9738cea"
+        "1.21.1": "1e45ccf26b3656970626a7ca2c5e34a3340b0f8b",
+        "1.21.10": "7158a656f2a2fce2072a26b231075118134a21b6",
+        "1.21.11": "a6fa4c0fcc5d3b24685b0096c612635c2c0a6f71",
+        "26.1": "a3efe4bcb1d16b20592d297670af2bcbc4058f81",
+        "26.2": "a3efe4bcb1d16b20592d297670af2bcbc4058f81",
+        "26.3": "a3efe4bcb1d16b20592d297670af2bcbc4058f81"
       },
       "surface": "dh-client-adapter:xplat/src/main/java/dev/vox/lss/networking/client/DhColumnConverter.java",
       "tests": [
