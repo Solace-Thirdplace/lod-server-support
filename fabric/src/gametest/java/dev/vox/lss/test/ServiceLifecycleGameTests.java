@@ -1397,7 +1397,7 @@ public class ServiceLifecycleGameTests {
                     new HandshakeC2SPayload(LSSConstants.PROTOCOL_VERSION,
                             LSSConstants.CAPABILITY_VOXEL_COLUMNS | LSSConstants.CAPABILITY_FAR_PLAYERS),
                     viewer, service, replies::add);
-            helper.assertTrue(replies.size() == 1 && replies.getFirst().enabled()
+            Gt.assertTrue(helper, replies.size() == 1 && replies.getFirst().enabled()
                             && replies.getFirst().lodDistanceChunks() == 64,
                     "premise: a served world at 64, got " + replies);
             var fp = service.getFarPlayerService();
@@ -1415,7 +1415,7 @@ public class ServiceLifecycleGameTests {
             var online = java.util.List.of(viewerSnapshot(viewer.getUUID(), world));
             long now = 1_000_000L;
             fp.tick(now, online, settings, sender);
-            helper.assertTrue(fullRosterEpochs.size() == 1, "premise: the first full roster went out");
+            Gt.assertTrue(helper, fullRosterEpochs.size() == 1, "premise: the first full roster went out");
 
             var before = service.getPlayers().get(viewer.getUUID());
             var pushes = new ArrayList<SessionConfigS2CPayload>();
@@ -1423,21 +1423,21 @@ public class ServiceLifecycleGameTests {
             config.set("lod.distance.by_dimension", java.util.Map.of(world, 0));
             service.repushSessionConfig();
 
-            helper.assertTrue(pushes.size() == 1 && !pushes.getFirst().enabled()
+            Gt.assertTrue(helper, pushes.size() == 1 && !pushes.getFirst().enabled()
                             && pushes.getFirst().lodDistanceChunks() == 0,
                     "the off world is pushed as exactly enabled=false, distance 0, got " + pushes);
             var after = service.getPlayers().get(viewer.getUUID());
-            helper.assertTrue(after != null && after != before && before.registration().isRetired(),
+            Gt.assertTrue(helper, after != null && after != before && before.registration().isRetired(),
                     "the player stays registered with a fresh state; the old one is retired");
             int cx = viewer.getBlockX() >> 4, cz = viewer.getBlockZ() >> 4;
             service.handleBatchRequest(viewer, new BatchChunkRequestC2SPayload(
                     new long[]{PositionUtil.packPosition(cx, cz)}, new long[]{-1L}, 1));
-            helper.assertTrue(after.getTotalRequestsReceived() == 0,
+            Gt.assertTrue(helper, after.getTotalRequestsReceived() == 0,
                     "nothing is accepted in the off world, not even the player's own chunk");
 
             now += dev.vox.lss.common.farplayers.FarPlayerBroadcastService.FULL_ROSTER_MIN_INTERVAL_MILLIS + 1;
             fp.tick(now, online, settings, sender);
-            helper.assertTrue(fullRosterEpochs.size() == 2 && fullRosterEpochs.get(1) > fullRosterEpochs.get(0),
+            Gt.assertTrue(helper, fullRosterEpochs.size() == 2 && fullRosterEpochs.get(1) > fullRosterEpochs.get(0),
                     "the reload-off re-sends a full far-player roster at a bumped epoch, got " + fullRosterEpochs);
         } finally {
             service.shutdown();
@@ -1459,7 +1459,7 @@ public class ServiceLifecycleGameTests {
         ServerLevel level = helper.getLevel();
         var server = level.getServer();
         var endLevel = server.getLevel(Level.END);
-        helper.assertTrue(endLevel != null, "the End dimension must exist on the gametest server");
+        Gt.assertTrue(helper, endLevel != null, "the End dimension must exist on the gametest server");
         var mock = placeMockServerPlayer(helper);
         var config = new ServiceSettingsFixture();
         config.set("lod.distance.default_chunks", 64);
@@ -1474,20 +1474,20 @@ public class ServiceLifecycleGameTests {
 
             mock.setServerLevel(endLevel);
             service.tick();
-            helper.assertTrue(pushes.size() == 1 && !pushes.getFirst().enabled()
+            Gt.assertTrue(helper, pushes.size() == 1 && !pushes.getFirst().enabled()
                             && pushes.getFirst().lodDistanceChunks() == 0,
                     "entering the off world pushes enabled=false, 0, got " + pushes);
             var parked = service.getPlayers().get(mock.getUUID());
-            helper.assertTrue(parked != null, "the player stays registered in the off world");
+            Gt.assertTrue(helper, parked != null, "the player stays registered in the off world");
             int cx = mock.getBlockX() >> 4, cz = mock.getBlockZ() >> 4;
             service.handleBatchRequest(mock, new BatchChunkRequestC2SPayload(
                     new long[]{PositionUtil.packPosition(cx, cz)}, new long[]{-1L}, 1));
-            helper.assertTrue(parked.getTotalRequestsReceived() == 0,
+            Gt.assertTrue(helper, parked.getTotalRequestsReceived() == 0,
                     "an ask in the off world is range-filtered, not accepted");
 
             mock.setServerLevel(level);
             service.tick();
-            helper.assertTrue(pushes.size() == 2 && pushes.get(1).enabled()
+            Gt.assertTrue(helper, pushes.size() == 2 && pushes.get(1).enabled()
                             && pushes.get(1).lodDistanceChunks() == 64,
                     "leaving the off world pushes enabled=true with the served distance, got " + pushes);
         } finally {
@@ -1508,7 +1508,7 @@ public class ServiceLifecycleGameTests {
         ServerLevel level = helper.getLevel();
         var server = level.getServer();
         var endLevel = server.getLevel(Level.END);
-        helper.assertTrue(endLevel != null, "the End dimension must exist on the gametest server");
+        Gt.assertTrue(helper, endLevel != null, "the End dimension must exist on the gametest server");
         var config = new ServiceSettingsFixture();
         config.set("lod.distance.default_chunks", 64);
         config.set("lod.distance.by_dimension", java.util.Map.of("minecraft:the_end", 0));
@@ -1522,7 +1522,7 @@ public class ServiceLifecycleGameTests {
                 service.registerPlayer(mock, LSSConstants.CAPABILITY_VOXEL_COLUMNS);
             }
             service.tick();
-            helper.assertTrue(service.lastBandwidthSharingPlayerCount() == 2,
+            Gt.assertTrue(helper, service.lastBandwidthSharingPlayerCount() == 2,
                     "only the two players in a served world share the bandwidth, got "
                             + service.lastBandwidthSharingPlayerCount());
         } finally {

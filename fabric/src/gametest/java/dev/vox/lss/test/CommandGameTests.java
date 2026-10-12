@@ -464,9 +464,9 @@ public class CommandGameTests {
         // 26.3 fails a setter whose value is already set; the readback still proves the rule.
         var current = dev.vox.lss.benchmark.SoakCommandExecutor.executeForResult(
                 commands, source, "gamerule randomTickSpeed");
-        helper.assertTrue(current.success(), "the real rule query must succeed");
+        Gt.assertTrue(helper, current.success(), "the real rule query must succeed");
         String same = "gamerule randomTickSpeed " + current.value();
-        helper.assertTrue(dev.vox.lss.benchmark.SoakCommandExecutor.setGamerule(commands, source, same)
+        Gt.assertTrue(helper, dev.vox.lss.benchmark.SoakCommandExecutor.setGamerule(commands, source, same)
                         && dev.vox.lss.benchmark.SoakCommandExecutor.setGamerule(commands, source, same),
                 "re-setting a rule to its current value must pass on its exact readback");
         helper.succeed();
