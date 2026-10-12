@@ -94,6 +94,9 @@ class PaperDirtyColumnBroadcaster {
                 // filtered to THIS dimension above, and a mid-transit player.level() read
                 // could disagree with the loop key. (Level-keyed twin of the Fabric side.)
                 int lodDist = PaperWorldLod.distance(config, level);
+                // No LOD service in this world (distance 0): no notices (twin of the Fabric
+                // side) — the drain and invalidation still ran.
+                if (lodDist <= 0) continue;
 
                 // Paginate (twin of the Fabric broadcaster): a single dirty-columns frame caps
                 // at MAX_POSITIONS, so when a player has more in-range dirty positions than the

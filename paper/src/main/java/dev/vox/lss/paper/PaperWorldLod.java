@@ -50,6 +50,19 @@ final class PaperWorldLod {
         return config.lodDistanceForWorld(key.location().toString());
     }
 
+    /** A registered dimension ID string (the request state's key) through the loaded level, so
+     *  a Bukkit world-name override still matches; unparseable → the dimension-ID lookup. */
+    static int distanceForDimString(PaperConfig config, MinecraftServer server, String dimension) {
+        if (dimension == null) return config.lodDistanceChunks();
+        try {
+            return distanceForDimKey(config, server, ResourceKey.create(
+                    net.minecraft.core.registries.Registries.DIMENSION,
+                    net.minecraft.resources.ResourceLocation.parse(dimension)));
+        } catch (RuntimeException e) {
+            return config.lodDistanceForWorld(dimension);
+        }
+    }
+
     private static ServerLevel levelOf(ServerPlayer player) {
         try {
             return player.level() instanceof ServerLevel sl ? sl : null;
