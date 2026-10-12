@@ -52,7 +52,21 @@ class DhSkyLightBakeTest {
         bottomUp[0] = new long[]{point(STONE, 0, 59, 0), point(WATER, 59, 5, 0), point(AIR, 64, 320, 0)};
         DhSkyLightBake.bake(topDown, OPACITY, 15);
         DhSkyLightBake.bake(bottomUp, OPACITY, 15);
-        for (int i = 0; i < 3; i++) assertEquals(topDown[0][i], bottomUp[0][2 - i]);
+        assertArrayEquals(topDown[0], bottomUp[0], "the column is put in DH's top-down order in place");
+    }
+
+    /** A hostile tile of one-block air spans would otherwise spread for seconds to minutes. */
+    @Test void aHostileTileStopsSpreadingAtTheBudgetButKeepsItsVerticalLight() {
+        var columns = tile();
+        for (int c = 0; c < 4096; c++) {
+            columns[c] = new long[384];
+            for (int i = 0; i < 384; i++) columns[c][i] = point(AIR, 383 - i, 1, 0);
+        }
+        assertFalse(DhSkyLightBake.bake(columns, OPACITY, 15));
+        for (long[] column : columns) for (long span : column) assertEquals(15, sky(span));
+        var open = tile();
+        open[0] = new long[]{point(AIR, 64, 320, 0), point(STONE, 0, 64, 0)};
+        assertTrue(DhSkyLightBake.bake(open, OPACITY, 15), "ordinary terrain never reaches the budget");
     }
 
     @Test void bakingIsIdempotentAndDiscardsStaleSkyLight() {
