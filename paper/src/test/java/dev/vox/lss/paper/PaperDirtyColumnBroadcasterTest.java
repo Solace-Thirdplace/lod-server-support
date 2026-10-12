@@ -234,6 +234,28 @@ class PaperDirtyColumnBroadcasterTest {
     }
 
     @Test
+    void aWorldWithDistanceZeroGetsNoNoticesButIsStillInvalidated() {
+        // 0 = no LOD service in that world (twin of the Fabric pin).
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 16);
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        var nether = level(Level.NETHER);
+        when(server.getAllLevels()).thenReturn(List.of(overworld, nether));
+        var netherUuid = UUID.randomUUID();
+        addPlayer(netherUuid, nether, true, false);
+        var overworldUuid = UUID.randomUUID();
+        addPlayer(overworldUuid, overworld, true, false);
+
+        tracker.markDirty("minecraft:the_nether", 0, 0);
+        tracker.markDirty(OVERWORLD, 1, 0);
+        fireBroadcast();
+
+        assertTrue(sent.stream().noneMatch(f -> f.playerUuid().equals(netherUuid)), "no notices in an off world");
+        assertEquals(1, sent.stream().filter(f -> f.playerUuid().equals(overworldUuid)).count());
+        assertTrue(processor.invalidations.stream().anyMatch(i -> i.dimension().equals("minecraft:the_nether")),
+                "the off world's marks are still invalidated");
+    }
+
+    @Test
     void broadcastPaginatesBeyondMaxDirtyColumnPositionsCoveringEveryPosition() {
         var uuid = UUID.randomUUID();
         addPlayer(uuid, overworld, true, false);

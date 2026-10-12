@@ -666,9 +666,16 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
 
         boolean v16 = decision.dialect() == HandshakeGate.WireDialect.V16;
         boolean v18 = decision.dialect() == HandshakeGate.WireDialect.V18;
-        int lodDistance = PaperWorldLod.distance(config, nmsPlayer);
+        // 0 = no LOD service in this world (the Fabric twin): a CURRENT session is told
+        // enabled=false (and re-told on dimension change); legacy dialects get no later push,
+        // so they keep a serving distance and the request filter enforces the off world.
+        int worldLod = PaperWorldLod.distance(config, nmsPlayer);
+        boolean legacyDialect = decision.dialect() != HandshakeGate.WireDialect.CURRENT;
+        int lodDistance = legacyDialect ? config.legacyAdvertisedDistance(worldLod) : worldLod;
+        boolean enabledHere = decision.effectiveEnabled()
+                && (legacyDialect || dev.vox.lss.common.config.ServerConfigBase.servesWorld(worldLod));
         Runnable reply = () -> configSender.send(decision.dialect(),
-                decision.effectiveEnabled(),
+                enabledHere,
                 lodDistance,
                 // The caps ARE the old client's pacing — the server's real admission values
                 // (ignored by the V18 sender branch; see the v16 compat design §4.1).

@@ -276,6 +276,28 @@ class DirtyColumnBroadcasterTest {
     }
 
     @Test
+    void aWorldWithDistanceZeroGetsNoNoticesButStillDrainsAndInvalidates() {
+        // 0 = no LOD service in that world: its players are told nothing, while the drain and
+        // the range-blind invalidation still run (a re-enabled world must re-serve fresh data).
+        var rig = new Rig(List.of(Level.OVERWORLD, Level.NETHER));
+        MutableServerSettings.set(rig.config, "lod.distance.default_chunks", 8);
+        MutableServerSettings.set(rig.config, "lod.distance.by_world", new java.util.LinkedHashMap<>());
+        MutableServerSettings.dimension(rig.config, LSSConstants.DIM_STR_THE_NETHER, 0);
+        var overworldPlayer = rig.addPlayer(Level.OVERWORLD, 0, 0);
+        var netherPlayer = rig.addPlayer(Level.NETHER, 0, 0);
+        rig.tracker.markDirty(LSSConstants.DIM_STR_THE_NETHER, 0, 0);
+        rig.tracker.markDirty(LSSConstants.DIM_STR_OVERWORLD, 1, 1);
+        rig.fire();
+
+        assertEquals(0, sentTo(rig, netherPlayer).size(), "no notices in an off world");
+        assertArrayEquals(new long[]{PositionUtil.packPosition(1, 1)}, only(sentTo(rig, overworldPlayer)));
+        assertEquals(0, rig.tracker.pendingCount(), "the off world's marks are drained");
+        assertArrayEquals(new long[]{PositionUtil.packPosition(0, 0)},
+                only(invalidationsFor(rig, LSSConstants.DIM_STR_THE_NETHER)),
+                "and still invalidated");
+    }
+
+    @Test
     void rangeGateUsesRawLodDistanceWithoutTheRequestGateBuffer() {
         var rig = new Rig(List.of(Level.OVERWORLD));
         MutableServerSettings.set(rig.config, "lod.distance.default_chunks", 8);

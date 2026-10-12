@@ -73,7 +73,9 @@ public final class LegacySettingsMigration {
         }
         if(!schema.isClient()) {
             // Freeze the three old vanilla radii before overlaying exact legacy overrides.
-            int radius=(Integer)values.get("lod.distance.default_chunks");
+            // Old JSON clamped its radius to at least 1: a legacy 0 meant 1, never today's "off".
+            int radius=Math.max(1,(Integer)values.get("lod.distance.default_chunks"));
+            values.put("lod.distance.default_chunks",radius);
             var dimensions=new LinkedHashMap<String,Integer>();
             for(String dimension:List.of("minecraft:overworld","minecraft:the_nether","minecraft:the_end"))dimensions.put(dimension,radius);
             values.put("lod.distance.by_dimension",dimensions); values.put("lod.distance.by_world",Map.of());
