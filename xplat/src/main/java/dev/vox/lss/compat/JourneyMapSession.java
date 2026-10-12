@@ -243,7 +243,7 @@ final class JourneyMapSession {
     static String diagLine() {
         var session = instance;
         if (session != null) return session.describe();
-        if (unsupported) return "JourneyMap: state=unsupported (map ingestion needs JourneyMap 6.0.0 or newer)";
+        if (unsupported) return "JourneyMap: state=unsupported (" + JourneyMapLineSurface.UNSUPPORTED_HINT + ")";
         String reason = unavailableReason;
         return reason != null
                 ? "JourneyMap: state=unavailable(" + reason + ") (unrecognized JourneyMap internals — map ingestion off)"

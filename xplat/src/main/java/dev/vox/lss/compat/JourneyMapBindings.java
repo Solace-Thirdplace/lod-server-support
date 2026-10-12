@@ -85,7 +85,8 @@ final class JourneyMapBindings {
             snapshotChunkMd = resolver.resolve("journeymap.client.model.chunk.SnapshotChunkMD");
             snapshot = resolver.resolve("journeymap.common.chunk.JMChunkSnapshot");
         } catch (ClassNotFoundException e) {
-            throw new Unsupported("this JourneyMap has no chunk-snapshot layer (6.0.0 or newer is required)");
+            throw new Unsupported("this JourneyMap has no chunk-snapshot layer ("
+                    + JourneyMapLineSurface.UNSUPPORTED_HINT + ")");
         }
         Class<?> client = resolver.resolve("journeymap.client.JourneymapClient");
         Class<?> renderController = resolver.resolve("journeymap.client.cartography.ChunkRenderController");
