@@ -53,6 +53,21 @@ class CatalogTests(unittest.TestCase):
             readme.write_text(readme.read_text().replace('shipped; best-effort','not shipped'))
             with self.assertRaises(Invalid):render(root,True)
     def test_canonical_order(self):self.assertEqual(digest({'a':1,'b':2}),digest({'b':2,'a':1}))
+    def test_sponge_facts_are_optional_per_row(self):
+        # Pins that predate the Sponge module render '—'; lines that declare it render the flag.
+        old={'facts':{'line':'1.21.1','targets':{'fabric':'1.21.1','paper':'1.21.1','neoforge':'1.21.1'},'java':21,'neoforge_shipping':True,'neoforge_renderer':'available','paper_loaders':['paper','purpur'],'fabric_client_gametests':False}}
+        new={'facts':{'line':'26.2','targets':{'fabric':'26.2','paper':'26.2','neoforge':'26.2','sponge':'26.2'},'java':25,'neoforge_shipping':True,'neoforge_renderer':'unsupported','paper_loaders':['paper'],'fabric_client_gametests':True,'sponge_shipping':True}}
+        with tempfile.TemporaryDirectory() as d, patch('catalog.validate',return_value=([('a'*40,old),('b'*40,new)],{},[])), patch('catalog.snapshot_validation_records',return_value=[]):
+            root=Path(d);(root/'docs').mkdir();(root/'README.md').write_text('<!-- LSS SERVER MATRIX START -->\n<!-- LSS SERVER MATRIX END -->\n')
+            render(root);doc=(root/'docs/compatibility.md').read_text();readme=(root/'README.md').read_text()
+            self.assertIn('| 1.21.1 | 1.21.1 / 1.21.1 / 1.21.1 | 21 (21) | true | available | — |',doc)
+            self.assertIn('| 26.2 | 26.2 / 26.2 / 26.2 / 26.2 | 25 (21) | true | unsupported | true |',doc)
+            self.assertIn('| not available |',readme);self.assertIn('| shipped; experimental |',readme)
+    def test_inspect_reads_sponge_plugin_metadata(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'sponge.jar'
+            with zipfile.ZipFile(p,'w') as z:z.writestr('META-INF/sponge_plugins.json','{"plugins":[{"id":"lodserversupport"}]}')
+            self.assertEqual('lodserversupport',inspect_jar(p)['metadata']['sponge']['plugins'][0]['id'])
 
 if __name__=='__main__':unittest.main()
 

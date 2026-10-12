@@ -1,21 +1,23 @@
 // Root project — no source code here.
-// Subprojects: common (pure Java), fabric (Fabric mod), paper (Paper plugin)
+// Subprojects: common (pure Java), fabric (Fabric mod), paper (Paper plugin),
+// neoforge (NeoForge mod), sponge (SpongeVanilla plugin)
 
 // Convenience aggregate for the Voxy Server Side branded pair (XANTHA's publish flow):
 //   ./gradlew vssJars   ->  fabric/build/libs/voxy-server-side-fabric*.jar
 //                           paper/build/libs/voxy-server-side-paper*.jar
 //                           neoforge/build/libs/voxy-server-side-neoforge*.jar (stage N-4)
+//                           sponge/build/libs/voxy-server-side-sponge*.jar
 // Each platform's vssJar is a byte-copy rebrand of the LSS jar (wire-identical; see the
-// vssJar tasks in fabric/ and paper/ build.gradle). Version-stamped names: CI=true.
+// vssJar tasks in each platform's build.gradle). Version-stamped names: CI=true.
 tasks.register('vssJars') {
-    description = 'Builds the Voxy Server Side branded jars (Fabric + Paper + NeoForge).'
+    description = 'Builds the Voxy Server Side branded jars (Fabric + Paper + NeoForge + Sponge).'
     group = 'build'
-    dependsOn ':fabric:vssJar', ':paper:vssJar', ':neoforge:vssJar'
+    dependsOn ':fabric:vssJar', ':paper:vssJar', ':neoforge:vssJar', ':sponge:vssJar'
 }
 
 // Platform builds retain the pure-Java cases moved out of Fabric's test task.
 subprojects { subproject ->
-    if (subproject.name in ['fabric', 'paper', 'neoforge']) {
+    if (subproject.name in ['fabric', 'paper', 'neoforge', 'sponge']) {
         subproject.tasks.matching { it.name == 'check' }.configureEach {
             dependsOn ':common:test'
         }
