@@ -512,4 +512,28 @@ class StoreBackfillTest {
         awaitDone(bf);
         store.shutdown();
     }
+
+    /** distance 0: an off dimension is neither planned nor done-marked, so a later run (after
+     *  it is turned back on) walks it; a throwing check reads as served, never a silent skip. */
+    @Test
+    void anOffDimensionIsSkippedUnmarkedAndALaterRunWalksIt() throws Exception {
+        writeRegion(0, 0, 5);
+        SqliteLodStore store = openStore();
+        var reads = new java.util.concurrent.atomic.AtomicInteger();
+        var bf = backfill(store, (dim, cx, cz) -> {
+            reads.incrementAndGet();
+            return new byte[]{1};
+        }, new AtomicBoolean(true), new AtomicBoolean(true));
+        bf.setDimensionFilter(dim -> false);
+        assertTrue(bf.start());
+        awaitDone(bf);
+        assertEquals(0, reads.get(), "an off dimension must not be walked");
+        assertTrue(!store.isBackfillRegionDone(OW, 0, 0), "an off dimension's region stays unmarked");
+
+        bf.setDimensionFilter(dim -> { throw new IllegalStateException("broken check"); });
+        assertTrue(bf.start());
+        awaitDone(bf);
+        assertEquals(1, reads.get(), "the next run walks the region (a throwing check reads as served)");
+        store.shutdown();
+    }
 }

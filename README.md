@@ -116,8 +116,8 @@ restart or reconnect; it does not rewrite comments or normalized values.
 (players stay connected to LSS, and far players keep working). Add `default_chunks: 0` to
 serve only the dimensions you list. Paper's `by_world` takes world names and works the
 same way. After `/lsslod reload`, `/lsslod diag` lists the worlds that are off. Clients
-older than LSS 0.10 only learn about the change when they reconnect; until then the
-server simply sends them nothing in that dimension.
+older than LSS 0.10 are never told a dimension is off: they stay enabled and the server
+simply sends them nothing there.
 
 ```yaml
 lod:

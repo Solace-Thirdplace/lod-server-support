@@ -52,7 +52,7 @@ public final class SettingsSchema<T> {
                 case "lod.dh.sync_on_load", "lod.dh.real_time_updates", "lod.voxy_border_fill" -> true;
                 default -> null;
             };
-            if (raw==null && spec.path().endsWith("by_world")) raw=Map.of();
+            if (raw==null && spec.path().equals("lod.distance.by_world")) raw=Map.of();
             if (paper && spec.path().equals("storage.lod_store.resweep_interval_seconds")) raw=300;
             Object value=typed(spec,raw);
             defs.put(spec.path(),value);
