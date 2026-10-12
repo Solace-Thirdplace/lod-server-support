@@ -116,7 +116,7 @@ def main(platform):
     endpoint=runtime['bind_endpoint']
     if endpoint!='127.0.0.1:25574':raise ValueError('expected the owned shared loopback endpoint 127.0.0.1:25574')
     runtime['generated_files']['server/eula.txt']='eula=true\n'
-    runtime['generated_files']['server/server.properties']='server-ip=127.0.0.1\nserver-port=25574\nonline-mode=false\nlevel-type=minecraft:flat\nlevel-seed=rig-source-correctness-1\nview-distance=3\nsimulation-distance=3\nspawn-protection=0\nmax-players=8\nallow-flight=true\nenforce-secure-profile=false\n'
+    runtime['generated_files']['server/server.properties']='server-ip=127.0.0.1\nserver-port=25574\nonline-mode=false\nwhite-list=false\nlevel-type=minecraft:flat\nlevel-seed=rig-source-correctness-1\nview-distance=3\nsimulation-distance=3\nspawn-protection=0\nmax-players=8\nallow-flight=true\nenforce-secure-profile=false\n'
     flat={'layers':[{'block':'minecraft:bedrock','height':1},{'block':'minecraft:dirt','height':2},{'block':'minecraft:grass_block','height':1}],'biome':'minecraft:plains','features':False,'lakes':False,'structure_overrides':[]}
     runtime['generated_files']['server/server.properties']+='generator-settings='+json.dumps(flat,separators=(',',':'))+'\n'
     pins={'lod.distance.default_chunks':32,'generation.enabled':True,'generation.concurrency.global':4,'generation.concurrency.per_player':1,'storage.lod_store.enabled':True,'storage.lod_store.backfill.enabled':False}

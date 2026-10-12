@@ -52,9 +52,10 @@ public final class AliasCorroboration {
      * The corroboration ladder, in guard order:
      *
      * <ol>
-     *   <li>Xaero map bridge ARMED (flag ∧ installed ∧ resolved) → FALL_BACK: Xaero's
-     *       world id is per-address and no aliasing exists for it — an applied alias
-     *       would be coarser than the map store whatever Voxy says.</li>
+     *   <li>LOD map ingestion ARMED (flag ∧ a supported map mod installed ∧ resolved)
+     *       → FALL_BACK: Xaero's world id is per-address and JourneyMap's is per
+     *       server-list entry, with no aliasing for either — an applied alias would be
+     *       coarser than the map store whatever Voxy says.</li>
      *   <li>No Voxy consumer registered → APPLY as configured (the pure-API user's
      *       documented risk — there is nothing observable to corroborate against).</li>
      *   <li>Voxy present but unprobeable ({@code observedDirName} null) → FALL_BACK
@@ -70,20 +71,21 @@ public final class AliasCorroboration {
      * </ol>
      *
      * @param voxyConsumerRegistered the Voxy ingest bridge registered a consumer
-     * @param xaeroBridgeArmed       the Xaero map bridge is armed for this session
+     * @param mapStoreArmed          LOD map ingestion can write a map store this session
      * @param observedDirName        the live Voxy storage root's directory NAME, or
      *                               null when unprobeable
      * @param connectAddr            the raw typed connect address
      * @param canonicalRaw           the matched group's canonical (first) entry, raw
      */
-    public static Result evaluate(boolean voxyConsumerRegistered, boolean xaeroBridgeArmed,
+    public static Result evaluate(boolean voxyConsumerRegistered, boolean mapStoreArmed,
                                   String observedDirName, String connectAddr,
                                   String canonicalRaw) {
-        if (xaeroBridgeArmed) {
-            return Result.fallBack("xaero-armed",
-                    "cacheAddressAliases: not applied while the Xaero map bridge is active — "
-                            + "Xaero's map store is per-address and has no alias support; the "
-                            + "cache stays keyed by the typed address (finer, never wrong)");
+        if (mapStoreArmed) {
+            return Result.fallBack("map-store-armed",
+                    "cacheAddressAliases: not applied while LOD map ingestion is active — "
+                            + "the map mods' stores (Xaero's World Map, JourneyMap) are per-server "
+                            + "and have no alias support; the cache stays keyed by the typed "
+                            + "address (finer, never wrong)");
         }
         if (!voxyConsumerRegistered) {
             return Result.apply("no-consumer");

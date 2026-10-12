@@ -260,6 +260,38 @@ class ClientSessionGateTest {
     }
 
     @Test
+    void anOffWorldConfigParksTheSessionAndAServedWorldResumesIt() {
+        // Distance 0 (no LOD service in this world) reaches the client as exactly
+        // enabled=false, distance 0 — at a dimension change into an off world, or a reload
+        // turning the player's world off. The established session retires with the standard
+        // teardown (stamps reported, cache saved), a repeat of the same push is inert, and the
+        // served world's enabled=true rebuilds on the same connection — no re-handshake.
+        gate.onJoin(true, false, true, true);
+        gate.onSessionConfig(config(V, true), true, true);
+        var served = gate.getRequestManager();
+        assertNotNull(served);
+        int handshakes = handshakesSent.get();
+        events.clear();
+
+        gate.onSessionConfig(new SessionConfigS2CPayload(V, false, 0, true), true, true);
+        assertFalse(gate.isServerEnabled());
+        assertTrue(gate.hasReceivedSessionConfig(), "parked, not 'no LSS server'");
+        assertNull(gate.getRequestManager(), "the off world parks the session");
+        assertFalse(served.isAcquisitionActive());
+        assertEquals(List.of("disconnect", "save"), events, "retired once, cache saved");
+
+        gate.onSessionConfig(new SessionConfigS2CPayload(V, false, 0, true), true, true);
+        assertEquals(List.of("disconnect", "save"), events, "a repeat off push (a later reload) is inert");
+
+        gate.onSessionConfig(config(V, true), true, true);
+        assertTrue(gate.isServerEnabled());
+        assertNotNull(gate.getRequestManager(), "a served world resumes the session");
+        assertNotSame(served, gate.getRequestManager());
+        assertEquals(List.of("disconnect", "save", "rebuild"), events);
+        assertEquals(handshakes, handshakesSent.get(), "same connection: no re-handshake");
+    }
+
+    @Test
     void validDisabledConfigRecordsReplyWithoutSession() {
         gate.onSessionConfig(config(V, false), true, true);
 

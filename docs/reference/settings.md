@@ -25,7 +25,7 @@ Invalid authoritative YAML never falls back to JSON. Reload does not write files
 
 Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`) live in a
 sidecar file beside the selected client file (`lss-client-experimental.yaml` or
-`vss-client-experimental.yaml`), so the main client file always stays readable by v0.16.0.
+`vss-client-experimental.yaml`), so the main client file stays readable by v0.16.0.
 The sidecar holds only nondefault values; deleting it restores the defaults. Allow DH
 Server Terrain (`lod.source: distant_horizons`) is on by default, so turning it off
 writes `source: lss` to the sidecar. Older
@@ -33,15 +33,23 @@ development builds wrote these keys into the main file: they are still honoured 
 and the next save moves them into the sidecar (retired `lod.dh.refresh_seconds` and
 `lod.dh.profile` are removed). One reload reads both files.
 
+Map ingestion was renamed from `integrations.xaero_map` to `integrations.map_ingestion`
+(it now covers Xaero's World Map and JourneyMap). The old group is still read and is
+rewritten under the new name by the next save that changes a setting; startup never
+rewrites it. New files enable map ingestion; migration from JSON keeps an absent
+`enableXaeroMapBridge` off. **Downgrade exception:** LSS 0.17 and older reject the new
+group, so a file created or saved by a newer build loads there only after renaming
+`map_ingestion:` back to `xaero_map:` under `integrations:` (or deleting the file).
+
 ## Fabric / NeoForge / Sponge server
 
 | YAML path | Type | Default | Range / units | Timing | Applicability |
 | --- | --- | --- | --- | --- | --- |
 | service.enabled | boolean | true |  | R | all |
 | service.require_permission | boolean | false |  | H | all |
-| lod.distance.default_chunks | integer | 512 | 1–2048 chunks | H | all |
-| lod.distance.by_dimension | integer_map | {"minecraft:overworld":512,"minecraft:the_nether":64,"minecraft:the_end":512} | 1–2048 | H | all |
-| lod.distance.by_world | integer_map | {} | 1–2048 | H | paper |
+| lod.distance.default_chunks | integer | 512 | 0 sentinel; 1–2048 chunks | H | all |
+| lod.distance.by_dimension | integer_map | {"minecraft:overworld":512,"minecraft:the_nether":64,"minecraft:the_end":512} | 0 sentinel; 1–2048 | H | all |
+| lod.distance.by_world | integer_map | {} | 0 sentinel; 1–2048 | H | paper |
 | generation.enabled | boolean | true |  | H | all |
 | generation.concurrency.global | integer | 40 | 1–512 | H | all |
 | generation.concurrency.per_player | integer | 40 | 1–512 | H | all |
@@ -103,8 +111,8 @@ service:
 # times the area; a large configured radius does not mean it fills instantly.
 lod:
   distance:
-    default_chunks: 512 # Fallback for dimensions not listed below; range 1–2048.
-    by_dimension: # These are fresh-install defaults; migration preserves existing limits.
+    default_chunks: 512 # Fallback for dimensions not listed below; range 1–2048, 0 = off.
+    by_dimension: # Fresh-install defaults; 0 turns LODs off in that dimension.
       "minecraft:overworld": 512 # Overworld radius in chunks.
       "minecraft:the_nether": 64 # Nether radius in chunks.
       "minecraft:the_end": 512 # End radius in chunks.
@@ -256,9 +264,9 @@ far_players:
 | --- | --- | --- | --- | --- | --- |
 | service.enabled | boolean | true |  | R | all |
 | service.require_permission | boolean | false |  | H | all |
-| lod.distance.default_chunks | integer | 512 | 1–2048 chunks | H | all |
-| lod.distance.by_dimension | integer_map | {"minecraft:overworld":512,"minecraft:the_nether":64,"minecraft:the_end":512} | 1–2048 | H | all |
-| lod.distance.by_world | integer_map | {} | 1–2048 | H | paper |
+| lod.distance.default_chunks | integer | 512 | 0 sentinel; 1–2048 chunks | H | all |
+| lod.distance.by_dimension | integer_map | {"minecraft:overworld":512,"minecraft:the_nether":64,"minecraft:the_end":512} | 0 sentinel; 1–2048 | H | all |
+| lod.distance.by_world | integer_map | {} | 0 sentinel; 1–2048 | H | paper |
 | generation.enabled | boolean | true |  | H | all |
 | generation.concurrency.global | integer | 40 | 1–512 | H | all |
 | generation.concurrency.per_player | integer | 40 | 1–512 | H | all |
@@ -320,12 +328,12 @@ service:
 # times the area; a large configured radius does not mean it fills instantly.
 lod:
   distance:
-    default_chunks: 512 # Fallback for dimensions not listed below; range 1–2048.
-    by_dimension: # These are fresh-install defaults; migration preserves existing limits.
+    default_chunks: 512 # Fallback for dimensions not listed below; range 1–2048, 0 = off.
+    by_dimension: # Fresh-install defaults; 0 turns LODs off in that dimension.
       "minecraft:overworld": 512 # Overworld radius in chunks.
       "minecraft:the_nether": 64 # Nether radius in chunks.
       "minecraft:the_end": 512 # End radius in chunks.
-    by_world: {} # Paper world-name overrides; take priority over dimension entries.
+    by_world: {} # Paper world-name overrides (0 = off); take priority over dimension entries.
 
 # Lets LOD requests create terrain that does not yet exist in the world.
 # This costs world-generation CPU time and grows the normal world files, independently
@@ -499,15 +507,15 @@ paper:
 | scan.retain_completed_prefix | boolean | true |  | S | all |
 | scan.quadtree | boolean | true |  | S | all |
 | scan.region_summaries | boolean | true |  | S | all |
-| cache.split_by_world | boolean | true | 1–2048 | S | all |
+| cache.split_by_world | boolean | true |  | S | all |
 | cache.address_aliases | string_groups | [] |  | S | all |
 | compatibility.protocols.v16 | boolean | true |  | S | all |
 | compatibility.protocols.v19 | boolean | true |  | S | all |
 | compatibility.v16_generation | boolean | true |  | S | all |
 | compatibility.block_fallbacks.default | string | "minecraft:stone" |  | S | all |
 | compatibility.block_fallbacks.overrides | string_map | {} |  | S | all |
-| integrations.xaero_map.enabled | boolean | false |  | S | all |
-| integrations.xaero_map.backpressure | boolean | true |  | H | all |
+| integrations.map_ingestion.enabled | boolean | true |  | S | all |
+| integrations.map_ingestion.backpressure | boolean | true |  | H | all |
 | far_players.enabled | boolean | true |  | H | all |
 | far_players.distance.min_blocks | integer | 0 | 0–16384 blocks | H | all |
 | far_players.distance.max_blocks | integer | 0 | 0–16384 blocks | H | all |
@@ -518,6 +526,13 @@ paper:
 | far_players.sharing.enabled | boolean | true |  | H | all |
 | far_players.sharing.max_distance_blocks | integer | 0 | 0–16384 blocks | H | all |
 
+Old paths still read (the next save that changes a setting rewrites them):
+
+| Old path | Read as |
+| --- | --- |
+| integrations.xaero_map.backpressure | integrations.map_ingestion.backpressure |
+| integrations.xaero_map.enabled | integrations.map_ingestion.enabled |
+
 The generated document includes feature explanations, resource costs and zero meanings.
 
 ```yaml
@@ -526,7 +541,7 @@ The generated document includes feature explanations, resource costs and zero me
 # Sodium Apply saves and reloads automatically. [reconnect] settings wait for the next connection.
 config_version: 1 # Local settings schema version, independent of the network protocol.
 
-# Downloads distant terrain for installed consumers such as Voxy or Xaero's map.
+# Downloads distant terrain for installed consumers such as Voxy or a map mod.
 # The terrain renderer controls how that data is drawn; this download radius does
 # not raise vanilla render/simulation distance. More terrain can cost client disk,
 # memory and processing time. Turning reception off does not erase cached terrain.
@@ -565,7 +580,7 @@ cache:
   split_by_world: true # [reconnect] Separate cache identity when one address changes worlds.
   address_aliases: [] # [reconnect] Ordered address groups; first address is canonical.
   # Example: [["play.example.com", "alt.example.com"]]. Requires consumer corroboration.
-  # Aliases stay inactive while the Xaero map bridge is enabled.
+  # Aliases stay inactive while map ingestion writes into a per-server map store.
 
 # Protocol fallbacks allow older LOD servers. Block fallbacks provide a local visual
 # substitute when this client does not know a received block; they do not install
@@ -580,12 +595,13 @@ compatibility:
     overrides: {} # [reconnect] Remote block ID -> local block ID mappings.
 
 integrations:
-  # Writes received terrain into Xaero's persistent map beyond normal view distance.
-  # Filling a large map adds client CPU, memory and disk work. Turning this off stops
-  # future writes after reconnect; it does not remove terrain already saved on the map.
-  # Backpressure lets map writing keep up instead of allowing an unchecked backlog.
-  xaero_map:
-    enabled: false # [reconnect] Write native terrain service data into Xaero's World Map; requires that mod.
+  # Writes received distant terrain into installed map mods (Xaero's World Map, JourneyMap),
+  # so the map shows beyond the area you have explored. See the README for supported versions.
+  # Maps save these tiles like explored terrain (they stay until you revisit), and a large LOD
+  # distance can add GBs of map data. Map writing paces downloads so maps stay complete; turning
+  # this off stops future writes after reconnect without removing terrain already saved.
+  map_ingestion:
+    enabled: true # [reconnect] Write server terrain into installed map mods; off = maps show only explored terrain.
     backpressure: true # Pace downloads to map writes; requires ingest_backpressure.
 
 # Draws distant player models from server snapshots, not fully simulated entities.

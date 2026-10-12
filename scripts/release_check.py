@@ -62,7 +62,10 @@ SPONGE_FORBIDDEN = ("dev/vox/lss/benchmark/", "dev/vox/lss/spongesmoke/", "dev/v
 COMMON_FORBIDDEN = ("privatep4/", "com/seibel/", "net/caffeinemc/", "dev/vox/lss/common/soak/", "dev/vox/lss/common/benchmark/",
                     "dev/vox/lssfixture/",
                     # Voxy carries stock XZ; LSS must carry only its private relocated copy.
-                    "org/tukaani/")
+                    "org/tukaani/",
+                    # The map mods' real-package Tier-1 stubs: All Rights Reserved names
+                    # LSS binds by reflection only (map-ingestion plan §0 licensing).
+                    "journeymap/", "xaero/")
 # All four shipped artifacts: the LSS pair (Modrinth lKiXKLvv) and the Voxy Server Side pair
 # (Modrinth voxy-server-side). The VSS jars are branded byte-copies of the LSS jars — same
 # classes, mod id `lss` / plugin name LodServerSupport, so they get the IDENTICAL safety
@@ -812,7 +815,7 @@ FORBIDDEN_MIXIN_CONFIG = re.compile(r"(^lss-dh-|fixture|^lss-rig-|^lss-smoke|p4)
 FABRIC_DEPENDENCY_ALLOWLIST = {
     "depends": {"minecraft", "fabricloader", "fabric-api"},
     # 1.21.11 line: fabric.mod.json also suggests voxy (>=0.2.15-beta).
-    "recommends": set(), "suggests": {"sodium", "modmenu", "voxy", "xaeroworldmap"},
+    "recommends": set(), "suggests": {"sodium", "modmenu", "voxy", "xaeroworldmap", "journeymap"},
     "breaks": set(), "conflicts": set(),
 }
 NEOFORGE_DEPENDENCY_ALLOWLIST = {"neoforge", "minecraft"}
@@ -2631,6 +2634,12 @@ def _selftest_fixtures():
             p = []
             _scan_forbidden(bad, label, COMMON_FORBIDDEN, p)
             check(any("dev/vox/lssfixture/" in issue for issue in p), f"test fixture accepted: {p}")
+        for stub in ("journeymap/client/JourneymapClient.class", "xaero/map/WorldMap.class"):
+            bad = os.path.join(td, "map-stub.jar")
+            _make_jar(bad, {stub: b"test-only"})
+            p = []
+            _scan_forbidden(bad, "map-stub", COMMON_FORBIDDEN, p)
+            check(any(stub.split("/")[0] + "/" in issue for issue in p), f"map-mod stub accepted: {p}")
 
         for loader in ("paper", "neoforge", "common"):
             p = []

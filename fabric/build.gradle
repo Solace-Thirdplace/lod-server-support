@@ -52,6 +52,17 @@ configurations {
         canBeResolved = true
         transitive = false
     }
+    // map-ingestion plan §6.1 — see the dependencies' comments.
+    journeymapGoldenFabric {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
+    journeymapGoldenNeoForge {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
 }
 
 apply from: rootProject.file('gradle/c2me-dev-runtime.gradle')
@@ -95,6 +106,14 @@ dependencies {
     // against the line's own compile artifact (this configuration exists only where the
     // line pins one; a 0.7-only line leaves it unresolvable and the test skips).
     sodiumModernGolden "maven.modrinth:sodium:${sodium_version}"
+    // The real JourneyMap jars (All Rights Reserved — downloaded, never redistributed) the
+    // map-ingestion bridge binds by reflection: JourneyMapBindingSurfaceTest resolves the
+    // bindings against both loaders' builds, JourneyMapDecoderParityTest decodes the
+    // encoder's bytes with JourneyMap's own reader. PLAIN configurations loaded in a
+    // child-first class loader — never on a compile or test classpath (the Tier-1 stubs
+    // own the journeymap.* names there). Offline = the tests skip; CI=true fails instead.
+    journeymapGoldenFabric "maven.modrinth:journeymap:${journeymap_golden_fabric}"
+    journeymapGoldenNeoForge "maven.modrinth:journeymap:${journeymap_golden_neoforge}"
     // Compat validation arm: -Pbenchmark.moonrise=true puts Moonrise on the dev runtime
     // (the same Modrinth version issue #69 was reported against), so the soak harness can
     // drive the full dirty pipeline — the SerializableChunkData.copyOf hook, broadcast,
@@ -121,6 +140,19 @@ dependencies {
         def c2meArtifact = "maven.modrinth:c2me-fabric:${c2mePins[c2meProfile]}"
         project.addC2meDevRuntime(c2meArtifact, 21)
     }
+    // Map-ingestion live gates (map-ingestion plan §6.4): -Plss.journeymapRuntime=true puts
+    // JourneyMap (All Rights Reserved; downloaded from Modrinth, never redistributed) on the
+    // dev client runtime for the JourneyMap smoke; -Plss.xaeroRuntime=true does the same for
+    // Xaero's World Map (the memory gate). Runtime-only: release jars are unaffected
+    // (release_check rejects journeymap/ and xaero/ entries).
+    if ((findProperty('lss.journeymapRuntime') ?: 'false').toString() == 'true') {
+        // LINE FLAVOR (1.21.x): the Fabric jar is intermediary and nests its libraries;
+        // Loom strips nesting when remapping, so the nested-jar helper feeds them too.
+        project.addC2meDevRuntime("maven.modrinth:journeymap:${journeymap_dev_version}", 21)
+    }
+    if ((findProperty('lss.xaeroRuntime') ?: 'false').toString() == 'true') {
+        project.addC2meDevRuntime("maven.modrinth:xaeros-world-map:${xaero_dev_version}", 21) // nests xaerolib
+    }
 }
 
 test {
@@ -133,14 +165,22 @@ test {
     // silently). No Project reference is captured in the task action.
     def legacyGolden = configurations.sodiumLegacyGolden.incoming.artifactView { lenient = true }.files
     def modernGolden = configurations.sodiumModernGolden.incoming.artifactView { lenient = true }.files
+    def jmFabricGolden = configurations.journeymapGoldenFabric.incoming.artifactView { lenient = true }.files
+    def jmNeoForgeGolden = configurations.journeymapGoldenNeoForge.incoming.artifactView { lenient = true }.files
     inputs.property "sodium_legacy_golden", project.sodium_legacy_golden
     inputs.property "sodium_version", project.sodium_version
     inputs.files(legacyGolden).optional()
     inputs.files(modernGolden).optional()
+    inputs.property "journeymap_golden_fabric", project.journeymap_golden_fabric
+    inputs.property "journeymap_golden_neoforge", project.journeymap_golden_neoforge
+    inputs.files(jmFabricGolden).optional()
+    inputs.files(jmNeoForgeGolden).optional()
     doFirst {
         systemProperty 'lss.sodiumLegacyGoldenJar', legacyGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
         systemProperty 'lss.sodiumModernGoldenJar', modernGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
         systemProperty 'lss.sodiumModernGoldenExpected', 'true'
+        systemProperty 'lss.journeymapGoldenFabricJar', jmFabricGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
+        systemProperty 'lss.journeymapGoldenNeoForgeJar', jmNeoForgeGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
     }
     // GameTestEntrypointContractTest reads these at runtime (repo-walk); without declaring
     // them as inputs, adding a gametest class or editing the entrypoint list leaves the
@@ -235,6 +275,14 @@ loom {
             // skips the v20 decode translation, exercising the server's egress rungs)
             vmArg "-Dlss.soak.probes=${findProperty('soak.probes') ?: ''}"
             vmArg "-Dlss.soak.clientActionAt=${findProperty('soak.clientActionAt') ?: ''}"
+            // The JourneyMap smoke (map-ingestion plan §6.4): let JourneyMap's own
+            // stop-mapping flush land before the client halts. 0 = halt at once.
+            vmArg "-Dlss.soak.haltGraceMillis=${findProperty('soak.haltGraceMillis') ?: '0'}"
+            // The Xaero memory gate (map-ingestion plan §6.4 L2): "MS[:SECONDS]" per-frame sleep.
+            vmArg "-Dlss.soak.frameThrottle=${findProperty('soak.frameThrottle') ?: ''}"
+            // Extra client JVM arguments for the live gates, comma separated (e.g. a heap
+            // size and -Dlss.xaero.openRegionWindow=0 for the memory A/B).
+            (findProperty('soak.clientJvmArgs') ?: '').toString().split(',').findAll { it }.each { vmArg it }
             vmArg "-Dlss.soak.dialect=${findProperty('soak.dialect') ?: ''}"
             // Region summaries (region-summary-sync-plan.md §6): -Dlss.soak gates the
             // client OFF requesting so no baseline shifts; the summary scenarios opt

@@ -74,8 +74,10 @@ final class SettingsSchemaSpecs {
         client.add(new Spec("compatibility.v16_generation", "enableV16Generation", Kind.BOOLEAN, Timing.S, Platform.ALL, false));
         client.add(new Spec("compatibility.block_fallbacks.default", "unknownBlockFallback", Kind.STRING, Timing.S, Platform.ALL, false));
         client.add(new Spec("compatibility.block_fallbacks.overrides", "crossVersionBlockFallbacks", Kind.STRING_MAP, Timing.S, Platform.ALL, true));
-        client.add(new Spec("integrations.xaero_map.enabled", "enableXaeroMapBridge", Kind.BOOLEAN, Timing.S, Platform.ALL, false));
-        client.add(new Spec("integrations.xaero_map.backpressure", "enableXaeroMapBackpressure", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
+        // Map ingestion (map-ingestion plan §2.1): the legacy JSON names stay what the old
+        // Xaero-only keys were; integrations.xaero_map.* is a read alias (SettingsSchema).
+        client.add(new Spec("integrations.map_ingestion.enabled", "enableXaeroMapBridge", Kind.BOOLEAN, Timing.S, Platform.ALL, false));
+        client.add(new Spec("integrations.map_ingestion.backpressure", "enableXaeroMapBackpressure", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.enabled", "farPlayersEnabled", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.distance.min_blocks", "farPlayersMinDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.distance.max_blocks", "farPlayersMaxDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));
