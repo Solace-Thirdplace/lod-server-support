@@ -1,4 +1,9 @@
-"""Every line-specific parameter of the private DH live rig (MC 26.2). See PORTING.md."""
+"""Every line-specific parameter of the private DH live rig (MC 26.2). See PORTING.md.
+
+NOT YET PORTED TO 26.3: this checkout builds Minecraft 26.3 (main moved there after
+v0.17.0) but these values still describe the 26.2 rig, and there is no 26.3 Distant
+Horizons or Voxy build to port to yet. Importing refuses, so a 26.3 LSS jar is never
+staged into the 26.2 Prism copies. Run the rig from support/mc26.2 until it is ported."""
 import copy
 from pathlib import Path
 
@@ -84,3 +89,16 @@ LINE = {
     'fabric_remap': None,
     'fixture_link_libraries': [_SERVERS / 'neoforge-26.2/libraries', Path('/home/vox/.local/share/lss-rig-prism-auth/libraries')],
 }
+
+
+def _checkout_minecraft():
+    props = Path(__file__).resolve().parents[2] / 'gradle.properties'
+    for line in props.read_text().splitlines():
+        if line.startswith('minecraft_version='):
+            return line.split('=', 1)[1].strip()
+    return None
+
+
+if _checkout_minecraft() != LINE['minecraft']:
+    raise SystemExit('DH live rig: line.py describes MC ' + LINE['minecraft'] + ' but this checkout builds MC '
+                     + str(_checkout_minecraft()) + ' - port line.py first (PORTING.md)')
