@@ -16,6 +16,17 @@ class PaperConfigValidationTest {
         assertEquals(1200, c.generationTimeoutTicks());
         assertEquals(200, c.dirtyBroadcastIntervalTicks());
     }
+    @Test void aZeroWorldNameTurnsOnlyThatWorldOffAndAServedNameBeatsAnOffDimension() {
+        var values = Map.<String,Object>of("lod.distance.default_chunks", 512,
+                "lod.distance.by_dimension", Map.of("minecraft:the_nether", 0),
+                "lod.distance.by_world", Map.of("world_the_end", 0, "creative_nether", 128));
+        var c = new PaperConfig(SettingsSchema.server(true).fromValues(values).normalized());
+        assertEquals(0, c.lodDistanceForWorld("world_the_end", "minecraft:the_end"));
+        assertEquals(512, c.lodDistanceForWorld("other_end", "minecraft:the_end"));
+        assertEquals(0, c.lodDistanceForWorld("world_nether", "minecraft:the_nether"));
+        assertEquals(128, c.lodDistanceForWorld("creative_nether", "minecraft:the_nether"));
+        assertEquals(java.util.List.of("minecraft:the_nether", "world world_the_end"), c.unservedWorlds());
+    }
     @Test void exactWorldNameWinsBeforeDimensionAndFallback() {
         var values = Map.<String,Object>of("lod.distance.default_chunks", 12,
                 "lod.distance.by_dimension", Map.of("minecraft:the_nether", 32),
