@@ -463,6 +463,14 @@ public class CommandGameTests {
         helper.assertTrue(!dev.vox.lss.benchmark.SoakCommandExecutor.setGamerule(
                         commands, source, "lss_soak_test_readback 0"),
                 "successful zero-valued setter cannot hide wrong readback");
+        // 26.3 fails a setter whose value is already set; the readback still proves the rule.
+        var current = dev.vox.lss.benchmark.SoakCommandExecutor.executeForResult(
+                commands, source, "gamerule minecraft:random_tick_speed");
+        helper.assertTrue(current.success(), "the real rule query must succeed");
+        String same = "gamerule minecraft:random_tick_speed " + current.value();
+        helper.assertTrue(dev.vox.lss.benchmark.SoakCommandExecutor.setGamerule(commands, source, same)
+                        && dev.vox.lss.benchmark.SoakCommandExecutor.setGamerule(commands, source, same),
+                "re-setting a rule to its current value must pass on its exact readback");
         helper.succeed();
     }
 }
