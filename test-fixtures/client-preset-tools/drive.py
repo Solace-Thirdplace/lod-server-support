@@ -13,7 +13,7 @@ from rig_settings import edit,values
 verify_active_rig(tree,{name:sys.modules[name] for name in ('rig','native_window','private_input','ui_snapshot_wait')})
 manifest=read(r/'manifest.json');layout=read(a.joined_layout)
 if layout['run_hash']!=manifest['run_hash'] or sha(regular(inside(r/'evidence',layout['inspected_screenshot'])))!=layout['inspected_screenshot_sha256']:raise ValueError('actual inspected joined-screen binding required')
-window,owner=find(r,'instances/lss-rig-client/minecraft');d=XInput(r,window,owner);g=r/'instances/lss-rig-client/minecraft';cfg=g/'config/lss-client-config.yaml';log=g/'logs/latest.log';e=r/'evidence/standalone-settings';e.mkdir(exist_ok=False);original=cfg.read_bytes();baseline=values(original.decode(),side='client');assert baseline['lod.receive']is False and baseline['integrations.xaero_map.enabled']is False
+window,owner=find(r,'instances/lss-rig-client/minecraft');d=XInput(r,window,owner);g=r/'instances/lss-rig-client/minecraft';cfg=g/'config/lss-client-config.yaml';log=g/'logs/latest.log';e=r/'evidence/standalone-settings';e.mkdir(exist_ok=False);original=cfg.read_bytes();baseline=values(original.decode(),side='client');assert baseline['lod.receive']is False and baseline['integrations.map_ingestion.enabled']is False
 receipt={k:manifest[k]for k in ['run_id','run_hash','profile_hash','scenario_hash']};receipt.update(steps=[],snapshots={},configs={},screens={},assertions={},status='running');deadline=time.monotonic()+600;action_ms=0
 def save():write(e/'receipt.json',receipt)
 def wait(f):
@@ -70,7 +70,7 @@ try:
  config('baseline');command('/lss status');time.sleep(.7);capture('standalone-status');export('standalone',False,False,button=True);d.click(*layout['status_done']);time.sleep(.3)
  edit(cfg,{'lod.receive':True},side='client');config('saved-only');export('saved-only',False,False)
  command('/lss reload','Client settings reloaded.');config('hot-reloaded');export('hot-reloaded',True,False)
- edit(cfg,{'integrations.xaero_map.enabled':True},side='client');config('session-saved');export('session-saved',True,False)
+ edit(cfg,{'integrations.map_ingestion.enabled':True},side='client');config('session-saved');export('session-saved',True,False)
  command('/lss reload','No active client settings changed.');export('session-pending',True,False)
  reconnect('reconnected');export('reconnected',True,True)
  accepted=cfg.read_bytes();cfg.write_bytes(accepted+b'\nlod: [broken\n')

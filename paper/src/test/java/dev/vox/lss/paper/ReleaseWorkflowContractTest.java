@@ -189,8 +189,8 @@ class ReleaseWorkflowContractTest {
         if (isMainline) {
             assertEquals("true", env("LINE_MAKE_LATEST"),
                     "main-line releases carry the Latest badge");
-            assertEquals("26.2", env("LINE_MC_FABRIC"),
-                    "mainline is the 26.2 line — a support cut must flip line.env in the "
+            assertEquals("26.3", env("LINE_MC_FABRIC"),
+                    "mainline is the 26.3 line — a support cut must flip line.env in the "
                             + "same commit that retargets gradle.properties");
         } else {
             assertEquals("false", env("LINE_MAKE_LATEST"),
@@ -204,7 +204,7 @@ class ReleaseWorkflowContractTest {
         // literal of any line may appear in the workflow body. This replaces the old
         // FORBIDDEN_LINE_TOKENS list — under parameterization the strongest form is
         // 'no line's token, not even ours'.
-        for (String token : new String[]{"26.2", "26.1", "1.21", "1.20"}) {
+        for (String token : new String[]{"26.3", "26.2", "26.1", "1.21", "1.20"}) {
             assertFalse(releaseYml.contains(token),
                     "release.yml must not hardcode MC " + token + " — line.env owns MC identity");
         }
@@ -401,11 +401,11 @@ class ReleaseWorkflowContractTest {
                 .contains("loaders: ${{ env.PAPER_LOADERS }}"));
         assertTrue(stepBlock("- name: Upload NeoForge to Modrinth").contains("loaders: neoforge"));
         assertTrue(stepBlock("- name: Upload Sponge to Modrinth").contains("loaders: sponge"));
-        if (isMainline) {
-            assertTrue(env("LINE_PAPER_LOADERS").contains("folia"),
-                    "the 26.2 Paper step advertises folia (jar declares folia-supported; "
-                            + "all four SOAK_PLATFORM=folia scenarios pass)");
-        }
+        // support/mc26.2 (cut 2026-10-12 when main moved to 26.3): Folia publishes 26.2
+        // builds, so this line's Paper step keeps advertising it.
+        assertTrue(env("LINE_PAPER_LOADERS").contains("folia"),
+                "the 26.2 Paper step advertises folia (jar declares folia-supported; "
+                        + "all four SOAK_PLATFORM=folia scenarios pass)");
     }
 
     @Test

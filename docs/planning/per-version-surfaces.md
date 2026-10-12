@@ -9,7 +9,7 @@ never a second live copy (two copies drift within one port).
 Legend: "pin" = the contract test that reds on drift; "hand" = per-line manual
 verification recorded in the port PR (no automatable pin exists).
 
-## Current loader and artifact surfaces (2026-09-08)
+## Current loader and artifact surfaces (2026-10-12)
 
 The checked-in build/release definitions give this matrix. Shipping, terrain-consumer
 compatibility and far-player rendering are separate checks.
@@ -21,6 +21,7 @@ compatibility and far-player rendering are separate checks.
 | 1.21.11 | false | Intentional stub; module remains built/tested |
 | 26.1 | true | Intentional stub |
 | 26.2 | true | Intentional stub |
+| 26.3 | true | Intentional stub |
 
 On every line, common carries SQLite 3.49.1.0 in an opaque capsule trimmed to the
 supported native matrix (`dev/vox/lss/internal/jdbc/sqlite-jdbc.jar.bin`), loaded by a private

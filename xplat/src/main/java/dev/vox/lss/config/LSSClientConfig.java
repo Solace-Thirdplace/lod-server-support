@@ -40,6 +40,8 @@ public final class LSSClientConfig {
         values.put("lod.receive", false);
         values.put("far_players.enabled", false);
         values.put("far_players.sharing.enabled", false);
+        // A broken settings file must never register a map consumer (the template default is on).
+        values.put("integrations.map_ingestion.enabled", false);
         inactive = ClientSettings.fromValues(values);
         try { handle = new SettingsHandle<>(store); reload = new SettingsReload<>(handle); }
         catch (Exception failure) {
@@ -183,8 +185,9 @@ public final class LSSClientConfig {
     public boolean enableScanPrefixRetention() { return snapshot().scan().retainCompletedPrefix(); }
     public boolean enableQuadtreeScan() { return snapshot().scan().quadtree(); }
     public boolean enableRegionSummarySync() { return snapshot().scan().regionSummaries(); }
-    public boolean enableXaeroMapBridge() { return snapshot().integrations().xaeroMap().enabled(); }
-    public boolean enableXaeroMapBackpressure() { return snapshot().integrations().xaeroMap().backpressure(); }
+    /** Map ingestion (Xaero's World Map, JourneyMap): the neutral switch, timing reconnect. */
+    public boolean mapIngestionEnabled() { return snapshot().integrations().mapIngestion().enabled(); }
+    public boolean mapIngestionBackpressure() { return snapshot().integrations().mapIngestion().backpressure(); }
     public boolean enableIngestBackpressure() { return snapshot().lod().download().ingestBackpressure(); }
     public int lodColumnsPerSecondLimit() { return snapshot().lod().download().maxColumnsPerSecond(); }
     public boolean enableAdaptiveTransferRate() { return snapshot().lod().download().adaptiveRate(); }

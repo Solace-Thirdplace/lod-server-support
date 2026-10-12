@@ -585,6 +585,176 @@ class PaperRequestProcessingServiceTest {
         assertTrue(sent.isEmpty(), "a legacy-dialect session gets no mid-session v20 push");
     }
 
+    @Test
+    void enteringAnOffWorldPushesDisabledAndLeavingItPushesEnabled() {
+        // 0 = no LOD service in that world: a CURRENT session is told enabled=false on the way
+        // in (it parks its session) and enabled=true on the way out (the distances differ).
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 512);
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        var uuid = UUID.randomUUID();
+        var player = playerIn(uuid, level(Level.OVERWORLD));
+        service.getDialectTracker().onHandshake(uuid, dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT);
+        service.registerPlayer(player, 1);
+        var sent = new ArrayList<String>();
+        service.setSessionConfigSender((p, cfg, enabled) -> sent.add(PaperWorldLod.distance(cfg, p) + ":" + enabled));
+
+        var nether = level(Level.NETHER);
+        when(player.level()).thenReturn(nether);
+        service.tick();
+        var overworld = level(Level.OVERWORLD);
+        when(player.level()).thenReturn(overworld);
+        service.tick();
+
+        assertEquals(List.of("0:false", "512:true"), sent);
+        assertNotNull(service.getPlayers().get(uuid), "the player stays registered in the off world");
+    }
+
+    @Test
+    void aReloadThatTurnsAWorldOffTellsItsPlayersAndResetsTheirState() {
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 512);
+        var netherUuid = UUID.randomUUID();
+        var netherState = service.registerPlayer(playerIn(netherUuid, level(Level.NETHER)),
+                LSSConstants.CAPABILITY_VOXEL_COLUMNS);
+        offer(netherState, new IncomingRequest(2, 2, -1L));
+        var overworldUuid = UUID.randomUUID();
+        var overworldState = service.registerPlayer(playerIn(overworldUuid, level(Level.OVERWORLD)),
+                LSSConstants.CAPABILITY_VOXEL_COLUMNS);
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        var sent = new java.util.HashMap<UUID, Boolean>();
+        service.setSessionConfigSender((player, cfg, enabled) -> sent.put(player.getUUID(), enabled));
+
+        service.repushSessionConfig();
+
+        assertEquals(Boolean.FALSE, sent.get(netherUuid));
+        assertEquals(Boolean.TRUE, sent.get(overworldUuid));
+        // The dimension-change cycle: in-flight work retired, a fresh state (empty served-set,
+        // nothing declared) — a world turned back on cannot answer off an old done-bit.
+        assertTrue(netherState.registration().isRetired(), "the off world's old session is retired");
+        var fresh = service.getPlayers().get(netherUuid);
+        assertNotNull(fresh, "the player stays registered in the off world");
+        assertNotSame(netherState, fresh);
+        assertNull(fresh.takeIncomingBatch(), "nothing declared carries over");
+        assertSame(overworldState, service.getPlayers().get(overworldUuid), "served worlds keep their state");
+    }
+
+    /** A far-player viewer snapshot for driving {@code FarPlayerBroadcastService.tick} directly. */
+    private static dev.vox.lss.common.farplayers.FarPlayerBroadcastService.PlayerSnapshot viewerSnapshot(
+            UUID uuid, String dimension) {
+        return new dev.vox.lss.common.farplayers.FarPlayerBroadcastService.PlayerSnapshot(
+                uuid, "viewer", dimension, 0, 64, 0, 0f, 0f, 0f, (byte) 0, 0, 0, 0,
+                false, false, true, false, 0L, new String[0], new int[0], null);
+    }
+
+    @Test
+    void aReloadThatTurnsAWorldOffReSendsTheFarPlayerRoster() {
+        // The client ends its far-player session on enabled=false (its tracker forgets the
+        // epoch), so the reload-off re-push must queue a bumped-epoch FULL roster exactly like
+        // a dimension change — otherwise every later update carries the old epoch, the client
+        // drops it, and far players vanish until the player changes dimension or rejoins.
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 512);
+        var uuid = UUID.randomUUID();
+        service.registerPlayer(playerIn(uuid, level(Level.NETHER)), LSSConstants.CAPABILITY_VOXEL_COLUMNS);
+        var fp = service.getFarPlayerService();
+        fp.subscribeViewer(uuid);
+        fp.onPrefs(uuid, new dev.vox.lss.common.farplayers.FarPlayerWire.Prefs(true, 0, 0, true, 0));
+        var rosterEpochs = new ArrayList<Integer>();
+        dev.vox.lss.common.farplayers.FarPlayerBroadcastService.FrameSender sender = (viewer, channel, body) -> {
+            if (channel.equals(LSSConstants.CHANNEL_FAR_PLAYER_ROSTER)) {
+                var roster = dev.vox.lss.common.farplayers.FarPlayerWire.decodeRoster(body);
+                if (roster.full()) rosterEpochs.add(roster.epoch());
+            }
+            return true;
+        };
+        var settings = new dev.vox.lss.common.farplayers.FarPlayerBroadcastService.Settings(
+                "on", 2048, 0, false, List.of(), 10);
+        var online = List.of(viewerSnapshot(uuid, "minecraft:the_nether"));
+        long now = 1_000_000L;
+        fp.tick(now, online, settings, sender);
+        assertEquals(1, rosterEpochs.size(), "premise: the subscription's first full roster went out");
+        now += dev.vox.lss.common.farplayers.FarPlayerBroadcastService.FULL_ROSTER_MIN_INTERVAL_MILLIS + 1;
+        fp.tick(now, online, settings, sender);
+        assertEquals(1, rosterEpochs.size(), "premise: nothing changed, so no second full roster");
+
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        service.setSessionConfigSender((player, cfg, enabled) -> { });
+        service.repushSessionConfig();
+        now += dev.vox.lss.common.farplayers.FarPlayerBroadcastService.FULL_ROSTER_MIN_INTERVAL_MILLIS + 1;
+        fp.tick(now, online, settings, sender);
+
+        assertEquals(2, rosterEpochs.size(), "the reload-off re-push re-sends a full roster");
+        assertTrue(rosterEpochs.get(1) > rosterEpochs.get(0), "at a bumped epoch: " + rosterEpochs);
+    }
+
+    @Test
+    void aPlayerParkedInAnOffWorldDoesNotDiluteTheBandwidthShare() {
+        // SP-062 counts idle-but-connected players toward the per-player share; a player in a
+        // world with no LOD service can never spend (every ask is range-filtered), so it must
+        // not shrink the served players' allocation.
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 512);
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        service.registerPlayer(playerIn(UUID.randomUUID(), level(Level.OVERWORLD)), 1);
+        service.registerPlayer(playerIn(UUID.randomUUID(), level(Level.OVERWORLD)), 1);
+        for (int i = 0; i < 3; i++) {
+            service.registerPlayer(playerIn(UUID.randomUUID(), level(Level.NETHER)), 1);
+        }
+
+        service.tick();
+
+        assertEquals(2, service.lastActiveCountForTest(),
+                "only the two players in a served world share the bandwidth");
+    }
+
+    @Test
+    void theFirstTickPromptsConnectedLssClientsThatHaveNoSessionOnce() {
+        // A plugin reload's fresh service has no state for clients already connected; one
+        // parked in a world with no LOD service declares nothing, so the batch-triggered
+        // prompt never reaches it. The first tick prompts every online player whose client
+        // registered the LSS channels — not a vanilla client, not one already registered —
+        // exactly once, and the shared rate limit keeps its next batch from prompting again.
+        var level = level(Level.OVERWORLD);
+        var prompted = new ArrayList<UUID>();
+        service.reattachPromptSender = p -> prompted.add(p.getUUID());
+        var parked = playerIn(UUID.randomUUID(), level);
+        var vanilla = playerIn(UUID.randomUUID(), level);
+        var registered = playerIn(UUID.randomUUID(), level);
+        service.registerPlayer(registered, 1);
+        when(playerList.getPlayers()).thenReturn(List.of(parked, vanilla, registered));
+        service.lssClientProbe = p -> p != vanilla;
+
+        service.tick();
+        assertEquals(List.of(parked.getUUID()), prompted);
+        service.tick();
+        service.handleBatchRequest(parked, batchOf(new long[]{PositionUtil.packPosition(1, 1)}, new long[]{-1L}));
+        assertEquals(1, prompted.size(), "one-shot, and the batch inside the window does not prompt again");
+    }
+
+    @Test
+    void theUnservedWorldsLineResolvesEachLoadedWorldTheWayRequestsDo() {
+        // A by_dimension 0 overridden by a by_world entry is SERVED (the world name wins, as
+        // for requests) and must not be named; a world whose name is overridden to 0 is.
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 512);
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        MutablePaperSettings.set(config, "lod.distance.by_world",
+                Map.of("world_nether", 64, "world_the_end", 0));
+        var overworld = namedLevel(Level.OVERWORLD, "world");
+        var nether = namedLevel(Level.NETHER, "world_nether");
+        var end = namedLevel(Level.END, "world_the_end");
+        when(server.getAllLevels()).thenReturn(List.of(overworld, nether, end));
+
+        assertEquals("LODs off (distance 0): world world_the_end (minecraft:the_end)",
+                service.unservedWorldsDiagLineOrNull());
+        MutablePaperSettings.set(config, "lod.distance.by_world", Map.of("world_nether", 64));
+        assertNull(service.unservedWorldsDiagLineOrNull(), "every loaded world is served");
+    }
+
+    private static ServerLevel namedLevel(ResourceKey<Level> key, String name) {
+        var level = level(key);
+        var world = mock(org.bukkit.craftbukkit.CraftWorld.class);
+        when(world.getName()).thenReturn(name);
+        when(level.getWorld()).thenReturn(world);
+        return level;
+    }
+
     // ---- PP-005: removed-vs-respawn branches ----
 
     @Test

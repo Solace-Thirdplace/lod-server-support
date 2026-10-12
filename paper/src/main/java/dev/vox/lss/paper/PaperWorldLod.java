@@ -37,7 +37,8 @@ final class PaperWorldLod {
      *  level is gone (the previous world unloaded within the tick — a near-impossible
      *  window for a world a player just left) it falls back to the dim-id key, which a
      *  name-keyed override would miss; the only cost is a skipped re-push that self-heals
-     *  on the client's next rejoin (safe direction — never wrong terrain). */
+     *  on the client's next rejoin (never wrong terrain — though with distance 0 the skip
+     *  can leave a client told "off" in a served world until it rejoins). */
     static int distanceForDimKey(PaperConfig config, MinecraftServer server, ResourceKey<Level> key) {
         if (key == null) return config.lodDistanceChunks();
         ServerLevel level = null;
@@ -48,6 +49,19 @@ final class PaperWorldLod {
         }
         if (level != null) return distance(config, level);
         return config.lodDistanceForWorld(key.identifier().toString());
+    }
+
+    /** A registered dimension ID string (the request state's key) through the loaded level, so
+     *  a Bukkit world-name override still matches; unparseable → the dimension-ID lookup. */
+    static int distanceForDimString(PaperConfig config, MinecraftServer server, String dimension) {
+        if (dimension == null) return config.lodDistanceChunks();
+        try {
+            return distanceForDimKey(config, server, ResourceKey.create(
+                    net.minecraft.core.registries.Registries.DIMENSION,
+                    net.minecraft.resources.Identifier.parse(dimension)));
+        } catch (RuntimeException e) {
+            return config.lodDistanceForWorld(dimension);
+        }
     }
 
     private static ServerLevel levelOf(ServerPlayer player) {
@@ -65,6 +79,28 @@ final class PaperWorldLod {
         } catch (Throwable ignored) {
             return null;
         }
+    }
+
+    /** The loaded worlds with no LOD service, resolved the way requests are (Bukkit name,
+     *  then dimension id, then the default): a {@code by_world} entry that overrides a
+     *  {@code by_dimension} 0 is served and not listed, and a world falling through to a
+     *  {@code default_chunks} of 0 is. The config-only list ({@code config.unservedWorlds()})
+     *  names the overrides as written, which on Paper can disagree with what is served. A
+     *  failure to enumerate degrades to that config-only list. */
+    static java.util.List<String> unservedWorlds(PaperConfig config, MinecraftServer server) {
+        var off = new java.util.ArrayList<String>();
+        try {
+            for (ServerLevel level : server.getAllLevels()) {
+                if (distance(config, level) > 0) continue;
+                String name = worldName(level);
+                String id = dimensionId(level);
+                off.add(name == null ? String.valueOf(id)
+                        : id == null ? "world " + name : "world " + name + " (" + id + ")");
+            }
+        } catch (Throwable ignored) {
+            return config.unservedWorlds();
+        }
+        return java.util.List.copyOf(off);
     }
 
     static String dimensionId(ServerLevel level) {

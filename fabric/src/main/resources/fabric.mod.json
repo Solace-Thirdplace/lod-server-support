@@ -47,6 +47,7 @@
     "sodium": "${suggests_sodium}",
     "modmenu": "*",
     "voxy": "${suggests_voxy}",
-    "xaeroworldmap": "*"
+    "xaeroworldmap": "*",
+    "journeymap": "*"
   }
 }
