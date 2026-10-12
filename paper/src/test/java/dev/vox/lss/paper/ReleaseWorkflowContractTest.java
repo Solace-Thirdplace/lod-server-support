@@ -327,8 +327,8 @@ class ReleaseWorkflowContractTest {
         // sponge-support-plan.md §0.3: a line flips LINE_SHIP_SPONGE to true only after
         // its live server smoke passes on the frozen candidate. The value pin makes every
         // flip a conscious per-line edit (line.env + this pin + release_check + line.json).
-        assertEquals("false", env("LINE_SHIP_SPONGE"),
-                "this line's Sponge ship flag — flip it only with the live-smoke record");
+        assertEquals("true", env("LINE_SHIP_SPONGE"),
+                "this line's Sponge ship flag — flipped 2026-10-12 on the boot smoke + SOAK_PLATFORM=sponge record");
         assertTrue(stepBlock("- name: Build Sponge + contract tests")
                         .contains("if: env.LINE_SHIP_SPONGE == 'true'"),
                 "the release-pipeline Sponge build must be flag-gated");
