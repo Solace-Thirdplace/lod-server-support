@@ -272,6 +272,15 @@ public abstract class OffThreadProcessor<PlayerState extends AbstractPlayerReque
         return this.diskReadDoneSweepRadiusChunks;
     }
 
+    /** The served-set sweep radius: a Chebyshev bound on every done-bit a session can still
+     *  hold (each was set inside some configured distance plus the request buffer, and the
+     *  radius is a monotonic max over those; the sweep culls anything beyond it). A distance-0
+     *  world's dirty clears use it — the world's own distance says nothing about what its
+     *  players were served before a reload turned it off. */
+    public int diskReadDoneSweepRadiusChunks() {
+        return this.diskReadDoneSweepRadiusChunks;
+    }
+
     /** Old-signature overload (test rigs) — production passes the config-derived radius. */
     protected OffThreadProcessor(Map<UUID, PlayerState> players,
                                   AbstractChunkDiskReader diskReader, boolean generationAvailable,

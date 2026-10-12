@@ -107,7 +107,7 @@ def build(profile,cache,range_runtime,server_source,candidate,context,java,prism
     from rig import endpoint as parse_endpoint
     host,port=parse_endpoint(endpoint)
     runtime['generated_files']['server/eula.txt']='eula=true\n'
-    runtime['generated_files']['server/server.properties']=f'server-ip={host}\nserver-port={port}\nonline-mode=false\nlevel-type=minecraft:flat\nlevel-seed=project-improvements-functional\nview-distance=6\nsimulation-distance=5\nspawn-protection=0\nallow-flight=true\nenforce-secure-profile=false\n'
+    runtime['generated_files']['server/server.properties']=f'server-ip={host}\nserver-port={port}\nonline-mode=false\nwhite-list=false\nlevel-type=minecraft:flat\nlevel-seed=project-improvements-functional\nview-distance=6\nsimulation-distance=5\nspawn-protection=0\nallow-flight=true\nenforce-secure-profile=false\n'
     server_config='server/config/lss-server-config.yaml' if server_platform=='fabric' else 'server/plugins/LodServerSupport/lss-server-config.yaml'
     runtime['generated_files'][server_config]=render({'lod.distance.default_chunks':32,'storage.lod_store.enabled':True},platform='paper' if server_platform=='paper' else 'mod')
     runtime['launches']=[{'id':'server','cwd':'server','argv':[java,'-Xms512M','-Xmx2G','-Dlss.rig.runId={run_id}','-jar',bootstrap,'nogui'],'ready_marker':'Done (','ready_timeout_seconds':180,'stop_stdin':'stop'},
