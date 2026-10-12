@@ -369,11 +369,11 @@ class ReleaseWorkflowContractTest {
         assertTrue(stepBlock("- name: Upload Paper to Modrinth")
                 .contains("loaders: ${{ env.PAPER_LOADERS }}"));
         assertTrue(stepBlock("- name: Upload NeoForge to Modrinth").contains("loaders: neoforge"));
-        if (isMainline) {
-            assertTrue(env("LINE_PAPER_LOADERS").contains("folia"),
-                    "the 26.2 Paper step advertises folia (jar declares folia-supported; "
-                            + "all four SOAK_PLATFORM=folia scenarios pass)");
-        }
+        // support/mc26.2 (cut 2026-10-12 when main moved to 26.3): Folia publishes 26.2
+        // builds, so this line's Paper step keeps advertising it.
+        assertTrue(env("LINE_PAPER_LOADERS").contains("folia"),
+                "the 26.2 Paper step advertises folia (jar declares folia-supported; "
+                        + "all four SOAK_PLATFORM=folia scenarios pass)");
     }
 
     @Test

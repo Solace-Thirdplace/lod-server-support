@@ -19,7 +19,7 @@
     ],
     "fabric_client_gametests": true
   },
-  "support_tier": "full",
+  "support_tier": "correct-not-perfect",
   "capability_states": [
     "available",
     "unsupported",

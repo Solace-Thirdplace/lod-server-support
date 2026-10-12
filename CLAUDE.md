@@ -1,6 +1,6 @@
 # Contributor guide
 
-This checkout is the Minecraft **26.2** support line. Use **Java 25** for the platform build and **Java 21** for common tests. Actual platform MC targets, shipping and renderer availability are checked by [the compatibility catalog](docs/compatibility.md), with `.github/line.env` and build definitions authoritative. Run client gametests explicitly alongside the Fabric build; preserve this line’s loader and rendering adaptations.
+This checkout is the Minecraft **26.2** support line (`support/mc26.2`, cut from main when main moved to 26.3; releases tag `v<x.y.z>+mc26.2`). Use **Java 25** for the platform build and **Java 21** for common tests. Actual platform MC targets, shipping and renderer availability are checked by [the compatibility catalog](docs/compatibility.md), with `.github/line.env` and build definitions authoritative. Run client gametests explicitly alongside the Fabric build; preserve this line’s loader and rendering adaptations.
 
 ## Commands
 
