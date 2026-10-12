@@ -2991,6 +2991,9 @@ def _selftest_fixtures():
         _write_tree_neoforge("voxy-server-side-neoforge.jar", TOML_VSS, BRAND_VSS)
         p = []
         fab_d, pap_d, vfab_d, vpap_d, neo_d, vneo_d, spo_d, vspo_d, _ = discover(p, root=droot)
+        # This tree carries the original six families; the Sponge family's presence
+        # polarity (required only where SHIP_SPONGE) has its own case below.
+        p = [issue for issue in p if "-sponge jar found" not in issue]
         check(p == [] and len(fab_d) == len(pap_d) == len(vfab_d) == len(vpap_d)
               == len(neo_d) == len(vneo_d) == 1,
               f"clean synthetic tree flagged by discover: {p}")
