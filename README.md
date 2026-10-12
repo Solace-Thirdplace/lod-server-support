@@ -11,15 +11,17 @@ https://github.com/user-attachments/assets/721fb344-890e-4e03-ab36-539444427f7b
 Use the matching Fabric or shipped NeoForge artifact. Server support and renderer availability are separate; see the generated [compatibility matrix](docs/compatibility.md). Supported servers:
 
 <!-- LSS SERVER MATRIX START -->
-| Minecraft line | Fabric / Paper | Folia | NeoForge shipping | Neo far renderer |
-| --- | --- | --- | --- | --- |
-| 1.21.1 | maintained | unsupported | shipped; best-effort | available |
-| 1.21.10 | maintained | unsupported | maintained build only | unsupported |
-| 1.21.11 | maintained | experimental | maintained build only | unsupported |
-| 26.1 | maintained | experimental | shipped; best-effort | unsupported |
-| 26.2 | maintained | experimental | shipped; best-effort | unsupported |
-| 26.3 | maintained | unsupported | shipped; best-effort | unsupported |
+| Minecraft line | Fabric / Paper | Folia | NeoForge shipping | Neo far renderer | Sponge |
+| --- | --- | --- | --- | --- | --- |
+| 1.21.1 | maintained | unsupported | shipped; best-effort | available | shipped; experimental |
+| 1.21.10 | maintained | unsupported | maintained build only | unsupported | shipped; experimental |
+| 1.21.11 | maintained | experimental | maintained build only | unsupported | shipped; experimental |
+| 26.1 | maintained | experimental | shipped; best-effort | unsupported | shipped; experimental |
+| 26.2 | maintained | experimental | shipped; best-effort | unsupported | shipped; experimental |
+| 26.3 | maintained | unsupported | shipped; best-effort | unsupported | shipped; experimental |
 <!-- LSS SERVER MATRIX END -->
+
+**Sponge (experimental):** a SpongeVanilla server plugin ships on the lines the matrix marks shipped. It speaks the same wire as every other server, so any Fabric or NeoForge client with LSS joins it normally. On SpongeNeo, use the NeoForge jar instead, on lines that ship one (see the matrix). SpongeForge is not supported.
 
 On 1.21.10 there is no Folia build upstream. The in-game options page renders through Sodium 0.7.x's own settings screen from v0.13.0 (earlier 1.21.10 builds had no page) — every setting also remains in the JSON config files.
 
@@ -57,13 +59,15 @@ LOD Server Support is backwards and forwards compatible from v0.4.0 through the 
 
 ## Installation
 
-Install **LOD Server Support** on **both** the **server** (Fabric, Paper, or NeoForge on a line that ships it) and **every participating client** (the matching Fabric or NeoForge LSS mod, with Voxy or the enabled Xaero map bridge). The server and client both need LSS for its terrain download service.
+Install **LOD Server Support** on **both** the **server** (Fabric, Paper, NeoForge on a line that ships it, or the experimental Sponge plugin on SpongeVanilla) and **every participating client** (the matching Fabric or NeoForge LSS mod, with Voxy or the enabled Xaero map bridge). The server and client both need LSS for its terrain download service.
 
 NeoForge ships on MC 1.21.1, 26.1, 26.2 and 26.3; the 1.21.10/1.21.11 modules remain maintained builds. NeoForge far-player rendering is live on 1.21.1 and remains an intentional stub on the other lines. See the [loader/artifact matrix](docs/planning/per-version-surfaces.md#current-loader-and-artifact-surfaces-2026-09-08) and [validation profiles](docs/testing/astra-live-profiles.md) for the separate packaging, consumer and live-test boundaries.
 
+On SpongeVanilla, put the Sponge jar in the server's `mods/` folder. At startup Sponge prints a notice that the plugin uses Mixins; that is expected.
+
 ## Commands
 
-### Server (Fabric, NeoForge, and Paper)
+### Server (Fabric, NeoForge, Paper, and Sponge)
 
 - `/lsslod stats` - Show per-player transfer statistics
 - `/lsslod diag` - Show detailed diagnostics (config, bandwidth, queue depths)
@@ -85,7 +89,7 @@ NeoForge ships on MC 1.21.1, 26.1, 26.2 and 26.3; the 1.21.10/1.21.11 modules re
 ## Configuration
 
 Settings use annotated YAML: `config/lss-server-config.yaml` and
-`config/lss-client-config.yaml` on Fabric/NeoForge, or
+`config/lss-client-config.yaml` on Fabric/NeoForge (the server file also on Sponge), or
 `plugins/LodServerSupport/lss-server-config.yaml` on Paper. VSS uses the corresponding
 `vss-` names, adopting an existing file across brands. Startup migrates an old JSON
 file once and retains both the original and an exact-byte backup. Existing distance

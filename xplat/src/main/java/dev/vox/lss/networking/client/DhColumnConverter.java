@@ -38,8 +38,17 @@ final class DhColumnConverter {
     }
     /** Whole-tile conversion on the worker: materials resolve once, then each
      *  selected complete column converts. Unselected/incomplete columns stay null. */
-    VoxelColumnData[] convertTile(DhTerrainTile tile, int columnMask) {
+    VoxelColumnData[] convertTile(DhTerrainTile tile, int columnMask) { return convertTile(tile,columnMask,false); }
+    /** {@code bakeSkyLight}: a DH 3.3 real-time push is sent before DH bakes sky light
+     *  (it arrives at zero); rebuild it first, as a DH client does when storing it.
+     *  Nothing is baked when no column is selected (e.g. a push vanilla already holds). */
+    VoxelColumnData[] convertTile(DhTerrainTile tile, int columnMask, boolean bakeSkyLight) {
         var materials=materials(tile);
+        if(bakeSkyLight && columnMask!=0) {
+            int[] opacity=new int[materials.size()];
+            for(int i=0;i<opacity.length;i++) opacity[i]=dhOpacity(materials.get(i).state);
+            tile.bakeSkyLight(opacity);
+        }
         var out=new VoxelColumnData[16];
         for(int c=0;c<16;c++) if((columnMask&(1<<c))!=0) out[c]=convert(tile,c,materials);
         return out;
@@ -96,6 +105,14 @@ final class DhColumnConverter {
                     biomes.asHolderIdMap().byId(resolver.biomeIdFor(m.biome())),waterSkyLoss));
         }
         return materials;
+    }
+    /** DH's {@code BlockStateWrapper} opacity: 0 transparent, 1 translucent fluid, 16 opaque. */
+    static int dhOpacity(BlockState state) {
+        if(state.isAir()) return 0;
+        boolean occludes=state.canOcclude();
+        if(!state.getFluidState().isEmpty() && !occludes) return 1;
+        if(state.propagatesSkylightDown() && !occludes) return 0;
+        return 16;
     }
     private static int sky(DhTerrainTile tile,DhTerrainTile.Span span,Material material,int y) {
         // DH merges water despite changing light; Voxy lights faces from the neighboring voxel.
