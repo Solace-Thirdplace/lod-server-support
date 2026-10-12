@@ -1,11 +1,11 @@
 {
   "baseline": {
-    "1.21.1": "07903d4294f1d52de72815db63a55a1b6f8c9db2",
-    "1.21.10": "6744f1d3af42f0a0d40f7af3313b7e252f019cfb",
-    "1.21.11": "1d4b6cea333051d0f8f020833c9da3353696c3b9",
-    "26.1": "9c37b8e404cc6fa9cbcc333f878c2777ffc152e0",
-    "26.2": "11aecb228da50295696dda0bd60097d2a03cfd17",
-    "26.3": "aeca32a117c582ae1cf27eed310a421f7b3bc756"
+    "1.21.1": "f5e844c0105cce2f778ffc50b18dcf0248066507",
+    "1.21.10": "32826ec4343534a53d88259cf2a7ba73ab887fe9",
+    "1.21.11": "2a8401f7aad3fd85f0e6e37a1611c5f2e8a6e377",
+    "26.1": "df58eb97debfa5a950ed1d1493347ee87da10bd9",
+    "26.2": "114fbb9940a72c966d500045fac48b4d6b31ef30",
+    "26.3": "76e90332decf76efac95585f3463635f5ffbf0ed"
   },
   "final_shared_invariants": [
     "common/build.gradle",
