@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "7e33f1975740236c45ce8ff7f118dc034ce20f08",
-    "1.21.10": "6d46f775d090feeb47a8145216252fabd67ad632",
-    "1.21.11": "f02a64746a3704a047779aca1b3b93f7ddd87f76",
-    "26.1": "7101effe6f32b70d45f54b1735ccadc5d913b917",
-    "26.2": "95582baf88c3e582cb08c29a23bba55597c48aae",
-    "26.3": "c6cdcbab0f63475548735f1ba5ecd9e51777c1f9"
+    "1.21.1": "318a651767451128015ac520beb14520c93b4348",
+    "1.21.10": "c7d9e72b405941dc4172069a3a96c9865865ddad",
+    "1.21.11": "8bcb1e76bbc498b4ace409a85062a1da1d2d2eb0",
+    "26.1": "0a92d846f2c154c43bfee822e465394673f04c5b",
+    "26.2": "4a1cd39e2ab7e6a0e4d9e230e32f6958fb13ef00",
+    "26.3": "b06705b0c869c62e0b9efe87a9dfc04cd3685d1b"
   },
   "files": {
     ".github/line.env": {
@@ -1872,7 +1872,7 @@
       "review": "2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
         "1.21.1": "bc6f98b64474ed41f3db286a6859746ba76ac8b6",
-        "1.21.10": "1db7e54d32f738f8d4e5e7d18c21866a120e37b1",
+        "1.21.10": "47b02cffe8c8e6e4b0abb9a1639bfefaabecc311",
         "1.21.11": "7a498da1d6a3c2d1fdecfcc10f7418feef350feb",
         "26.1": "77d592dfb9758350d83adc8b93fe8971d1bc68ae",
         "26.2": "fbd310ea5d808f8cf069fc9e3df31996d8007e31",
@@ -2033,7 +2033,7 @@
       "review": "2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
         "1.21.1": "c5bc0dd72fa47baacc84e016d7e3dacff9ac94fb",
-        "1.21.10": "76de2c237b4f23627b72ba19a38f9467caec9dbe",
+        "1.21.10": "3a26e4fa137aeda15b37a24686df18c5c4ac73c5",
         "1.21.11": "2a32ab2ffc4655ba9f70720c06d0d8c1cc275360",
         "26.1": "7b061479ed8cfa0af1707058bdb52f826de955e8",
         "26.2": "00774568f4f185ecfdecc4accbc20f82acca1304",
@@ -3968,7 +3968,7 @@
       "kind": "adapted",
       "review": "2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Implementation candidate; independent final change review must cover residual logic before handoff.",
       "reviewed_blobs": {
-        "1.21.1": "7b5b3e745ed93392c1ac31aa6d07799c40c89acf",
+        "1.21.1": "5554f8af9d2e8eacfe064efdd1684237e0be7c37",
         "1.21.10": "b8c964f02223c76646add0c4bd4f2fc194122e02",
         "1.21.11": "b8c964f02223c76646add0c4bd4f2fc194122e02",
         "26.1": "b8c964f02223c76646add0c4bd4f2fc194122e02",
@@ -6576,7 +6576,7 @@
       "kind": "adapted",
       "review": "2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Implementation candidate; independent final change review must cover residual logic before handoff.",
       "reviewed_blobs": {
-        "1.21.1": "30b19461a848ccaf53c0c873fad60c58a95457f9",
+        "1.21.1": "34be352e2ca808899c03bd78a765b3bbf80a484b",
         "1.21.10": "81effb213428ace4bf20fabebc1c1805d0414b74",
         "1.21.11": "81effb213428ace4bf20fabebc1c1805d0414b74",
         "26.1": "81effb213428ace4bf20fabebc1c1805d0414b74",
