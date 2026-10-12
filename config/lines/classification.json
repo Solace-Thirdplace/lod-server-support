@@ -1,10 +1,10 @@
 {
   "basis": {
-    "1.21.1": "5a7ce085b79ed6fc68a730bfd4a73630234aa19a",
-    "1.21.10": "fa91339df9e84092ef453048dee19c61010137e9",
-    "1.21.11": "1e41ebb86f11763b2faba0880407c82c40745d84",
-    "26.1": "a1cb482a231ca3fdaf0162bae0832658b359eebd",
-    "26.2": "3c63ee5ff1cea6e473144b186d06e26d5c4d8c91"
+    "1.21.1": "37ab45306fb02ce4f36bac5c99ca0a683c311c68",
+    "1.21.10": "3da849653e7a53b47399a046c590b6c705a10645",
+    "1.21.11": "bb03320c8cf0effa569fdd0648708b60b5abe4fd",
+    "26.1": "ddd54fc0ead4efb35c5fa4c91fb972c5de8f6d6f",
+    "26.2": "7f4e244745dc1fe43c5596bac997b59244db0fc4"
   },
   "files": {
     ".github/line.env": {
@@ -207,6 +207,9 @@
       "kind": "identical"
     },
     "common/src/main/java/dev/vox/lss/common/config/SettingsStore.java": {
+      "kind": "identical"
+    },
+    "common/src/main/java/dev/vox/lss/common/config/UnservedWorldsLog.java": {
       "kind": "identical"
     },
     "common/src/main/java/dev/vox/lss/common/config/YamlServerConfig.java": {
@@ -575,6 +578,9 @@
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/config/LegacySettingsMigrationTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/config/LodDistanceOffTest.java": {
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/config/MapIngestionSettingsTest.java": {
@@ -2022,13 +2028,13 @@
     "fabric/src/gametest/java/dev/vox/lss/test/SettingsReloadGameTests.java": {
       "axes": "1.21.1 vanilla GameTest batch/template/timeout annotation replaces Fabric environment/structure/maxTicks; 1.21.10 uses Gt assertion adapter; older ResourceKey location accessor. Reload workflow, pending/rejected publication and cleanup assertions otherwise identical.",
       "kind": "adapted",
-      "review": "2026-09-28 reviewed exact five-line source differences; see cross-line implementation report.",
+      "review": "2026-10-12 distance-0 program (per-dimension LOD off): the feature + 2-Opus review fold merged three-way onto each line's prior reviewed blob with the line flavor preserved (1.21.x ResourceLocation in PaperWorldLod); full per-line gates green. 2026-09-28 reviewed exact five-line source differences; see cross-line implementation report.",
       "reviewed_blobs": {
-        "1.21.1": "ae196ef10c51e64021db0d19df3692bdc1c0f9c1",
-        "1.21.10": "a19ae97f1ee623ceda96b9aa92803bdb1ef9a0ab",
-        "1.21.11": "f57d4fb2e5678cadbf2a4349d7b8e98cafdd9d5c",
-        "26.1": "f57d4fb2e5678cadbf2a4349d7b8e98cafdd9d5c",
-        "26.2": "f57d4fb2e5678cadbf2a4349d7b8e98cafdd9d5c"
+        "1.21.1": "28d2e7983a05d69c59c2de3b4f51c5eba4554cdd",
+        "1.21.10": "6e8b03d31bbf0bda542763fb088a0a069c77cf48",
+        "1.21.11": "66573cba2a7f26c8e023bbe58ea2b6c624123f8b",
+        "26.1": "66573cba2a7f26c8e023bbe58ea2b6c624123f8b",
+        "26.2": "66573cba2a7f26c8e023bbe58ea2b6c624123f8b"
       },
       "surface": "yaml-settings:fabric/src/gametest/java/dev/vox/lss/test/SettingsReloadGameTests.java",
       "tests": [
@@ -5789,13 +5795,13 @@
     "paper/src/main/java/dev/vox/lss/paper/PaperDirtyColumnBroadcaster.java": {
       "axes": "Preserved MC line APIs: ResourceKey identifier/location, ChunkPos fields/accessors, section bounds, registry and spawn access, ticket and background IO calls; Paper 1.21.x split world directories, payload buffer/priority APIs; Fabric chunk-event arity; plugin.yml retains each line\u2019s Folia declaration. Only axes present in this exact file apply.",
       "kind": "adapted",
-      "review": "2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
+      "review": "2026-10-12 distance-0 program (per-dimension LOD off): the feature + 2-Opus review fold merged three-way onto each line's prior reviewed blob with the line flavor preserved (1.21.x ResourceLocation in PaperWorldLod); full per-line gates green. 2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
       "reviewed_blobs": {
-        "1.21.1": "ed07f2db716758f35326e22f5230f37029a9800c",
-        "1.21.10": "ed07f2db716758f35326e22f5230f37029a9800c",
-        "1.21.11": "64db11dd1a7715830b93e652dff5934956309f11",
-        "26.1": "64db11dd1a7715830b93e652dff5934956309f11",
-        "26.2": "64db11dd1a7715830b93e652dff5934956309f11"
+        "1.21.1": "6484cc58d0c55c8e17e68e1253a82c0e75f73567",
+        "1.21.10": "6484cc58d0c55c8e17e68e1253a82c0e75f73567",
+        "1.21.11": "49c60d61c33828f7a0220665dea39f9a78ad888e",
+        "26.1": "49c60d61c33828f7a0220665dea39f9a78ad888e",
+        "26.2": "49c60d61c33828f7a0220665dea39f9a78ad888e"
       },
       "surface": "line-adaptation:paper/src/main/java/dev/vox/lss/paper/PaperDirtyColumnBroadcaster.java",
       "tests": [
@@ -5882,13 +5888,13 @@
     "paper/src/main/java/dev/vox/lss/paper/PaperRequestProcessingService.java": {
       "axes": "Preserved MC line APIs: ResourceKey identifier/location, ChunkPos fields/accessors, section bounds, registry and spawn access, ticket and background IO calls; Paper 1.21.x split world directories, payload buffer/priority APIs; Fabric chunk-event arity; plugin.yml retains each line\u2019s Folia declaration. Only axes present in this exact file apply.",
       "kind": "adapted",
-      "review": "2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
+      "review": "2026-10-12 distance-0 program (per-dimension LOD off): the feature + 2-Opus review fold merged three-way onto each line's prior reviewed blob with the line flavor preserved (1.21.x ResourceLocation in PaperWorldLod); full per-line gates green. 2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
       "reviewed_blobs": {
-        "1.21.1": "0cca5be68bc163500edaca2a60a8a360cb35ec3a",
-        "1.21.10": "bff592b8d05822ca28f96047f04eee5547193c81",
-        "1.21.11": "08ad7d09494a0d1302d1eafbed41108ad4dbc6ed",
-        "26.1": "2252f464b697ef1393af64e5742e8f20d1503e58",
-        "26.2": "2252f464b697ef1393af64e5742e8f20d1503e58"
+        "1.21.1": "27fcc6204ba6c3700c03ba257eb3ec3abfbc20f9",
+        "1.21.10": "2f47a709e19e2049bbfedc89a410977f8e8b84b3",
+        "1.21.11": "75b8981160d9965be63ced5417bd3bc09f1fbaf1",
+        "26.1": "c97a435dc53545a97fcf346be7dd6e004a7f0548",
+        "26.2": "c97a435dc53545a97fcf346be7dd6e004a7f0548"
       },
       "surface": "line-adaptation:paper/src/main/java/dev/vox/lss/paper/PaperRequestProcessingService.java",
       "tests": [
@@ -5943,13 +5949,13 @@
     "paper/src/main/java/dev/vox/lss/paper/PaperWorldLod.java": {
       "axes": "Preserved MC line APIs: ResourceKey identifier/location, ChunkPos fields/accessors, section bounds, registry and spawn access, ticket and background IO calls; Paper 1.21.x split world directories, payload buffer/priority APIs; Fabric chunk-event arity; plugin.yml retains each line\u2019s Folia declaration. Only axes present in this exact file apply.",
       "kind": "adapted",
-      "review": "2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
+      "review": "2026-10-12 distance-0 program (per-dimension LOD off): the feature + 2-Opus review fold merged three-way onto each line's prior reviewed blob with the line flavor preserved (1.21.x ResourceLocation in PaperWorldLod); full per-line gates green. 2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
       "reviewed_blobs": {
-        "1.21.1": "9227cb7e46d72195c8d3a1de7f2f0db9901095b0",
-        "1.21.10": "9227cb7e46d72195c8d3a1de7f2f0db9901095b0",
-        "1.21.11": "8bac45c286bc6b7fa9e0b4800952fbb3166cbea9",
-        "26.1": "8bac45c286bc6b7fa9e0b4800952fbb3166cbea9",
-        "26.2": "8bac45c286bc6b7fa9e0b4800952fbb3166cbea9"
+        "1.21.1": "42e9fe521df9a48a48df16c5a6bb851c75ecf1f0",
+        "1.21.10": "42e9fe521df9a48a48df16c5a6bb851c75ecf1f0",
+        "1.21.11": "2afbf3a030dace7658c3287520b8b33f93604364",
+        "26.1": "2afbf3a030dace7658c3287520b8b33f93604364",
+        "26.2": "2afbf3a030dace7658c3287520b8b33f93604364"
       },
       "surface": "line-adaptation:paper/src/main/java/dev/vox/lss/paper/PaperWorldLod.java",
       "tests": [
@@ -10816,13 +10822,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/server/DirtyColumnBroadcaster.java": {
       "axes": "Preserved MC line APIs: ResourceKey identifier/location, ChunkPos fields/accessors, section bounds, registry and spawn access, ticket and background IO calls; Paper 1.21.x split world directories, payload buffer/priority APIs; Fabric chunk-event arity; plugin.yml retains each line\u2019s Folia declaration. Only axes present in this exact file apply.",
       "kind": "adapted",
-      "review": "2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
+      "review": "2026-10-12 distance-0 program (per-dimension LOD off): the feature + 2-Opus review fold merged three-way onto each line's prior reviewed blob with the line flavor preserved (1.21.x ResourceLocation in PaperWorldLod); full per-line gates green. 2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
       "reviewed_blobs": {
-        "1.21.1": "9ef9c5a5e6fe057f8b6978640808bdbefb291a3a",
-        "1.21.10": "9ef9c5a5e6fe057f8b6978640808bdbefb291a3a",
-        "1.21.11": "c8830ad38a52d0ae721b71fb25bed2d96391f666",
-        "26.1": "c8830ad38a52d0ae721b71fb25bed2d96391f666",
-        "26.2": "c8830ad38a52d0ae721b71fb25bed2d96391f666"
+        "1.21.1": "06d0744bf27aa05b9443a264838f79af72b9c85f",
+        "1.21.10": "06d0744bf27aa05b9443a264838f79af72b9c85f",
+        "1.21.11": "312c9f261800730e972c3f1d96f739dec4b781f4",
+        "26.1": "312c9f261800730e972c3f1d96f739dec4b781f4",
+        "26.2": "312c9f261800730e972c3f1d96f739dec4b781f4"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/server/DirtyColumnBroadcaster.java",
       "tests": [
@@ -10890,13 +10896,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/server/LSSServerCommands.java": {
       "axes": "Preserved MC line APIs: ResourceKey identifier/location, ChunkPos fields/accessors, section bounds, registry and spawn access, ticket and background IO calls; Paper 1.21.x split world directories, payload buffer/priority APIs; Fabric chunk-event arity; plugin.yml retains each line\u2019s Folia declaration. Only axes present in this exact file apply.",
       "kind": "adapted",
-      "review": "2026-09-29 release follow-up: identical four-line failed-start branch on every line reports failure/zero when StoreBackfill.start declines and no worker runs; existing Minecraft command/permission adaptations preserved.",
+      "review": "2026-10-12 distance-0 program (per-dimension LOD off): the feature + 2-Opus review fold merged three-way onto each line's prior reviewed blob with the line flavor preserved (1.21.x ResourceLocation in PaperWorldLod); full per-line gates green. 2026-09-29 release follow-up: identical four-line failed-start branch on every line reports failure/zero when StoreBackfill.start declines and no worker runs; existing Minecraft command/permission adaptations preserved.",
       "reviewed_blobs": {
-        "1.21.1": "d040010d53b6d2e541a0aa7ad3d582a00f209040",
-        "1.21.10": "da6ce121d3c48b03bfec47ddfe350006d873ba54",
-        "1.21.11": "21a398c626565b4640ec42fcee4a5876713fa42e",
-        "26.1": "21a398c626565b4640ec42fcee4a5876713fa42e",
-        "26.2": "21a398c626565b4640ec42fcee4a5876713fa42e"
+        "1.21.1": "81e6e51e91810e1d76dd64b30fc2c687926feade",
+        "1.21.10": "25df2ec01c8fc8ae3b2ee4a7a4027862cf8eac0a",
+        "1.21.11": "d7b254732991ad7aa50d51ec8fdc04ff350a8ab9",
+        "26.1": "d7b254732991ad7aa50d51ec8fdc04ff350a8ab9",
+        "26.2": "d7b254732991ad7aa50d51ec8fdc04ff350a8ab9"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/server/LSSServerCommands.java",
       "tests": [
@@ -10948,13 +10954,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/server/RequestProcessingService.java": {
       "axes": "Preserved MC line APIs: ResourceKey identifier/location, ChunkPos fields/accessors, section bounds, registry and spawn access, ticket and background IO calls; Paper 1.21.x split world directories, payload buffer/priority APIs; Fabric chunk-event arity; plugin.yml retains each line\u2019s Folia declaration. Only axes present in this exact file apply.",
       "kind": "adapted",
-      "review": "2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
+      "review": "2026-10-12 distance-0 program (per-dimension LOD off): the feature + 2-Opus review fold merged three-way onto each line's prior reviewed blob with the line flavor preserved (1.21.x ResourceLocation in PaperWorldLod); full per-line gates green. 2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
       "reviewed_blobs": {
-        "1.21.1": "a64b134084f6f2d94a4d93acd599ebac4ac63b3a",
-        "1.21.10": "29fb31513eb4cb95e954175a7dcf675bf06cd4a8",
-        "1.21.11": "219a4e52760ece9dc4f9dd71012a73b254acfcb7",
-        "26.1": "bd0e308d885665095890f427b0b048adb9beca0c",
-        "26.2": "bd0e308d885665095890f427b0b048adb9beca0c"
+        "1.21.1": "46c45c2ee538d847c9d652e81d4238968df52d78",
+        "1.21.10": "65464a7d5d49c0875fe31a63257b24197475aa35",
+        "1.21.11": "c81a390acc67bcaf3ec97970d47c56722d5aa96c",
+        "26.1": "1ac423b9eebbf9defbe63650f67717897b53c6c8",
+        "26.2": "1ac423b9eebbf9defbe63650f67717897b53c6c8"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/server/RequestProcessingService.java",
       "tests": [
@@ -11002,13 +11008,13 @@
     "xplat/src/main/java/dev/vox/lss/networking/server/ServerReceiverGlue.java": {
       "axes": "Preserved MC line APIs: ResourceKey identifier/location, ChunkPos fields/accessors, section bounds, registry and spawn access, ticket and background IO calls; Paper 1.21.x split world directories, payload buffer/priority APIs; Fabric chunk-event arity; plugin.yml retains each line\u2019s Folia declaration. Only axes present in this exact file apply.",
       "kind": "adapted",
-      "review": "2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
+      "review": "2026-10-12 distance-0 program (per-dimension LOD off): the feature + 2-Opus review fold merged three-way onto each line's prior reviewed blob with the line flavor preserved (1.21.x ResourceLocation in PaperWorldLod); full per-line gates green. 2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
       "reviewed_blobs": {
-        "1.21.1": "4c601f1d27acce9af33176f0270775da621ca1aa",
-        "1.21.10": "d1b97b034273fbe87c026b02aba50fb598fbb2ef",
-        "1.21.11": "344737a31b3fab406643853ac1c11fd266061a11",
-        "26.1": "24410a588413887cef53daa8827b2c4783c19836",
-        "26.2": "24410a588413887cef53daa8827b2c4783c19836"
+        "1.21.1": "992464c98a9f0ca808a06024a05a34ee8e99a7a0",
+        "1.21.10": "42d89ad7d44e2942425fabd1cfcafd5bd3eaf3b8",
+        "1.21.11": "cc6f1bad61f2ee3be7ab47e36eb96ddd2579af83",
+        "26.1": "28a0b43f5b66ac533d5f0a49d5e20d36029fa2ef",
+        "26.2": "28a0b43f5b66ac533d5f0a49d5e20d36029fa2ef"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/server/ServerReceiverGlue.java",
       "tests": [
