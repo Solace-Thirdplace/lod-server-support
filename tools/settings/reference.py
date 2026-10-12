@@ -32,13 +32,20 @@ def render(data: dict | None = None) -> str:
               "Invalid authoritative YAML never falls back to JSON. Reload does not write files.", "",
               "Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`) live in a",
               "sidecar file beside the selected client file (`lss-client-experimental.yaml` or",
-              "`vss-client-experimental.yaml`), so the main client file always stays readable by v0.16.0.",
+              "`vss-client-experimental.yaml`), so the main client file stays readable by v0.16.0.",
               "The sidecar holds only nondefault values; deleting it restores the defaults. Allow DH",
               "Server Terrain (`lod.source: distant_horizons`) is on by default, so turning it off",
               "writes `source: lss` to the sidecar. Older",
               "development builds wrote these keys into the main file: they are still honoured on read",
               "and the next save moves them into the sidecar (retired `lod.dh.refresh_seconds` and",
-              "`lod.dh.profile` are removed). One reload reads both files.", ""]
+              "`lod.dh.profile` are removed). One reload reads both files.", "",
+              "Map ingestion was renamed from `integrations.xaero_map` to `integrations.map_ingestion`",
+              "(it now covers Xaero's World Map and JourneyMap). The old group is still read and is",
+              "rewritten under the new name by the next save that changes a setting; startup never",
+              "rewrites it. New files enable map ingestion; migration from JSON keeps an absent",
+              "`enableXaeroMapBridge` off. **Downgrade exception:** LSS 0.17 and older reject the new",
+              "group, so a file created or saved by a newer build loads there only after renaming",
+              "`map_ingestion:` back to `xaero_map:` under `integrations:` (or deleting the file).", ""]
     for key, title in [("server", "Fabric / NeoForge / Sponge server"), ("paper", "Paper / Folia server"), ("client", "Client")]:
         schema = data[key]
         output += ["## " + title, "", "| YAML path | Type | Default | Range / units | Timing | Applicability |", "| --- | --- | --- | --- | --- | --- |"]
@@ -53,6 +60,10 @@ def render(data: dict | None = None) -> str:
             default = json.dumps(descriptor["defaultValue"], ensure_ascii=False, separators=(",", ":"))
             cells = [descriptor["path"], descriptor["kind"].lower(), default, bounds.strip(), descriptor["timing"], descriptor["platform"].lower()]
             output.append("| " + " | ".join(str(value).replace("|", "\\|").replace("\n", " ") for value in cells) + " |")
+        if schema.get("aliases"):
+            output += ["", "Old paths still read (the next save that changes a setting rewrites them):", "",
+                       "| Old path | Read as |", "| --- | --- |"]
+            output += ["| " + old + " | " + new + " |" for old, new in sorted(schema["aliases"].items())]
         output += ["", "The generated document includes feature explanations, resource costs and zero meanings.", "", "```yaml", schema["document"].rstrip(), "```", ""]
     output += ["A missing store key in legacy JSON migrates to store disabled; fresh YAML enables it.",
                "Legacy generation and dirty-broadcast seconds are normalized under their old bounds",

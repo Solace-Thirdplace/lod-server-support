@@ -73,7 +73,9 @@ public final class LegacySettingsMigration {
         }
         if(!schema.isClient()) {
             // Freeze the three old vanilla radii before overlaying exact legacy overrides.
-            int radius=(Integer)values.get("lod.distance.default_chunks");
+            // Old JSON clamped its radius to at least 1: a legacy 0 meant 1, never today's "off".
+            int radius=Math.max(1,(Integer)values.get("lod.distance.default_chunks"));
+            values.put("lod.distance.default_chunks",radius);
             var dimensions=new LinkedHashMap<String,Integer>();
             for(String dimension:List.of("minecraft:overworld","minecraft:the_nether","minecraft:the_end"))dimensions.put(dimension,radius);
             values.put("lod.distance.by_dimension",dimensions); values.put("lod.distance.by_world",Map.of());
@@ -97,6 +99,13 @@ public final class LegacySettingsMigration {
                 if(dropped>0)warnings.add("lod.distance: omitted "+dropped+" inert/invalid entries");
                 if(schema.isPaper()&&duplicated)warnings.add("lod.distance: preserved exact world and dimension interpretations");
             }
+        }
+        if(schema.isClient()) {
+            // Fresh files enable map ingestion; migration preserves the old behaviour, where an
+            // absent enableXaeroMapBridge meant off (the storage.lod_store.enabled precedent).
+            Object bridge=old.get("enableXaeroMapBridge");
+            values.put("integrations.map_ingestion.enabled",bridge==null?Boolean.FALSE
+                    :primitive(bridge,SettingsSchema.Kind.BOOLEAN,"integrations.map_ingestion.enabled"));
         }
         var decoded=schema.fromValues(values);
         // Migration intentionally emits normalized values; source bytes and backup retain originals.

@@ -276,6 +276,74 @@ class LSSPaperPluginGlueTest {
                 "the handshake must advertise the dimension override when Bukkit is unavailable");
     }
 
+    /** A player mock whose level can be re-stubbed between the handshake and the deferred
+     *  reply — the world change racing the pump's Register drain. */
+    private static net.minecraft.server.level.ServerPlayer mockPlayer() {
+        return org.mockito.Mockito.mock(net.minecraft.server.level.ServerPlayer.class);
+    }
+
+    private static net.minecraft.server.level.ServerLevel levelOf(
+            net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> key) {
+        var level = org.mockito.Mockito.mock(net.minecraft.server.level.ServerLevel.class);
+        when(level.dimension()).thenReturn(key);
+        return level;
+    }
+
+    @Test
+    void aHandshakeIntoAnOffWorldResolvesTheWorldWhenTheReplySends() {
+        // 0 = no LOD service in that world. The reply is DEFERRED to the pump's Register
+        // drain, and the world is resolved when it SENDS — the moment the state records its
+        // dimension — so a player who handshook in a served world and changed world before
+        // the drain is told about the world it is registered in, not the one it left.
+        var config = config(true);
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 512);
+        MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
+        var overworld = levelOf(net.minecraft.world.level.Level.OVERWORLD);
+        var nether = levelOf(net.minecraft.world.level.Level.NETHER);
+
+        // CURRENT: overworld at the handshake, the off nether by the drain -> enabled=false, 0.
+        var player = mockPlayer();
+        when(player.level()).thenReturn(overworld);
+        var sender = new RecordingSender();
+        var registrar = new RecordingRegistrar();
+        LSSPaperPlugin.handleHandshake(handshakeFrame(V, VOXEL_CAPS), "Steve", player, config,
+                true, sender, registrar);
+        when(player.level()).thenReturn(nether);
+        registrar.runDeferredReplies();
+        assertEquals(1, sender.replies.size());
+        assertFalse(sender.replies.get(0).enabled(), "an off world is advertised as disabled");
+        assertEquals(0, sender.replies.get(0).lodDistanceChunks());
+        assertEquals(List.of(VOXEL_CAPS), registrar.caps, "the player still registers (far players run)");
+
+        // The reverse: off nether at the handshake, the served overworld by the drain.
+        var back = mockPlayer();
+        when(back.level()).thenReturn(nether);
+        var backSender = new RecordingSender();
+        var backRegistrar = new RecordingRegistrar();
+        LSSPaperPlugin.handleHandshake(handshakeFrame(V, VOXEL_CAPS), "Alex", back, config,
+                true, backSender, backRegistrar);
+        when(back.level()).thenReturn(overworld);
+        backRegistrar.runDeferredReplies();
+        assertTrue(backSender.replies.get(0).enabled());
+        assertEquals(512, backSender.replies.get(0).lodDistanceChunks());
+
+        // Legacy dialects get no later push: in the off world they stay enabled with the
+        // server's largest distance and the request filter enforces the off world.
+        for (int version : new int[]{18, 16}) {
+            var legacy = mockPlayer();
+            when(legacy.level()).thenReturn(nether);
+            var legacySender = new RecordingSender();
+            var legacyRegistrar = new RecordingRegistrar();
+            LSSPaperPlugin.handleHandshake(handshakeFrame(version, VOXEL_CAPS), "Old", legacy, config,
+                    true, legacySender, legacyRegistrar);
+            legacyRegistrar.runDeferredReplies();
+            assertEquals(1, legacySender.replies.size(), "v" + version + " replies once");
+            assertTrue(legacySender.replies.get(0).enabled(), "v" + version + " stays enabled");
+            assertEquals(512, legacySender.replies.get(0).lodDistanceChunks(),
+                    "v" + version + " is told the largest configured distance");
+        }
+    }
+
     @Test
     void v16HandshakeGetsTheV16DialectReplyAndRegistration() {
         // A legacy protocol-16 client under enableV16Compat (default true) must take the

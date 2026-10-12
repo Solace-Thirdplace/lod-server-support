@@ -130,6 +130,8 @@ public final class BenchmarkHook {
             }
         }
 
+        armFrameThrottle(System.getProperty("lss.soak.frameThrottle", ""));
+
         // Snapshot every second (like the benchmark hook) but only WRITE every 5s — the
         // LSS disconnect handler clears all counters before ours runs, so the disconnect
         // row must re-emit the last live snapshot instead of reading zeroed state.
@@ -161,8 +163,59 @@ public final class BenchmarkHook {
             // The LSS disconnect handler queued the cache save before us in registration
             // order; this drains the single-threaded IO executor so the write lands.
             dev.vox.lss.networking.client.ColumnCacheStore.flushPendingIo();
+            long grace = Long.getLong("lss.soak.haltGraceMillis", 0L);
+            if (grace > 0) {
+                // The JourneyMap smoke: JourneyMap saves its map in its own disconnect
+                // handling, which a halt from here would cut short. Halt from a side
+                // thread so this one returns and the client finishes its disconnect.
+                LSSLogger.info("[Soak] Cache flushed, exiting client in " + grace + " ms (halt grace)");
+                var halt = new Thread(() -> {
+                    try {
+                        Thread.sleep(grace);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                    Runtime.getRuntime().halt(0);
+                }, "LSS-SoakHaltGrace");
+                halt.start();
+                return;
+            }
             LSSLogger.info("[Soak] Cache flushed, exiting client");
             Runtime.getRuntime().halt(0);
+        });
+    }
+
+    /**
+     * {@code -Dlss.soak.frameThrottle=MS[:SECONDS]}: sleep MS at the end of every rendered
+     * frame for the first SECONDS after the first throttled frame (absent = the whole
+     * session) — Dynamic FPS's unfocused frame rate, for the Xaero memory gate (map-ingestion
+     * plan §6.4 L2): Xaero releases map memory only per rendered frame. Ticks keep running
+     * (Minecraft catches up to ten per frame), exactly the starved-release shape.
+     */
+    private static void armFrameThrottle(String spec) {
+        if (spec.isBlank()) return;
+        String[] parts = spec.split(":");
+        long sleepMs = Long.parseLong(parts[0]);
+        long forMs = parts.length > 1 ? Long.parseLong(parts[1]) * 1000 : Long.MAX_VALUE;
+        if (sleepMs <= 0) return;
+        long[] liftAt = {0};
+        LSSLogger.info("[Soak] Frame throttle armed: " + sleepMs + " ms per frame"
+                + (forMs == Long.MAX_VALUE ? "" : " for " + forMs / 1000 + " s"));
+        net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents.END_MAIN.register(context -> {
+            long now = System.currentTimeMillis();
+            if (liftAt[0] == 0) liftAt[0] = forMs == Long.MAX_VALUE ? Long.MAX_VALUE : now + forMs;
+            if (now >= liftAt[0]) {
+                if (liftAt[0] > 0) {
+                    LSSLogger.info("[Soak] Frame throttle lifted");
+                    liftAt[0] = -1;
+                }
+                return;
+            }
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         });
     }
 

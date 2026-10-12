@@ -55,6 +55,12 @@ class DirtyColumnBroadcasterTest {
             this.events = events;
         }
 
+        /** With an explicit served-set sweep radius (the distance-0 clear bound). */
+        RecordingProcessor(Map<UUID, PlayerRequestState> players, List<Object> events, int sweepRadiusChunks) {
+            super(players, null, false, null, 1, 0, sweepRadiusChunks);
+            this.events = events;
+        }
+
         @Override
         public void invalidateTimestamps(String dimension, long[] positions, Runnable onApplied) {
             // The 2-arg form delegates here, so both call shapes record. Run the
@@ -132,9 +138,15 @@ class DirtyColumnBroadcasterTest {
         final DirtyColumnBroadcaster broadcaster;
 
         Rig(List<ResourceKey<Level>> dimensions) {
+            this(dimensions, -1);
+        }
+
+        /** A negative {@code sweepRadiusChunks} keeps the processor's default (the fail-safe maximum). */
+        Rig(List<ResourceKey<Level>> dimensions, int sweepRadiusChunks) {
             MutableServerSettings.set(this.config, "updates.dirty_broadcast_interval_ticks", (1) * 20); // 20 tick() calls per broadcast
             MutableServerSettings.set(this.config, "lod.distance.default_chunks", 8);
-            var processor = new RecordingProcessor(this.players, this.events);
+            var processor = sweepRadiusChunks < 0 ? new RecordingProcessor(this.players, this.events)
+                    : new RecordingProcessor(this.players, this.events, sweepRadiusChunks);
             this.broadcaster = new DirtyColumnBroadcaster(this.players, processor, this.tracker,
                     () -> dimensions, this.view);
         }
@@ -273,6 +285,34 @@ class DirtyColumnBroadcasterTest {
                 "overworld players still use the default lodDistanceChunks");
         assertArrayEquals(new long[]{netherInAtBoundary}, only(clearsFor(rig, netherPlayer)));
         assertArrayEquals(new long[]{overworldInAtDefault}, only(clearsFor(rig, overworldPlayer)));
+    }
+
+    @Test
+    void aWorldWithDistanceZeroClearsEveryDoneBitTheSweepStillHolds() {
+        // 0 = no LOD service in that world, but its players' done-bits must still clear (a
+        // world reloaded back on must not answer up_to_date off a pre-edit bit) and legacy
+        // sessions (never told "off") still need the notice. The bound is the served-set
+        // sweep radius, not the largest distance configured NOW (8 here): a session served
+        // the nether at 512 before a reload turned it off holds bits far past 8, and the
+        // sweep radius (a monotonic max) still covers them. Bits beyond it are already gone.
+        var rig = new Rig(List.of(Level.OVERWORLD, Level.NETHER), 600);
+        MutableServerSettings.set(rig.config, "lod.distance.default_chunks", 8);
+        MutableServerSettings.set(rig.config, "lod.distance.by_world", new java.util.LinkedHashMap<>());
+        MutableServerSettings.dimension(rig.config, LSSConstants.DIM_STR_THE_NETHER, 0);
+        var overworldPlayer = rig.addPlayer(Level.OVERWORLD, 0, 0);
+        var netherPlayer = rig.addPlayer(Level.NETHER, 0, 0);
+        rig.tracker.markDirty(LSSConstants.DIM_STR_THE_NETHER, 0, 0);
+        rig.tracker.markDirty(LSSConstants.DIM_STR_THE_NETHER, 400, 0); // past 8, inside the sweep
+        rig.tracker.markDirty(LSSConstants.DIM_STR_THE_NETHER, 700, 0); // beyond the sweep radius
+        rig.tracker.markDirty(LSSConstants.DIM_STR_OVERWORLD, 1, 1);
+        rig.fire();
+
+        var held = Set.of(PositionUtil.packPosition(0, 0), PositionUtil.packPosition(400, 0));
+        assertEquals(held, asSet(only(clearsFor(rig, netherPlayer))),
+                "the off world's done-bits clear out to the sweep radius");
+        assertEquals(held, asSet(only(sentTo(rig, netherPlayer))));
+        assertArrayEquals(new long[]{PositionUtil.packPosition(1, 1)}, only(sentTo(rig, overworldPlayer)));
+        assertEquals(0, rig.tracker.pendingCount(), "the off world's marks are drained");
     }
 
     @Test

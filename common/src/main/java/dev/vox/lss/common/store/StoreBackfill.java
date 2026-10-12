@@ -171,6 +171,11 @@ public final class StoreBackfill {
     private final AtomicBoolean running = new AtomicBoolean();
     private final AtomicBoolean stopRequested = new AtomicBoolean();
     private volatile Thread worker;
+    /** Dimensions with LOD service (distance > 0). An off dimension is neither planned nor
+     *  walked; its regions stay unmarked, so the next run after it is turned back on (a restart
+     *  or {@code /lsslod store backfill start}) walks them — a reload alone starts no run, and
+     *  the store warms from serves meanwhile. Read live, so a reload applies at the next region. */
+    private volatile java.util.function.Predicate<String> dimensionServed = dim -> true;
     private volatile String statusLine = "idle";
     // Remaining-estimate progress (v0.11.0 stage C, SET plan Part 2): written by the
     // worker, read by /lsslod store backfill status. `walked` is the VISITED count —
@@ -325,6 +330,11 @@ public final class StoreBackfill {
                 adoptPolicyAtBoundary();
                 long capBytes = this.store.sizeCapBytes();
                 if (this.stopRequested.get()) break;
+                // Turned off since planning (a reload): skip, unmarked, so a later run walks it.
+                if (!served(region.dim())) {
+                    this.planRegionsWalked++; // visited (progress stays coherent), not marked done
+                    continue;
+                }
                 // Hard stop at an active cap (store-cap-behavior-plan §3) — never a
                 // pause: a full store does not un-fill itself, and each further
                 // deposit evicts an OLDER (nearer-spawn) row, inverting the walk's
@@ -530,11 +540,26 @@ public final class StoreBackfill {
         }
     }
 
+    /** Installs the served-dimension check (see {@link #dimensionServed}). */
+    public void setDimensionFilter(java.util.function.Predicate<String> served) {
+        this.dimensionServed = served == null ? dim -> true : served;
+    }
+
+    private boolean served(String dim) {
+        try {
+            return this.dimensionServed.test(dim);
+        } catch (Throwable t) {
+            if (t instanceof VirtualMachineError vme) throw vme;
+            return true; // a broken check never silently skips a dimension
+        }
+    }
+
     /** All not-yet-done regions of all dims, Chebyshev-nearest-to-spawn first
      *  (players cluster spawn-side — the plan's traversal order). */
     private List<RegionRef> enumerate() {
         List<RegionRef> plan = new ArrayList<>();
         for (String dim : this.dimensions) {
+            if (!served(dim)) continue;
             Path dir;
             try {
                 dir = this.regionDirResolver.apply(dim);

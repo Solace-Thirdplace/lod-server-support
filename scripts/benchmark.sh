@@ -163,6 +163,7 @@ OPTS
 # diagnosed 2026-07-29 as the "client early-stop" that truncated 2 of 4 profile runs.
 cat > "$SERVER_RUN_DIR/server.properties" <<'PROPS'
 online-mode=false
+white-list=false
 level-seed=benchmark-seed-42
 spawn-protection=0
 max-tick-time=-1
