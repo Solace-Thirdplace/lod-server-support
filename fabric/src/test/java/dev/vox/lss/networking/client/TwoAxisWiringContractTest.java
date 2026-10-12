@@ -49,7 +49,8 @@ class TwoAxisWiringContractTest {
         assertTrue(decide >= 0);
         String body = source.substring(decide);
         assertTrue(body.contains("ModCompat.isVoxyBridgeActive()"), body.substring(0, 200));
-        assertTrue(body.contains("ModCompat.isXaeroBridgeArmed()"));
+        assertTrue(body.contains("ModCompat.isMapStoreArmed()"),
+                "Xaero AND JourneyMap stores are per-server: either armed must veto an alias");
         assertTrue(body.contains("ModCompat.observeVoxyStorageDirName()"));
         assertTrue(body.contains("CacheKeyAliases.addressComponent(group.canonicalRaw())"),
                 "an applied group must key by the CANONICAL's component");

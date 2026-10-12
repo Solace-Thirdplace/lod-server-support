@@ -208,7 +208,7 @@ class ClientOptionCatalogTest {
     void theShippedShapeIsPinned() {
         // ids, in display order (the 0.8+ API keys per-option state by id — never renumber)
         assertEquals(List.of("lss:receive_server_lods", "lss:lod_distance", "lss:column_rate_limit",
-                        "lss:join_slow_start", "lss:xaero_map_bridge", "lss:lod_source", "lss:far_players_enabled",
+                        "lss:join_slow_start", "lss:map_ingestion", "lss:lod_source", "lss:far_players_enabled",
                         "lss:far_players_share_self", "lss:far_players_name_tags",
                         "lss:far_players_full_bright", "lss:far_players_render_distance"),
                 allOptions().stream().map(OptionSpec::id).toList());
@@ -265,11 +265,11 @@ class ClientOptionCatalogTest {
         var slow = ClientOptionCatalog.find(ClientOptionCatalog.ID_JOIN_SLOW_START).orElseThrow();
         assertEquals("lss.config.join_slow_start.tooltip", slow.tooltip().resolve(new MenuContext(true, false, true)));
         assertEquals("lss.config.join_slow_start.tooltip.governor_off", slow.tooltip().resolve(new MenuContext(false, false, true)));
-        var xaero = ClientOptionCatalog.find(ClientOptionCatalog.ID_XAERO_MAP_BRIDGE).orElseThrow();
-        assertEquals("lss.config.xaero_map_bridge.tooltip", xaero.tooltip().resolve(new MenuContext(true, true, true)));
-        assertEquals("lss.config.xaero_map_bridge.tooltip.not_installed", xaero.tooltip().resolve(new MenuContext(true, false, true)));
-        assertEquals("lss.config.xaero_map_bridge.tooltip.native_only", xaero.tooltip().resolve(new MenuContext(true, true, true, false)));
-        assertEquals("lss.config.xaero_map_bridge.tooltip.native_only", xaero.tooltip().resolve(new MenuContext(false, false, true, false)));
+        var xaero = ClientOptionCatalog.find(ClientOptionCatalog.ID_MAP_INGESTION).orElseThrow();
+        assertEquals("lss.config.map_ingestion.tooltip", xaero.tooltip().resolve(new MenuContext(true, true, true)));
+        assertEquals("lss.config.map_ingestion.tooltip.not_installed", xaero.tooltip().resolve(new MenuContext(true, false, true)));
+        assertEquals("lss.config.map_ingestion.tooltip.native_only", xaero.tooltip().resolve(new MenuContext(true, true, true, false)));
+        assertEquals("lss.config.map_ingestion.tooltip.native_only", xaero.tooltip().resolve(new MenuContext(false, false, true, false)));
         assertEquals("lss.config.join_slow_start.tooltip", slow.tooltip().resolve(new MenuContext(true, true, true, false)));
         assertEquals(3, xaero.tooltip().keys().size());
         var fp = ClientOptionCatalog.find(ClientOptionCatalog.ID_FAR_PLAYERS_ENABLED).orElseThrow();
@@ -284,7 +284,7 @@ class ClientOptionCatalogTest {
         // renderers call this on the render thread).
         MenuContext ctx = MenuContext.current();
         assertNotNull(ctx);
-        assertFalse(ctx.xaeroPresent());
+        assertFalse(ctx.mapModSupported());
     }
 
     private static List<OptionSpec> allOptions() {
@@ -304,9 +304,9 @@ class ClientOptionCatalogTest {
             assertEquals(tooltip.resolve(tooltip.resolvesAtDisplay() ? later : registered), shown, option.id());
         }
         assertTrue(calls.get() >= 2, "governor and native-only tooltips read the live context");
-        var xaero = ClientOptionCatalog.find(ClientOptionCatalog.ID_XAERO_MAP_BRIDGE).orElseThrow().tooltip();
+        var xaero = ClientOptionCatalog.find(ClientOptionCatalog.ID_MAP_INGESTION).orElseThrow().tooltip();
         assertTrue(xaero.resolvesAtDisplay());
-        assertEquals("lss.config.xaero_map_bridge.tooltip.native_only", xaero.resolveAtDisplay(registered, () -> later));
+        assertEquals("lss.config.map_ingestion.tooltip.native_only", xaero.resolveAtDisplay(registered, () -> later));
         // 1.21.10 line: LSSConfigMenu (the Sodium 0.8+ walker) is CUT here; the legacy page
         // is the only renderer and it builds per screen open from the live context, so
         // its build-time resolve IS display time. Pin that both twins read the live context.

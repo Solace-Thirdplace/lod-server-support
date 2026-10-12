@@ -27,7 +27,15 @@ LEGACY_DIR="$SCRIPT_DIR/test-server/fabric-legacy"
 # NOTE: the Java-version gate below (JAVA_MAJOR check) is ALSO per-line data —
 #       a Java-21 line port must retarget it (round-3 review NIT).
 FABRIC_MC_VERSION="1.21.10"
-FABRIC_LOADER_VERSION="0.19.3"
+# Derived from gradle.properties loader_version (the loader this line BUILDS against), like
+# NEOFORGE_VERSION below. A hand pin drifted once: 26.3's C2ME build crashes at startup under
+# loader 0.19.3's bundled MixinExtras 0.5.4 (ClassCastException in
+# FactoryRedirectWrapperMixinTransformer) and loads under that line's 0.19.5.
+FABRIC_LOADER_VERSION="${FABRIC_LOADER_VERSION:-$(sed -n 's/^loader_version=//p' "$SCRIPT_DIR/gradle.properties" | tr -d '\r')}"
+if [ -z "$FABRIC_LOADER_VERSION" ]; then
+    echo "ERROR: could not read loader_version from gradle.properties" >&2
+    exit 1
+fi
 FABRIC_INSTALLER_VERSION="1.1.1"
 
 # --- Paper/Folia versions ---
@@ -187,12 +195,25 @@ fi
 # Helpers
 # ============================================================
 
+# Downloads are cached by FILENAME, so each one records its source URL in a hidden stamp
+# beside it (loaders and Bukkit only scan visible *.jar files). A changed pin (loader, C2ME,
+# AntiXray, ...) evicts the cached copy; without the stamp a bump never reached an existing rig.
+download_stamp() {
+    echo "$(dirname "$1")/.$(basename "$1").src"
+}
+
 download() {
     local url="$1"
     local dest="$2"
+    local stamp
+    stamp="$(download_stamp "$dest")"
     if [ -f "$dest" ]; then
-        echo "  Already exists: $(basename "$dest")"
-        return 0
+        if [ "$(cat "$stamp" 2>/dev/null)" = "$url" ]; then
+            echo "  Already exists: $(basename "$dest")"
+            return 0
+        fi
+        echo "  Pin changed, replacing: $(basename "$dest")"
+        rm -f "$dest"
     fi
     echo "  Downloading: $(basename "$dest")"
     # --remove-on-error: on a 404/failure, curl has already truncated/created $dest; without
@@ -200,6 +221,17 @@ download() {
     # run, silently installing a broken jar. Most likely to bite the legacy jar (its URL is the
     # one edited when LEGACY_LSS_VERSION is bumped).
     curl -fsSL --remove-on-error -o "$dest" "$url"
+    printf '%s\n' "$url" > "$stamp"
+}
+
+# A copy parked as .jar.disabled by an A/B run is skipped by its download guard, so it is
+# dropped here when its pin changed; the guard then fetches the current pin.
+drop_stale_parked() {
+    local dest="$1" url="$2"
+    if [ -f "$dest.disabled" ] && [ "$(cat "$(download_stamp "$dest")" 2>/dev/null)" != "$url" ]; then
+        rm -f "$dest.disabled"
+        echo "  Dropped stale parked copy: $(basename "$dest")"
+    fi
 }
 
 # Downloads the latest stable build of a PaperMC-family server (paper|folia) via
@@ -329,6 +361,7 @@ write_server_properties() {
         echo "  Creating server.properties (port $port)"
         cat > "$dir/server.properties" << EOF
 online-mode=false
+white-list=false
 spawn-protection=0
 view-distance=4
 simulation-distance=4
@@ -453,6 +486,7 @@ setup_fabric() {
     download "$FABRIC_API_URL" "$mods_dir/fabric-api.jar"
     # Skip the download while a no-c2me A/B run has it parked as .jar.disabled —
     # otherwise every such run re-downloads a jar it is about to disable.
+    drop_stale_parked "$mods_dir/c2me.jar" "$C2ME_URL"
     if [ ! -f "$mods_dir/c2me.jar.disabled" ]; then
         download "$C2ME_URL" "$mods_dir/c2me.jar"
     fi
@@ -972,6 +1006,7 @@ case "${1:-run}" in
         echo ""
         echo "=== Enabling AntiXray (DrexHD) for this run ==="
         # Skip the download while a previous run has it parked as .jar.disabled.
+        drop_stale_parked "$FABRIC_DIR/mods/antixray.jar" "$ANTIXRAY_URL"
         if [ ! -f "$FABRIC_DIR/mods/antixray.jar.disabled" ]; then
             download "$ANTIXRAY_URL" "$FABRIC_DIR/mods/antixray.jar"
         fi

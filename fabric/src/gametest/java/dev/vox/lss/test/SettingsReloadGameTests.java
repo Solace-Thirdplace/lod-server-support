@@ -58,12 +58,19 @@ public class SettingsReloadGameTests {
                     check(root.getChild("set") == null && root.getChild("preset") == null,
                             "Removed mutation commands must not be registered");
                 });
+                // 0 = no LOD service in this dimension, through the real reload path.
+                store.saveDraft(store.read().hash(), Map.of("lod.distance.by_dimension", Map.of(world, 0)));
+                reload(server, source, lines, false);
+                onServer(server, () -> {
+                    check(config.lodDistanceForWorld(world) == 0, "Reload must apply a zero (off) dimension");
+                    assertOffWorldHandshake(helper);
+                });
                 long revision = config.settingsHandle().state().revision();
                 byte[] bad = "config_version: 1\ngeneration: [broken\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 Files.write(store.path(), bad);
                 reload(server, source, lines, true);
                 check(config.settingsHandle().state().revision() == revision, "Rejected reload must not publish a revision");
-                check(config.lodDistanceForWorld(world) == 7, "Rejected reload must retain active policy");
+                check(config.lodDistanceForWorld(world) == 0, "Rejected reload must retain active policy (the off dimension)");
                 check(java.util.Arrays.equals(bad, Files.readAllBytes(store.path())), "Failed reload must not rewrite the bad file");
             } catch (Throwable error) {
                 failure = error;
@@ -111,6 +118,45 @@ public class SettingsReloadGameTests {
                     new long[]{PositionUtil.packPosition(cx + radius, cz), PositionUtil.packPosition(cx + radius + 1, cz)},
                     new long[]{0L, 0L}, 2));
             check(state.getTotalRequestsReceived() == before + 1, "Only the reloaded range boundary must be accepted");
+        } finally {
+            service.removePlayer(player.getUUID());
+            service.getDialectTracker().onDisconnect(player.getUUID());
+            server.getPlayerList().remove(player);
+        }
+    }
+
+    /** A world at distance 0: a CURRENT session is told LODs are off there (and stays
+     *  registered), nothing is accepted, and a legacy (v18) session — which no later push
+     *  reaches — is told the server's largest distance so it stays on for served worlds. */
+    @SuppressWarnings("removal")
+    private static void assertOffWorldHandshake(GameTestHelper helper) {
+        var server = helper.getLevel().getServer();
+        var service = LSSServerNetworking.getRequestService();
+        var player = helper.makeMockServerPlayerInLevel();
+        try {
+            var replies = new ArrayList<dev.vox.lss.networking.payloads.SessionConfigS2CPayload>();
+            LSSServerNetworking.handleHandshake(new dev.vox.lss.networking.payloads.HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, LSSConstants.CAPABILITY_VOXEL_COLUMNS), player, service, replies::add);
+            check(replies.size() == 1 && !replies.getFirst().enabled() && replies.getFirst().lodDistanceChunks() == 0,
+                    "An off world must be advertised as disabled with distance 0");
+            var state = service.getPlayers().get(player.getUUID());
+            check(state != null, "An off world keeps the player registered");
+            long before = state.getTotalRequestsReceived();
+            int cx = player.getBlockX() >> 4, cz = player.getBlockZ() >> 4;
+            service.handleBatchRequest(player, new dev.vox.lss.networking.payloads.BatchChunkRequestC2SPayload(
+                    new long[]{PositionUtil.packPosition(cx, cz)}, new long[]{0L}, 1));
+            check(state.getTotalRequestsReceived() == before, "No ask is accepted in an off world, not even the player's own chunk");
+            var legacy = new ArrayList<dev.vox.lss.networking.payloads.SessionConfigS2CPayload>();
+            LSSServerNetworking.handleHandshake(new dev.vox.lss.networking.payloads.HandshakeC2SPayload(
+                    LSSConstants.V18_COMPAT_PROTOCOL_VERSION, LSSConstants.CAPABILITY_VOXEL_COLUMNS), player, service, legacy::add);
+            check(legacy.size() == 1 && legacy.getFirst().enabled() && legacy.getFirst().lodDistanceChunks() == 96,
+                    "A legacy session must stay enabled with the server's largest distance");
+            var v16 = new ArrayList<dev.vox.lss.networking.payloads.SessionConfigS2CPayload>();
+            LSSServerNetworking.handleHandshake(new dev.vox.lss.networking.payloads.HandshakeC2SPayload(
+                    LSSConstants.V16_COMPAT_PROTOCOL_VERSION, LSSConstants.CAPABILITY_VOXEL_COLUMNS), player, service, v16::add);
+            check(v16.size() == 1 && v16.getFirst().v16Wire() && v16.getFirst().enabled()
+                            && v16.getFirst().lodDistanceChunks() == 96,
+                    "A v16 session gets the same legacy treatment in its own 6-field shape, got " + v16);
         } finally {
             service.removePlayer(player.getUUID());
             service.getDialectTracker().onDisconnect(player.getUUID());

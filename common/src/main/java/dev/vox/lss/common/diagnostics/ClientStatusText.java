@@ -41,12 +41,13 @@ public final class ClientStatusText {
         lines.add(text("server", text(s.discovery() == ClientStatusSnapshot.Discovery.PROTOCOL_REJECTED
                 ? "discovery.protocol_rejected" : !s.negotiated() ? "unknown" : s.serverEnabled() ? "available" : "disabled")));
         lines.add(text("xaero", enumText("availability", s.xaeroAvailability())));
+        lines.add(text("journeymap", enumText("availability", s.journeyMapAvailability())));
         lines.add(text("renderer", text(s.rendererAvailable() ? "available" : "renderer_unavailable")));
         List<Message> reasons = s.reasons().stream().map(reason -> enumText("reason", reason)).toList();
         lines.add(text("conditions", reasons.isEmpty() ? text("none") : reasons));
         lines.add(text("progress", s.receivedColumns(), s.receivedBytes(), s.effectiveDistance(), s.serverDistance()));
         lines.add(text("rate", s.rateGatedTicks(), s.rateCap()));
-        lines.add(text("queues", s.queuedColumns(), s.ingestBacklog(), s.xaeroPendingRebuilds()));
+        lines.add(text("queues", s.queuedColumns(), s.ingestBacklog(), s.xaeroPendingRebuilds(), s.journeyMapPending()));
         lines.add(text("remote_unknown"));
         if(s.dh()!=null)lines.add(text("dh.reason",enumText("dh.reason",s.dh().reason())));
         }
@@ -67,6 +68,6 @@ public final class ClientStatusText {
     private static Object paths(List<String> paths) { return paths.isEmpty() ? text("none") : String.join(", ", paths); }
     private static Message settingsValues(String key, ClientSettingsStatus.Values v) {
         return text(key, onOff(v.receptionEnabled()), v.distanceChunks(), v.maxColumnsPerSecond(),
-                onOff(v.xaeroMapEnabled()), onOff(v.sharingEnabled()));
+                onOff(v.mapIngestionEnabled()), onOff(v.sharingEnabled()));
     }
 }
