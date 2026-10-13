@@ -174,6 +174,11 @@ class XaeroMapCompatTest {
         this.bridge.offerPrepared(OVERWORLD, tile(chunkX, chunkZ));
     }
 
+    /** A surface-layer region key (the window, grant and awaiting keys carry the layer). */
+    private static XaeroSession.RegionKey surface(long regionKey) {
+        return XaeroSession.surfaceRegion(regionKey);
+    }
+
     /** An owed-only pump (empty queue, debt present) runs the ladder every 4th tick
      *  (§12.10: ~5 Hz — Xaero's loader drains one file per ≥100 ms pass); pump a full
      *  stride so exactly one probe pass is guaranteed to have run. */
@@ -2436,7 +2441,9 @@ class XaeroMapCompatTest {
     }
 
     @Test
-    void aCaveLayerViewMakesTheBridgeWaitButOwedRebuildsStillRun() {
+    void aCaveLayerViewNoLongerHoldsTheSurfaceBack() {
+        // §B5: the cave-layer wait is gone — a surface tile commits to the surface layer
+        // while Xaero shows a band (its layer is fixed at extraction), owed rebuilds included.
         this.bridge.updateIdlePumps = 1;
         offer(64, 64);
         this.bridge.pump();
@@ -2444,13 +2451,10 @@ class XaeroMapCompatTest {
         this.processor.currentCaveLayer = 3; // auto cave mode / the Nether by default
         offer(68, 64);
         this.bridge.pump();
-        assertEquals(1, this.bridge.counterForTest("written"), "surface writes wait while a cave layer renders");
-        assertEquals(1, this.bridge.queuedForTest(), "retained, not dropped");
-        assertEquals(1, this.bridge.counterForTest("cave_layer_waits"));
-        assertEquals(1, this.bridge.counterForTest("buffer_updates"), "the owed rebuild still ran");
+        assertEquals(2, this.bridge.counterForTest("written"), "surface writes no longer wait for the surface view");
+        assertEquals(0, this.bridge.queuedForTest());
+        assertEquals(1, this.bridge.counterForTest("buffer_updates"), "the owed rebuild ran");
         this.processor.currentCaveLayer = Integer.MAX_VALUE;
-        this.bridge.pump();
-        assertEquals(2, this.bridge.counterForTest("written"));
     }
 
     @Test
@@ -2680,7 +2684,10 @@ class XaeroMapCompatTest {
                 && line.contains(", regions_waiting=") && line.contains(", buffer_updates=")
                 && line.contains(", pending_updates=") && line.contains(", dropped_updates=")
                 && line.contains(", dropped_unloaded=") && line.contains(", skipped_settings=")
-                && line.contains(", cave_layer_waits=") && line.contains(", frame_flushes=")
+                && !line.contains("cave_layer_waits") && line.contains(", written_cave=")
+                && line.contains(", layer=-, mode=-, best_effort_enqueued=0, best_effort_written=0, best_effort_dropped=0,")
+                && line.contains(", best_effort_bands=off, load_ms=p50:-1/p95:-1(n 0)")
+                && line.contains(", frame_flushes=")
                 && line.contains(", rebuild_ms=") && line.contains(", rebuild_max_us=")
                 && line.contains(", dropped_overflow=") && line.contains(", dropped_expired=")
                 && !line.contains(", refused_paused=") && line.contains(", drops_reported=")
@@ -2706,7 +2713,7 @@ class XaeroMapCompatTest {
         offer(128, 64); // region (4,2), fresh-unloaded
         offer(129, 64);
         this.bridge.pump(); // both await their load → the pump publishes (4,2) as awaiting
-        assertTrue(this.bridge.awaitingRegionsForTest().contains(XaeroSession.regionKeyOf(128, 64)),
+        assertTrue(this.bridge.awaitingRegionsForTest().contains(surface(XaeroSession.regionKeyOf(128, 64))),
                 "the last pump's awaiting regions are the evictor's classifier");
         offer(130, 64); // evicts (128,64) — its region is awaiting: owed, silent
         assertEquals(1, this.bridge.counterForTest("dropped_overflow"), "still counted as a drop");
@@ -2729,8 +2736,8 @@ class XaeroMapCompatTest {
         offer(64, 64);  // (2,2) loaded → commits this pump
         offer(65, 64);
         this.bridge.pump();
-        assertTrue(this.bridge.awaitingRegionsForTest().contains(XaeroSession.regionKeyOf(128, 64)));
-        assertFalse(this.bridge.awaitingRegionsForTest().contains(XaeroSession.regionKeyOf(64, 64)));
+        assertTrue(this.bridge.awaitingRegionsForTest().contains(surface(XaeroSession.regionKeyOf(128, 64))));
+        assertFalse(this.bridge.awaitingRegionsForTest().contains(surface(XaeroSession.regionKeyOf(64, 64))));
         this.bridge.maxQueue = 1;
         offer(66, 64); // evicts (128,64) — awaiting: owed
         assertEquals(1, this.bridge.counterForTest("owed"));
@@ -3517,7 +3524,7 @@ class XaeroMapCompatTest {
         assertTrue(this.bridge.windowWaits.get() > 0);
         this.bridge.pump();
         assertTrue(this.bridge.windowBound, "only the window holds the stream now");
-        assertEquals(Set.of(0L, 1L << 32), this.bridge.openRegions.keySet());
+        assertEquals(Set.of(surface(0L), surface(1L << 32)), this.bridge.openRegions.keySet());
         offer(1, 1); // region (0,0) is already open: it keeps committing
         this.bridge.pump();
         assertEquals(3, this.bridge.counterForTest("written"));
@@ -3536,11 +3543,11 @@ class XaeroMapCompatTest {
         this.bridge.pump();         // the probe frees the slot; the waiting region commits
         assertEquals(3, this.bridge.counterForTest("written"));
         assertEquals(0, this.bridge.queuedForTest());
-        assertFalse(this.bridge.openRegions.containsKey(0L));
-        assertTrue(this.bridge.openRegions.containsKey(2L << 32));
+        assertFalse(this.bridge.openRegions.containsKey(surface(0L)));
+        assertTrue(this.bridge.openRegions.containsKey(surface(2L << 32)));
         this.processor.regions.remove(1L << 32); // removed by Xaero (removeMapRegion)
         this.bridge.pump();
-        assertFalse(this.bridge.openRegions.containsKey(1L << 32), "a probe never re-creates a region");
+        assertFalse(this.bridge.openRegions.containsKey(surface(1L << 32)), "a probe never re-creates a region");
         assertFalse(this.processor.regions.containsKey(1L << 32));
     }
 
@@ -3632,18 +3639,18 @@ class XaeroMapCompatTest {
 
     @Test
     void aPumpThatNeverReachesTheDrainDropsThePacingHold() {
-        // A cave layer (or any gate) is not the window: the 7 s stuck-writer box applies.
+        // A gate (here a locked map) is not the window: the 7 s stuck-writer box applies.
         this.bridge.openRegionCap = 1;
         offer(0, 0);
         this.bridge.pump();
         offer(64, 0);
         this.bridge.pump();
         assertTrue(this.bridge.windowBound);
-        this.processor.currentCaveLayer = 3;
+        this.processor.currentMapLocked = true;
         this.bridge.pump();
-        assertFalse(this.bridge.windowBound, "a stale flag would grant a 60 s box to a cave-layer stall");
+        assertFalse(this.bridge.windowBound, "a stale flag would grant a 60 s box to a gate stall");
         assertEquals(this.bridge.bpHaltWedgeMillis, this.bridge.wedgeMillis());
-        this.processor.currentCaveLayer = Integer.MAX_VALUE;
+        this.processor.currentMapLocked = false;
     }
 
     @Test
@@ -3678,15 +3685,15 @@ class XaeroMapCompatTest {
     @Test
     void aGrantRestampsItsReservationEvenOntoACommittedRegion() {
         this.bridge.openRegionCap = 2;
-        this.bridge.admitToWindow(7L, 0L);
-        assertEquals(0L, this.bridge.openRegions.get(7L));
-        this.bridge.admitToWindow(7L, 500L);
-        assertEquals(500L, this.bridge.openRegions.get(7L), "its reload is in flight: held as a reservation (re-review)");
-        this.bridge.admitToWindow(7L, 900L);
-        assertEquals(900L, this.bridge.openRegions.get(7L), "a re-grant refreshes");
-        this.bridge.admitToWindow(7L, 0L);
-        assertEquals(0L, this.bridge.openRegions.get(7L), "a commit makes it a committed slot again");
-        this.bridge.admitToWindow(7L, 0L);
+        this.bridge.admitToWindow(surface(7L), 0L);
+        assertEquals(0L, this.bridge.openRegions.get(surface(7L)));
+        this.bridge.admitToWindow(surface(7L), 500L);
+        assertEquals(500L, this.bridge.openRegions.get(surface(7L)), "its reload is in flight: held as a reservation (re-review)");
+        this.bridge.admitToWindow(surface(7L), 900L);
+        assertEquals(900L, this.bridge.openRegions.get(surface(7L)), "a re-grant refreshes");
+        this.bridge.admitToWindow(surface(7L), 0L);
+        assertEquals(0L, this.bridge.openRegions.get(surface(7L)), "a commit makes it a committed slot again");
+        this.bridge.admitToWindow(surface(7L), 0L);
         assertEquals(1, this.bridge.openRegions.size());
     }
 
@@ -3701,7 +3708,7 @@ class XaeroMapCompatTest {
         region(2, 0).canRequestReload = false; // queued in Xaero's loader: in flight at state 0
         this.clockMillis += XaeroSession.GRANT_RESERVE_MILLIS + 1;
         this.bridge.pump();
-        assertFalse(this.bridge.openRegions.containsKey(2L << 32), "the expired reservation leaves the window");
+        assertFalse(this.bridge.openRegions.containsKey(surface(2L << 32)), "the expired reservation leaves the window");
         assertEquals(progress, this.bridge.windowProgressMillis, "but its load never started: not turnover (re-review)");
         offer(96, 0);
         offer(128, 0);
@@ -3717,14 +3724,14 @@ class XaeroMapCompatTest {
         offer(64, 0);
         this.bridge.pump();
         assertEquals(1, this.bridge.counterForTest("load_requests"));
-        assertTrue(this.bridge.openRegions.containsKey(2L << 32), "the slot is held from the grant");
+        assertTrue(this.bridge.openRegions.containsKey(surface(2L << 32)), "the slot is held from the grant");
         this.clockMillis += XaeroSession.GRANT_RESERVE_MILLIS - 1;
         this.bridge.pump();
-        assertTrue(this.bridge.openRegions.containsKey(2L << 32), "still loading: kept");
+        assertTrue(this.bridge.openRegions.containsKey(surface(2L << 32)), "still loading: kept");
         this.clockMillis += 2;
         region(2, 0).loadState = 4; // the load never started (or the region was released)
         for (int i = 0; i < 3; i++) this.bridge.pump();
-        assertFalse(this.bridge.openRegions.containsKey(2L << 32), "an expired reservation frees its slot");
+        assertFalse(this.bridge.openRegions.containsKey(surface(2L << 32)), "an expired reservation frees its slot");
     }
 
     @Test
@@ -3736,7 +3743,7 @@ class XaeroMapCompatTest {
         region(11, 0).loadState = 3; // the newest one parks first
         this.bridge.pump();
         this.bridge.pump();
-        assertFalse(this.bridge.openRegions.containsKey(11L << 32), "found within two rounds of eight");
+        assertFalse(this.bridge.openRegions.containsKey(surface(11L << 32)), "found within two rounds of eight");
     }
 
     @Test

@@ -20,6 +20,16 @@ import net.minecraft.resources.Identifier;
  * flag is off the encode is byte-identical to the pre-compat 4-field layout (pinned by
  * the wire tests). The v18 compat rung needs no shape of its own here — it is the SAME
  * 4-field encode with the version value 18 (the encoder never branches on the value).
+ *
+ * <p><b>Session flags</b> (map-policy plan A2): a trailing {@code sessionFlags} VarInt
+ * after {@code serverDataVersion}, appended ONLY when {@code protocolVersion == 20 &&
+ * !v16Wire && sessionFlags >= 0} — and {@link #forSession} makes {@code sessionFlags >= 0}
+ * mean "the session declared {@code CAPABILITY_MAP_POLICY}". Both halves are hard
+ * requirements: every 0.10.0–0.18.0 v20 client hard-kicks on a trailing byte, so a frame to
+ * a session without the bit must stay byte-identical to 0.18.0; and a 19/18/16 echo must
+ * never carry the field, or a 0.19 client's 19 arm would read the flags as the data
+ * version. Production construction goes through {@link #forSession} (or
+ * {@link #v16Legacy}) — a source census forbids the flag-less constructors there.
  */
 public record SessionConfigS2CPayload(
         int protocolVersion,
@@ -29,18 +39,77 @@ public record SessionConfigS2CPayload(
         int legacySyncCap,
         int legacyGenCap,
         boolean v16Wire,
-        int serverDataVersion
+        int serverDataVersion,
+        int sessionFlags
 ) implements CustomPacketPayload {
 
-    /** Canonical current-protocol shape (the only one the client ever decodes). The
+    /** Pre-session-flags canonical shape: no flags field ({@code SESSION_FLAGS_ABSENT}). */
+    public SessionConfigS2CPayload(int protocolVersion, boolean enabled,
+                                   int lodDistanceChunks, boolean generationEnabled,
+                                   int legacySyncCap, int legacyGenCap, boolean v16Wire,
+                                   int serverDataVersion) {
+        this(protocolVersion, enabled, lodDistanceChunks, generationEnabled, legacySyncCap,
+                legacyGenCap, v16Wire, serverDataVersion, LSSConstants.SESSION_FLAGS_ABSENT);
+    }
+
+    /** Test/decode convenience: the current-protocol shape WITHOUT the flags field. The
      *  data-version append rides ONLY version-20 frames (XVER §2.2): the v19/v18 echo
      *  reuses this ctor with their version value and the encoder omits the append —
-     *  their strict 4-field clients would hard-kick on a trailing byte. */
+     *  their strict 4-field clients would hard-kick on a trailing byte. Production sends
+     *  use {@link #forSession}. */
     public SessionConfigS2CPayload(int protocolVersion, boolean enabled,
                                    int lodDistanceChunks, boolean generationEnabled,
                                    int serverDataVersion) {
         this(protocolVersion, enabled, lodDistanceChunks, generationEnabled, 0, 0, false,
-                serverDataVersion);
+                serverDataVersion, LSSConstants.SESSION_FLAGS_ABSENT);
+    }
+
+    /**
+     * The production construction for every non-v16 send site (handshake reply, reload
+     * re-push, revocation push, dimension-change push — map-policy plan A2's site table):
+     * each passes the SESSION's capabilities and reads the map policy at send time. The
+     * flags field exists only for a session that declared
+     * {@link LSSConstants#CAPABILITY_MAP_POLICY}; the encoder additionally requires a
+     * version-20 frame, so the 19/18 echoes never carry it.
+     */
+    public static SessionConfigS2CPayload forSession(int protocolVersion, boolean enabled,
+                                                     int lodDistanceChunks,
+                                                     boolean generationEnabled,
+                                                     int serverDataVersion,
+                                                     int sessionCapabilities,
+                                                     boolean denyMapIngestion) {
+        // The field exists only on a version-20 frame (the 19/18 echoes have no slot for
+        // it), so the payload object mirrors exactly what the encoder sends.
+        return new SessionConfigS2CPayload(protocolVersion, enabled, lodDistanceChunks,
+                generationEnabled, 0, 0, false, serverDataVersion,
+                protocolVersion == LSSConstants.PROTOCOL_VERSION
+                        ? sessionFlagsFor(sessionCapabilities, denyMapIngestion)
+                        : LSSConstants.SESSION_FLAGS_ABSENT);
+    }
+
+    /** The flags value for a session: absent unless it declared the capability. */
+    public static int sessionFlagsFor(int sessionCapabilities, boolean denyMapIngestion) {
+        if ((sessionCapabilities & LSSConstants.CAPABILITY_MAP_POLICY) == 0) {
+            return LSSConstants.SESSION_FLAGS_ABSENT;
+        }
+        return denyMapIngestion ? LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION : 0;
+    }
+
+    /** Whether the encoder appends the flags field (shared with Paper's hand encoder's
+     *  parity pin): version 20, not the v16 layout, flags present. */
+    public static boolean appendsSessionFlags(int protocolVersion, boolean v16Wire,
+                                              int sessionFlags) {
+        return protocolVersion == LSSConstants.PROTOCOL_VERSION && !v16Wire
+                && sessionFlags >= 0;
+    }
+
+    /** A copy with only the LOD distance replaced — every other component (the data
+     *  version and the session flags included) carries over. The client's protocol-bounds
+     *  clamp uses this; a four-field rebuild silently dropped the appended fields. */
+    public SessionConfigS2CPayload withLodDistanceChunks(int lodDistance) {
+        return new SessionConfigS2CPayload(this.protocolVersion, this.enabled, lodDistance,
+                this.generationEnabled, this.legacySyncCap, this.legacyGenCap, this.v16Wire,
+                this.serverDataVersion, this.sessionFlags);
     }
 
     /** Test/legacy convenience: no data version (encodes without the append for any
@@ -83,6 +152,12 @@ public record SessionConfigS2CPayload(
                             // arm reads this — the v19/v18 echoes must stay 4-field.
                             buf.writeVarInt(payload.serverDataVersion);
                         }
+                        if (appendsSessionFlags(payload.protocolVersion, payload.v16Wire,
+                                payload.sessionFlags)) {
+                            // Map-policy plan A2: only to a session that declared the
+                            // capability — a 0.10.0–0.18.0 client hard-kicks on this byte.
+                            buf.writeVarInt(payload.sessionFlags);
+                        }
                     },
                     buf -> {
                         int version = buf.readVarInt();
@@ -110,8 +185,21 @@ public record SessionConfigS2CPayload(
                             // Tolerate absence (a same-version peer built pre-append —
                             // dev-window frames): absent decodes as 0 = unknown.
                             int dataVersion = buf.isReadable() ? buf.readVarInt() : 0;
+                            int flags = LSSConstants.SESSION_FLAGS_ABSENT;
+                            if (version == LSSConstants.PROTOCOL_VERSION) {
+                                // Map-policy plan A2: the flags field when present (absent
+                                // = "unchanged" — the session gate keeps the connection's
+                                // value), then DRAIN anything further, so a future server
+                                // append needs no new capability for 0.19+ clients. A
+                                // negative VarInt is not a flags value: read as absent.
+                                if (buf.isReadable()) {
+                                    int raw = buf.readVarInt();
+                                    flags = raw < 0 ? LSSConstants.SESSION_FLAGS_ABSENT : raw;
+                                }
+                                buf.skipBytes(buf.readableBytes());
+                            }
                             return new SessionConfigS2CPayload(version, enabled, lodDist,
-                                    genEnabled, dataVersion);
+                                    genEnabled, 0, 0, false, dataVersion, flags);
                         }
                         if (version == LSSConstants.V16_COMPAT_PROTOCOL_VERSION) {
                             // Client v16 backward compat: an old server's 6-field layout — the

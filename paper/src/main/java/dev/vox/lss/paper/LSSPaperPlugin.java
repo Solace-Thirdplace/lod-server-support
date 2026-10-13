@@ -81,6 +81,17 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
     static PlayerServiceGate serviceGateFor(Player bukkitPlayer, java.util.UUID uuid,
                                             String playerName, ServiceGateState state,
                                             Runnable deniedWhileRegistered) {
+        return serviceGateFor(bukkitPlayer, uuid, playerName, state, deniedWhileRegistered, null);
+    }
+
+    /** @param mapPolicyNotice the map policy's chat line, pump-marshaled (the service
+     *                        claims its once-per-connection latch there); null on a
+     *                        grant-sweep replay — the line is never sent from one
+     *                        (map-policy plan A3.3) */
+    static PlayerServiceGate serviceGateFor(Player bukkitPlayer, java.util.UUID uuid,
+                                            String playerName, ServiceGateState state,
+                                            Runnable deniedWhileRegistered,
+                                            Runnable mapPolicyNotice) {
         return new PlayerServiceGate() {
             @Override
             public boolean hasPermission(String node) {
@@ -107,6 +118,19 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                 if (state == null) return; // unreachable: the conjunction requires servicePresent
                 state.rememberDenied(uuid, playerName, protocolVersion, capabilities);
                 if (deniedWhileRegistered != null) deniedWhileRegistered.run();
+            }
+
+            @Override
+            public boolean onMapPolicyRefused(int protocolVersion, int capabilities) {
+                if (state == null) return false; // no service: nothing to remember
+                // Map-policy plan A3.2 (the xplat twin's order): memo deposit with reason
+                // MAP_POLICY, the chat line (pump), then the composite (pump) for a live
+                // session re-handshaking while the policy is armed.
+                boolean transition = state.rememberDenied(uuid, playerName, protocolVersion,
+                        capabilities, ServiceGateState.REASON_MAP_POLICY);
+                if (mapPolicyNotice != null) mapPolicyNotice.run();
+                if (deniedWhileRegistered != null) deniedWhileRegistered.run();
+                return transition;
             }
         };
     }
@@ -392,8 +416,11 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
      */
     @FunctionalInterface
     interface SessionConfigSender {
+        /** @param capabilities the handshake's capabilities — the production sender reads
+         *                     the map policy at SEND time and appends the flags field only
+         *                     for a v20 session that declared the bit (map-policy plan A2) */
         void send(HandshakeGate.WireDialect dialect, boolean enabled, int lodDistanceChunks,
-                  int syncCap, int genCap, boolean generationEnabled);
+                  int syncCap, int genCap, boolean generationEnabled, int capabilities);
     }
 
     /**
@@ -418,6 +445,12 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
     }
 
     private void handleHandshake(Player bukkitPlayer, ServerPlayer nmsPlayer, byte[] data) {
+        handleHandshake(bukkitPlayer, nmsPlayer, data, false);
+    }
+
+    /** @param replay the grant sweep's re-offer: a map-policy refusal sends no chat line */
+    private void handleHandshake(Player bukkitPlayer, ServerPlayer nmsPlayer, byte[] data,
+                                 boolean replay) {
         var service = this.requestService;
         // R4 (Folia review 2026-08-27): every handshake stamps its connection's epoch
         // BEFORE any gate/summary state can be written for it — the late mailboxed
@@ -438,8 +471,14 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                         nmsPlayer.getName().getString(),
                         service == null ? null : service.getServiceGateState(),
                         service == null ? null
-                                : () -> service.enqueueServiceGateUnregister(nmsPlayer.getUUID())),
-                (dialect, enabled, lodDistanceChunks, syncCap, genCap, generationEnabled) -> {
+                                : () -> service.enqueueServiceGateUnregister(nmsPlayer.getUUID()),
+                        // Map-policy plan A3.3: the chat line goes out on the pump (where
+                        // the revocation push already sends from); never from a replay.
+                        service == null || replay ? null
+                                : () -> service.enqueueRuntimeTask(
+                                        () -> service.noticeMapPolicyRefusal(nmsPlayer))),
+                (dialect, enabled, lodDistanceChunks, syncCap, genCap, generationEnabled,
+                 capabilities) -> {
                     if (service != null) generationEnabled = service.generationEnabledForSession();
                     // A cross-dialect re-handshake sheds the stale compat identities it is
                     // NOT — otherwise columns keep shipping the old dialect's shape and
@@ -462,7 +501,10 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                     } else {
                         PaperPayloadHandler.sendSessionConfig(bukkitPlayer,
                                 sessionConfigVersionFor(dialect),
-                                enabled, lodDistanceChunks, generationEnabled);
+                                enabled, lodDistanceChunks, generationEnabled,
+                                // Map-policy plan A2: read at SEND time — for a registering
+                                // handshake that is the pump's Register drain.
+                                capabilities, this.lssConfig.requestNoMapIngestion());
                     }
                 },
                 (capabilities, dialect, replyAfterRegister) -> {
@@ -604,10 +646,13 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
         boolean serviceDenied = config.requireServicePermission()
                 && !holdsServicePermission(serviceGate);
 
+        // Map-policy plan A3.2: the MAP_POLICY_REFUSED rung (DISABLED < it < REGISTER).
+        boolean mapPolicyArmed = config.requestNoMapIngestion();
         var decision = HandshakeGate.evaluate(handshake.protocolVersion(),
                 handshake.capabilities(), config.enabled() && !serviceDenied, servicePresent,
                 config.enableV16Compat(), config.enableV18Compat(), config.enableV19Compat(),
-                dev.vox.lss.common.compat.ViaProbe.isMismatch(viaProtocol, nativeProtocol));
+                dev.vox.lss.common.compat.ViaProbe.isMismatch(viaProtocol, nativeProtocol),
+                mapPolicyArmed);
 
         if (decision.outcome() == HandshakeGate.Outcome.VIA_MISMATCH) {
             // Silent deny — "Minecraft protocol" to keep the number space distinct
@@ -685,7 +730,10 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                     // (ignored by the V18 sender branch; see the v16 compat design §4.1).
                     LSSConstants.SYNC_ON_LOAD_SLOT_CAP,
                     config.generationLimits().perPlayer(),
-                    config.enableChunkGeneration());
+                    config.enableChunkGeneration(),
+                    // The session's capabilities: the sender appends the map-policy flags
+                    // only for a v20 session that declared the bit (map-policy plan A2).
+                    handshake.capabilities());
         };
 
         if (decision.outcome() == HandshakeGate.Outcome.NO_CONSUMER) {
@@ -720,6 +768,19 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                 // protocol facts an existing registration deliberately survives).
                 serviceGate.onServiceDenied(handshake.protocolVersion(), handshake.capabilities());
             }
+            if (decision.outcome() == HandshakeGate.Outcome.MAP_POLICY_REFUSED) {
+                // Map-policy plan A3.2 (the xplat twin): the refusal reply went out INLINE
+                // above. REAL refusal (bit absent): memo, chat line, live-session
+                // composite, one INFO per transition. QUIET refusal (a legacy dialect WITH
+                // the bit — a 0.19 client's raced rung): the reply only.
+                boolean realRefusal = (handshake.capabilities()
+                        & LSSConstants.CAPABILITY_MAP_POLICY) == 0;
+                if (realRefusal && serviceGate.onMapPolicyRefused(
+                        handshake.protocolVersion(), handshake.capabilities())) {
+                    LSSLogger.info(dev.vox.lss.common.MapPolicy.refusalLogLine(playerName,
+                            handshake.protocolVersion(), handshake.capabilities()));
+                }
+            }
         }
     }
 
@@ -735,7 +796,8 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                                     ServiceGateState.DeniedHandshake remembered) {
         handleHandshake(nmsPlayer.getBukkitEntity(), nmsPlayer,
                 PaperPayloadHandler.encodeHandshakeFrame(
-                        remembered.protocolVersion(), remembered.capabilities()));
+                        remembered.protocolVersion(), remembered.capabilities()),
+                true);
     }
 
     private void handleBatchChunkRequest(ServerPlayer nmsPlayer, byte[] data) {

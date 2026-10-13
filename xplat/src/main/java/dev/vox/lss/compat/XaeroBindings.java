@@ -4,9 +4,15 @@ import dev.vox.lss.common.LSSLogger;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.block.state.BlockState;
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandleInfo;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Resolve-once handle set. All-or-nothing: any missing member throws and the
@@ -16,6 +22,11 @@ import java.lang.reflect.Method;
  * name-scan (the {@code MoonriseReadCompat} shape-scan precedent) and are
  * handled as Objects behind {@link XaeroSession.LevelOps}, because tests cannot construct
  * a {@code ClientLevel}.
+ *
+ * <p>Every member is RECORDED as it resolves ({@link #boundMembers()}): the handles are
+ * {@code asType}-adapted, so they cannot be cracked back afterwards, and the golden
+ * binding-surface test checks this list against each line's real Xaero jar (cave-layers
+ * plan §B7).
  */
 final class XaeroBindings {
     final MethodHandle getCurrentSession;
@@ -73,17 +84,57 @@ final class XaeroBindings {
                         MethodHandle getCurrentDimension, MethodHandle isUsingWorldSave) {}
     final CrashGate crashGate;
     final SettingsGate settingsGate;
-    /** {@code MapProcessor.getCurrentCaveLayer()} — the layer the map RENDERS
-     *  (Integer.MAX_VALUE = the surface). The bridge only ever writes the surface
-     *  layer; while Xaero shows a cave layer (auto cave mode underground, the Nether
-     *  by default) a write would go to a layer nobody renders yet still create
-     *  regions, request loads and force saves (sweeps B m1 + C N1). Null = unbound. */
-    final MethodHandle getCurrentCaveLayer;
+    /**
+     * The cave-layer surface (cave-layers plan §B3/§B7): {@code MapProcessor.getCurrentCaveLayer()}
+     * (the layer the map shows — {@code MAX_VALUE} surface, {@code MIN_VALUE} Full, else the
+     * band, i.e. the result of Xaero's own {@code updateCaveStart}), {@code MapWorld
+     * .isIgnoreHeightmaps()} (an extractor input) and the current {@code MapDimension}'s
+     * {@code isUsingWorldSave()} (world-save mode turns cave writes off). All-or-nothing:
+     * null = cave writes OFF, the surface writes as before, and the diag names the group.
+     */
+    record CaveGate(MethodHandle getCurrentCaveLayer, MethodHandle isIgnoreHeightmaps,
+                    MethodHandle getCurrentDimension, MethodHandle isUsingWorldSave) {}
+    final CaveGate caveGate;
+    /**
+     * Phase B-II's surface (cave-layers plan §B6): the current {@code MapDimension}'s
+     * {@code getCaveModeType()} (0 off, 1 Layered, 2 Full — best-effort bands are written in
+     * Layered only), {@code WorldMapClientConfigUtils.getEffectiveCaveModeAllowed()}, and
+     * the save/load queues ({@code MapSaveLoad.getToSave()}, {@code getSizeOfToLoad()}):
+     * best-effort load grants wait for an empty save queue — and {@code MapSaveLoad
+     * .requestLoad(MapRegion, String, boolean)}: best-effort grants ask WITHOUT priority
+     * (appended behind every front-inserted request; the loader refuses it mid-drain).
+     * Null = best-effort bands off; phase B-I is unaffected.
+     */
+    record BestEffortGate(MethodHandle getCaveModeType, MethodHandle getEffectiveCaveModeAllowed,
+                          MethodHandle getToSave, MethodHandle getSizeOfToLoad,
+                          MethodHandle requestLoadWithPriority) {}
+    final BestEffortGate bestEffortGate;
+    /** {@code WorldMapProfiledConfigOptions.WRITING_DISTANCE}, read through
+     *  {@link #settingsGate}'s {@code getEffective} — the native writer's distance input
+     *  for the natively-writable skip (§B5). Null = unbound: the distance counts as
+     *  unlimited, i.e. capped by the render distance only, as Xaero's own default. */
+    final MethodHandle writingDistanceOption;
     /** {@code MapTile.CURRENT_WORLD_INTERPRETATION_VERSION}, read live (a javac literal
      *  would silently lag a bump); 1 when unreadable. */
     final int interpretationVersion;
     /** Which optional groups did not bind, for the diag line; null = all bound. */
     final String optionalMissing;
+    /** Every Xaero member this binding set resolved, in resolution order. */
+    private final List<BoundMember> bound = new ArrayList<>();
+
+    /**
+     * One resolved member as the bindings request it. {@code byScan} members are bound by
+     * NAME (+ arity for methods) — their declared types are line flavor (ClientLevel-typed
+     * boundaries, the xaerolib option/config surface) — so the golden check compares them
+     * by name and arity only; every other member is checked by its exact descriptor.
+     */
+    record BoundMember(String group, String owner, String name, String descriptor,
+                       boolean isStatic, boolean field, boolean byScan, int arity) {}
+
+    /** The resolved surface, for the golden binding-surface test. */
+    List<BoundMember> boundMembers() {
+        return Collections.unmodifiableList(this.bound);
+    }
 
     final MethodHandle tileChunkSetChanged;
     final MethodHandle tileChunkWasChanged;
@@ -139,7 +190,7 @@ final class XaeroBindings {
         Class<?> tintProviderClass = resolver.resolve("xaero.map.biome.BlockTintProvider");
         Class<?> fastConfigClass = resolver.resolve("xaero.map.region.MapUpdateFastConfig");
 
-        this.getCurrentSession = lookup.findStatic(sessionClass, "getCurrentSession",
+        this.getCurrentSession = findStatic(lookup, sessionClass, "getCurrentSession",
                 MethodType.methodType(sessionClass)).asType(MethodType.methodType(Object.class));
         this.sessionIsUsable = virtual(lookup, sessionClass, "isUsable",
                 MethodType.methodType(boolean.class), boolean.class);
@@ -168,7 +219,7 @@ final class XaeroBindings {
                 MethodType.methodType(mapWorldClass), Object.class);
         this.getMapSaveLoad = virtual(lookup, processorClass, "getMapSaveLoad",
                 MethodType.methodType(saveLoadClass), Object.class);
-        this.getLeafMapRegion = lookup.findVirtual(processorClass, "getLeafMapRegion",
+        this.getLeafMapRegion = findVirtual(lookup, processorClass, "getLeafMapRegion",
                         MethodType.methodType(regionClass, int.class, int.class, int.class, boolean.class))
                 .asType(MethodType.methodType(Object.class, Object.class,
                         int.class, int.class, int.class, boolean.class));
@@ -187,7 +238,7 @@ final class XaeroBindings {
         this.getWorldBlockTintProvider = virtual(lookup, processorClass,
                 "getWorldBlockTintProvider",
                 MethodType.methodType(tintProviderClass), Object.class);
-        this.newMapUpdateFastConfig = lookup.findConstructor(fastConfigClass,
+        this.newMapUpdateFastConfig = findConstructor(lookup, fastConfigClass,
                         MethodType.methodType(void.class, processorClass))
                 .asType(MethodType.methodType(Object.class, Object.class));
 
@@ -198,7 +249,7 @@ final class XaeroBindings {
 
         this.isRegionDetectionComplete = virtual(lookup, saveLoadClass, "isRegionDetectionComplete",
                 MethodType.methodType(boolean.class), boolean.class);
-        this.requestLoad = lookup.findVirtual(saveLoadClass, "requestLoad",
+        this.requestLoad = findVirtual(lookup, saveLoadClass, "requestLoad",
                         MethodType.methodType(void.class, regionClass, String.class))
                 .asType(MethodType.methodType(void.class, Object.class, Object.class, String.class));
 
@@ -207,43 +258,43 @@ final class XaeroBindings {
                 MethodType.methodType(boolean.class), boolean.class);
         this.getLoadState = virtual(lookup, regionClass, "getLoadState",
                 MethodType.methodType(byte.class), byte.class);
-        this.setLoadState = lookup.findVirtual(regionClass, "setLoadState",
+        this.setLoadState = findVirtual(lookup, regionClass, "setLoadState",
                         MethodType.methodType(void.class, byte.class))
                 .asType(MethodType.methodType(void.class, Object.class, byte.class));
         this.isResting = virtual(lookup, regionClass, "isResting",
                 MethodType.methodType(boolean.class), boolean.class);
         this.registerVisit = virtual(lookup, regionClass, "registerVisit",
                 MethodType.methodType(void.class), void.class);
-        this.setBeingWritten = lookup.findVirtual(regionClass, "setBeingWritten",
+        this.setBeingWritten = findVirtual(lookup, regionClass, "setBeingWritten",
                         MethodType.methodType(void.class, boolean.class))
                 .asType(MethodType.methodType(void.class, Object.class, boolean.class));
         this.canRequestReload = virtual(lookup, regionClass, "canRequestReload_unsynced",
                 MethodType.methodType(boolean.class), boolean.class);
-        this.setAllCachePrepared = lookup.findVirtual(regionClass, "setAllCachePrepared",
+        this.setAllCachePrepared = findVirtual(lookup, regionClass, "setAllCachePrepared",
                         MethodType.methodType(void.class, boolean.class))
                 .asType(MethodType.methodType(void.class, Object.class, boolean.class));
-        this.regionGetChunk = lookup.findVirtual(regionClass, "getChunk",
+        this.regionGetChunk = findVirtual(lookup, regionClass, "getChunk",
                         MethodType.methodType(tileChunkClass, int.class, int.class))
                 .asType(MethodType.methodType(Object.class, Object.class, int.class, int.class));
-        this.regionSetChunk = lookup.findVirtual(regionClass, "setChunk",
+        this.regionSetChunk = findVirtual(lookup, regionClass, "setChunk",
                         MethodType.methodType(void.class, int.class, int.class, tileChunkClass))
                 .asType(MethodType.methodType(void.class, Object.class,
                         int.class, int.class, Object.class));
 
-        this.newMapTileChunk = lookup.findConstructor(tileChunkClass,
+        this.newMapTileChunk = findConstructor(lookup, tileChunkClass,
                         MethodType.methodType(void.class, regionClass, int.class, int.class))
                 .asType(MethodType.methodType(Object.class, Object.class, int.class, int.class));
         this.tileChunkGetLoadState = virtual(lookup, tileChunkClass, "getLoadState",
                 MethodType.methodType(int.class), int.class);
-        this.tileChunkSetLoadState = lookup.findVirtual(tileChunkClass, "setLoadState",
+        this.tileChunkSetLoadState = findVirtual(lookup, tileChunkClass, "setLoadState",
                         MethodType.methodType(void.class, byte.class))
                 .asType(MethodType.methodType(void.class, Object.class, byte.class));
-        this.tileChunkSetChanged = lookup.findVirtual(tileChunkClass, "setChanged",
+        this.tileChunkSetChanged = findVirtual(lookup, tileChunkClass, "setChanged",
                         MethodType.methodType(void.class, boolean.class))
                 .asType(MethodType.methodType(void.class, Object.class, boolean.class));
         this.tileChunkWasChanged = virtual(lookup, tileChunkClass, "wasChanged",
                 MethodType.methodType(boolean.class), boolean.class);
-        this.tileChunkUpdateBuffers = lookup.findVirtual(tileChunkClass, "updateBuffers",
+        this.tileChunkUpdateBuffers = findVirtual(lookup, tileChunkClass, "updateBuffers",
                         MethodType.methodType(void.class, processorClass, tintProviderClass,
                                 overlayManagerClass, boolean.class, shapeCacheClass,
                                 fastConfigClass))
@@ -257,71 +308,71 @@ final class XaeroBindings {
                 MethodType.methodType(leafTextureClass), Object.class);
         this.shouldDownloadFromPBO = virtual(lookup, leafTextureClass, "shouldDownloadFromPBO",
                 MethodType.methodType(boolean.class), boolean.class);
-        this.getTile = lookup.findVirtual(tileChunkClass, "getTile",
+        this.getTile = findVirtual(lookup, tileChunkClass, "getTile",
                         MethodType.methodType(tileClass, int.class, int.class))
                 .asType(MethodType.methodType(Object.class, Object.class, int.class, int.class));
-        this.setTile = lookup.findVirtual(tileChunkClass, "setTile",
+        this.setTile = findVirtual(lookup, tileChunkClass, "setTile",
                         MethodType.methodType(void.class, int.class, int.class, tileClass,
                                 shapeCacheClass, processorClass))
                 .asType(MethodType.methodType(void.class, Object.class, int.class, int.class,
                         Object.class, Object.class, Object.class));
 
-        this.poolGet = lookup.findVirtual(poolClass, "get",
+        this.poolGet = findVirtual(lookup, poolClass, "get",
                         MethodType.methodType(tileClass, String.class, int.class, int.class))
                 .asType(MethodType.methodType(Object.class, Object.class,
                         String.class, int.class, int.class));
-        this.getBlock = lookup.findVirtual(tileClass, "getBlock",
+        this.getBlock = findVirtual(lookup, tileClass, "getBlock",
                         MethodType.methodType(blockClass, int.class, int.class))
                 .asType(MethodType.methodType(Object.class, Object.class, int.class, int.class));
         this.tileIsLoaded = virtual(lookup, tileClass, "isLoaded",
                 MethodType.methodType(boolean.class), boolean.class);
-        this.setSlopeUnknown = lookup.findVirtual(blockClass, "setSlopeUnknown",
+        this.setSlopeUnknown = findVirtual(lookup, blockClass, "setSlopeUnknown",
                         MethodType.methodType(void.class, boolean.class))
                 .asType(MethodType.methodType(void.class, Object.class, boolean.class));
-        this.setBlock = lookup.findVirtual(tileClass, "setBlock",
+        this.setBlock = findVirtual(lookup, tileClass, "setBlock",
                         MethodType.methodType(void.class, int.class, int.class, blockClass))
                 .asType(MethodType.methodType(void.class, Object.class,
                         int.class, int.class, Object.class));
-        this.setWorldInterpretationVersion = lookup.findVirtual(tileClass,
+        this.setWorldInterpretationVersion = findVirtual(lookup, tileClass,
                         "setWorldInterpretationVersion",
                         MethodType.methodType(void.class, int.class))
                 .asType(MethodType.methodType(void.class, Object.class, int.class));
-        this.setWrittenCave = lookup.findVirtual(tileClass, "setWrittenCave",
+        this.setWrittenCave = findVirtual(lookup, tileClass, "setWrittenCave",
                         MethodType.methodType(void.class, int.class, int.class))
                 .asType(MethodType.methodType(void.class, Object.class, int.class, int.class));
-        this.setWrittenOnce = lookup.findVirtual(tileClass, "setWrittenOnce",
+        this.setWrittenOnce = findVirtual(lookup, tileClass, "setWrittenOnce",
                         MethodType.methodType(void.class, boolean.class))
                 .asType(MethodType.methodType(void.class, Object.class, boolean.class));
-        this.setLoaded = lookup.findVirtual(tileClass, "setLoaded",
+        this.setLoaded = findVirtual(lookup, tileClass, "setLoaded",
                         MethodType.methodType(void.class, boolean.class))
                 .asType(MethodType.methodType(void.class, Object.class, boolean.class));
 
-        this.newMapBlock = lookup.findConstructor(blockClass, MethodType.methodType(void.class))
+        this.newMapBlock = findConstructor(lookup, blockClass, MethodType.methodType(void.class))
                 .asType(MethodType.methodType(Object.class));
-        this.prepareForWriting = lookup.findVirtual(blockClass, "prepareForWriting",
+        this.prepareForWriting = findVirtual(lookup, blockClass, "prepareForWriting",
                         MethodType.methodType(void.class, int.class))
                 .asType(MethodType.methodType(void.class, Object.class, int.class));
-        this.blockWrite = lookup.findVirtual(blockClass, "write",
+        this.blockWrite = findVirtual(lookup, blockClass, "write",
                         MethodType.methodType(void.class, BlockState.class, int.class, int.class,
                                 ResourceKey.class, byte.class, boolean.class, boolean.class))
                 .asType(MethodType.methodType(void.class, Object.class, BlockState.class,
                         int.class, int.class, ResourceKey.class, byte.class,
                         boolean.class, boolean.class));
-        this.addOverlay = lookup.findVirtual(blockClass, "addOverlay",
+        this.addOverlay = findVirtual(lookup, blockClass, "addOverlay",
                         MethodType.methodType(void.class, overlayClass))
                 .asType(MethodType.methodType(void.class, Object.class, Object.class));
 
-        this.newOverlay = lookup.findConstructor(overlayClass,
+        this.newOverlay = findConstructor(lookup, overlayClass,
                         MethodType.methodType(void.class, BlockState.class, byte.class, boolean.class))
                 .asType(MethodType.methodType(Object.class, BlockState.class,
                         byte.class, boolean.class));
-        this.increaseOpacity = lookup.findVirtual(overlayClass, "increaseOpacity",
+        this.increaseOpacity = findVirtual(lookup, overlayClass, "increaseOpacity",
                         MethodType.methodType(void.class, int.class))
                 .asType(MethodType.methodType(void.class, Object.class, int.class));
-        this.getOriginal = lookup.findVirtual(overlayManagerClass, "getOriginal",
+        this.getOriginal = findVirtual(lookup, overlayManagerClass, "getOriginal",
                         MethodType.methodType(overlayClass, overlayClass))
                 .asType(MethodType.methodType(Object.class, Object.class, Object.class));
-        this.highlightsPrepare = lookup.findVirtual(highlightsClass, "prepare",
+        this.highlightsPrepare = findVirtual(lookup, highlightsClass, "prepare",
                         MethodType.methodType(void.class, regionClass, int.class, int.class,
                                 boolean.class))
                 .asType(MethodType.methodType(void.class, Object.class, Object.class,
@@ -330,85 +381,197 @@ final class XaeroBindings {
         // ---- optional groups ----
         StringBuilder missing = new StringBuilder();
         CrashGate crash = null;
+        int markCrashGate = this.beginGroup("crash-gate");
         try {
             Class<?> worldMapClass = resolver.resolve("xaero.map.WorldMap");
             Class<?> crashHandlerClass = resolver.resolve("xaero.map.CrashHandler");
             crash = new CrashGate(
-                    lookup.unreflectGetter(worldMapClass.getField("crashHandler"))
-                            .asType(MethodType.methodType(Object.class)),
+                    staticFieldByName(lookup, worldMapClass, "crashHandler"),
                     methodByName(lookup, crashHandlerClass, "getCrashedBy", 0));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            this.rollbackGroup(markCrashGate);
             missing.append("crash-gate ");
         }
         SettingsGate settings = null;
+        Class<?> optionsClass = null;
+        int markSettingsGate = this.beginGroup("settings-gate");
         try {
             Class<?> worldMapClass = resolver.resolve("xaero.map.WorldMap");
             Class<?> channelClass = resolver.resolve("xaero.lib.common.config.channel.ConfigChannel");
             Class<?> managerClass = resolver.resolve("xaero.lib.client.config.ClientConfigManager");
-            Class<?> optionsClass = resolver.resolve("xaero.map.common.config.option.WorldMapProfiledConfigOptions");
+            optionsClass = resolver.resolve("xaero.map.common.config.option.WorldMapProfiledConfigOptions");
             Class<?> dimensionClass = resolver.resolve("xaero.map.world.MapDimension");
             settings = new SettingsGate(
-                    lookup.unreflectGetter(worldMapClass.getField("INSTANCE"))
-                            .asType(MethodType.methodType(Object.class)),
+                    staticFieldByName(lookup, worldMapClass, "INSTANCE"),
                     methodByName(lookup, worldMapClass, "getConfigs", 0),
                     methodByName(lookup, channelClass, "getClientConfigManager", 0),
                     methodByName(lookup, managerClass, "getEffective", 1),
-                    lookup.unreflectGetter(optionsClass.getField("LOAD_NEW_CHUNKS"))
-                            .asType(MethodType.methodType(Object.class)),
-                    lookup.unreflectGetter(optionsClass.getField("UPDATE_CHUNKS"))
-                            .asType(MethodType.methodType(Object.class)),
+                    staticFieldByName(lookup, optionsClass, "LOAD_NEW_CHUNKS"),
+                    staticFieldByName(lookup, optionsClass, "UPDATE_CHUNKS"),
                     virtual(lookup, mapWorldClass, "getCurrentDimension",
                             MethodType.methodType(dimensionClass), Object.class),
                     virtual(lookup, dimensionClass, "isUsingWorldSave",
                             MethodType.methodType(boolean.class), boolean.class));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            this.rollbackGroup(markSettingsGate);
             missing.append("settings-gate ");
         }
         int version = 1;
+        int markInterpretationVersion = this.beginGroup("interpretation-version");
         try {
-            version = tileClass.getField("CURRENT_WORLD_INTERPRETATION_VERSION").getInt(null);
+            var versionField = tileClass.getField("CURRENT_WORLD_INTERPRETATION_VERSION");
+            version = versionField.getInt(null);
+            record(versionField, false);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            this.rollbackGroup(markInterpretationVersion);
             missing.append("interpretation-version ");
         }
-        MethodHandle caveLayer = null;
+        CaveGate cave = null;
+        int markCaveLayers = this.beginGroup("cave-layers");
         try {
-            caveLayer = virtual(lookup, processorClass, "getCurrentCaveLayer",
-                    MethodType.methodType(int.class), int.class);
+            Class<?> dimensionClass = resolver.resolve("xaero.map.world.MapDimension");
+            cave = new CaveGate(
+                    virtual(lookup, processorClass, "getCurrentCaveLayer",
+                            MethodType.methodType(int.class), int.class),
+                    virtual(lookup, mapWorldClass, "isIgnoreHeightmaps",
+                            MethodType.methodType(boolean.class), boolean.class),
+                    virtual(lookup, mapWorldClass, "getCurrentDimension",
+                            MethodType.methodType(dimensionClass), Object.class),
+                    virtual(lookup, dimensionClass, "isUsingWorldSave",
+                            MethodType.methodType(boolean.class), boolean.class));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-            missing.append("cave-layer ");
+            this.rollbackGroup(markCaveLayers);
+            missing.append("cave-layers ");
         }
-        this.getCurrentCaveLayer = caveLayer;
+        BestEffortGate bestEffort = null;
+        int markBestEffort = this.beginGroup("best-effort");
+        try {
+            Class<?> dimensionClass = resolver.resolve("xaero.map.world.MapDimension");
+            Class<?> utilsClass = resolver.resolve("xaero.map.config.util.WorldMapClientConfigUtils");
+            bestEffort = new BestEffortGate(
+                    virtual(lookup, dimensionClass, "getCaveModeType",
+                            MethodType.methodType(int.class), int.class),
+                    findStatic(lookup, utilsClass, "getEffectiveCaveModeAllowed",
+                            MethodType.methodType(boolean.class)).asType(MethodType.methodType(boolean.class)),
+                    virtual(lookup, saveLoadClass, "getToSave",
+                            MethodType.methodType(java.util.ArrayList.class), Object.class),
+                    virtual(lookup, saveLoadClass, "getSizeOfToLoad",
+                            MethodType.methodType(int.class), int.class),
+                    findVirtual(lookup, saveLoadClass, "requestLoad",
+                            MethodType.methodType(void.class, regionClass, String.class, boolean.class))
+                            .asType(MethodType.methodType(void.class, Object.class, Object.class, String.class,
+                                    boolean.class)));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            this.rollbackGroup(markBestEffort);
+            missing.append("best-effort ");
+        }
+        MethodHandle writingDistance = null;
+        if (settings != null) {
+            int markWriteDistance = this.beginGroup("write-distance");
+            try {
+                writingDistance = staticFieldByName(lookup, optionsClass, "WRITING_DISTANCE");
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+                this.rollbackGroup(markWriteDistance);
+                missing.append("write-distance ");
+            }
+        }
+        this.caveGate = cave;
+        this.bestEffortGate = bestEffort;
+        this.writingDistanceOption = writingDistance;
         this.crashGate = crash;
         this.settingsGate = settings;
         this.interpretationVersion = version;
         this.optionalMissing = missing.isEmpty() ? null : missing.toString().trim();
         if (this.optionalMissing != null) {
             LSSLogger.warn("Xaero map bridge: optional Xaero surface not bound on this version ("
-                    + this.optionalMissing + ") — those gates stay open");
+                    + this.optionalMissing + ") — those gates stay open"
+                    + (cave == null ? "; cave layers are not written (the surface is)" : ""));
         }
     }
 
-    /** Exact-typed no-arg virtual, adapted to an Object receiver. */
-    private static MethodHandle virtual(MethodHandles.Lookup lookup, Class<?> owner,
-                                        String name, MethodType type, Class<?> genericReturn)
+    /** The group the next recorded member belongs to ("required" until the optional ones). */
+    private String group = "required";
+
+    private int beginGroup(String name) {
+        this.group = name;
+        return this.bound.size();
+    }
+
+    /** A group that failed to bind leaves no partial record behind. */
+    private void rollbackGroup(int mark) {
+        while (this.bound.size() > mark) this.bound.remove(this.bound.size() - 1);
+    }
+
+    private void record(MethodHandle direct, MethodHandles.Lookup lookup, boolean byScan) {
+        MethodHandleInfo info = lookup.revealDirect(direct);
+        int kind = info.getReferenceKind();
+        boolean field = kind == MethodHandleInfo.REF_getField || kind == MethodHandleInfo.REF_getStatic;
+        boolean isStatic = Modifier.isStatic(info.getModifiers());
+        MethodType type = info.getMethodType();
+        String descriptor = field ? type.returnType().descriptorString() : type.toMethodDescriptorString();
+        this.bound.add(new BoundMember(this.group, info.getDeclaringClass().getName().replace('.', '/'),
+                info.getName(), descriptor, isStatic, field, byScan, field ? 0 : type.parameterCount()));
+    }
+
+    private void record(Field field, boolean byScan) {
+        this.bound.add(new BoundMember(this.group, field.getDeclaringClass().getName().replace('.', '/'),
+                field.getName(), field.getType().descriptorString(),
+                Modifier.isStatic(field.getModifiers()), true, byScan, 0));
+    }
+
+    private MethodHandle findVirtual(MethodHandles.Lookup lookup, Class<?> owner, String name, MethodType type)
             throws NoSuchMethodException, IllegalAccessException {
-        return lookup.findVirtual(owner, name, type)
+        var handle = lookup.findVirtual(owner, name, type);
+        record(handle, lookup, false);
+        return handle;
+    }
+
+    private MethodHandle findStatic(MethodHandles.Lookup lookup, Class<?> owner, String name, MethodType type)
+            throws NoSuchMethodException, IllegalAccessException {
+        var handle = lookup.findStatic(owner, name, type);
+        record(handle, lookup, false);
+        return handle;
+    }
+
+    private MethodHandle findConstructor(MethodHandles.Lookup lookup, Class<?> owner, MethodType type)
+            throws NoSuchMethodException, IllegalAccessException {
+        var handle = lookup.findConstructor(owner, type);
+        record(handle, lookup, false);
+        return handle;
+    }
+
+    /** Exact-typed no-arg virtual, adapted to an Object receiver. */
+    private MethodHandle virtual(MethodHandles.Lookup lookup, Class<?> owner,
+                                 String name, MethodType type, Class<?> genericReturn)
+            throws NoSuchMethodException, IllegalAccessException {
+        return findVirtual(lookup, owner, name, type)
                 .asType(MethodType.methodType(genericReturn, Object.class));
     }
 
-    private static MethodHandle getter(MethodHandles.Lookup lookup, Class<?> owner, String name)
+    private MethodHandle getter(MethodHandles.Lookup lookup, Class<?> owner, String name)
             throws NoSuchFieldException, IllegalAccessException {
-        return lookup.findGetter(owner, name, Object.class)
-                .asType(MethodType.methodType(Object.class, Object.class));
+        var handle = lookup.findGetter(owner, name, Object.class);
+        record(handle, lookup, false);
+        return handle.asType(MethodType.methodType(Object.class, Object.class));
     }
 
     /** Field getter tolerant of the declared type (mainWorld is ClientLevel-typed). */
-    private static MethodHandle getterByName(MethodHandles.Lookup lookup, Class<?> owner,
-                                             String name)
+    private MethodHandle getterByName(MethodHandles.Lookup lookup, Class<?> owner,
+                                      String name)
             throws NoSuchFieldException, IllegalAccessException {
         var field = owner.getField(name);
-        return lookup.unreflectGetter(field)
-                .asType(MethodType.methodType(Object.class, Object.class));
+        var handle = lookup.unreflectGetter(field);
+        record(handle, lookup, true);
+        return handle.asType(MethodType.methodType(Object.class, Object.class));
+    }
+
+    /** Static field getter by name (the option constants and the singletons: their
+     *  declared types are xaerolib flavor), as a no-arg {@code ()Object}. */
+    private MethodHandle staticFieldByName(MethodHandles.Lookup lookup, Class<?> owner, String name)
+            throws NoSuchFieldException, IllegalAccessException {
+        var handle = lookup.unreflectGetter(owner.getField(name));
+        record(handle, lookup, true);
+        return handle.asType(MethodType.methodType(Object.class));
     }
 
     /**
@@ -416,8 +579,8 @@ final class XaeroBindings {
      * parameter/return types stay whatever the class declares, so the stub
      * classes can declare them as Object (tests cannot construct a ClientLevel).
      */
-    private static MethodHandle methodByName(MethodHandles.Lookup lookup, Class<?> owner,
-                                             String name, int paramCount)
+    private MethodHandle methodByName(MethodHandles.Lookup lookup, Class<?> owner,
+                                      String name, int paramCount)
             throws NoSuchMethodException, IllegalAccessException {
         Method found = null;
         for (Method m : owner.getMethods()) {
@@ -431,7 +594,8 @@ final class XaeroBindings {
             throw new NoSuchMethodException(owner.getName() + "." + name + "/" + paramCount);
         }
         var handle = lookup.unreflect(found);
-        var generic = MethodType.genericMethodType(paramCount + 1);
+        record(handle, lookup, true);
+        var generic = MethodType.genericMethodType(paramCount + (Modifier.isStatic(found.getModifiers()) ? 0 : 1));
         if (found.getReturnType() == boolean.class) {
             generic = generic.changeReturnType(boolean.class);
         }

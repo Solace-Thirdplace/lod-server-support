@@ -491,4 +491,72 @@ class WireParityTest {
                 0, 0, longDim, 42L, LSSConstants.COLUMN_SOURCE_IN_MEMORY, new byte[0]);
         assertArrayEquals(expected, PaperPayloadHandler.rewriteColumnToV18(currentFrame));
     }
+    // ---- map-policy session flags (map-policy plan A2/A5): Paper's hand encoder ----
+    // The expected hex was captured from the PRE-CHANGE encoder (2026-10-13; this line's
+    // data version 5023 = 9f27) — the Fabric twin SessionConfigFlagsWireTest pins the
+    // codec against the SAME bytes, so the two encoders cannot drift apart.
+
+    private static final int OLD_CAPS = LSSConstants.CAPABILITY_VOXEL_COLUMNS
+            | LSSConstants.CAPABILITY_ZSTD_COLUMNS | LSSConstants.CAPABILITY_FAR_PLAYERS;
+    private static final int NEW_CAPS = OLD_CAPS | LSSConstants.CAPABILITY_MAP_POLICY;
+
+    private static String hex(byte[] bytes) {
+        return java.util.HexFormat.of().formatHex(bytes);
+    }
+
+    @Test
+    void theCapturedDataVersionTailMatchesThisLine() {
+        assertEquals("9f27", hex(ref(b -> b.writeVarInt(SharedConstants.getCurrentVersion()
+                        .dataVersion().version()))),
+                "the captured pre-change hex below embeds this line's data version (5023)"
+                        + " — a port re-captures it");
+    }
+
+    @Test
+    void aSessionWithoutTheBitGetsThe0180BytesOnPaperWhateverThePolicy() {
+        for (boolean deny : new boolean[]{false, true}) {
+            assertEquals("14018004019f27", hex(PaperPayloadHandler.encodeSessionConfig(
+                    LSSConstants.PROTOCOL_VERSION, true, 512, true, OLD_CAPS, deny)));
+            assertEquals("140040009f27", hex(PaperPayloadHandler.encodeSessionConfig(
+                    LSSConstants.PROTOCOL_VERSION, false, 64, false, OLD_CAPS, deny)));
+        }
+        assertEquals("14018004019f27", hex(PaperPayloadHandler.encodeSessionConfig(
+                LSSConstants.PROTOCOL_VERSION, true, 512, true)), "the capability-less overload");
+    }
+
+    @Test
+    void everyEchoDialectToADeclaringHandshakeIsThe0180FrameOnPaper() {
+        for (boolean deny : new boolean[]{false, true}) {
+            assertEquals("1301800401", hex(PaperPayloadHandler.encodeSessionConfig(
+                    LSSConstants.V19_COMPAT_PROTOCOL_VERSION, true, 512, true, NEW_CAPS, deny)));
+            assertEquals("1300800401", hex(PaperPayloadHandler.encodeSessionConfig(
+                    LSSConstants.V19_COMPAT_PROTOCOL_VERSION, false, 512, true, NEW_CAPS, deny)),
+                    "the QUIET refusal to a raced 19 rung");
+            assertEquals("1201800401", hex(PaperPayloadHandler.encodeSessionConfig(
+                    LSSConstants.V18_COMPAT_PROTOCOL_VERSION, true, 512, true, NEW_CAPS, deny)));
+        }
+        assertEquals("10018004c8012801", hex(PaperPayloadHandler.encodeSessionConfigV16(
+                true, 512, 200, 40, true)), "the v16 layout (and the re-attach prompt) never carries flags");
+    }
+
+    @Test
+    void aDeclaringV20SessionGetsTheFlagsAfterTheDataVersionOnPaper() {
+        assertEquals("14018004019f27" + "01", hex(PaperPayloadHandler.encodeSessionConfig(
+                LSSConstants.PROTOCOL_VERSION, true, 512, true, NEW_CAPS, true)));
+        assertEquals("14018004019f27" + "00", hex(PaperPayloadHandler.encodeSessionConfig(
+                LSSConstants.PROTOCOL_VERSION, true, 512, true, NEW_CAPS, false)));
+        // Identical reference ops to the Fabric twin's flags append.
+        byte[] expected = ref(b -> {
+            b.writeVarInt(LSSConstants.PROTOCOL_VERSION);
+            b.writeBoolean(false);
+            b.writeVarInt(2048);
+            b.writeBoolean(true);
+            b.writeVarInt(SharedConstants.getCurrentVersion().dataVersion().version());
+            b.writeVarInt(LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION);
+        });
+        assertArrayEquals(expected, PaperPayloadHandler.encodeSessionConfig(
+                LSSConstants.PROTOCOL_VERSION, false, 2048, true, NEW_CAPS, true));
+        assertEquals(LSSConstants.SESSION_FLAGS_ABSENT, PaperPayloadHandler.sessionFlagsFor(OLD_CAPS, true));
+        assertEquals(0, PaperPayloadHandler.sessionFlagsFor(NEW_CAPS, false));
+    }
 }
