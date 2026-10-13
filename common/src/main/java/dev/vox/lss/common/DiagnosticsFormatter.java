@@ -46,8 +46,32 @@ public final class DiagnosticsFormatter {
             String summaryLine,
             long wireTotal, long colsZstd, long colsRaw,
             String gateLine,
-            String dirtyLine
+            String dirtyLine,
+            String mapPolicyLine
     ) {
+        /** Pre-map-policy full shape (no MapPolicy line) — keeps existing
+         *  constructions/tests intact. */
+        public DiagData(boolean enabled, int lodDist, long bwPerPlayer, long bwGlobal,
+                        long uptimeSec, long totalSent, long totalBytes,
+                        long cumInMem, long cumUtd, long cumGen, long cumReResolved,
+                        long cumGraceSkipped,
+                        long diskCompleted, String tickDiagnostics, String diskReaderDiagnostics,
+                        String generationDiagnostics, boolean generationEnabled,
+                        long genOrderGated, long genInversions,
+                        long bwTotal, long bwWindowRate, List<PlayerDiag> players,
+                        String v16Line, String v18Line, String xrayLine,
+                        String moveTraceLine, String yieldLine, String farPlayersLine,
+                        String summaryLine,
+                        long wireTotal, long colsZstd, long colsRaw, String gateLine,
+                        String dirtyLine) {
+            this(enabled, lodDist, bwPerPlayer, bwGlobal, uptimeSec, totalSent, totalBytes,
+                    cumInMem, cumUtd, cumGen, cumReResolved, cumGraceSkipped, diskCompleted,
+                    tickDiagnostics, diskReaderDiagnostics, generationDiagnostics,
+                    generationEnabled, genOrderGated, genInversions, bwTotal, bwWindowRate,
+                    players, v16Line, v18Line, xrayLine, moveTraceLine, yieldLine,
+                    farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine,
+                    dirtyLine, null);
+        }
         /** Pre-dirty-line full shape (no Dirty line) — keeps existing
          *  constructions/tests intact. */
         public DiagData(boolean enabled, int lodDist, long bwPerPlayer, long bwGlobal,
@@ -170,7 +194,7 @@ public final class DiagnosticsFormatter {
                     totalBytes, cumInMem, cumUtd, cumGen, cumReResolved, cumGraceSkipped,
                     diskCompleted, tickDiagnostics, diskReaderDiagnostics, generationDiagnostics,
                     generationEnabled, genOrderGated, genInversions, bwTotal, bwWindowRate,
-                    players, line, v18Line, xrayLine, moveTraceLine, yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine);
+                    players, line, v18Line, xrayLine, moveTraceLine, yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine, mapPolicyLine);
         }
 
         /** Attach the v18 compat rung's one-line summary (null when the rung is untouched —
@@ -180,7 +204,7 @@ public final class DiagnosticsFormatter {
                     totalBytes, cumInMem, cumUtd, cumGen, cumReResolved, cumGraceSkipped,
                     diskCompleted, tickDiagnostics, diskReaderDiagnostics, generationDiagnostics,
                     generationEnabled, genOrderGated, genInversions, bwTotal, bwWindowRate,
-                    players, v16Line, line, xrayLine, moveTraceLine, yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine);
+                    players, v16Line, line, xrayLine, moveTraceLine, yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine, mapPolicyLine);
         }
 
         /** Attach the x-ray masking one-line summary (always shown when non-null — the off
@@ -191,7 +215,7 @@ public final class DiagnosticsFormatter {
                     diskCompleted, tickDiagnostics, diskReaderDiagnostics,
                     generationDiagnostics, generationEnabled, genOrderGated, genInversions,
                     bwTotal, bwWindowRate, players, v16Line, v18Line, line, moveTraceLine,
-                    yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine);
+                    yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine, mapPolicyLine);
         }
 
         /** Attach the move-desync tracer's one-line summary (null while the tracer is
@@ -203,7 +227,7 @@ public final class DiagnosticsFormatter {
                     diskCompleted, tickDiagnostics, diskReaderDiagnostics,
                     generationDiagnostics, generationEnabled, genOrderGated, genInversions,
                     bwTotal, bwWindowRate, players, v16Line, v18Line, xrayLine, line,
-                    yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine);
+                    yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine, mapPolicyLine);
         }
 
         /** Attach the transport yield's one-line summary (null while the gate is unarmed
@@ -215,7 +239,7 @@ public final class DiagnosticsFormatter {
                     diskCompleted, tickDiagnostics, diskReaderDiagnostics,
                     generationDiagnostics, generationEnabled, genOrderGated, genInversions,
                     bwTotal, bwWindowRate, players, v16Line, v18Line, xrayLine, moveTraceLine,
-                    line, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine);
+                    line, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine, mapPolicyLine);
         }
 
         /** Attach the far-player one-line summary (E1 — null while the feature is inert
@@ -227,7 +251,7 @@ public final class DiagnosticsFormatter {
                     diskCompleted, tickDiagnostics, diskReaderDiagnostics,
                     generationDiagnostics, generationEnabled, genOrderGated, genInversions,
                     bwTotal, bwWindowRate, players, v16Line, v18Line, xrayLine, moveTraceLine,
-                    yieldLine, line, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine);
+                    yieldLine, line, summaryLine, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine, mapPolicyLine);
         }
 
         /** Attach the region-summary one-line counter group (null while the feature is
@@ -239,7 +263,7 @@ public final class DiagnosticsFormatter {
                     diskCompleted, tickDiagnostics, diskReaderDiagnostics,
                     generationDiagnostics, generationEnabled, genOrderGated, genInversions,
                     bwTotal, bwWindowRate, players, v16Line, v18Line, xrayLine, moveTraceLine,
-                    yieldLine, farPlayersLine, line, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine);
+                    yieldLine, farPlayersLine, line, wireTotal, colsZstd, colsRaw, gateLine, dirtyLine, mapPolicyLine);
         }
 
         /** Attach the service-gate one-liner (null while {@code requireServicePermission}
@@ -253,7 +277,7 @@ public final class DiagnosticsFormatter {
                     generationDiagnostics, generationEnabled, genOrderGated, genInversions,
                     bwTotal, bwWindowRate, players, v16Line, v18Line, xrayLine, moveTraceLine,
                     yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, line,
-                    dirtyLine);
+                    dirtyLine, mapPolicyLine);
         }
 
         /** Attach the dirty-broadcast one-liner (xaero-scatter-remediation-plan.md WI-1a:
@@ -267,7 +291,22 @@ public final class DiagnosticsFormatter {
                     generationDiagnostics, generationEnabled, genOrderGated, genInversions,
                     bwTotal, bwWindowRate, players, v16Line, v18Line, xrayLine, moveTraceLine,
                     yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine,
-                    line);
+                    line, mapPolicyLine);
+        }
+
+        /** Attach the map-ingestion policy one-liner (map-policy plan A3.5 — null while
+         *  {@code privacy.request_no_map_ingestion} is off: the line is omitted, so
+         *  default-install diag output is byte-unchanged). Separate from the Gate line,
+         *  which renders only while requireServicePermission is on. Renders right after
+         *  the Gate slot. */
+        public DiagData withMapPolicyLine(String line) {
+            return new DiagData(enabled, lodDist, bwPerPlayer, bwGlobal, uptimeSec, totalSent,
+                    totalBytes, cumInMem, cumUtd, cumGen, cumReResolved, cumGraceSkipped,
+                    diskCompleted, tickDiagnostics, diskReaderDiagnostics,
+                    generationDiagnostics, generationEnabled, genOrderGated, genInversions,
+                    bwTotal, bwWindowRate, players, v16Line, v18Line, xrayLine, moveTraceLine,
+                    yieldLine, farPlayersLine, summaryLine, wireTotal, colsZstd, colsRaw, gateLine,
+                    dirtyLine, line);
         }
     }
 
@@ -358,6 +397,11 @@ public final class DiagnosticsFormatter {
         // service-permission-gate-plan.md §2.5).
         if (d.gateLine != null) {
             lines.add(d.gateLine);
+        }
+        // Map-ingestion policy (present only while privacy.request_no_map_ingestion is
+        // armed — map-policy plan A3.5).
+        if (d.mapPolicyLine != null) {
+            lines.add(d.mapPolicyLine);
         }
         // Dirty broadcast instruments (present on Fabric/NeoForge — the content-filter
         // loaders; Paper passes null — xaero-scatter-remediation-plan.md WI-1a).

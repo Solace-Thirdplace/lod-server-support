@@ -42,6 +42,19 @@ public final class HandshakeGate {
         NO_CONSUMER,
         /** LSS off (config disabled or service absent) — advertise disabled, no registration. */
         DISABLED,
+        /**
+         * The server asks clients not to write LOD terrain into map mods
+         * ({@code privacy.request_no_map_ingestion}, map-policy plan A3.2) and this
+         * handshake is not a CURRENT-dialect session declaring
+         * {@link LSSConstants#CAPABILITY_MAP_POLICY}: reply {@code enabled=false} in the
+         * client's OWN dialect (silence would walk the discovery ladder), never register.
+         * Sits after {@link #DISABLED} — a player the service gate denies still lands
+         * there — and before {@link #REGISTER}. The call sites tell the REAL refusal (the
+         * bit is absent: memo, chat line, INFO, counter, live-session unregistration)
+         * from the QUIET one (a legacy dialect WITH the bit — a 0.19 client's raced
+         * ladder rung, which heals through its downgrade guard: reply only).
+         */
+        MAP_POLICY_REFUSED,
         /** Compatible, capable, enabled — reply and register. */
         REGISTER
     }
@@ -121,11 +134,15 @@ public final class HandshakeGate {
      *                              {@code enableViaMismatchGuard} × the ViaProbe ×
      *                              the server's native protocol; false on no-signal —
      *                              XVER §7, fail-open)
+     * @param mapPolicyArmed        server config {@code privacy.request_no_map_ingestion}
+     *                              (map-policy plan A3.2): the {@code MAP_POLICY_REFUSED}
+     *                              rung between DISABLED and REGISTER
      */
     public static Decision evaluate(int clientProtocolVersion, int clientCapabilities,
                                     boolean configEnabled, boolean servicePresent,
                                     boolean v16CompatEnabled, boolean v18CompatEnabled,
-                                    boolean v19CompatEnabled, boolean viaMismatch) {
+                                    boolean v19CompatEnabled, boolean viaMismatch,
+                                    boolean mapPolicyArmed) {
         WireDialect dialect;
         if (clientProtocolVersion == LSSConstants.PROTOCOL_VERSION) {
             dialect = WireDialect.CURRENT;
@@ -154,7 +171,32 @@ public final class HandshakeGate {
         if (!effectiveEnabled) {
             return new Decision(Outcome.DISABLED, false, dialect);
         }
+        if (mapPolicyArmed && !honorsMapPolicy(dialect, clientCapabilities)) {
+            // Map-policy plan A3.2: the uniform "0.19.0 or newer" rule — only a CURRENT
+            // session that declared the bit can honor the request, so every other one is
+            // told disabled in its own dialect.
+            return new Decision(Outcome.MAP_POLICY_REFUSED, false, dialect);
+        }
         return new Decision(Outcome.REGISTER, true, dialect);
+    }
+
+    /** Whether a session can honor the map-ingestion request: CURRENT dialect AND the
+     *  {@link LSSConstants#CAPABILITY_MAP_POLICY} bit (legacy layouts carry no flags field). */
+    public static boolean honorsMapPolicy(WireDialect dialect, int clientCapabilities) {
+        return dialect == WireDialect.CURRENT
+                && (clientCapabilities & LSSConstants.CAPABILITY_MAP_POLICY) != 0;
+    }
+
+    /** Pre-map-policy overload (the policy disarmed): kept so every existing gate pin stays
+     *  byte-identical. Production call sites use the 9-arg form — each platform's wiring
+     *  pin ({@code ViaGuardWiringContractTest}) covers the composition. */
+    public static Decision evaluate(int clientProtocolVersion, int clientCapabilities,
+                                    boolean configEnabled, boolean servicePresent,
+                                    boolean v16CompatEnabled, boolean v18CompatEnabled,
+                                    boolean v19CompatEnabled, boolean viaMismatch) {
+        return evaluate(clientProtocolVersion, clientCapabilities, configEnabled,
+                servicePresent, v16CompatEnabled, v18CompatEnabled, v19CompatEnabled,
+                viaMismatch, false);
     }
 
     /** Pre-Via-guard overload (no mismatch signal): kept so every existing gate pin

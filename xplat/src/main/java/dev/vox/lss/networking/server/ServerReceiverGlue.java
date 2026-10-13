@@ -336,6 +336,24 @@ public final class ServerReceiverGlue {
     }
 
     /**
+     * The grant sweep's re-offer entry (service-permission-gate-plan.md §2.3): the SAME
+     * production ladder and real gate as the receivers' 4-arg entry, except that a
+     * map-policy refusal on a replay never sends the chat line (map-policy plan A3.3 —
+     * the line belongs to the handshake refusal and the arm sweep only).
+     */
+    public static void replayHandshake(HandshakeC2SPayload payload, ServerPlayer player,
+                                       RequestProcessingService service,
+                                       SessionConfigResponder responder) {
+        var config = service == null ? LSSServerConfig.CONFIG : service.settingsConfig();
+        int viaProtocol = config.enableViaMismatchGuard()
+                ? dev.vox.lss.common.compat.ViaProbe.playerProtocol(player.getUUID())
+                : dev.vox.lss.common.compat.ViaProbe.NO_SIGNAL;
+        handleHandshake(payload, player, service, responder,
+                viaProtocol, SharedConstants.getProtocolVersion(),
+                serviceGateFor(player, service, true));
+    }
+
+    /**
      * The production {@link PlayerServiceGate} for the shared receivers
      * (service-permission-gate-plan.md §2.2): the permission read goes through the
      * {@code LoaderServices.checkPermission} seam (Fabric's reflective
@@ -349,6 +367,13 @@ public final class ServerReceiverGlue {
      */
     static PlayerServiceGate serviceGateFor(ServerPlayer player,
                                             RequestProcessingService service) {
+        return serviceGateFor(player, service, false);
+    }
+
+    /** @param replay the grant sweep's re-offer: a map-policy refusal sends no chat line */
+    static PlayerServiceGate serviceGateFor(ServerPlayer player,
+                                            RequestProcessingService service,
+                                            boolean replay) {
         return new PlayerServiceGate() {
             @Override
             public boolean hasPermission(String node) {
@@ -372,6 +397,21 @@ public final class ServerReceiverGlue {
                 // the enabled=false reply just sent is the client's disarm, and the
                 // composite here is the same trio the departed-player sweep runs.
                 service.unregisterForServiceGate(player.getUUID());
+            }
+
+            @Override
+            public boolean onMapPolicyRefused(int protocolVersion, int capabilities) {
+                if (service == null) return false; // no service: nothing to remember
+                // Map-policy plan A3.2: the memo deposit (reason MAP_POLICY — a disarm
+                // re-offers through the grant sweep), the once-per-connection chat line
+                // (never from a replay), then the unregistration composite for a live
+                // session re-handshaking while the policy is armed (no-op otherwise).
+                boolean transition = service.getServiceGateState().rememberDenied(
+                        player.getUUID(), player.getName().getString(), protocolVersion,
+                        capabilities, dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY);
+                if (!replay) service.noticeMapPolicyRefusal(player);
+                service.unregisterForServiceGate(player.getUUID());
+                return transition;
             }
         };
     }
@@ -411,10 +451,13 @@ public final class ServerReceiverGlue {
         // load-bearing: at the shipped default the permission probe is never consulted.
         boolean serviceDenied = config.requireServicePermission()
                 && !PlayerServiceGate.holdsService(serviceGate);
+        // Map-policy plan A3.2: read once, so the rung and the reply's flags agree.
+        boolean mapPolicyArmed = config.requestNoMapIngestion();
         var decision = HandshakeGate.evaluate(payload.protocolVersion(),
                 payload.capabilities(), config.enabled() && !serviceDenied, service != null,
                 config.enableV16Compat(), config.enableV18Compat(), config.enableV19Compat(),
-                dev.vox.lss.common.compat.ViaProbe.isMismatch(viaProtocol, nativeProtocol));
+                dev.vox.lss.common.compat.ViaProbe.isMismatch(viaProtocol, nativeProtocol),
+                mapPolicyArmed);
 
         if (decision.outcome() == HandshakeGate.Outcome.VIA_MISMATCH) {
             // Silent deny; "Minecraft protocol" because the handshake INFO one line up
@@ -502,7 +545,7 @@ public final class ServerReceiverGlue {
                         LSSConstants.SYNC_ON_LOAD_SLOT_CAP,
                         config.generationLimits().perPlayer(),
                         service == null ? config.enableChunkGeneration() : service.generationEnabledForSession())
-                : new SessionConfigS2CPayload(
+                : SessionConfigS2CPayload.forSession(
                         // v18/v19 compat: the CURRENT 4-field layout, echoing the legacy
                         // client's own version — its gate hard-requires it (v18-compat
                         // §2.4; the v19 rung is the same echo trick).
@@ -514,13 +557,33 @@ public final class ServerReceiverGlue {
                         service == null ? config.enableChunkGeneration() : service.generationEnabledForSession(),
                         // v20-only append (the encoder omits it for the echo versions).
                         net.minecraft.SharedConstants.getCurrentVersion()
-                                .getDataVersion().getVersion()));
+                                .getDataVersion().getVersion(),
+                        // Map-policy plan A2: the flags ride only a v20 frame to a session
+                        // that declared the bit (the encoder's guard).
+                        payload.capabilities(), mapPolicyArmed));
 
         if (deniedByServiceGate) {
             // AFTER the reply: the enabled=false config is the client's disarm, and the
             // hook's unregister composite must follow the push (plan §2.3's order). The
             // memo deposit inside makes this session re-offerable on a later grant.
             serviceGate.onServiceDenied(payload.protocolVersion(), payload.capabilities());
+        }
+
+        if (decision.outcome() == HandshakeGate.Outcome.MAP_POLICY_REFUSED) {
+            // Map-policy plan A3.2, AFTER the reply (the enabled=false config in the
+            // client's own dialect is its disarm). REAL refusal — the capability bit is
+            // absent: memo (MAP_POLICY), chat line, the live-session unregistration, and
+            // one INFO line per transition. QUIET refusal — a legacy dialect WITH the bit,
+            // i.e. a 0.19 client's raced discovery rung: the reply only; its downgrade
+            // guard re-announces v20 and the v20 echo then carries its flags.
+            boolean realRefusal = (payload.capabilities()
+                    & LSSConstants.CAPABILITY_MAP_POLICY) == 0;
+            if (realRefusal && serviceGate.onMapPolicyRefused(
+                    payload.protocolVersion(), payload.capabilities())) {
+                LSSLogger.info(dev.vox.lss.common.MapPolicy.refusalLogLine(player.getName().getString(),
+                        payload.protocolVersion(), payload.capabilities()));
+            }
+            return;
         }
 
         if (decision.outcome() == HandshakeGate.Outcome.NO_CONSUMER) {

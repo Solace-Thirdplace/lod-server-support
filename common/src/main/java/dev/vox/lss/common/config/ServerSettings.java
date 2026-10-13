@@ -24,7 +24,7 @@ public record ServerSettings(Service service, Lod lod, Generation generation, Ne
     public record PrivacyXray(String mode, int maxYBlocks, List<String> hiddenBlocks) {
         public PrivacyXray { hiddenBlocks = List.copyOf(hiddenBlocks); }
     }
-    public record Privacy(PrivacyXray xray) {}
+    public record Privacy(PrivacyXray xray, boolean requestNoMapIngestion) {}
     public record FarPlayersDistance(int minBlocks, int maxBlocks) {}
     public record FarPlayers(String mode, int updateIntervalTicks, FarPlayersDistance distance, boolean sendSpectators, List<String> excludedPlayers) {
         public FarPlayers { excludedPlayers = List.copyOf(excludedPlayers); }
@@ -74,6 +74,7 @@ public record ServerSettings(Service service, Lod lod, Generation generation, Ne
         v.put("privacy.xray.mode", s.privacy().xray().mode());
         v.put("privacy.xray.max_y_blocks", s.privacy().xray().maxYBlocks());
         v.put("privacy.xray.hidden_blocks", s.privacy().xray().hiddenBlocks());
+        v.put("privacy.request_no_map_ingestion", s.privacy().requestNoMapIngestion());
         v.put("far_players.mode", s.farPlayers().mode());
         v.put("far_players.update_interval_ticks", s.farPlayers().updateIntervalTicks());
         v.put("far_players.distance.min_blocks", s.farPlayers().distance().minBlocks());
@@ -149,7 +150,7 @@ public record ServerSettings(Service service, Lod lod, Generation generation, Ne
     }
     @SuppressWarnings("unchecked")
     private static Privacy Privacy(Map<String,Object> v) {
-        return new Privacy(PrivacyXray(v));
+        return new Privacy(PrivacyXray(v), (boolean)v.get("privacy.request_no_map_ingestion"));
     }
     @SuppressWarnings("unchecked")
     private static FarPlayersDistance FarPlayersDistance(Map<String,Object> v) {

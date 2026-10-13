@@ -104,6 +104,17 @@ final class ClientSessionGate {
     private volatile boolean isV16Server = false;
 
     private volatile boolean serverEnabled = false;
+    /** The server asks this client not to write LOD terrain into map mods (map-policy plan
+     *  A4): set ONLY on the SessionConfig accept path (after the foreign-version return and
+     *  the downgrade guard, so a Paper v16 re-attach prompt or a raced 19 echo never
+     *  touches it), and only from a frame that CARRIES the flags field — absence means
+     *  "unchanged", so a server site that forgot the field fails closed. A new connection
+     *  starts at "allowed" (reset at JOIN — a play→config reconfiguration fires no
+     *  disconnect — and at disconnect). Read by the map backends' write gate. */
+    private volatile boolean serverDeniesMapIngestion = false;
+    /** The last accepted (clamped) config of this connection — the flags-only fast path's
+     *  reference (map-policy plan A4). */
+    private SessionConfigS2CPayload acceptedConfig;
     // True once a SessionConfig reply (compatible version) arrived for the current
     // connection — distinguishes "server said disabled" from "no LSS server / not yet
     // answered". Read by the dev-only soak hook to snapshot disabled sessions.
@@ -175,6 +186,10 @@ final class ClientSessionGate {
     }
 
     boolean isServerEnabled() { return this.serverEnabled; }
+    /** Whether the server allows LOD map ingestion on this connection (map-policy plan A4) —
+     *  the map backends' write gate. True with no connection and for every server that
+     *  never sends the flag. */
+    boolean serverAllowsMapIngestion() { return !this.serverDeniesMapIngestion; }
     boolean isV16Server() { return this.isV16Server; }
     boolean hasReceivedSessionConfig() { return this.sessionConfigReceived; }
     int getServerLodDistance() { return this.serverLodDistance; }
@@ -233,6 +248,10 @@ final class ClientSessionGate {
         this.requestManager = null;
         this.parkedGovernor = null;
         this.parkedSubKey = java.util.Optional.empty();
+        // Map policy (plan A4): a new connection starts at "allowed" — reset HERE, not only
+        // at disconnect: a play→config reconfiguration fires no disconnect.
+        this.serverDeniesMapIngestion = false;
+        this.acceptedConfig = null;
         // Clear ladder + decode state so nothing survives from a prior connection.
         this.discoveryArmed = false;
         this.ticksSinceHandshake = 0;
@@ -343,9 +362,24 @@ final class ClientSessionGate {
         }
     }
 
-    /** SessionConfig reply ladder. Main client thread. */
+    /** SessionConfig reply ladder without a map-only observation (no map backend is the
+     *  only consumer). Main client thread. */
     void onSessionConfig(SessionConfigS2CPayload payload, boolean hasConsumers,
                          boolean enableV16ServerCompat) {
+        onSessionConfig(payload, hasConsumers, enableV16ServerCompat, false);
+    }
+
+    /**
+     * SessionConfig reply ladder. Main client thread.
+     *
+     * @param mapOnlyIngestion the map backends are this session's ONLY column consumers
+     *                         ({@code ModCompat.isMapOnlyIngestion}): while the server denies
+     *                         map ingestion such a session has no consumer at all — no
+     *                         request manager is built (or the live one is retired and
+     *                         parked), and a flags-0 push re-arms it (map-policy plan A4)
+     */
+    void onSessionConfig(SessionConfigS2CPayload payload, boolean hasConsumers,
+                         boolean enableV16ServerCompat, boolean mapOnlyIngestion) {
         // Any SessionConfig — even an incompatible one — disarms the discovery ladder: the
         // server answered, so there is nothing to re-discover.
         this.discoveryArmed = false;
@@ -464,15 +498,48 @@ final class ClientSessionGate {
         // walk itself — an unclamped LOD distance is a CPU-stall vector, so it stays.
         var config = clampToProtocolBounds(payload);
 
+        // Map policy (plan A4): the accept path is the ONLY writer of the flag. Absent
+        // (-1) = unchanged — the connection keeps its value.
+        boolean denyBefore = this.serverDeniesMapIngestion;
+        if (config.sessionFlags() >= 0) {
+            this.serverDeniesMapIngestion =
+                    (config.sessionFlags() & LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION) != 0;
+        }
+        boolean flagChanged = denyBefore != this.serverDeniesMapIngestion;
+        if (flagChanged) {
+            LSSLogger.info(this.serverDeniesMapIngestion
+                    ? "This server asks clients not to add distant terrain to map mods —"
+                            + " map ingestion paused for this connection (your setting is unchanged)"
+                    : "This server allows map ingestion again — distant terrain arriving from"
+                            + " now on is added to installed map mods");
+        }
+        boolean wasEstablished = this.sessionConfigReceived;
+        var previousAccepted = this.acceptedConfig;
+
         this.statusProtocolRejected = false;
         this.statusHandshakeFailed = false;
         this.serverEnabled = config.enabled();
         this.sessionConfigReceived = true;
         this.serverLodDistance = config.lodDistanceChunks();
+        this.acceptedConfig = config;
+
+        // A map-only session (Xaero/JourneyMap without Voxy) under a server deny has no
+        // consumer at all: building a manager would download the whole radius only to drop
+        // every column — and each drop counts as accepted and stamps the map-only cache
+        // marker, so after a disarm the map would never get those columns.
+        boolean mapPolicyPark = this.serverDeniesMapIngestion && mapOnlyIngestion;
+
+        // Flags-only fast path (plan A4): the flag flipped and nothing else about the
+        // session did — update the flag (done above) without rebuilding the request
+        // manager. A re-sent config with no flag change keeps the rebuild contract.
+        if (flagChanged && wasEstablished && !mapPolicyPark && this.requestManager != null
+                && sameSessionShape(previousAccepted, config)) {
+            return;
+        }
 
         // Without a registered LSSApi consumer there is nothing to deliver columns
         // to — skip session setup entirely (capability is sampled at JOIN).
-        if (config.enabled() && hasConsumers && this.receiveEnabled) {
+        if (config.enabled() && hasConsumers && this.receiveEnabled && !mapPolicyPark) {
             // A re-sent config mid-session replaces the manager: retire the old one
             // exactly like a disconnect so its session's stamps are reported and saved,
             // not silently dropped. (A consumer rejection racing the swap reports to the
@@ -542,7 +609,33 @@ final class ClientSessionGate {
             LSSLogger.info(Brand.shortName() + " disabled by the server mid-session — "
                     + "LOD session retired (cache saved); it re-arms automatically if the "
                     + "server re-enables this session.");
+        } else if (mapPolicyPark && this.requestManager != null) {
+            // Map policy (plan A4): the deny flag reached a map-only session mid-session —
+            // retire and PARK the manager the §2.4 way (the governor + world sub-key carry
+            // to the re-arm on a flags-0 push). The server session stays enabled, so the
+            // far-player session is NOT ended.
+            var retiring = this.requestManager;
+            var parked = new TransferRateGovernor();
+            parked.adoptFrom(retiring.governor);
+            this.parkedGovernor = parked;
+            this.parkedSubKey = retiring.worldSubKeySnapshot();
+            this.requestManager = null;
+            teardownManager(retiring);
+            LSSLogger.info("This server asks clients not to add distant terrain to map mods,"
+                    + " and a map mod is this client's only LOD consumer — LOD session parked"
+                    + " (cache saved); it re-arms automatically if the server allows it again.");
         }
+    }
+
+    /** The flags-only fast path's comparison: version, enabled, distance and generation —
+     *  everything the request manager is built from. */
+    private static boolean sameSessionShape(SessionConfigS2CPayload previous,
+                                            SessionConfigS2CPayload next) {
+        return previous != null
+                && previous.protocolVersion() == next.protocolVersion()
+                && previous.enabled() == next.enabled()
+                && previous.lodDistanceChunks() == next.lodDistanceChunks()
+                && previous.generationEnabled() == next.generationEnabled();
     }
 
     /** Ladder ordering for the downgrade guard: 20 above 19 above 16; anything else
@@ -560,12 +653,11 @@ final class ClientSessionGate {
      * a different implementation), so a downstream consumer can never turn an out-of-range
      * value into an unbounded allocation or loop.
      */
-    private static SessionConfigS2CPayload clampToProtocolBounds(SessionConfigS2CPayload p) {
-        return new SessionConfigS2CPayload(
-                p.protocolVersion(),
-                p.enabled(),
-                Math.clamp(p.lodDistanceChunks(), LSSConstants.MIN_LOD_DISTANCE, LSSConstants.MAX_LOD_DISTANCE),
-                p.generationEnabled());
+    static SessionConfigS2CPayload clampToProtocolBounds(SessionConfigS2CPayload p) {
+        // A wither copying EVERY component (map-policy plan A2's client trap): the old
+        // four-field rebuild dropped serverDataVersion — and would drop the session flags.
+        return p.withLodDistanceChunks(Math.clamp(p.lodDistanceChunks(),
+                LSSConstants.MIN_LOD_DISTANCE, LSSConstants.MAX_LOD_DISTANCE));
     }
 
     /**
@@ -600,6 +692,8 @@ final class ClientSessionGate {
         this.serverEnabled = false;
         this.sessionConfigReceived = false;
         this.serverLodDistance = 0;
+        this.serverDeniesMapIngestion = false;
+        this.acceptedConfig = null;
         this.columnsReceived.set(0);
         this.bytesReceived.set(0);
         this.wireBytesReceived.set(0);

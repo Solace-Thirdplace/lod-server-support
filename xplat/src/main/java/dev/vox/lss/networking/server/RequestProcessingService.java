@@ -66,6 +66,37 @@ public class RequestProcessingService {
             java.util.function.BiPredicate<ServerPlayer, String> probe) {
         this.permissionProbe = probe;
     }
+
+    /** The map policy's chat-line send (map-policy plan A3.3): a system message on the
+     *  server thread. Seam-injected for tests (gametest mock players have no client). */
+    private java.util.function.BiConsumer<ServerPlayer, String> mapPolicyNoticeSender =
+            (player, text) -> player.sendSystemMessage(
+                    net.minecraft.network.chat.Component.literal(text));
+
+    /** Test seam; {@code null} restores the production send. */
+    public void setMapPolicyNoticeSenderForTest(
+            java.util.function.BiConsumer<ServerPlayer, String> sender) {
+        this.mapPolicyNoticeSender = sender != null ? sender
+                : (player, text) -> player.sendSystemMessage(
+                        net.minecraft.network.chat.Component.literal(text));
+    }
+
+    /**
+     * Sends the map policy's once-per-CONNECTION chat line to a refused player (map-policy
+     * plan A3.3) — from the handshake refusal and the arm sweep only, never from a
+     * grant-sweep replay. Its own latch on the gate state (swept at disconnect). A send
+     * failure is contained: the line is a courtesy, the refusal already happened.
+     * Server thread.
+     */
+    public void noticeMapPolicyRefusal(ServerPlayer player) {
+        if (!this.serviceGateState.claimMapPolicyNotice(player.getUUID())) return;
+        try {
+            this.mapPolicyNoticeSender.accept(player, dev.vox.lss.common.MapPolicy.refusalNotice());
+        } catch (Exception e) {
+            LSSLogger.warn("Map-policy notice to " + player.getName().getString()
+                    + " failed: " + e);
+        }
+    }
     private final MinecraftServer server;
     private final ChunkDiskReader diskReader;
     private final ChunkGenerationService generationService;
@@ -171,6 +202,7 @@ public class RequestProcessingService {
         this.refreshedGeneration = this.advertisedGeneration;
         this.advertisedLod = config.snapshot().lod();
         this.adoptedServicePolicy = config.snapshot().service();
+        this.adoptedMapPolicy = config.snapshot().privacy().requestNoMapIngestion();
         this.adoptedFarPlayerPolicy = config.snapshot().farPlayers();
         // The vanish source (WI-7b; the loader seam since sponge-support-plan.md §1.5 —
         // the Melius Vanish bridge by default, Sponge's native vanish state on Sponge), per
@@ -618,6 +650,10 @@ public class RequestProcessingService {
     // snapshot cannot describe partial adoption, especially when the next edit reverts.
     private dev.vox.lss.common.config.ServerSettings.Lod advertisedLod;
     private dev.vox.lss.common.config.ServerSettings.Service adoptedServicePolicy;
+    /** The map-ingestion policy the sessions were last told (map-policy plan A3.4): the
+     *  service-policy compare never sees a {@code privacy.*} key, so the arm/disarm
+     *  trigger needs its own adoption mark. */
+    private boolean adoptedMapPolicy;
     private dev.vox.lss.common.config.ServerSettings.FarPlayers adoptedFarPlayerPolicy;
     private boolean refreshedGeneration;
     private volatile boolean advertisedGeneration;
@@ -626,8 +662,17 @@ public class RequestProcessingService {
     private volatile boolean settingsStopped;
     private volatile long settingsRevision;
     private volatile int settingsLegacyReconnects;
-    public record SettingsFeedback(long revision, int legacyReconnects, java.util.List<String> draining) {
+    private volatile int settingsMapPolicyRevoked = -1;
+    /** @param mapPolicyRevoked sessions the map-policy arm sweep revoked at this revision,
+     *                          or -1 when the policy did not change (map-policy plan A3.1:
+     *                          the reload feedback's own line, never the legacy-reconnect
+     *                          text) */
+    public record SettingsFeedback(long revision, int legacyReconnects, java.util.List<String> draining,
+                                   int mapPolicyRevoked) {
         public SettingsFeedback { draining = java.util.List.copyOf(draining); }
+        public SettingsFeedback(long revision, int legacyReconnects, java.util.List<String> draining) {
+            this(revision, legacyReconnects, draining, -1);
+        }
     }
     private volatile SettingsFeedback settingsFeedback = new SettingsFeedback(0, 0, java.util.List.of());
     public SettingsFeedback settingsFeedback() { return settingsFeedback; }
@@ -679,6 +724,7 @@ public class RequestProcessingService {
         // Keep the session owner's reconnect count while retrying an operation
         // that another owner failed; a successful prior report starts fresh.
         if (settingsFeedback.revision() == settingsRevision) settingsLegacyReconnects = 0;
+        settingsMapPolicyRevoked = -1;
         settingsRevision = revision;
         var view = new dev.vox.lss.common.config.ServerConfigBase(next, false);
         boolean generationChanged = refreshedGeneration != next.generation().enabled();
@@ -721,11 +767,24 @@ public class RequestProcessingService {
         var session = processor.thenCompose(ignored -> submitSettingsControl(() -> {
             if (revision != settingsRevision) throw new java.util.concurrent.CancellationException("Superseded settings revision");
             advertisedGeneration = next.generation().enabled();
+            boolean mapPolicy = next.privacy().requestNoMapIngestion();
+            boolean mapPolicyChanged = adoptedMapPolicy != mapPolicy;
+            // Map-policy plan A3.4: REVOKE FIRST — a session about to lose service must
+            // not first get an enabled=true manager rebuild from the re-push below.
+            if (mapPolicyChanged) settingsMapPolicyRevoked = runMapPolicySweep(serviceConfig);
             if (generationChanged || !advertisedLod.equals(next.lod()))
                 settingsLegacyReconnects = repushSessionConfig()[1];
+            else if (mapPolicyChanged)
+                repushSessionConfig(); // the flags change alone; legacy sessions are not told
             refreshedGeneration = next.generation().enabled();
             advertisedLod = next.lod();
             generationRefreshPending = false;
+            if (mapPolicyChanged) {
+                adoptedMapPolicy = mapPolicy;
+                // Disarm: the players refused at handshake or revoked heal NOW through
+                // the memo replay (their own dialect, the full production ladder).
+                if (!mapPolicy) replayDeniedHandshakes(serviceConfig);
+            }
             if (!adoptedServicePolicy.equals(next.service())) {
                 runServiceGateSweeps(serviceConfig);
                 adoptedServicePolicy = next.service();
@@ -740,7 +799,8 @@ public class RequestProcessingService {
         var result = java.util.concurrent.CompletableFuture.allOf(session, store)
                 .thenCompose(ignored -> submitSettingsControl(() -> {
                     if (revision != settingsRevision) throw new java.util.concurrent.CancellationException("Superseded settings revision");
-                    settingsFeedback = new SettingsFeedback(revision, settingsLegacyReconnects, settingsDrainingStatus());
+                    settingsFeedback = new SettingsFeedback(revision, settingsLegacyReconnects, settingsDrainingStatus(),
+                            settingsMapPolicyRevoked);
                     return (Void) null;
                 }));
         settingsReceipts.add(result);
@@ -766,6 +826,10 @@ public class RequestProcessingService {
         // run on this thread only, every PERMISSION_RECHECK_TICKS.
         if (++this.permissionRecheckCounter >= PERMISSION_RECHECK_TICKS) {
             this.permissionRecheckCounter = 0;
+            // Map-policy plan A3.4: the idempotent enforcement (armed ∧ registered ∧
+            // CURRENT ∧ ¬bit → revoke) — closes a handshake decided on the pre-arm
+            // config that registered after the reload's one-shot sweep.
+            runMapPolicySweep(config);
             runServiceGateSweeps(config);
         }
         var generationReady = tickGenerationService();
@@ -1023,13 +1087,16 @@ public class RequestProcessingService {
                 // the player changes dimension or rejoins.
                 this.farPlayerService.onViewerDimensionChange(player.getUUID());
             }
-            var payload = new SessionConfigS2CPayload(
+            var payload = SessionConfigS2CPayload.forSession(
                     LSSConstants.PROTOCOL_VERSION,
                     config.enabled() && dist > 0, // 0 = no LOD service in this world
                     dist,
                     generationEnabledForSession(),
                     net.minecraft.SharedConstants.getCurrentVersion()
-                            .getDataVersion().getVersion());
+                            .getDataVersion().getVersion(),
+                    // Map-policy plan A2: read at send time — the arm/disarm re-push is
+                    // how a capable session learns the new flags.
+                    state.getCapabilities(), config.requestNoMapIngestion());
             try {
                 this.sessionConfigPusher.push(player, payload);
                 pushed++;
@@ -1107,13 +1174,14 @@ public class RequestProcessingService {
                 // path heals the shape either way).
                 try {
                     dev.vox.lss.platform.LoaderServices.get().sendToPlayer(player,
-                            new SessionConfigS2CPayload(
+                            SessionConfigS2CPayload.forSession(
                                     LSSConstants.PROTOCOL_VERSION, false,
                                     // Inert under enabled=false, but resolved per-world for
                                     // consistency (no raw per-player lodDistanceChunks reads left).
                                     lodDistanceFor(player), generationEnabledForSession(),
                                     net.minecraft.SharedConstants.getCurrentVersion()
-                                            .getDataVersion().getVersion()));
+                                            .getDataVersion().getVersion(),
+                                    state.getCapabilities(), config.requestNoMapIngestion()));
                 } catch (Exception e) {
                     LSSLogger.error("Service-gate disable push failed for "
                             + state.getPlayerName(), e);
@@ -1134,6 +1202,22 @@ public class RequestProcessingService {
             // hysteresis must start fresh).
             gateState.clearRevocationStreaks();
         }
+        replayDeniedHandshakes(config);
+    }
+
+    /**
+     * The grant sweep (service-permission-gate-plan.md §2.3; map-policy plan A3.4):
+     * whenever the memo is non-empty, each remembered, online, unregistered player whose
+     * EVERY memo reason has cleared gets its stored handshake replayed through the full
+     * production ladder. PERMISSION clears as before (gate disarmed, or the probe now
+     * holds); MAP_POLICY clears only when the policy is disarmed or the stored handshake
+     * is CURRENT with the capability bit — without the reason mask, a disarmed gate's
+     * "trivially clears everyone" would replay a policy-refused player every sweep for as
+     * long as the policy is armed (each replay re-sending enabled=false). Also run by a
+     * reload that disarms the map policy, so refused players heal at once. Server thread.
+     */
+    public void replayDeniedHandshakes(LSSServerConfig config) {
+        var gateState = this.serviceGateState;
         if (gateState.hasDenied()) {
             for (UUID uuid : gateState.deniedSnapshot()) {
                 if (this.players.containsKey(uuid)) {
@@ -1153,30 +1237,33 @@ public class RequestProcessingService {
                     gateState.onDisconnect(uuid);
                     continue;
                 }
-                boolean cleared;
-                if (!config.requireServicePermission()) {
-                    cleared = true; // a disarmed gate trivially clears everyone
+                var entry = gateState.peekDenied(uuid);
+                if (entry == null) continue;
+                boolean permissionCleared;
+                if (!entry.has(dev.vox.lss.common.ServiceGateState.REASON_PERMISSION)
+                        || !config.requireServicePermission()) {
+                    permissionCleared = true; // not a permission denial, or a disarmed gate
                 } else {
                     try {
-                        cleared = this.permissionProbe.test(player,
+                        permissionCleared = this.permissionProbe.test(player,
                                         dev.vox.lss.common.LSSPermissions.SERVICE_LSS)
                                 && this.permissionProbe.test(player,
                                         dev.vox.lss.common.LSSPermissions.SERVICE_VSS);
                     } catch (Exception e) {
-                        cleared = true; // fail-open, the doctrine
+                        permissionCleared = true; // fail-open, the doctrine
                     }
                 }
-                if (!cleared) continue; // still denied: the entry stays for the next sweep
+                boolean mapPolicyCleared = mapPolicyCleared(entry, config.requestNoMapIngestion());
+                if (!permissionCleared || !mapPolicyCleared) continue; // the entry stays
                 var remembered = gateState.takeDenied(uuid);
                 if (remembered == null) continue;
                 LSSLogger.info("Re-offering " + dev.vox.lss.common.Brand.shortName() + " to "
                         + remembered.playerName() + " (re-offer): "
-                        + (config.requireServicePermission()
-                                ? "the service permission cleared"
-                                : "requireServicePermission was disarmed")
+                        + reofferReason(remembered, config.requireServicePermission(),
+                                config.requestNoMapIngestion())
                         + " — replaying the stored handshake");
                 try {
-                    ServerReceiverGlue.handleHandshake(
+                    ServerReceiverGlue.replayHandshake(
                             new dev.vox.lss.networking.payloads.HandshakeC2SPayload(
                                     remembered.protocolVersion(), remembered.capabilities()),
                             player, this,
@@ -1191,6 +1278,84 @@ public class RequestProcessingService {
                 }
             }
         }
+    }
+
+    /** Whether a memo entry's MAP_POLICY reason has cleared (map-policy plan A3.4): it
+     *  holds no such reason, the policy is disarmed, or the stored handshake is CURRENT
+     *  with the capability bit (a later handshake overwrote the stored capabilities). */
+    static boolean mapPolicyCleared(dev.vox.lss.common.ServiceGateState.DeniedHandshake entry,
+                                    boolean mapPolicyArmed) {
+        return !entry.has(dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)
+                || !mapPolicyArmed
+                || (entry.protocolVersion() == LSSConstants.PROTOCOL_VERSION
+                        && (entry.capabilities() & LSSConstants.CAPABILITY_MAP_POLICY) != 0);
+    }
+
+    /** The re-offer INFO line's reason — policy refusals get their own text. */
+    static String reofferReason(dev.vox.lss.common.ServiceGateState.DeniedHandshake entry,
+                                boolean gateArmed, boolean mapPolicyArmed) {
+        var reasons = new ArrayList<String>(2);
+        if (entry.has(dev.vox.lss.common.ServiceGateState.REASON_PERMISSION)) {
+            reasons.add(gateArmed ? "the service permission cleared"
+                    : "requireServicePermission was disarmed");
+        }
+        if (entry.has(dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)) {
+            reasons.add(mapPolicyArmed ? "the client can now honor the map-ingestion request"
+                    : "privacy.request_no_map_ingestion was turned off");
+        }
+        return String.join(" and ", reasons);
+    }
+
+    /**
+     * The map-ingestion policy's enforcement sweep (map-policy plan A3.4): while the
+     * policy is armed, every REGISTERED CURRENT-dialect session that did not declare
+     * {@code CAPABILITY_MAP_POLICY} is revoked — a per-player enabled=false push (no
+     * flags: the session has no bit), the unregistration composite, the memo deposit
+     * (reason MAP_POLICY — a disarm re-offers it) and the once-per-connection chat line.
+     * Idempotent (a revoked session is no longer registered) and run both by the reload
+     * that arms the policy (BEFORE the re-push) and on the 200-tick cadence. Legacy
+     * dialects are NOT revoked mid-session — the service-gate precedent: they keep
+     * serving until rejoin, where the handshake refuses them, and they have no map
+     * ingestion to leak. No hysteresis: a capability is a session fact. Server thread.
+     *
+     * @return how many sessions this pass revoked
+     */
+    public int runMapPolicySweep(LSSServerConfig config) {
+        if (!config.requestNoMapIngestion()) return 0;
+        var gateState = this.serviceGateState;
+        int revoked = 0;
+        for (var state : List.copyOf(this.players.values())) {
+            UUID uuid = state.getPlayerUUID();
+            if (this.dialects.dialectOf(uuid)
+                    != dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT) {
+                continue; // legacy sessions keep serving until rejoin (recorded)
+            }
+            int capabilities = state.getCapabilities();
+            if ((capabilities & LSSConstants.CAPABILITY_MAP_POLICY) != 0) continue;
+            var player = state.getPlayer();
+            String name = state.getPlayerName();
+            try {
+                this.sessionConfigPusher.push(player, SessionConfigS2CPayload.forSession(
+                        LSSConstants.PROTOCOL_VERSION, false,
+                        lodDistanceFor(player), generationEnabledForSession(),
+                        net.minecraft.SharedConstants.getCurrentVersion()
+                                .getDataVersion().getVersion(),
+                        capabilities, true));
+            } catch (Exception e) {
+                LSSLogger.error("Map-policy disable push failed for " + name, e);
+            }
+            boolean transition = gateState.rememberDenied(uuid, name,
+                    LSSConstants.PROTOCOL_VERSION, capabilities,
+                    dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY);
+            unregisterForServiceGate(uuid);
+            noticeMapPolicyRefusal(player);
+            if (transition) {
+                LSSLogger.info(dev.vox.lss.common.MapPolicy.revocationLogLine(name,
+                        LSSConstants.PROTOCOL_VERSION, capabilities));
+            }
+            revoked++;
+        }
+        return revoked;
     }
 
     private List<TickSnapshot.GenerationReadyData> tickGenerationService() {
@@ -1307,7 +1472,7 @@ public class RequestProcessingService {
                 if (newDist != prevDist && this.dialects.isCurrent(player.getUUID())) {
                     try {
                         this.sessionConfigPusher.push(player,
-                                new SessionConfigS2CPayload(
+                                SessionConfigS2CPayload.forSession(
                                         LSSConstants.PROTOCOL_VERSION,
                                         // 0 = no LOD service in this world: the client parks
                                         // its session until a served world re-enables it.
@@ -1315,7 +1480,10 @@ public class RequestProcessingService {
                                         newDist,
                                         generationEnabledForSession(),
                                         net.minecraft.SharedConstants.getCurrentVersion()
-                                                .getDataVersion().getVersion()));
+                                                .getDataVersion().getVersion(),
+                                        // Map-policy plan A2: every Nether trip at stock
+                                        // settings pushes — the flags must ride it.
+                                        capabilities, config.requestNoMapIngestion()));
                     } catch (Exception e) {
                         LSSLogger.error("Session-config dimension-change push failed for "
                                 + player.getName().getString(), e);
