@@ -219,7 +219,9 @@ class MapPolicyWiringContractTest {
             assertTrue(src.contains("() -> LSSClientConfig.CONFIG.mapIngestionEnabled(),"),
                     "the LOCAL enabled supplier stays the setting alone (it drives registration)");
         }
-        for (String method : new String[]{"void offerColumn(", "int reportBackpressure() {", "void pump() {"}) {
+        // The implementing offerColumn overload (the others delegate into it).
+        for (String method : new String[]{"XaeroTileExtractor.LevelFacts level, VoxelColumnData columnData) {",
+                "int reportBackpressure() {", "void pump() {"}) {
             assertTrue(body(xaero, method).contains("this.serverAllowsWrites.getAsBoolean()"),
                     "Xaero " + method + " composes the server gate");
         }

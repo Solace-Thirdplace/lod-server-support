@@ -20,8 +20,16 @@ final class XaeroTileWriter {
      * — the columns had been served during the join window, and the broad skip
      * threw the tiles away). A loaded-but-edge chunk is bridge-written instead;
      * the native writer reclaims it on its clean-flag once fully surrounded.
+     *
+     * <p>Cave layers (§B5): the native writer writes ONE layer — the one Xaero shows — and
+     * only within its write distance (min(16, it) for a cave layer), so a tile of any other
+     * layer, or beyond that distance, is the bridge's to write; skipping it there left it
+     * written by nobody.
      */
-    boolean nativelyWritable(Object world, int chunkX, int chunkZ) {
+    boolean nativelyWritable(Object world, XaeroTileExtractor.PreparedTile tile, XaeroSession.NativeReach reach) {
+        int chunkX = tile.chunkX();
+        int chunkZ = tile.chunkZ();
+        if (!reach.reaches(tile.layer(), chunkX, chunkZ)) return false;
         if (!this.session.levelOps.isChunkLoaded(world, chunkX, chunkZ)) return false;
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
@@ -55,7 +63,7 @@ final class XaeroTileWriter {
             int tileChunkZ = chunkZ >> 2;
             int localTcX = tileChunkX & 7;
             int localTcZ = tileChunkZ & 7;
-            Object region = this.session.h.getLeafMapRegion.invoke(mp, SURFACE_LAYER,
+            Object region = this.session.h.getLeafMapRegion.invoke(mp, tile.layer(),
                     tileChunkX >> 3, tileChunkZ >> 3, true);
             if (region == null) return Outcome.DEFERRED; // detection-completeness race
             Object writerPause = this.session.h.writerThreadPauseSync.invoke(region);
@@ -175,13 +183,15 @@ final class XaeroTileWriter {
                 byte light = (byte) Math.max(0, Math.min(15, tile.light()[i]));
                 this.session.h.blockWrite.invoke(block, tile.floorState()[i],
                         (int) tile.floorY()[i], (int) tile.topY()[i],
-                        tile.biome()[i], light, tile.glowing()[i], false);
+                        tile.biome()[i], light, tile.glowing()[i], tile.cave());
                 this.session.h.setBlock.invoke(mapTile, x, z, block);
             }
         }
         this.session.h.setWorldInterpretationVersion.invoke(mapTile, this.session.h.interpretationVersion);
-        this.session.h.setWrittenCave.invoke(mapTile, SURFACE_LAYER,
-                (int) this.session.h.getCaveModeDepthConfig.invoke(mp));
+        // The (caveStart, depth) the tile was EXTRACTED with — never the layer number, and
+        // never a commit-time re-read of the depth config (§B4): writtenCaveStart drives the
+        // tile's depth shading and the native writer's rewrite test.
+        this.session.h.setWrittenCave.invoke(mapTile, tile.caveStart(), tile.depth());
         this.session.h.tileChunkSetChanged.invoke(tileChunk, true);
         this.session.h.setTile.invoke(tileChunk, insideX, insideZ, mapTile,
                 this.session.h.getBlockStateShortShapeCache.invoke(mp), mp);
@@ -202,7 +212,7 @@ final class XaeroTileWriter {
         // isResting() check, i.e. possibly after the region was queued for
         // cache-saving on prepared textures — the saver then throws ("Trying to
         // save cache for a region with cache not prepared", 3 crashes/hour live).
-        this.session.rebuilds.notePendingUpdate(mp, dimensionId, region, tileChunk, localTcX, localTcZ,
+        this.session.rebuilds.notePendingUpdate(mp, dimensionId, tile.layer(), region, tileChunk, localTcX, localTcZ,
                 tile.chunkX() >> 2, tile.chunkZ() >> 2);
         for (var neighbor : neighbors) {
             // Native slope dependencies: south row, east column excluding its
@@ -215,7 +225,7 @@ final class XaeroTileWriter {
                 this.invalidateSlope(neighbor.mapTile(), 0, 0);
             }
             this.session.h.tileChunkSetChanged.invoke(neighbor.tileChunk(), true);
-            this.session.rebuilds.notePendingUpdate(mp, dimensionId, region, neighbor.tileChunk(),
+            this.session.rebuilds.notePendingUpdate(mp, dimensionId, tile.layer(), region, neighbor.tileChunk(),
                     (neighbor.chunkX() >> 2) & 7, (neighbor.chunkZ() >> 2) & 7,
                     neighbor.chunkX() >> 2, neighbor.chunkZ() >> 2);
         }

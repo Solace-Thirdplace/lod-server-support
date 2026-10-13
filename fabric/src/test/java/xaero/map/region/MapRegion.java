@@ -7,6 +7,8 @@ package xaero.map.region;
  *  setAllCachePrepared and the load-pacing members live on LeveledRegion. */
 public class MapRegion extends LeveledRegion<Object> {
     public final Object writerThreadPauseSync = new Object();
+    /** The layer the region was created in (real: a constructor argument; stub-only field). */
+    public int caveLayer = Integer.MAX_VALUE;
     public boolean writingPaused;
     public byte loadState = 2;
     public boolean resting = true;
