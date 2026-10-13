@@ -45,7 +45,10 @@ def render(data: dict | None = None) -> str:
               "rewrites it. New files enable map ingestion; migration from JSON keeps an absent",
               "`enableXaeroMapBridge` off. **Downgrade exception:** LSS 0.17 and older reject the new",
               "group, so a file created or saved by a newer build loads there only after renaming",
-              "`map_ingestion:` back to `xaero_map:` under `integrations:` (or deleting the file).", ""]
+              "`map_ingestion:` back to `xaero_map:` under `integrations:` (or deleting the file).", "",
+              "`privacy.request_no_map_ingestion` (0.19.0) is applied by a reload. **Server downgrade",
+              "exception:** LSS 0.18 and older reject unknown keys, so a server file created by a newer",
+              "build loads there only after deleting that line (or the file).", ""]
     for key, title in [("server", "Fabric / NeoForge / Sponge server"), ("paper", "Paper / Folia server"), ("client", "Client")]:
         schema = data[key]
         output += ["## " + title, "", "| YAML path | Type | Default | Range / units | Timing | Applicability |", "| --- | --- | --- | --- | --- | --- |"]

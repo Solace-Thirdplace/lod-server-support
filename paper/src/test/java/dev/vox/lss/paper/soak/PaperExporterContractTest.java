@@ -196,6 +196,8 @@ class PaperExporterContractTest {
         fx.diag.addSuperseded(8);
         fx.diag.addRangeFiltered(9);
         fx.gateState.rememberDenied(UUID.randomUUID(), "denied", 20, 1);
+        fx.gateState.rememberDenied(UUID.randomUUID(), "refused", 19, 1,
+                dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY);
         fx.tickDiag.recordSectionSent(100);
         fx.diskDiag.recordCompleted(3_000_000L);
         fx.diskDiag.recordSuccess();
@@ -211,6 +213,8 @@ class PaperExporterContractTest {
         assertEquals(8L, section(m, "service").get("superseded"));
         assertEquals(1L, section(m, "service").get("permission_denied"),
                 "the real gate-state transition counter flows onto its key");
+        assertEquals(1L, section(m, "service").get("map_policy_refused"),
+                "the map-policy refusal counter flows onto its own key (map-policy plan A3.5)");
         assertEquals(9L, section(m, "service").get("range_filtered"));
         assertEquals(1L, section(m, "service").get("columns_sent"));
         assertEquals(100L, section(m, "service").get("bytes_sent"));

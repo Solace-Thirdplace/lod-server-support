@@ -505,7 +505,7 @@ class PaperRequestProcessingServiceTest {
         service.registerPlayer(player, 1);
 
         var sent = new ArrayList<Integer>();
-        service.setSessionConfigSender((p, cfg, enabled) ->
+        service.setSessionConfigSender((p, cfg, enabled, caps) ->
                 sent.add(PaperWorldLod.distance(cfg, p)));
 
         var nether = level(Level.NETHER);
@@ -530,7 +530,7 @@ class PaperRequestProcessingServiceTest {
         service.registerPlayer(player, 1);
 
         var sent = new ArrayList<Integer>();
-        service.setSessionConfigSender((p, cfg, enabled) ->
+        service.setSessionConfigSender((p, cfg, enabled, caps) ->
                 sent.add(PaperWorldLod.distance(cfg, p)));
 
         var end = level(Level.END);
@@ -556,7 +556,7 @@ class PaperRequestProcessingServiceTest {
         service.getDialectTracker().onHandshake(uuid, dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT);
         service.registerPlayer(player, 1);
         var sent = new ArrayList<Integer>();
-        service.setSessionConfigSender((p, cfg, enabled) -> sent.add(PaperWorldLod.distance(cfg, p)));
+        service.setSessionConfigSender((p, cfg, enabled, caps) -> sent.add(PaperWorldLod.distance(cfg, p)));
 
         var end = level(Level.END);  // build the mock BEFORE the when() stub (no nested stubbing)
         when(player.level()).thenReturn(end);
@@ -576,7 +576,7 @@ class PaperRequestProcessingServiceTest {
         service.getDialectTracker().onHandshake(uuid, dev.vox.lss.common.HandshakeGate.WireDialect.V18);
         service.registerPlayer(player, 1);
         var sent = new ArrayList<Integer>();
-        service.setSessionConfigSender((p, cfg, enabled) -> sent.add(PaperWorldLod.distance(cfg, p)));
+        service.setSessionConfigSender((p, cfg, enabled, caps) -> sent.add(PaperWorldLod.distance(cfg, p)));
 
         var nether = level(Level.NETHER);  // build the mock BEFORE the when() stub (no nested stubbing)
         when(player.level()).thenReturn(nether);
@@ -596,7 +596,7 @@ class PaperRequestProcessingServiceTest {
         service.getDialectTracker().onHandshake(uuid, dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT);
         service.registerPlayer(player, 1);
         var sent = new ArrayList<String>();
-        service.setSessionConfigSender((p, cfg, enabled) -> sent.add(PaperWorldLod.distance(cfg, p) + ":" + enabled));
+        service.setSessionConfigSender((p, cfg, enabled, caps) -> sent.add(PaperWorldLod.distance(cfg, p) + ":" + enabled));
 
         var nether = level(Level.NETHER);
         when(player.level()).thenReturn(nether);
@@ -621,7 +621,7 @@ class PaperRequestProcessingServiceTest {
                 LSSConstants.CAPABILITY_VOXEL_COLUMNS);
         MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
         var sent = new java.util.HashMap<UUID, Boolean>();
-        service.setSessionConfigSender((player, cfg, enabled) -> sent.put(player.getUUID(), enabled));
+        service.setSessionConfigSender((player, cfg, enabled, caps) -> sent.put(player.getUUID(), enabled));
 
         service.repushSessionConfig();
 
@@ -676,7 +676,7 @@ class PaperRequestProcessingServiceTest {
         assertEquals(1, rosterEpochs.size(), "premise: nothing changed, so no second full roster");
 
         MutablePaperSettings.dimension(config, "minecraft:the_nether", 0);
-        service.setSessionConfigSender((player, cfg, enabled) -> { });
+        service.setSessionConfigSender((player, cfg, enabled, caps) -> { });
         service.repushSessionConfig();
         now += dev.vox.lss.common.farplayers.FarPlayerBroadcastService.FULL_ROSTER_MIN_INTERVAL_MILLIS + 1;
         fp.tick(now, online, settings, sender);
@@ -1644,7 +1644,7 @@ class PaperRequestProcessingServiceTest {
     @Test
     void repushRuntimeTaskSkipsARegisteredButFlipPendingLegacyPlayer() {
         var sent = new ArrayList<UUID>();
-        service.setSessionConfigSender((player, cfg, enabled) -> sent.add(player.getUUID()));
+        service.setSessionConfigSender((player, cfg, enabled, caps) -> sent.add(player.getUUID()));
 
         var legacyUuid = UUID.randomUUID();
         var legacy = playerIn(legacyUuid, level(Level.OVERWORLD));
@@ -1668,7 +1668,7 @@ class PaperRequestProcessingServiceTest {
     @Test
     void repushSendsToCurrentDialectSessionsAndSkipsLegacyOnes() {
         var sent = new ArrayList<UUID>();
-        service.setSessionConfigSender((player, cfg, enabled) -> sent.add(player.getUUID()));
+        service.setSessionConfigSender((player, cfg, enabled, caps) -> sent.add(player.getUUID()));
 
         var v20Uuid = UUID.randomUUID();
         service.registerPlayer(playerIn(v20Uuid, level(Level.OVERWORLD)),
@@ -1772,7 +1772,7 @@ class PaperRequestProcessingServiceTest {
         service.getDialectTracker().onHandshake(legacy, dev.vox.lss.common.HandshakeGate.WireDialect.V18);
         service.registerPlayer(playerIn(legacy, level(Level.OVERWORLD)), LSSConstants.CAPABILITY_VOXEL_COLUMNS);
         var sent = new ArrayList<UUID>();
-        service.setSessionConfigSender((player, cfg, enabled) -> {
+        service.setSessionConfigSender((player, cfg, enabled, caps) -> {
             assertTrue(service.generationEnabledForSession(), "announcement follows adoption");
             sent.add(player.getUUID());
         });
@@ -1823,7 +1823,7 @@ class PaperRequestProcessingServiceTest {
         service.getDialectTracker().onHandshake(legacy, dev.vox.lss.common.HandshakeGate.WireDialect.V18);
         service.registerPlayer(playerIn(legacy, level(Level.OVERWORLD)), LSSConstants.CAPABILITY_VOXEL_COLUMNS);
         var distances = new ArrayList<Integer>();
-        service.setSessionConfigSender((p, cfg, enabled) -> distances.add(cfg.lodDistanceChunks()));
+        service.setSessionConfigSender((p, cfg, enabled, caps) -> distances.add(cfg.lodDistanceChunks()));
         var original = config.snapshot();
         MutablePaperSettings.set(config, "lod.distance.default_chunks", 77);
         MutablePaperSettings.set(config, "storage.lod_store.max_size_mib", 128);
@@ -1858,7 +1858,7 @@ class PaperRequestProcessingServiceTest {
         service.registerPlayer(playerIn(UUID.randomUUID(), level(Level.OVERWORLD)), LSSConstants.CAPABILITY_VOXEL_COLUMNS);
         var distances = new ArrayList<Integer>();
         var generation = new ArrayList<Boolean>();
-        service.setSessionConfigSender((p, cfg, enabled) -> {
+        service.setSessionConfigSender((p, cfg, enabled, caps) -> {
             distances.add(cfg.lodDistanceChunks());
             generation.add(service.generationEnabledForSession());
         });
@@ -1886,7 +1886,7 @@ class PaperRequestProcessingServiceTest {
         buildRig(false);
         service.registerPlayer(playerIn(UUID.randomUUID(), level(Level.OVERWORLD)), LSSConstants.CAPABILITY_VOXEL_COLUMNS);
         var sends = new AtomicInteger();
-        service.setSessionConfigSender((p, cfg, enabled) -> sends.incrementAndGet());
+        service.setSessionConfigSender((p, cfg, enabled, caps) -> sends.incrementAndGet());
         var original = config.snapshot();
         MutablePaperSettings.set(config, "generation.enabled", true);
         processor.policyAdoption = CompletableFuture.failedFuture(new IllegalStateException("temporary owner failure"));

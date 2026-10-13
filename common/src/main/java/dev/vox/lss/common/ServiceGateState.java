@@ -34,19 +34,45 @@ import java.util.concurrent.atomic.AtomicLong;
  * re-handshakes or sweep passes while already denied — the {@code
  * service.permission_denied} exporter/diag field.
  *
+ * <p><b>Map policy</b> (map-policy plan A3.4): the memo is shared with the map-ingestion
+ * policy's refusals, each entry carrying a REASON MASK ({@link #REASON_PERMISSION},
+ * {@link #REASON_MAP_POLICY}). The grant sweep clears an entry only when EVERY reason it
+ * holds has cleared — without that, a disarmed permission gate's "trivially clears
+ * everyone" would replay a policy-refused player every sweep for as long as the policy
+ * is armed. Each reason counts its own transitions ({@code permission_denied} /
+ * {@code map_policy_refused}), and the policy's once-per-connection chat line has its own
+ * latch (a registration clears the denial-log latch, so it cannot share it).
+ *
  * <p>All structures are concurrent: handshakes may run on region threads (Folia)
  * while the pump sweeps.
  */
 public final class ServiceGateState {
 
-    /** One remembered denied handshake — what the grant sweep re-offers. */
-    public record DeniedHandshake(int protocolVersion, int capabilities, String playerName) {
+    /** Memo reason: the service permission gate denied the handshake. */
+    public static final int REASON_PERMISSION = 1;
+    /** Memo reason: the map-ingestion policy refused the handshake (map-policy plan A3.4). */
+    public static final int REASON_MAP_POLICY = 2;
+
+    /** One remembered denied handshake — what the grant sweep re-offers — and the reasons
+     *  (a mask of {@code REASON_*}) that must ALL clear before it is replayed. */
+    public record DeniedHandshake(int protocolVersion, int capabilities, String playerName,
+                                  int reasons) {
+        /** A permission-gate denial (the shape every pre-map-policy caller deposits). */
+        public DeniedHandshake(int protocolVersion, int capabilities, String playerName) {
+            this(protocolVersion, capabilities, playerName, REASON_PERMISSION);
+        }
+
+        public boolean has(int reason) {
+            return (this.reasons & reason) != 0;
+        }
     }
 
     private final Map<UUID, DeniedHandshake> deniedHandshakes = new ConcurrentHashMap<>();
     private final Set<UUID> denialLogged = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> mapPolicyNoticed = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Integer> revocationStreaks = new ConcurrentHashMap<>();
     private final AtomicLong permissionDenied = new AtomicLong();
+    private final AtomicLong mapPolicyRefused = new AtomicLong();
 
     /** The once-per-episode log claim — see {@link PlayerServiceGate#claimDenialLog}. */
     public boolean claimDenialLog(UUID uuid) {
@@ -60,10 +86,40 @@ public final class ServiceGateState {
      */
     public void rememberDenied(UUID uuid, String playerName, int protocolVersion,
                                int capabilities) {
-        if (this.deniedHandshakes.put(uuid,
-                new DeniedHandshake(protocolVersion, capabilities, playerName)) == null) {
-            this.permissionDenied.incrementAndGet();
+        rememberDenied(uuid, playerName, protocolVersion, capabilities, REASON_PERMISSION);
+    }
+
+    /**
+     * Deposits (or merges into) the memo entry for {@code reason}: the version and
+     * capabilities are overwritten (the latest handshake is the one worth replaying), the
+     * reason mask is OR-ed, and the reason's counter counts a transition iff the entry did
+     * not already hold that reason.
+     *
+     * @return whether this is a TRANSITION for {@code reason} (the call sites log their
+     *         once-per-transition INFO line exactly then)
+     */
+    public boolean rememberDenied(UUID uuid, String playerName, int protocolVersion,
+                                  int capabilities, int reason) {
+        var previous = new DeniedHandshake[1];
+        this.deniedHandshakes.compute(uuid, (k, old) -> {
+            previous[0] = old;
+            int reasons = (old == null ? 0 : old.reasons()) | reason;
+            return new DeniedHandshake(protocolVersion, capabilities, playerName, reasons);
+        });
+        boolean transition = previous[0] == null || !previous[0].has(reason);
+        if (transition) {
+            if ((reason & REASON_PERMISSION) != 0) this.permissionDenied.incrementAndGet();
+            if ((reason & REASON_MAP_POLICY) != 0) this.mapPolicyRefused.incrementAndGet();
         }
+        return transition;
+    }
+
+    /** The map policy's once-per-CONNECTION chat-line claim (map-policy plan A3.3): the
+     *  first call for a connection returns true, every later one false until disconnect.
+     *  Deliberately NOT cleared by {@link #onRegistered} (that re-arms the denial-log
+     *  latch, which would re-send the line on every arm/disarm cycle). */
+    public boolean claimMapPolicyNotice(UUID uuid) {
+        return this.mapPolicyNoticed.add(uuid);
     }
 
     /** A successful HANDSHAKE registration: the episode is over — memo entry gone
@@ -84,6 +140,7 @@ public final class ServiceGateState {
     public void onDisconnect(UUID uuid) {
         this.deniedHandshakes.remove(uuid);
         this.denialLogged.remove(uuid);
+        this.mapPolicyNoticed.remove(uuid);
         this.revocationStreaks.remove(uuid);
     }
 
@@ -91,6 +148,7 @@ public final class ServiceGateState {
     public void clear() {
         this.deniedHandshakes.clear();
         this.denialLogged.clear();
+        this.mapPolicyNoticed.clear();
         this.revocationStreaks.clear();
     }
 
@@ -117,9 +175,20 @@ public final class ServiceGateState {
         return new ArrayList<>(this.deniedHandshakes.keySet());
     }
 
-    /** The memo's current size — the {@code Gate:} diag line's {@code denied=}. */
+    /** The memo's current size (every reason). */
     public int deniedCount() {
         return this.deniedHandshakes.size();
+    }
+
+    /** Memo entries holding {@code reason} — the {@code Gate:} line's {@code denied=}
+     *  ({@link #REASON_PERMISSION}) and the {@code MapPolicy:} line's {@code refused=}
+     *  ({@link #REASON_MAP_POLICY}), so neither diag line mixes in the other's entries. */
+    public int deniedCount(int reason) {
+        int n = 0;
+        for (var entry : this.deniedHandshakes.values()) {
+            if (entry.has(reason)) n++;
+        }
+        return n;
     }
 
     /** Whether any memo entry exists — the grant sweep's cheap idle guard. */
@@ -130,6 +199,12 @@ public final class ServiceGateState {
     /** Denial transitions since service start — {@code service.permission_denied}. */
     public long permissionDeniedTotal() {
         return this.permissionDenied.get();
+    }
+
+    /** Map-policy refusal transitions since service start —
+     *  {@code service.map_policy_refused} (map-policy plan A3.5). */
+    public long mapPolicyRefusedTotal() {
+        return this.mapPolicyRefused.get();
     }
 
     /**
