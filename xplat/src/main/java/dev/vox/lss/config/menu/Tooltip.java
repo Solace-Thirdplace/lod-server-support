@@ -13,15 +13,29 @@ import java.util.Objects;
  * enumerate every key the tooltip may ever resolve to — that is what lets the catalog
  * test pin lang-file completeness without guessing context combinations.
  */
-public record Tooltip(Condition condition, String whenTrueKey, String whenFalseKey, String nativeOnlyKey) {
+public record Tooltip(Condition condition, String whenTrueKey, String whenFalseKey, String nativeOnlyKey,
+                      String serverBlockedKey) {
 
     public Tooltip(Condition condition, String whenTrueKey, String whenFalseKey) {
-        this(condition, whenTrueKey, whenFalseKey, null);
+        this(condition, whenTrueKey, whenFalseKey, null, null);
+    }
+
+    public Tooltip(Condition condition, String whenTrueKey, String whenFalseKey, String nativeOnlyKey) {
+        this(condition, whenTrueKey, whenFalseKey, nativeOnlyKey, null);
     }
 
     /** A native-only integration has a truthful tooltip while DH is selected. */
     public Tooltip nativeOnly(String key) {
-        return new Tooltip(condition, whenTrueKey, whenFalseKey, Objects.requireNonNull(key));
+        return new Tooltip(condition, whenTrueKey, whenFalseKey, Objects.requireNonNull(key),
+                serverBlockedKey);
+    }
+
+    /** Map ingestion's third display-time condition (map-policy plan A4): the connected
+     *  server asks clients not to write LOD terrain into map mods — "Turned off by this
+     *  server" while that holds, whatever the local setting says. */
+    public Tooltip serverBlocked(String key) {
+        return new Tooltip(condition, whenTrueKey, whenFalseKey, nativeOnlyKey,
+                Objects.requireNonNull(key));
     }
 
     /** The environment tests a tooltip may switch on. Each maps to one {@link MenuContext}
@@ -59,13 +73,15 @@ public record Tooltip(Condition condition, String whenTrueKey, String whenFalseK
 
     public String resolve(MenuContext ctx) {
         return nativeOnlyKey != null && !ctx.nativeTerrain() ? nativeOnlyKey
+                : serverBlockedKey != null && ctx.mapIngestionServerBlocked() ? serverBlockedKey
                 : condition.test(ctx) ? whenTrueKey : whenFalseKey;
     }
 
     /** Facts that can change after a modern page is registered once at game start (the
-     *  governor setting, the DH/native terrain source) must be read when the tooltip shows. */
+     *  governor setting, the DH/native terrain source, the connected server's map
+     *  request) must be read when the tooltip shows. */
     public boolean resolvesAtDisplay() {
-        return condition == Condition.GOVERNOR_ON || nativeOnlyKey != null;
+        return condition == Condition.GOVERNOR_ON || nativeOnlyKey != null || serverBlockedKey != null;
     }
 
     /** Renderers that register once call this from their display-time tooltip callback. */
@@ -75,7 +91,7 @@ public record Tooltip(Condition condition, String whenTrueKey, String whenFalseK
 
     /** Every key this tooltip can resolve to (distinct, in declaration order). */
     public List<String> keys() {
-        return java.util.stream.Stream.of(whenTrueKey, whenFalseKey, nativeOnlyKey)
+        return java.util.stream.Stream.of(whenTrueKey, whenFalseKey, nativeOnlyKey, serverBlockedKey)
                 .filter(Objects::nonNull).distinct().toList();
     }
 }

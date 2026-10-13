@@ -48,6 +48,8 @@ public class LSSServerCommands {
                         lines.removeIf(line -> line.startsWith("Existing legacy clients may"));
                         if (feedback.legacyReconnects() > 0)
                             lines.add(feedback.legacyReconnects() + " legacy client(s) need to reconnect for the new distance or generation policy.");
+                        dev.vox.lss.common.config.ReloadFeedback.applyMapPolicyOutcome(lines,
+                                config.requestNoMapIngestion(), feedback.mapPolicyRevoked());
                         lines.addAll(feedback.draining());
                     }
                 }
@@ -290,6 +292,10 @@ public class LSSServerCommands {
                 .withYieldLine(DiagnosticsFormatter.yieldDiagLineOrNull(
                         config.lodYieldsToVanillaTransport(), service.getTickDiag()))
                 .withGateLine(serviceGateDiagLineOrNull(config, service))
+                .withMapPolicyLine(!config.requestNoMapIngestion() ? null
+                        : dev.vox.lss.common.MapPolicy.diagLineOrNull(true,
+                                service.getServiceGateState().deniedCount(
+                                        dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)))
                 .withDirtyLine(dirtyDiagLine(service));
 
         for (var line : DiagnosticsFormatter.formatDiagnostics(data)) {
@@ -318,8 +324,11 @@ public class LSSServerCommands {
     private static String serviceGateDiagLineOrNull(LSSServerConfig config,
                                                     RequestProcessingService service) {
         if (!config.requireServicePermission()) return null;
+        // denied= counts PERMISSION memo entries only: the memo also holds map-policy
+        // refusals, which the separate MapPolicy: line reports (map-policy plan A3.5).
         return "Gate: requireServicePermission=on denied="
-                + service.getServiceGateState().deniedCount()
+                + service.getServiceGateState().deniedCount(
+                        dev.vox.lss.common.ServiceGateState.REASON_PERMISSION)
                 + " provider=" + dev.vox.lss.platform.LoaderServices.get().permissionProviderToken();
     }
 

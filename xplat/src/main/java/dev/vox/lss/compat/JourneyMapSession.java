@@ -184,7 +184,9 @@ final class JourneyMapSession {
                     () -> LSSClientConfig.CONFIG.enableIngestBackpressure()
                             && LSSClientConfig.CONFIG.mapIngestionBackpressure(),
                     XaeroSession::reportDroppedProduction,
-                    System::currentTimeMillis);
+                    System::currentTimeMillis,
+                    // Map-policy plan A4: the server's map-ingestion request (write paths only).
+                    dev.vox.lss.networking.client.ClientNetGlue::serverAllowsMapIngestion);
             session.memory = MapMemoryGuard.PRODUCTION;
             session.connected = XaeroSession::productionConnected;
             session.maybeRegister();
@@ -312,6 +314,10 @@ final class JourneyMapSession {
     final Consumer<VoxelColumnConsumer> registrar;
     final Consumer<VoxelColumnConsumer> deregistrar;
     final BooleanSupplier backpressureEnabled;
+    /** The server allows map writes on this connection (map-policy plan A4) — composed ONLY
+     *  on the write paths (offerColumn, offerEncoded, pump, reportBackpressure), never into
+     *  {@link #enabled} (registration settling, diag state). A bare constructor allows. */
+    final BooleanSupplier serverAllowsWrites;
     final XaeroSession.DropReporter dropReporter;
     final IngestBackpressureGovernor governor;
     final VoxelColumnConsumer consumer;
@@ -404,6 +410,15 @@ final class JourneyMapSession {
     JourneyMapSession(JourneyMapBindings h, Host host, BooleanSupplier enabled, BooleanSupplier sessionActive,
                       Consumer<VoxelColumnConsumer> registrar, Consumer<VoxelColumnConsumer> deregistrar,
                       BooleanSupplier backpressureEnabled, XaeroSession.DropReporter dropReporter, LongSupplier clock) {
+        this(h, host, enabled, sessionActive, registrar, deregistrar, backpressureEnabled, dropReporter, clock,
+                () -> true);
+    }
+
+    JourneyMapSession(JourneyMapBindings h, Host host, BooleanSupplier enabled, BooleanSupplier sessionActive,
+                      Consumer<VoxelColumnConsumer> registrar, Consumer<VoxelColumnConsumer> deregistrar,
+                      BooleanSupplier backpressureEnabled, XaeroSession.DropReporter dropReporter, LongSupplier clock,
+                      BooleanSupplier serverAllowsWrites) {
+        this.serverAllowsWrites = serverAllowsWrites;
         this.h = h;
         this.host = host;
         this.enabled = enabled;
@@ -610,7 +625,8 @@ final class JourneyMapSession {
     void offerColumn(JourneyMapLineSurface.LevelFacts facts, ResourceKey<Level> dimension,
                      int chunkX, int chunkZ, VoxelColumnData data) {
         var receipt = new Receipt();
-        if (!receipt.active() || this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
+        if (!receipt.active() || this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()
+                || !this.serverAllowsWrites.getAsBoolean()) { // map-policy plan A4: no write, no report
             receipt.close();
             return;
         }
@@ -647,6 +663,12 @@ final class JourneyMapSession {
             if (!entry.receipt.active()) {
                 // The session ended while this column was encoding: it must never reach the
                 // next session's (maybe another server's) map.
+                entry.receipt.close();
+                return;
+            }
+            if (!this.serverAllowsWrites.getAsBoolean()) {
+                // Map-policy plan A4: the server's deny arrived while this column encoded —
+                // the pump's clear already ran; queued now it would be written later.
                 entry.receipt.close();
                 return;
             }
@@ -711,7 +733,9 @@ final class JourneyMapSession {
     // ---- backpressure (main thread) ----
 
     int reportBackpressure() {
-        return this.governor.report(this.backpressureEnabled.getAsBoolean(), active(), this.occupancy, false, this.heapHolding);
+        // Map-policy plan A4: a server-blocked map reports no signal — it never throttles Voxy.
+        return this.governor.report(this.backpressureEnabled.getAsBoolean(),
+                active() && this.serverAllowsWrites.getAsBoolean(), this.occupancy, false, this.heapHolding);
     }
 
     boolean active() {
@@ -727,7 +751,8 @@ final class JourneyMapSession {
         this.governor.notePump();
         try {
             if (this.dead) return;
-            if (!this.enabled.getAsBoolean()) {
+            if (!this.enabled.getAsBoolean() || !this.serverAllowsWrites.getAsBoolean()) {
+                // (Map-policy plan A4: a server deny takes the local-off branch.)
                 reconcileInFlight(); // a finished batch's receipts still close
                 clearQueue();
                 return;
@@ -1620,6 +1645,7 @@ final class JourneyMapSession {
     String state() {
         if (this.dead) return "dead";
         if (!this.enabled.getAsBoolean()) return "disabled";
+        if (!this.serverAllowsWrites.getAsBoolean()) return "blocked_by_server";
         if (this.inertReason != null) return "inert(" + this.inertReason + ")";
         String waiting = this.waitingReason;
         return waiting != null ? "waiting(" + waiting + ")" : "active";
@@ -1657,7 +1683,8 @@ final class JourneyMapSession {
                 + ", encode_us_per_column=" + (columns == 0 ? 0 : this.encodeNanos.get() / columns / 1000)
                 + ", decode_us_per_column=" + (this.decodedColumns.get() == 0 ? 0 : this.decodeNanos.get() / this.decodedColumns.get() / 1000)
                 + ", render_us_per_column=" + (rendered == 0 ? 0 : this.renderNanos.get() / rendered / 1000)
-                + ", bp=" + this.governor.token(this.backpressureEnabled.getAsBoolean(), active(), this.occupancy)
+                + ", bp=" + this.governor.token(this.backpressureEnabled.getAsBoolean(),
+                        active() && this.serverAllowsWrites.getAsBoolean(), this.occupancy)
                 + ", heap=" + this.memory.token()
                 + (this.h.version != null ? ", version=" + this.h.version : "");
     }
