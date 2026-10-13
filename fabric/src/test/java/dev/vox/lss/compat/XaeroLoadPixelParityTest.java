@@ -124,7 +124,13 @@ class XaeroLoadPixelParityTest {
             }
             return invocation.callRealMethod();
         };
+        // stubOnly (here and on the per-fixture Level/LevelChunk doubles): nothing verifies
+        // them, and a recording writer would retain every loadPixel invocation — with the
+        // fixture doubles in its arguments and THEIR recorded calls — for the whole executor
+        // (the test-flakes catalog's test-double heap exhaustion; the 1.21.11 port tripped
+        // the default test heap with it).
         writer = Mockito.mock(writerClass, withSettings()
+                .stubOnly()
                 .useConstructor(overlayManager, shapeCache, biomeGetter)
                 .defaultAnswer(overrideShouldOverlay));
         loadPixel = writerClass.getMethod("loadPixel", Level.class, Registry.class, blockClass, blockClass,
@@ -135,6 +141,8 @@ class XaeroLoadPixelParityTest {
 
     @AfterAll
     static void close() throws Exception {
+        if (writer != null) Mockito.framework().clearInlineMock(writer);
+        writer = null;
         if (loader != null) loader.close();
     }
 
@@ -244,8 +252,8 @@ class XaeroLoadPixelParityTest {
             if (!sd.section().hasOnlyAir() || sd.skyLight() != null) highestLit = Math.max(highestLit, sd.sectionY());
         }
         final int topLit = highestLit;
-        Level world = mock(Level.class);
-        DimensionType type = mock(DimensionType.class);
+        Level world = mock(Level.class, withSettings().stubOnly());
+        DimensionType type = mock(DimensionType.class, withSettings().stubOnly());
         when(type.hasSkyLight()).thenReturn(level.skyLight());
         when(world.dimensionType()).thenReturn(type);
         when(world.getBrightness(any(), any())).thenAnswer(inv -> {
@@ -262,7 +270,7 @@ class XaeroLoadPixelParityTest {
             return sd == null ? null : sd.section().getNoiseBiome((pos.getX() & 15) >> 2, (pos.getY() & 15) >> 2,
                     (pos.getZ() & 15) >> 2);
         });
-        LevelChunk chunk = mock(LevelChunk.class);
+        LevelChunk chunk = mock(LevelChunk.class, withSettings().stubOnly());
         when(chunk.getPos()).thenReturn(new ChunkPos(CHUNK_X, CHUNK_Z));
         when(chunk.getBlockState(any(BlockPos.class))).thenAnswer(inv -> {
             BlockPos pos = inv.getArgument(0);
