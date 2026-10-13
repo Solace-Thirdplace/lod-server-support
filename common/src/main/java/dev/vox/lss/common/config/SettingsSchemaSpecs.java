@@ -45,6 +45,9 @@ final class SettingsSchemaSpecs {
         server.add(new Spec("privacy.xray.mode", "xrayObfuscation", Kind.STRING, Timing.R, Platform.ALL, false));
         server.add(new Spec("privacy.xray.max_y_blocks", "xrayMaxBlockHeight", Kind.INTEGER, Timing.R, Platform.ALL, false));
         server.add(new Spec("privacy.xray.hidden_blocks", "xrayHiddenBlocks", Kind.STRING_LIST, Timing.R, Platform.ALL, false));
+        // Map policy (map-policy plan A3.1): hot via reload. The legacy JSON name never
+        // existed (the key is YAML-born), so a JSON migration reads it absent = false.
+        server.add(new Spec("privacy.request_no_map_ingestion", "requestNoMapIngestion", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         server.add(new Spec("far_players.mode", "farPlayers", Kind.STRING, Timing.H, Platform.ALL, false));
         server.add(new Spec("far_players.update_interval_ticks", "farPlayersUpdateIntervalTicks", Kind.INTEGER, Timing.H, Platform.ALL, false));
         server.add(new Spec("far_players.distance.min_blocks", "farPlayersMinDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));

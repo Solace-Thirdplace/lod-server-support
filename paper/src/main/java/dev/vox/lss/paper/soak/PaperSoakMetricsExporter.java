@@ -198,6 +198,9 @@ public final class PaperSoakMetricsExporter {
         var gateState = service.getServiceGateState();
         serviceMap.put("permission_denied",
                 gateState != null ? gateState.permissionDeniedTotal() : 0L);
+        // Map-policy plan A3.5: refusal transitions (handshake + arm-sweep revocation).
+        serviceMap.put("map_policy_refused",
+                gateState != null ? gateState.mapPolicyRefusedTotal() : 0L);
         result.put("service", serviceMap);
 
         var diskMap = new LinkedHashMap<String, Object>();

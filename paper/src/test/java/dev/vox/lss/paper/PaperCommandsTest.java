@@ -242,6 +242,51 @@ class PaperCommandsTest {
     }
 
     @Test
+    void diagRendersTheMapPolicyLineOnlyWhileArmedAndApartFromTheGateLine() {
+        // Map-policy plan A3.5: a separate "MapPolicy: on refused=<n>" line while armed —
+        // the Gate line renders only with requireServicePermission on, and its denied=
+        // counts permission denials only (the memo now carries both reasons).
+        var service = mock(PaperRequestProcessingService.class);
+        var offThread = mock(PaperOffThreadProcessor.class);
+        when(offThread.getDiagnostics()).thenReturn(new ProcessingDiagnostics());
+        doReturn(offThread).when(service).getOffThreadProcessor();
+        var diskReader = mock(PaperChunkDiskReader.class);
+        when(diskReader.getDiag()).thenReturn(new DiskReaderDiagnostics());
+        when(diskReader.getDiagnostics()).thenReturn("idle");
+        when(service.getDiskReader()).thenReturn(diskReader);
+        when(service.getBandwidthLimiter()).thenReturn(new SharedBandwidthLimiter(1024));
+        when(service.getV16CompatManager()).thenReturn(new V16CompatManager());
+        when(service.getDialectTracker()).thenReturn(new dev.vox.lss.common.compat.WireDialectTracker());
+        when(service.getTickDiagnostics()).thenReturn("tick");
+        when(service.getTickDiag()).thenReturn(new dev.vox.lss.common.processing.TickDiagnostics());
+        when(service.getPlayers()).thenReturn(Map.of());
+        var gate = new dev.vox.lss.common.ServiceGateState();
+        gate.rememberDenied(java.util.UUID.randomUUID(), "denied", 20, 1);
+        gate.rememberDenied(java.util.UUID.randomUUID(), "refused", 19, 1,
+                dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY);
+        when(service.getServiceGateState()).thenReturn(gate);
+        var config = new MutablePaperSettings();
+
+        assertTrue(run(commands(service, config), "diag"));
+        assertTrue(messages.stream().noneMatch(m -> m.startsWith("MapPolicy:")),
+                "no line while the policy is off: " + messages);
+
+        messages.clear();
+        MutablePaperSettings.set(config, "privacy.request_no_map_ingestion", true);
+        assertTrue(run(commands(service, config), "diag"));
+        assertTrue(messages.contains("MapPolicy: on refused=1"), messages.toString());
+        assertTrue(messages.stream().noneMatch(m -> m.startsWith("Gate:")),
+                "the policy line never needs the permission gate armed");
+
+        messages.clear();
+        MutablePaperSettings.set(config, "service.require_permission", true);
+        assertTrue(run(commands(service, config), "diag"));
+        assertTrue(messages.contains("Gate: requireServicePermission=on denied=1 provider=bukkit"),
+                "denied= counts only the permission entry: " + messages);
+        assertTrue(messages.contains("MapPolicy: on refused=1"));
+    }
+
+    @Test
     void diagWithEnabledFalseConfigRendersAndStaysServiceable() {
         // enabled=false disables serving, not observability: diag must still answer with
         // the full line ladder and the Config line must carry the false flag.
