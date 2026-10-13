@@ -505,12 +505,12 @@ class XaeroCaveLayersTest {
         this.player = new XaeroSession.PlayerPos(NETHER, 0, 70.4, 0);
         offer(64, 64);
         assertTrue(this.bridge.hasQueuedForTest(4, 64, 64), "Layered, band (70+4)>>4");
-        var targets = this.bridge.planTargets(NETHER, NETHER_FACTS);
+        var targets = this.bridge.planTargets(NETHER, 0, 0, NETHER_FACTS);
         assertEquals(79, targets.get(1).caveStart(), "the band top, like every LSS band tile");
         this.player = new XaeroSession.PlayerPos(OVERWORLD, 0, 70, 0);
-        assertEquals(1, this.bridge.planTargets(NETHER, NETHER_FACTS).size(), "player elsewhere: surface only");
+        assertEquals(1, this.bridge.planTargets(NETHER, 0, 0, NETHER_FACTS).size(), "player elsewhere: surface only");
         this.player = new XaeroSession.PlayerPos(OVERWORLD, 0, -40, 0);
-        assertEquals(1, this.bridge.planTargets(OVERWORLD,
+        assertEquals(1, this.bridge.planTargets(OVERWORLD, 0, 0,
                         new XaeroTileExtractor.LevelFacts(-64, 320, true, false, 384)).size(),
                 "no ceiling: Xaero shows the surface under open sky");
     }
@@ -521,14 +521,19 @@ class XaeroCaveLayersTest {
                 List.of(XaeroTileExtractor.LayerTarget.band(3, 255, 30, XaeroTileExtractor.TileClass.BEST_EFFORT)),
                 false).get(0);
         var handle = new Handle();
+        this.bridge.bestEffort.enabled = true;
         LSSApi.withIngestFailureHandle(NETHER, 64, 64, handle, () -> {
             var origin = this.bridge.new Origin(this.bridge.new Receipt(), false);
             this.bridge.offerTile(NETHER, tile, origin);
-            assertTrue(origin.closed.get());
+            assertFalse(origin.closed.get(), "held by the best-effort queue");
         });
         assertEquals(0, handle.leases, "a best-effort tile holds a lease-free token");
-        assertEquals(0, this.bridge.queuedForTest(), "B-II's pipeline owns it, never the reliable queue");
-        assertEquals(1, this.bridge.counterForTest("best_effort_dropped"));
+        assertEquals(0, this.bridge.queuedForTest(), "never the reliable queue");
+        assertEquals(1, this.bridge.counterForTest("best_effort_queued"), "B-II's own queue holds it");
+        this.bridge.bestEffort.enabled = false; // the B-I arm: an offer is closed, nothing queued
+        var origin = this.bridge.new Origin(this.bridge.new Receipt(), false);
+        this.bridge.offerTile(NETHER, tile, origin);
+        assertTrue(origin.closed.get());
         assertEquals(0, handle.reports);
     }
 
