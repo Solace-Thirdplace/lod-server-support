@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The SessionConfig {@code sessionFlags} append (map-policy plan A2/A5 "wire"): the
  * frames a 0.18.0 client and every legacy echo receive must stay BYTE-IDENTICAL to
  * 0.18.0 — the expected hex below was captured from the pre-change codec
- * (2026-10-13, this line's data version 5023 = {@code 9f27}) before the field
+ * (2026-10-13, this line's data version 4903 = {@code a726}) before the field
  * existed, not re-derived from the new code. Every 0.10.0–0.18.0 v20 client hard-kicks
  * on a trailing byte, and a 0.19 client's 19 arm would read stray flags as the data
  * version, so the append rides ONLY a version-20 frame to a session that declared

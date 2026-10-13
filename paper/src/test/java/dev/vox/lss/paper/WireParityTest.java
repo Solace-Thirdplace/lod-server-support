@@ -493,7 +493,7 @@ class WireParityTest {
     }
     // ---- map-policy session flags (map-policy plan A2/A5): Paper's hand encoder ----
     // The expected hex was captured from the PRE-CHANGE encoder (2026-10-13; this line's
-    // data version 5023 = 9f27) — the Fabric twin SessionConfigFlagsWireTest pins the
+    // data version 4903 = a726) — the Fabric twin SessionConfigFlagsWireTest pins the
     // codec against the SAME bytes, so the two encoders cannot drift apart.
 
     private static final int OLD_CAPS = LSSConstants.CAPABILITY_VOXEL_COLUMNS
@@ -506,21 +506,21 @@ class WireParityTest {
 
     @Test
     void theCapturedDataVersionTailMatchesThisLine() {
-        assertEquals("9f27", hex(ref(b -> b.writeVarInt(SharedConstants.getCurrentVersion()
+        assertEquals("a726", hex(ref(b -> b.writeVarInt(SharedConstants.getCurrentVersion()
                         .dataVersion().version()))),
-                "the captured pre-change hex below embeds this line's data version (5023)"
+                "the captured pre-change hex below embeds this line's data version (4903)"
                         + " — a port re-captures it");
     }
 
     @Test
     void aSessionWithoutTheBitGetsThe0180BytesOnPaperWhateverThePolicy() {
         for (boolean deny : new boolean[]{false, true}) {
-            assertEquals("14018004019f27", hex(PaperPayloadHandler.encodeSessionConfig(
+            assertEquals("1401800401a726", hex(PaperPayloadHandler.encodeSessionConfig(
                     LSSConstants.PROTOCOL_VERSION, true, 512, true, OLD_CAPS, deny)));
-            assertEquals("140040009f27", hex(PaperPayloadHandler.encodeSessionConfig(
+            assertEquals("14004000a726", hex(PaperPayloadHandler.encodeSessionConfig(
                     LSSConstants.PROTOCOL_VERSION, false, 64, false, OLD_CAPS, deny)));
         }
-        assertEquals("14018004019f27", hex(PaperPayloadHandler.encodeSessionConfig(
+        assertEquals("1401800401a726", hex(PaperPayloadHandler.encodeSessionConfig(
                 LSSConstants.PROTOCOL_VERSION, true, 512, true)), "the capability-less overload");
     }
 
@@ -541,9 +541,9 @@ class WireParityTest {
 
     @Test
     void aDeclaringV20SessionGetsTheFlagsAfterTheDataVersionOnPaper() {
-        assertEquals("14018004019f27" + "01", hex(PaperPayloadHandler.encodeSessionConfig(
+        assertEquals("1401800401a726" + "01", hex(PaperPayloadHandler.encodeSessionConfig(
                 LSSConstants.PROTOCOL_VERSION, true, 512, true, NEW_CAPS, true)));
-        assertEquals("14018004019f27" + "00", hex(PaperPayloadHandler.encodeSessionConfig(
+        assertEquals("1401800401a726" + "00", hex(PaperPayloadHandler.encodeSessionConfig(
                 LSSConstants.PROTOCOL_VERSION, true, 512, true, NEW_CAPS, false)));
         // Identical reference ops to the Fabric twin's flags append.
         byte[] expected = ref(b -> {
