@@ -1343,8 +1343,8 @@ final class XaeroSession {
             // silently (review); the window already bounds how many regions are open.
             this.rebuilds.tickFlush(mp, dimensionId);
             if (this.dead) return false;
-            if (this.h.getCurrentCaveLayer != null
-                    && (int) this.h.getCurrentCaveLayer.invoke(mp) != SURFACE_LAYER) {
+            if (this.h.caveGate != null
+                    && (int) this.h.caveGate.getCurrentCaveLayer().invoke(mp) != SURFACE_LAYER) {
                 // The map is showing a cave layer: our surface-layer writes would be
                 // invisible and still cost regions/loads/saves — wait (entries retained;
                 // the bounded queue is the TTL), owed rebuilds above still ran.
