@@ -350,7 +350,9 @@ final class XaeroSession {
                     // §18.1 churn regime).
                     () -> LSSClientConfig.CONFIG.enableIngestBackpressure()
                             && LSSClientConfig.CONFIG.mapIngestionBackpressure(),
-                    XaeroSession::reportDroppedProduction);
+                    XaeroSession::reportDroppedProduction,
+                    // Map-policy plan A4: the server's map-ingestion request (write paths only).
+                    dev.vox.lss.networking.client.ClientNetGlue::serverAllowsMapIngestion);
             bridge.openRegionCap = openRegionCapFor(Runtime.getRuntime().maxMemory(),
                     Integer.getInteger("lss.xaero.openRegionWindow", -1));
             bridge.memory = MapMemoryGuard.PRODUCTION;
@@ -477,6 +479,11 @@ final class XaeroSession {
      *  {@code integrations.map_ingestion.backpressure}); composes UNDER the global
      *  {@code enableIngestBackpressure} (#71 owns the signal path manager-side). */
     final BooleanSupplier backpressureEnabled;
+    /** The server allows map writes on this connection (map-policy plan A4) — composed
+     *  ONLY on the write paths ({@link #offerColumn}, {@link #pump},
+     *  {@link #reportBackpressure}), never into {@link #enabled}, which also drives
+     *  registration settling and the diag state. A bare constructor allows. */
+    final BooleanSupplier serverAllowsWrites;
     /** Reports a dropped position back to LSS for its bounded re-serve — test seam. */
     final DropReporter dropReporter;
     final VoxelColumnConsumer consumer;
@@ -625,6 +632,17 @@ final class XaeroSession {
                    java.util.function.Consumer<VoxelColumnConsumer> registrar,
                    java.util.function.Consumer<VoxelColumnConsumer> deregistrar,
                    BooleanSupplier backpressureEnabled, DropReporter dropReporter) {
+        this(h, levelOps, enabled, sessionActive, registrar, deregistrar, backpressureEnabled,
+                dropReporter, () -> true);
+    }
+
+    XaeroSession(XaeroBindings h, LevelOps levelOps, BooleanSupplier enabled,
+                   BooleanSupplier sessionActive,
+                   java.util.function.Consumer<VoxelColumnConsumer> registrar,
+                   java.util.function.Consumer<VoxelColumnConsumer> deregistrar,
+                   BooleanSupplier backpressureEnabled, DropReporter dropReporter,
+                   BooleanSupplier serverAllowsWrites) {
+        this.serverAllowsWrites = serverAllowsWrites;
         this.h = h;
         this.levelOps = levelOps;
         this.enabled = enabled;
@@ -805,7 +823,8 @@ final class XaeroSession {
         double occupancy = this.heapHolding
                 ? Math.max(this.acquisition.occupancy, BP_HALT_OCCUPANCY) : this.acquisition.occupancy;
         if (!this.backpressureEnabled.getAsBoolean()) return noSignal();
-        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
+        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()
+                || !this.serverAllowsWrites.getAsBoolean()) { // a blocked map never throttles Voxy
             return noSignal();
         }
         if (this.haltWedged) {
@@ -897,7 +916,8 @@ final class XaeroSession {
                      int worldBottomY, int worldTopY, VoxelColumnData columnData) {
         Origin origin = new Origin();
         try {
-            if (!origin.active() || this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
+            if (!origin.active() || this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()
+                    || !this.serverAllowsWrites.getAsBoolean()) { // map-policy plan A4: no write, no report
                 origin.close();
                 return;
             }
@@ -1077,7 +1097,8 @@ final class XaeroSession {
      *  {@link #reportBackpressure} so the token never contradicts the report. */
     String bpToken() {
         if (!this.backpressureEnabled.getAsBoolean()) return "off";
-        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
+        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()
+                || !this.serverAllowsWrites.getAsBoolean()) {
             return "-1(inactive)";
         }
         if (this.haltWedged) return "-1(wedged)";
@@ -1087,7 +1108,8 @@ final class XaeroSession {
     }
 
     String describe() {
-        String state = this.dead ? "dead" : this.enabled.getAsBoolean() ? "active" : "disabled";
+        String state = this.dead ? "dead" : !this.enabled.getAsBoolean() ? "disabled"
+                : !this.serverAllowsWrites.getAsBoolean() ? "blocked_by_server" : "active";
         long dropped = this.droppedOverflow.get() + this.droppedStale.get()
                 + this.droppedExpired.get();
         return "XaeroMap: state=" + state + ", queued=" + queuedForTest()
@@ -1148,7 +1170,9 @@ final class XaeroSession {
         this.rebuilds.frameFlushRan = false;
         this.rebuilds.rebuildSpentSinceLastPumpNanos = 0;
         this.rebuilds.framesSinceLastPump = 0;
-        if (!this.enabled.getAsBoolean()) {
+        if (!this.enabled.getAsBoolean() || !this.serverAllowsWrites.getAsBoolean()) {
+            // (Map-policy plan A4: a server deny takes the local-off branch — queue and debt
+            // dropped unreported, committed rebuilds still flush.)
             clearQueue(); // the live toggle: flipping off drops the backlog immediately
             this.acquisition.clearOwed();  // …and the debt (WI-3): a disabled bridge must not un-stamp anything
             // ...but rebuilds already OWED to committed tile chunks still flush —

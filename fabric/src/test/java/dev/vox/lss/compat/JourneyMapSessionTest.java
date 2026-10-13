@@ -58,6 +58,8 @@ class JourneyMapSessionTest {
     private boolean ceiling;
     private boolean enabled;
     private boolean sessionActive;
+    /** The connected server allows map writes (map-policy plan A4). */
+    private boolean serverAllows;
     private boolean backpressure;
     private boolean failDecode;
     /** The host's level read throws (JourneyMap or Minecraft internals drifting at call time). */
@@ -91,6 +93,7 @@ class JourneyMapSessionTest {
         this.ceiling = false;
         this.enabled = true;
         this.sessionActive = true;
+        this.serverAllows = true;
         this.backpressure = true;
         this.failDecode = false;
         this.levelThrows = false;
@@ -123,7 +126,7 @@ class JourneyMapSessionTest {
                 () -> this.enabled, () -> this.sessionActive, this.registered::add, this.registered::remove,
                 () -> this.backpressure,
                 (dim, x, z) -> this.reports.add(new long[]{dimIndex(dim), x, z}),
-                () -> this.clock);
+                () -> this.clock, () -> this.serverAllows);
         this.session.decoder = (bytes, l) -> {
             if (this.failDecode) return null;
             var buf = ByteBuffer.wrap(bytes);
@@ -1306,5 +1309,43 @@ class JourneyMapSessionTest {
             dev.vox.lss.config.ClientConfigTestSupport.set("integrations.map_ingestion.enabled", old);
             JourneyMapSession.resetFacadeForTest();
         }
+    }
+    // ---- the server's map-ingestion request (map-policy plan A4) ----
+
+    @Test
+    void aServerDenyDropsOffersUnreportedAndNeverThrottlesTheStream() {
+        this.serverAllows = false;
+        gatedOffer(0, 0);
+        assertEquals(0, this.session.queuedGauge);
+        assertEquals(0, this.session.encodedColumns.get(), "dropped before encoding");
+        offer(1, 1); // an encode that raced the deny lands in offerEncoded's re-check
+        assertEquals(0, this.session.queuedGauge);
+        assertEquals(-1, this.session.reportBackpressure(),
+                "a blocked map never paces Voxy's stream");
+        assertTrue(this.reports.isEmpty(), "nothing is reported for re-serve");
+        assertTrue(this.session.describe().contains("state=blocked_by_server"), this.session.describe());
+        assertEquals(1, this.registered.size(),
+                "the write gate is NOT composed into enabled: registration is untouched");
+    }
+
+    @Test
+    void aMidSessionDenyClearsTheQueueAndAnAllowResumesWriting() {
+        offer(0, 0);
+        offer(1, 0);
+        assertEquals(2, this.session.queuedGauge);
+        this.serverAllows = false;
+        this.session.pump();
+        assertEquals(0, this.session.queuedGauge, "the local-off branch: queue dropped");
+        assertTrue(this.reports.isEmpty(), "…unreported");
+        assertEquals(0, this.jm.queued.size(), "nothing written while denied");
+        this.session.onSessionEnd();
+        this.session.pump();
+        assertEquals(1, this.registered.size(), "a deny never deregisters at session end");
+
+        this.serverAllows = true;
+        offer(0, 0);
+        this.session.pump();
+        this.clock += JourneyMapSession.SETTLE_MILLIS + 1;
+        assertEquals(1, cycle(), "an allow resumes writing for terrain arriving from now on");
     }
 }
