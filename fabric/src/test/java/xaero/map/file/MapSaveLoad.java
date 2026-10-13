@@ -12,6 +12,13 @@ public class MapSaveLoad {
     public boolean regionDetectionComplete = true;
     public LeveledRegion<?> nextToLoadByViewing;
     public final java.util.List<MapRegion> loadRequests = new java.util.ArrayList<>();
+    /** The save queue (real: regions waiting for the saver) — best-effort grants wait for it. */
+    public final java.util.ArrayList<MapRegion> toSave = new java.util.ArrayList<>();
+    public int sizeOfToLoad;
+
+    public java.util.ArrayList<MapRegion> getToSave() { return this.toSave; }
+
+    public int getSizeOfToLoad() { return this.sizeOfToLoad; }
 
     public boolean isRegionDetectionComplete() { return this.regionDetectionComplete; }
 

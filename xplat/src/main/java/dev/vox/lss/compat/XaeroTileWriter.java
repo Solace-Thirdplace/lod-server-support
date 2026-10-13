@@ -65,6 +65,7 @@ final class XaeroTileWriter {
             int localTcZ = tileChunkZ & 7;
             Object region = this.session.h.getLeafMapRegion.invoke(mp, tile.layer(),
                     tileChunkX >> 3, tileChunkZ >> 3, true);
+            var regionKey = new XaeroSession.RegionKey(tile.layer(), XaeroSession.regionKeyOf(chunkX, chunkZ));
             if (region == null) return Outcome.DEFERRED; // detection-completeness race
             Object writerPause = this.session.h.writerThreadPauseSync.invoke(region);
             synchronized (writerPause) {
@@ -74,6 +75,7 @@ final class XaeroTileWriter {
                 Object tileChunk = null;
                 synchronized (region) {
                     byte loadState = (byte) this.session.h.getLoadState.invoke(region);
+                    this.session.loadStats.onObserve(regionKey, region, loadState, this.session.nowMillis());
                     boolean proper = loadState == 2;
                     if (proper) this.session.h.registerVisit.invoke(region);
                     resting = (boolean) this.session.h.isResting.invoke(region);
@@ -136,6 +138,7 @@ final class XaeroTileWriter {
                 }
                 this.commitPixels(mp, dimensionId, region, tileChunk, createdTileChunk,
                         localTcX, localTcZ, tile, neighbors);
+                this.session.loadStats.onCommit(regionKey, region);
                 return Outcome.COMMITTED;
             }
         } catch (Throwable t) {

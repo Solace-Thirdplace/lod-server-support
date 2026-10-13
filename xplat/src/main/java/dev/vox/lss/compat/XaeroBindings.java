@@ -95,6 +95,17 @@ final class XaeroBindings {
     record CaveGate(MethodHandle getCurrentCaveLayer, MethodHandle isIgnoreHeightmaps,
                     MethodHandle getCurrentDimension, MethodHandle isUsingWorldSave) {}
     final CaveGate caveGate;
+    /**
+     * Phase B-II's surface (cave-layers plan §B6): the current {@code MapDimension}'s
+     * {@code getCaveModeType()} (0 off, 1 Layered, 2 Full — best-effort bands are written in
+     * Layered only), {@code WorldMapClientConfigUtils.getEffectiveCaveModeAllowed()}, and
+     * the save/load queues ({@code MapSaveLoad.getToSave()}, {@code getSizeOfToLoad()}):
+     * best-effort load grants wait for an empty save queue. Null = best-effort bands off;
+     * phase B-I is unaffected.
+     */
+    record BestEffortGate(MethodHandle getCaveModeType, MethodHandle getEffectiveCaveModeAllowed,
+                          MethodHandle getToSave, MethodHandle getSizeOfToLoad) {}
+    final BestEffortGate bestEffortGate;
     /** {@code WorldMapProfiledConfigOptions.WRITING_DISTANCE}, read through
      *  {@link #settingsGate}'s {@code getEffective} — the native writer's distance input
      *  for the natively-writable skip (§B5). Null = unbound: the distance counts as
@@ -429,6 +440,24 @@ final class XaeroBindings {
             this.rollbackGroup(markCaveLayers);
             missing.append("cave-layers ");
         }
+        BestEffortGate bestEffort = null;
+        int markBestEffort = this.beginGroup("best-effort");
+        try {
+            Class<?> dimensionClass = resolver.resolve("xaero.map.world.MapDimension");
+            Class<?> utilsClass = resolver.resolve("xaero.map.config.util.WorldMapClientConfigUtils");
+            bestEffort = new BestEffortGate(
+                    virtual(lookup, dimensionClass, "getCaveModeType",
+                            MethodType.methodType(int.class), int.class),
+                    findStatic(lookup, utilsClass, "getEffectiveCaveModeAllowed",
+                            MethodType.methodType(boolean.class)).asType(MethodType.methodType(boolean.class)),
+                    virtual(lookup, saveLoadClass, "getToSave",
+                            MethodType.methodType(java.util.ArrayList.class), Object.class),
+                    virtual(lookup, saveLoadClass, "getSizeOfToLoad",
+                            MethodType.methodType(int.class), int.class));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            this.rollbackGroup(markBestEffort);
+            missing.append("best-effort ");
+        }
         MethodHandle writingDistance = null;
         if (settings != null) {
             int markWriteDistance = this.beginGroup("write-distance");
@@ -440,6 +469,7 @@ final class XaeroBindings {
             }
         }
         this.caveGate = cave;
+        this.bestEffortGate = bestEffort;
         this.writingDistanceOption = writingDistance;
         this.crashGate = crash;
         this.settingsGate = settings;
