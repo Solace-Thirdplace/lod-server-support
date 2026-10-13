@@ -121,7 +121,13 @@ class XaeroLoadPixelParityTest {
             }
             return invocation.callRealMethod();
         };
+        // stubOnly (here and on the per-fixture Level/LevelChunk doubles): nothing verifies
+        // them, and a recording writer would retain every loadPixel invocation — with the
+        // fixture doubles in its arguments and THEIR recorded calls — for the whole executor
+        // (the test-flakes catalog's test-double heap exhaustion; the 1.21.11 port tripped
+        // the default test heap with it).
         writer = Mockito.mock(writerClass, withSettings()
+                .stubOnly()
                 .useConstructor(overlayManager, shapeCache, biomeGetter)
                 .defaultAnswer(overrideShouldOverlay));
         loadPixel = writerClass.getMethod("loadPixel", Level.class, Registry.class, blockClass, blockClass,
@@ -132,6 +138,8 @@ class XaeroLoadPixelParityTest {
 
     @AfterAll
     static void close() throws Exception {
+        if (writer != null) Mockito.framework().clearInlineMock(writer);
+        writer = null;
         if (loader != null) loader.close();
     }
 
@@ -261,8 +269,8 @@ class XaeroLoadPixelParityTest {
             if (!sd.section().hasOnlyAir() || sd.skyLight() != null) highestLit = Math.max(highestLit, sd.sectionY());
         }
         final int topLit = highestLit;
-        Level world = mock(Level.class);
-        DimensionType type = mock(DimensionType.class);
+        Level world = mock(Level.class, withSettings().stubOnly());
+        DimensionType type = mock(DimensionType.class, withSettings().stubOnly());
         when(type.hasSkyLight()).thenReturn(level.skyLight());
         when(world.dimensionType()).thenReturn(type);
         when(world.getBrightness(any(), any())).thenAnswer(inv -> {
@@ -279,7 +287,7 @@ class XaeroLoadPixelParityTest {
             return sd == null ? null : sd.section().getNoiseBiome((pos.getX() & 15) >> 2, (pos.getY() & 15) >> 2,
                     (pos.getZ() & 15) >> 2);
         });
-        LevelChunk chunk = mock(LevelChunk.class);
+        LevelChunk chunk = mock(LevelChunk.class, withSettings().stubOnly());
         when(chunk.getPos()).thenReturn(new ChunkPos(CHUNK_X, CHUNK_Z));
         when(chunk.getBlockState(any(BlockPos.class))).thenAnswer(inv -> {
             BlockPos pos = inv.getArgument(0);
@@ -430,7 +438,7 @@ class XaeroLoadPixelParityTest {
     }
 
     private static XaeroTileExtractor.LayerTarget band(int band, XaeroTileExtractor.LevelFacts level) {
-        return XaeroTileExtractor.LayerTarget.band(band, level.topY() - 1, 30, XaeroTileExtractor.TileClass.RELIABLE);
+        return XaeroTileExtractor.LayerTarget.band(band, level.topY() - 1, 30);
     }
 
     // ---- roofs ----
@@ -589,7 +597,7 @@ class XaeroLoadPixelParityTest {
                 : y < 10 ? air() : y < 64 ? s(Blocks.STONE) : air();
         // An exact native caveStart (-5, the band -1 window [-34, -5]).
         assertParity(new Fixture("caveStart -5", OVERWORLD, column(OVERWORLD, deep, null, null, Biomes.PLAINS),
-                new XaeroTileExtractor.LayerTarget(-1, -5, 30, XaeroTileExtractor.TileClass.RELIABLE), false));
+                new XaeroTileExtractor.LayerTarget(-1, -5, 30), false));
         // The top band of each shape: caveStart clamps to maxY.
         assertEquals(255, band(15, NETHER).caveStart());
         assertEquals(319, band(19, OVERWORLD).caveStart());
@@ -614,16 +622,13 @@ class XaeroLoadPixelParityTest {
     }
 
     @Test
-    void aBestEffortBandBuriedInRockIsSkippedButAReliableOneIsNot() {
+    void aBandBuriedInRockErases() {
         Blocks3 solid = (x, y, z) -> y < 128 ? s(Blocks.NETHERRACK) : air();
         var column = column(NETHER, solid, null, null, Biomes.NETHER_WASTES);
-        var reliable = band(4, NETHER);
-        var bestEffort = XaeroTileExtractor.LayerTarget.band(4, 255, 30, XaeroTileExtractor.TileClass.BEST_EFFORT);
-        var tiles = XaeroTileExtractor.extract(0, 0, NETHER, column, List.of(reliable, bestEffort), false);
-        assertEquals(1, tiles.size(), "the all-void best-effort tile is skipped");
-        assertEquals(XaeroTileExtractor.TileClass.RELIABLE, tiles.get(0).tileClass());
+        var tiles = XaeroTileExtractor.extract(0, 0, NETHER, column, List.of(band(4, NETHER)), false);
+        assertEquals(1, tiles.size(), "every target yields its tile");
         for (int i = 0; i < 256; i++) {
-            assertEquals(Blocks.AIR.defaultBlockState(), tiles.get(0).floorState()[i], "the reliable void erases");
+            assertEquals(Blocks.AIR.defaultBlockState(), tiles.get(0).floorState()[i], "the void erases");
             assertEquals(50, tiles.get(0).topY()[i], "void topHeight = lowY (79 + 1 - 30)");
         }
     }
