@@ -1123,7 +1123,8 @@ final class XaeroSession {
                 // replacement. Count cap only: the byte cap (which binds first on
                 // overlay-heavy tiles — sweep C N3) needs the tile's size, unknown before
                 // extraction, and past it the enqueue evicts the OLDEST entry, so that
-                // extraction is not wasted.
+                // extraction is not wasted. (B-II: best-effort targets have their own caps
+                // and must not count here — B-I extracts none.)
                 if (this.acquisition.queue.size() >= this.maxQueue) {
                     overflowed = true;
                     for (var target : targets) {
@@ -1161,7 +1162,7 @@ final class XaeroSession {
                     origins.get(i).close(); // an all-void best-effort band: nothing to write
                     continue;
                 }
-                offerPrepared(dimension, tile, origins.get(i));
+                offerTile(dimension, tile, origins.get(i));
             }
             origins = List.of(); // every lease is the queue's (or released) now
         } finally {
@@ -1170,6 +1171,22 @@ final class XaeroSession {
             // drop at the drain — the pre-cave single-origin behavior).
             for (var origin : origins) origin.close();
         }
+    }
+
+    /**
+     * Routes an extracted tile by its class: reliable tiles enter the reliable queue (the
+     * occupancy, owed debt and drop reports); a BEST_EFFORT tile must never — it belongs to
+     * phase B-II's own pipeline (cave-layers plan §B6: its own queue and caps, outside the
+     * occupancy and the report). Phase B-I extracts none; until B-II exists one is dropped,
+     * counted, its lease-free token closed.
+     */
+    void offerTile(Object dimension, XaeroTileExtractor.PreparedTile tile, Origin origin) {
+        if (tile.tileClass() == XaeroTileExtractor.TileClass.RELIABLE) {
+            offerPrepared(dimension, tile, origin);
+            return;
+        }
+        this.bestEffortDropped.incrementAndGet();
+        origin.close();
     }
 
     /** Approximate retained bytes for the byte gauge (shallow arrays + overlay runs). */

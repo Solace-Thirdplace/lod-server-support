@@ -516,6 +516,23 @@ class XaeroCaveLayersTest {
     }
 
     @Test
+    void aBestEffortTileNeverEntersTheReliableQueue() {
+        var tile = XaeroTileExtractor.extract(64, 64, NETHER_FACTS, NETHER_COLUMN,
+                List.of(XaeroTileExtractor.LayerTarget.band(3, 255, 30, XaeroTileExtractor.TileClass.BEST_EFFORT)),
+                false).get(0);
+        var handle = new Handle();
+        LSSApi.withIngestFailureHandle(NETHER, 64, 64, handle, () -> {
+            var origin = this.bridge.new Origin(this.bridge.new Receipt(), false);
+            this.bridge.offerTile(NETHER, tile, origin);
+            assertTrue(origin.closed.get());
+        });
+        assertEquals(0, handle.leases, "a best-effort tile holds a lease-free token");
+        assertEquals(0, this.bridge.queuedForTest(), "B-II's pipeline owns it, never the reliable queue");
+        assertEquals(1, this.bridge.counterForTest("best_effort_dropped"));
+        assertEquals(0, handle.reports);
+    }
+
+    @Test
     void thePublishRespectsXaerosCrashShield() {
         xaero.map.WorldMap.crashHandler.crashedBy = new IllegalStateException("xaero worker died");
         try {
