@@ -92,6 +92,45 @@ final class XaeroSession {
     /** Region-load latency and vanished-grant instrumentation (§B0). Main thread. */
     final XaeroLoadStats loadStats = new XaeroLoadStats();
 
+    /** Why commits were deferred, per tile class — the B-II coupling diag: a reliable
+     *  backlog that sits on {@code not_resting} is waiting for Xaero's save/recache cycle,
+     *  one on {@code capacity} for the owed-rebuild cap. */
+    static final class DeferReasons {
+        final AtomicLong notResting = new AtomicLong();
+        final AtomicLong paused = new AtomicLong();
+        final AtomicLong capacity = new AtomicLong();
+        final AtomicLong tileBusy = new AtomicLong();
+        final AtomicLong other = new AtomicLong();
+
+        String describe() {
+            return "not_resting:" + this.notResting.get() + "/paused:" + this.paused.get()
+                    + "/capacity:" + this.capacity.get() + "/tile_busy:" + this.tileBusy.get()
+                    + "/other:" + this.other.get();
+        }
+
+        void putMetrics(java.util.Map<String, Object> out, String prefix) {
+            out.put(prefix + "defer_not_resting", this.notResting.get());
+            out.put(prefix + "defer_paused", this.paused.get());
+            out.put(prefix + "defer_capacity", this.capacity.get());
+            out.put(prefix + "defer_tile_busy", this.tileBusy.get());
+            out.put(prefix + "defer_other", this.other.get());
+        }
+    }
+
+    final DeferReasons reliableDefers = new DeferReasons();
+    final DeferReasons bestEffortDefers = new DeferReasons();
+    /** The last reliable drain RETAINED work (deferred, awaiting a load, window-held, capped
+     *  or cut by its budget): best-effort commits and grants hold while it is set (§B6 —
+     *  the reliable path goes first). Main thread. */
+    boolean reliableBacklog;
+    /** Entries the last reliable drain retained, surface vs cave layers, and their regions —
+     *  the backlog's shape (gauges). */
+    volatile int heldSurfaceGauge;
+    volatile int heldCaveGauge;
+    volatile int heldRegionsGauge;
+    /** Reliable drains stopped by the owed-rebuild hard cap. */
+    final AtomicLong cappedPumps = new AtomicLong();
+
     static final int MAX_QUEUE = 8192;
     /** Byte gauge companion to the count cap (the ClientColumnProcessor discipline —
      *  a count cap alone admits ~0.5 GB of max-overlay tiles at ~68 KB each; plain
@@ -546,6 +585,18 @@ final class XaeroSession {
         out.put("best_effort_load_ms_p95", stats.bestEffort.quantileMillis(0.95));
         out.put("region_vanished", stats.vanishedReliable.get());
         out.put("best_effort_region_vanished", stats.vanishedBestEffort.get());
+        // The B-II coupling diag (spike round 2): the reliable path's owed rebuilds, stalls and
+        // why its commits waited, and the shape of what its last drain retained.
+        out.put("pending_updates", bridge.rebuilds.pendingUpdatesGauge);
+        out.put("buffer_updates", bridge.rebuilds.bufferUpdates.get());
+        out.put("dropped_updates", bridge.rebuilds.droppedUpdates.get());
+        out.put("dropped_unloaded", bridge.rebuilds.droppedUnloaded.get());
+        out.put("rebuild_stalled", bridge.rebuilds.stalledReliableGauge);
+        out.put("capped_pumps", bridge.cappedPumps.get());
+        bridge.reliableDefers.putMetrics(out, "");
+        out.put("held_surface", bridge.heldSurfaceGauge);
+        out.put("held_cave", bridge.heldCaveGauge);
+        out.put("held_regions", bridge.heldRegionsGauge);
         out.put("open_regions", bridge.openRegionsGauge);
         out.put("open_region_cap", bridge.openRegionCap);
         out.put("window_waits", bridge.windowWaits.get());
@@ -564,7 +615,8 @@ final class XaeroSession {
         boolean retiring = bridge.sessionEndPending || bridge.acquisition.retiringAcquisition;
         return new ModCompat.XaeroStatus("available",
                 bridge.dead, retiring, retiring ? 0 : bridge.acquisition.queuedGauge,
-                bridge.sessionEndPending ? 0 : bridge.rebuilds.pendingUpdatesGauge);
+                bridge.sessionEndPending ? 0
+                        : bridge.rebuilds.pendingUpdatesGauge + bridge.rebuilds.bestEffortUpdatesGauge);
     }
 
     /** Test seam: forget the static facade state. */
@@ -888,10 +940,9 @@ final class XaeroSession {
         // owed are lost (counted — Xaero's world is going away under us, so no
         // best-effort flush here). The last ≤2 s of commits before a disconnect can
         // thus reach the region cache with a stale texture (review A N5, accepted).
-        this.rebuilds.droppedUpdates.addAndGet(this.rebuilds.pendingUpdates.size());
-        this.rebuilds.pendingUpdates.clear();
-        this.rebuilds.pendingUpdatesGauge = 0;
+        this.rebuilds.droppedUpdates.addAndGet(this.rebuilds.clearAll());
         this.acquisition.regionsWaiting = 0;
+        this.reliableBacklog = false;
         this.consecutiveFailures = 0;
         this.rebuilds.frameFlushRan = false;
         this.rebuilds.frameActiveThisPump = false;
@@ -1134,6 +1185,9 @@ final class XaeroSession {
         int depth = reliable.get(0).depth();
         int low = level.minY() >> 4;
         int high = (level.minY() + Math.max(1, level.logicalHeight()) - 1) >> 4;
+        int bands = high - low + 1 - (reliableBand >= low && reliableBand <= high ? 1 : 0);
+        if (bands <= 0) return reliable;
+        if (!this.bestEffort.admit(bands)) return reliable; // a full queue: not extracted (refused)
         var out = new ArrayList<XaeroTileExtractor.LayerTarget>(reliable.size() + high - low + 1);
         out.addAll(reliable);
         for (int band = low; band <= high; band++) {
@@ -1428,6 +1482,18 @@ final class XaeroSession {
             case "best_effort_grants" -> this.bestEffort.grants.get();
             case "best_effort_regrants" -> this.bestEffort.regrants.get();
             case "best_effort_grant_max" -> this.bestEffort.grantMax;
+            case "best_effort_fruitless_grants" -> this.bestEffort.fruitlessGrants.get();
+            case "best_effort_grant_refused" -> this.bestEffort.grantRefused.get();
+            case "best_effort_refused" -> this.bestEffort.refused.get();
+            case "best_effort_held_pumps" -> this.bestEffort.heldPumps.get();
+            case "best_effort_pending_updates" -> this.rebuilds.bestEffortUpdates.size();
+            case "best_effort_buffer_updates" -> this.rebuilds.bestEffortBufferUpdates.get();
+            case "best_effort_defer_capacity" -> this.bestEffortDefers.capacity.get();
+            case "defer_capacity" -> this.reliableDefers.capacity.get();
+            case "defer_not_resting" -> this.reliableDefers.notResting.get();
+            case "capped_pumps" -> this.cappedPumps.get();
+            case "held_surface" -> this.heldSurfaceGauge;
+            case "held_cave" -> this.heldCaveGauge;
             case "region_vanished" -> this.loadStats.vanishedReliable.get();
             case "best_effort_region_vanished" -> this.loadStats.vanishedBestEffort.get();
             case "load_count" -> this.loadStats.reliable.total;
@@ -1506,7 +1572,12 @@ final class XaeroSession {
                 + ", region_vanished=" + this.loadStats.vanishedReliable.get()
                 + ", best_effort_region_vanished=" + this.loadStats.vanishedBestEffort.get()
                 + ", to_save=" + this.bestEffort.toSaveGauge + "(max " + this.bestEffort.toSaveMax + ")"
-                + ", to_load=" + this.bestEffort.toLoadGauge
+                + ", to_load=" + this.bestEffort.toLoadGauge + "(max " + this.bestEffort.toLoadMax + ")"
+                + ", rebuild_stalled=" + this.rebuilds.stalledReliableGauge
+                + ", capped_pumps=" + this.cappedPumps.get()
+                + ", defers=" + this.reliableDefers.describe()
+                + ", held=surface:" + this.heldSurfaceGauge + "/cave:" + this.heldCaveGauge
+                + "(" + this.heldRegionsGauge + " regions)"
                 + ", drops_reported=" + this.acquisition.dropsReported.get()
                 + ", owed=" + this.acquisition.owedGauge
                 + ", owed_regions=" + this.acquisition.owedRegionsGauge
@@ -1530,10 +1601,7 @@ final class XaeroSession {
         if (this.dead) {
             // A dead bridge must not pin Xaero's regions/tile chunks (each leaf
             // texture holds a direct buffer) for the rest of the session (review B).
-            if (!this.rebuilds.pendingUpdates.isEmpty()) {
-                this.rebuilds.pendingUpdates.clear();
-                this.rebuilds.pendingUpdatesGauge = 0;
-            }
+            if (!this.rebuilds.idle()) this.rebuilds.clearAll();
             this.undrainablePumps = 0; // no ladder ran: the consecutive chain breaks
             return;
         }
@@ -1553,7 +1621,7 @@ final class XaeroSession {
             this.acquisition.clearOwed();  // …and the debt (WI-3): a disabled bridge must not un-stamp anything
             // ...but rebuilds already OWED to committed tile chunks still flush —
             // dropping them would leave written tiles invisible until a reload.
-            if (this.rebuilds.pendingUpdates.isEmpty()) {
+            if (this.rebuilds.idle()) {
                 this.undrainablePumps = 0; // a ladder-skipping exit breaks the chain (§12.7)
                 return;
             }
@@ -1563,7 +1631,7 @@ final class XaeroSession {
             // "drainable again" and clear it — the idle fast-out must not bypass
             // it entirely.
             synchronized (this.acquisition.queueLock) {
-                if (this.acquisition.queue.isEmpty() && this.rebuilds.pendingUpdates.isEmpty()
+                if (this.acquisition.queue.isEmpty() && this.rebuilds.idle()
                         && this.bestEffort.queuedGauge == 0) {
                     if (this.acquisition.owedRegionsGauge == 0) {
                         this.acquisition.regionsWaiting = 0;
@@ -1587,7 +1655,7 @@ final class XaeroSession {
             synchronized (this.acquisition.queueLock) {
                 // (WI-3: an owed-only pump shares this ~1 Hz throttle — the debt cannot
                 // drain while blocked anyway, and §12.9's contention finding stands.)
-                if (this.acquisition.queue.isEmpty() && this.rebuilds.pendingUpdates.isEmpty()
+                if (this.acquisition.queue.isEmpty() && this.rebuilds.idle()
                         && this.bestEffort.queuedGauge == 0 && this.blockedIdleSkips++ % 20 != 0) {
                     return;
                 }
@@ -1924,11 +1992,17 @@ final class XaeroSession {
         int size = bucketKeys.size();
         int startIndex = size == 0 ? 0 : Math.floorMod(this.acquisition.drainRotation++, size);
         boolean capped = false;
+        // §B6 / B-II coupling diag: what this drain RETAINED (any reason) — the best-effort
+        // hold reads the flag; the gauges show the backlog's shape.
+        var held = new HeldTally();
+        int stoppedAt = size;
         bucketLoop:
         for (int n = 0; n < size; n++) {
             RegionKey regionKey = bucketKeys.get((startIndex + n) % size);
             var bucket = buckets.get(regionKey);
+            int index = -1;
             for (var pending : bucket) {
+                index++;
                 if (!pending.origin().active()) {
                     this.acquisition.removeIfCurrent(pending.key(), pending.entry(), pending.tile());
                     pending.origin().close();
@@ -1938,10 +2012,15 @@ final class XaeroSession {
                     // Owed rebuilds at the hard cap (plan §15): commits pause until
                     // the flush drains — the set must never grow without bound.
                     capped = true;
+                    this.cappedPumps.incrementAndGet();
+                    held.add(regionKey, bucket.size() - index);
+                    stoppedAt = n;
                     break bucketLoop;
                 }
                 if (progressed && (commits >= MAX_COMMITS_PER_PUMP
                         || System.nanoTime() - start > this.pumpNanosBudget)) {
+                    held.add(regionKey, bucket.size() - index);
+                    stoppedAt = n;
                     break bucketLoop;
                 }
                 if (pending.entry().dimension != dimensionId) {
@@ -1981,6 +2060,7 @@ final class XaeroSession {
                     // this bucket waits (entries retained) and the report paces the stream.
                     this.windowWaits.incrementAndGet();
                     windowWaited = true;
+                    held.add(regionKey, bucket.size() - index);
                     continue bucketLoop;
                 }
                 progressed = true;
@@ -2005,6 +2085,7 @@ final class XaeroSession {
                         // deleted §18 header's own indictment; the silent hole
                         // heals by revisit or clearcache).
                         this.deferEvents.incrementAndGet();
+                        held.add(regionKey, 1);
                         if (++pending.entry().ladderReadyDeferrals > this.deferCap
                                 && this.acquisition.removeIfCurrent(pending.key(), pending.entry(), pending.tile())) {
                             this.droppedExpired.incrementAndGet();
@@ -2025,6 +2106,7 @@ final class XaeroSession {
                         // DESIGNED for it. Foreign-dimension entries still exit
                         // via the per-entry stale filter above each pump.
                         this.deferEvents.incrementAndGet();
+                        held.add(regionKey, bucket.size() - index);
                         continue bucketLoop;
                     }
                     case AWAITING_REQUESTABLE, AWAITING_PARKED, AWAITING_IN_FLIGHT -> {
@@ -2034,6 +2116,7 @@ final class XaeroSession {
                         // feeds the grant phase's memoryless window.
                         this.deferEvents.incrementAndGet();
                         waiting.add(new WaitingRegion(regionKey, bucket.size(), outcome));
+                        held.add(regionKey, bucket.size() - index);
                         continue bucketLoop;
                     }
                     case SKIPPED_SETTINGS -> {
@@ -2058,6 +2141,14 @@ final class XaeroSession {
         // already-open regions do not clear it: a trickle that cannot recede the occupancy
         // is exactly what the window makes, and the short time box would wedge it
         // (re-review; the turnover clause bounds a window that is wide enough).
+        for (int n = stoppedAt + 1; n < size; n++) {
+            RegionKey regionKey = bucketKeys.get((startIndex + n) % size);
+            held.add(regionKey, buckets.get(regionKey).size()); // never reached this pump
+        }
+        this.reliableBacklog = held.entries > 0;
+        this.heldSurfaceGauge = held.surface;
+        this.heldCaveGauge = held.entries - held.surface;
+        this.heldRegionsGauge = held.regions.size();
         boolean turningOver = nowMillis() - this.windowProgressMillis <= BP_PACE_HOLD_MILLIS;
         if (this.windowBound && !windowWaited && turningOver) this.windowReleased = true;
         this.windowBound = windowWaited && turningOver;
@@ -2078,6 +2169,20 @@ final class XaeroSession {
             }
         }
         grantLoads(mp, saveLoad, waiting);
+    }
+
+    /** One reliable drain's retained work (B-II coupling diag; main thread). */
+    static final class HeldTally {
+        int entries;
+        int surface;
+        final java.util.Set<RegionKey> regions = new java.util.HashSet<>();
+
+        void add(RegionKey regionKey, int count) {
+            if (count <= 0) return;
+            this.entries += count;
+            if (regionKey.layer() == SURFACE_LAYER) this.surface += count;
+            this.regions.add(regionKey);
+        }
     }
 
     /** Whether a commit may land in {@code regionKey}: the window is off, already holds
@@ -2247,7 +2352,20 @@ final class XaeroSession {
                     return false;
                 }
                 this.h.setBeingWritten.invoke(region, true);
-                this.h.requestLoad.invoke(saveLoad, region, "lss-xaero-bridge");
+                if (bestEffortGrant && this.h.bestEffortGate != null) {
+                    // §B6: no priority — appended behind the reliable path's and Xaero's own
+                    // front-inserted requests (the loader drains toLoad.get(0)). Xaero refuses
+                    // an append while its loader is mid-drain: the region then still reads
+                    // requestable, and the grant is retried on a later pump.
+                    this.h.bestEffortGate.requestLoadWithPriority().invoke(saveLoad, region, "lss-xaero-bridge", false);
+                    if ((boolean) this.h.canRequestReload.invoke(region)) {
+                        if (revived) this.h.setLoadState.invoke(region, (byte) 3);
+                        this.bestEffort.grantRefused.incrementAndGet();
+                        return false;
+                    }
+                } else {
+                    this.h.requestLoad.invoke(saveLoad, region, "lss-xaero-bridge");
+                }
                 this.loadStats.onGrant(regionKey, region, bestEffortGrant, nowMillis());
                 return true;
             }

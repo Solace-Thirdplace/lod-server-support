@@ -22,13 +22,26 @@ import java.util.concurrent.atomic.AtomicLong;
  *       hold; a region leaves it when Xaero parks or removes it, when a grant's reservation
  *       expires, or once it has gone quiet (Xaero's own region limiter governs residency from
  *       there — regions of layers nobody renders are never parked by a frame);</li>
- *   <li>a pending-rebuild sub-cap: no best-effort commit or grant past the soft cap;</li>
+ *   <li>its OWN owed-rebuild debt ({@link XaeroRebuildScheduler#bestEffortUpdates}) with its
+ *       own small cap, rebuilt only when no reliable rebuild is due — best-effort debt never
+ *       counts against the reliable hard cap, so it can never DEFER a reliable commit;</li>
+ *   <li>strict priority: while the last reliable drain retained anything (deferred, awaiting
+ *       a load, window-held, capped or budget-cut), a reliable region waits on a load, or
+ *       the reliable rebuild debt is past its soft cap, nothing here commits or grants —
+ *       only a just-loaded region's first batch, bounded (spike round 1: B-II's extra
+ *       non-current-layer saves and recaches starved the reliable SURFACE layer of the
+ *       Nether, itself a non-current layer, for minutes);</li>
  *   <li>only the pump budget the reliable drain left, under its own commit cap;</li>
- *   <li>load grants only when no reliable region is waiting and Xaero's save queue is empty,
- *       per (layer, region) BATCH — at least {@link #batchTiles} tiles or the oldest at least
- *       {@link #batchMillis} old — and a granted batch commits in the SAME pump that first
- *       sees its region at loadState 2, ahead of the 600 ms non-current-layer save and the
- *       {@code countChunks()==0} removal that would follow an empty first save (§B0).</li>
+ *   <li>(layer, region) BATCHES — at least {@link #batchTiles} tiles or the oldest at least
+ *       {@link #batchMillis} old — for loaded regions too: every commit burst into a layer
+ *       nobody renders costs Xaero a 600 ms save and a recache, so tiles never trickle in;</li>
+ *   <li>load grants only when the reliable path is clear and Xaero's save queue is empty,
+ *       requested WITHOUT priority (appended behind the reliable path's and Xaero's own
+ *       front-inserted requests), and a granted batch starts committing in the SAME pump
+ *       that first sees its region at loadState 2, ahead of the 600 ms non-current-layer
+ *       save and the {@code countChunks()==0} removal that would follow an empty first
+ *       save (§B0); a region with queued tiles stays visited so it is not parked;</li>
+ *   <li>no extraction for a column while the queue is full (refused, counted).</li>
  * </ul>
  * Queue under {@link #lock} (decode offers, main drain, any-thread retirement); everything
  * else main thread (the pump ladder, inside Xaero's render-pause monitor).
@@ -66,16 +79,26 @@ final class XaeroBestEffortPipeline {
     /** A committed region with nothing queued leaves the window after this quiet time
      *  ({@code -Dlss.xaero.bestEffort.idleReleaseMillis}). */
     long idleReleaseMillis = DEFAULT_IDLE_RELEASE_MILLIS;
+    /** A region not mid-batch leaves the window after this long in it, queued tiles or not
+     *  (the share turns over; {@code -Dlss.xaero.bestEffort.maxHoldMillis}). */
+    long maxHoldMillis = DEFAULT_MAX_HOLD_MILLIS;
+    /** Best-effort owed rebuilds (tile chunks) at most — commits stop at the cap
+     *  ({@code -Dlss.xaero.bestEffort.maxRebuildDebt}). */
+    int maxRebuildDebt = DEFAULT_MAX_REBUILD_DEBT;
 
-    static final int DEFAULT_BATCH_TILES = 32;
-    static final long DEFAULT_BATCH_MILLIS = 2_000;
+    static final int DEFAULT_BATCH_TILES = 64;
+    static final long DEFAULT_BATCH_MILLIS = 8_000;
     static final int DEFAULT_RADIUS_CHUNKS = 128;
     static final int DEFAULT_MAX_QUEUE = 4096;
     static final long DEFAULT_MAX_QUEUE_BYTES = 24L * 1024 * 1024;
     static final long DEFAULT_TTL_MILLIS = 60_000;
     static final int DEFAULT_COMMITS_PER_PUMP = 32;
     static final int DEFAULT_MAX_LOADS = 2;
-    static final long DEFAULT_IDLE_RELEASE_MILLIS = 5_000;
+    static final long DEFAULT_IDLE_RELEASE_MILLIS = 10_000;
+    static final long DEFAULT_MAX_HOLD_MILLIS = 30_000;
+    static final int DEFAULT_MAX_REBUILD_DEBT = 64;
+    /** A granted load whose request is still queued in Xaero keeps its slot this long. */
+    static final long GRANT_QUEUED_MAX_MILLIS = 120_000;
     /** Followed (layer, region) grant counts — the re-grant meter's bound. */
     static final int MAX_GRANT_COUNTS = 4096;
 
@@ -92,6 +115,8 @@ final class XaeroBestEffortPipeline {
         this.commitsPerPump = Math.max(1, Integer.getInteger("lss.xaero.bestEffort.commitsPerPump", DEFAULT_COMMITS_PER_PUMP));
         this.maxOutstandingLoads = Math.max(1, Integer.getInteger("lss.xaero.bestEffort.maxLoads", DEFAULT_MAX_LOADS));
         this.idleReleaseMillis = Math.max(0, Long.getLong("lss.xaero.bestEffort.idleReleaseMillis", DEFAULT_IDLE_RELEASE_MILLIS));
+        this.maxHoldMillis = Math.max(0, Long.getLong("lss.xaero.bestEffort.maxHoldMillis", DEFAULT_MAX_HOLD_MILLIS));
+        this.maxRebuildDebt = Math.max(1, Integer.getInteger("lss.xaero.bestEffort.maxRebuildDebt", DEFAULT_MAX_REBUILD_DEBT));
     }
 
     /** The window share: the override, else a quarter of the open-region window (2..16), or
@@ -125,6 +150,7 @@ final class XaeroBestEffortPipeline {
     final LinkedHashMap<TileKey, Entry> queue = new LinkedHashMap<>();
     long queuedBytes; // under lock
     volatile int queuedGauge;
+    volatile long queuedBytesGauge;
 
     // ---- counters (the §B0 instrumentation) ----
     final AtomicLong enqueued = new AtomicLong();
@@ -138,6 +164,14 @@ final class XaeroBestEffortPipeline {
     /** All-void band tiles never enqueued (bands buried in rock). */
     final AtomicLong voidSkipped = new AtomicLong();
     final AtomicLong skippedNative = new AtomicLong();
+    /** Band tiles never extracted because the queue was full (a column's would-be bands). */
+    final AtomicLong refused = new AtomicLong();
+    /** Pumps whose best-effort work held for the reliable path (§B6 strict priority). */
+    final AtomicLong heldPumps = new AtomicLong();
+    /** Grants released without a single commit (the load/remove loop's signature). */
+    final AtomicLong fruitlessGrants = new AtomicLong();
+    /** Non-priority load requests Xaero's loader refused (it was mid-drain); retried later. */
+    final AtomicLong grantRefused = new AtomicLong();
     /** First-load batches committed in the pump that saw their region load. */
     final AtomicLong batches = new AtomicLong();
     final AtomicLong grants = new AtomicLong();
@@ -150,6 +184,7 @@ final class XaeroBestEffortPipeline {
     volatile int toSaveGauge;
     volatile int toSaveMax;
     volatile int toLoadGauge;
+    volatile int toLoadMax;
 
     long dropped() {
         return this.droppedOverflow.get() + this.droppedExpired.get() + this.droppedStale.get()
@@ -166,6 +201,18 @@ final class XaeroBestEffortPipeline {
         synchronized (this.lock) {
             return this.queue.size();
         }
+    }
+
+    /** Decode thread, before extraction: room for {@code bands} more tiles? A full queue
+     *  refuses the column's bands (counted) instead of paying their extraction and then
+     *  dropping the oldest entries (drop-oldest stays as the concurrent-offer belt). */
+    boolean admit(int bands) {
+        int queued = this.queuedGauge;
+        long bytes = this.queuedBytesGauge;
+        long average = queued > 0 ? bytes / queued : 0;
+        if (queued + bands <= this.maxQueue && bytes + average * bands <= this.maxQueueBytes) return true;
+        this.refused.addAndGet(bands);
+        return false;
     }
 
     /** Decode thread: enqueue (latest wins; past a cap the OLDEST entries drop). */
@@ -202,6 +249,7 @@ final class XaeroBestEffortPipeline {
             this.queue.put(key, new Entry(dimension, tile, origin, bytes, this.session.nowMillis()));
             this.queuedBytes += bytes;
             this.queuedGauge = this.queue.size();
+            this.queuedBytesGauge = this.queuedBytes;
             this.enqueued.incrementAndGet();
         }
         if (released != null) released.forEach(Origin::close);
@@ -216,6 +264,7 @@ final class XaeroBestEffortPipeline {
             this.queue.clear();
             this.queuedBytes = 0;
             this.queuedGauge = 0;
+            this.queuedBytesGauge = 0;
         }
         this.cleared.addAndGet(dropped.size());
         for (var e : dropped) e.origin.close();
@@ -235,6 +284,7 @@ final class XaeroBestEffortPipeline {
             this.queue.remove(key);
             this.queuedBytes -= entry.bytes;
             this.queuedGauge = this.queue.size();
+            this.queuedBytesGauge = this.queuedBytes;
             return true;
         }
     }
@@ -252,26 +302,32 @@ final class XaeroBestEffortPipeline {
      *  region that was already loaded. */
     static final class Slot {
         final long grantedAtMillis;
+        final long admittedAtMillis;
         boolean loadSeen;
         boolean committed;
+        /** A ready batch is committing: the rest of the bucket follows without re-waiting
+         *  for K/T (a batch is never split by the commit cap into re-batched trickles). */
+        boolean draining;
         long lastCommitMillis;
 
-        Slot(long grantedAtMillis) {
+        Slot(long grantedAtMillis, long admittedAtMillis) {
             this.grantedAtMillis = grantedAtMillis;
+            this.admittedAtMillis = admittedAtMillis;
         }
     }
 
     final LinkedHashMap<RegionKey, Slot> open = new LinkedHashMap<>();
     Object openDimension;
-    final LinkedHashMap<RegionKey, Integer> grantCounts = new LinkedHashMap<>();
+    /** Followed (layer, region) grant history: [count, first grant millis]. */
+    final LinkedHashMap<RegionKey, long[]> grantCounts = new LinkedHashMap<>();
 
     // ---- the drain (main thread, inside the pump ladder's monitors) ----
 
     /**
-     * One pump's best-effort work, after the reliable drain: probe the window (releases, and
-     * the regions that just loaded), commit first-load batches whole, then loaded regions'
-     * entries within the leftover budget, then grant loads to ready batches when the reliable
-     * path waits on nothing and Xaero has nothing to save.
+     * One pump's best-effort work, after the reliable drain: probe the window (releases,
+     * visits, and the regions that just loaded), start first-load batches (bounded), then —
+     * only while the reliable path is clear — ready batches of loaded regions within the
+     * leftover budget, then load grants to ready batches when Xaero has nothing to save.
      */
     void drain(Object mp, Object saveLoad, Object world, Object dimensionId, boolean loadNew,
                boolean update, XaeroSession.NativeReach reach, long budgetNanos) throws Throwable {
@@ -305,49 +361,80 @@ final class XaeroBestEffortPipeline {
         var loaded = new java.util.HashSet<RegionKey>();
         probeWindow(mp, buckets, now, firstLoad, loaded);
 
-        var reb = this.session.rebuilds;
+        // First-load batches start NOW (the region must hold a chunk before its first save),
+        // bounded: the commit cap and one pump budget of their own, at least one commit each.
         int commits = 0;
-        if (reb.pendingUpdates.size() < this.session.pendingUpdatesSoftCap) {
-            // First-load batches commit WHOLE in this pump, budget-exempt (bounded by the
-            // batch and the commit cap): the region must hold chunks before its first save.
-            for (var key : firstLoad) {
-                var bucket = buckets.remove(key);
-                if (bucket == null) continue;
-                int n = commitBucket(mp, world, dimensionId, loadNew, update, reach, key, bucket,
-                        Math.max(this.batchTiles, this.commitsPerPump), Long.MAX_VALUE, start);
-                if (n > 0) this.batches.incrementAndGet();
-                commits += n;
-                if (this.session.dead) return;
-            }
-            for (var e : buckets.entrySet()) {
-                if (commits >= this.commitsPerPump || System.nanoTime() - start > budgetNanos) break;
-                RegionKey key = e.getKey();
-                if (this.open.containsKey(key)) {
-                    if (!loaded.contains(key)) continue; // granted, not loaded yet
-                } else {
-                    if (this.open.size() >= windowCap()) continue;
-                    Object region = this.session.h.getLeafMapRegion.invoke(mp, key.layer(),
-                            (int) (key.region() >> 32), (int) key.region(), false);
-                    if (region == null) continue;
-                    byte state;
-                    synchronized (region) {
-                        state = (byte) this.session.h.getLoadState.invoke(region);
-                    }
-                    if (state != 2) continue; // needs a grant (below), batched
-                    this.open.put(key, new Slot(0L));
-                    loaded.add(key);
+        for (var key : firstLoad) {
+            var bucket = buckets.remove(key);
+            if (bucket == null) continue;
+            int n = commitBucket(mp, world, dimensionId, loadNew, update, reach, key, bucket,
+                    this.commitsPerPump, this.session.pumpNanosBudget, System.nanoTime(), true);
+            if (n > 0) this.batches.incrementAndGet();
+            commits += n;
+            if (this.session.dead) return;
+        }
+        if (reliableFirst()) {
+            this.heldPumps.incrementAndGet();
+            this.openGauge = this.open.size();
+            return;
+        }
+        for (var e : buckets.entrySet()) {
+            if (commits >= this.commitsPerPump || System.nanoTime() - start > budgetNanos) break;
+            if (debtFull()) break;
+            RegionKey key = e.getKey();
+            var bucket = e.getValue();
+            Slot slot = this.open.get(key);
+            if (slot != null) {
+                if (!loaded.contains(key)) continue; // granted, not loaded yet
+            } else {
+                if (this.open.size() >= windowCap() || !ready(bucket, now)) continue;
+                Object region = this.session.h.getLeafMapRegion.invoke(mp, key.layer(),
+                        (int) (key.region() >> 32), (int) key.region(), false);
+                if (region == null) continue;
+                byte state;
+                synchronized (region) {
+                    state = (byte) this.session.h.getLoadState.invoke(region);
                 }
-                commits += commitBucket(mp, world, dimensionId, loadNew, update, reach, key, e.getValue(),
-                        this.commitsPerPump - commits, budgetNanos, start);
-                if (this.session.dead) return;
+                if (state != 2) continue; // needs a grant (below), batched
+                slot = new Slot(0L, now);
+                this.open.put(key, slot);
+                loaded.add(key);
             }
+            if (!slot.draining && !ready(bucket, now)) continue; // batches, never trickles
+            slot.draining = true; // cleared once the whole bucket has been through
+            commits += commitBucket(mp, world, dimensionId, loadNew, update, reach, key, bucket,
+                    this.commitsPerPump - commits, budgetNanos, start, false);
+            if (this.session.dead) return;
         }
         grant(mp, saveLoad, buckets, loaded, now);
         this.openGauge = this.open.size();
     }
 
-    /** The window probe: releases parked/removed/expired/quiet regions and finds the granted
-     *  regions that loaded since the last pump (the first-load batches). */
+    /** §B6 strict priority: the reliable path retained work in its last drain, waits on a
+     *  region load, or owes rebuilds past its soft cap — best-effort holds. */
+    boolean reliableFirst() {
+        return this.session.reliableBacklog || this.session.acquisition.regionsWaiting > 0
+                || this.session.rebuilds.pendingUpdates.size() >= this.session.pendingUpdatesSoftCap;
+    }
+
+    /** Owed rebuilds a just-loaded region's first commit may add past {@link #maxRebuildDebt}
+     *  (it must hold a chunk before its first save) — at most a few per load in flight. */
+    static final int FIRST_LOAD_DEBT_HEADROOM = 16;
+
+    /** The best-effort owed-rebuild cap is reached: commits wait for the flush. */
+    boolean debtFull() {
+        return this.session.rebuilds.bestEffortUpdates.size() >= this.maxRebuildDebt;
+    }
+
+    /** A batch is ready: at least K tiles, or its oldest at least T old. */
+    boolean ready(List<java.util.Map.Entry<TileKey, Entry>> bucket, long now) {
+        return bucket.size() >= this.batchTiles || now - bucket.get(0).getValue().enqueuedAtMillis >= this.batchMillis;
+    }
+
+    /** The window probe: releases parked/removed/expired/quiet/long-held regions, keeps the
+     *  ones with queued tiles visited (Xaero parks an unvisited, unwritten region after 1 s —
+     *  each reload of a layer nobody renders is a load, a save and a recache), and finds the
+     *  granted regions that loaded since the last pump (the first-load batches). */
     private void probeWindow(Object mp, LinkedHashMap<RegionKey, List<java.util.Map.Entry<TileKey, Entry>>> buckets,
                              long now, List<RegionKey> firstLoad, java.util.Set<RegionKey> loaded) throws Throwable {
         var it = this.open.entrySet().iterator();
@@ -359,45 +446,66 @@ final class XaeroBestEffortPipeline {
                     (int) (key.region() >> 32), (int) key.region(), false);
             if (region == null) {
                 this.session.loadStats.onMissing(key);
-                it.remove();
+                release(it, slot);
                 continue;
             }
             byte state;
+            boolean requestable;
+            boolean queued = buckets.containsKey(key);
             synchronized (region) {
                 state = (byte) this.session.h.getLoadState.invoke(region);
+                requestable = state == 0 && (boolean) this.session.h.canRequestReload.invoke(region);
+                if (state == 2 && queued) this.session.h.registerVisit.invoke(region);
             }
             this.session.loadStats.onObserve(key, region, state, now);
             if (state == 2) {
                 if (slot.grantedAtMillis > 0 && !slot.loadSeen) {
                     slot.loadSeen = true;
-                    firstLoad.add(key);
-                } else if (slot.committed && !buckets.containsKey(key)
-                        && now - slot.lastCommitMillis >= this.idleReleaseMillis) {
-                    it.remove(); // quiet: Xaero's own limiter governs its residency now
+                    if (queued) {
+                        firstLoad.add(key);
+                        slot.draining = true;
+                    }
+                } else if (!queued && slot.committed && now - slot.lastCommitMillis >= this.idleReleaseMillis) {
+                    release(it, slot); // quiet: Xaero's own limiter governs its residency now
+                    continue;
+                } else if (!slot.draining && now - slot.admittedAtMillis >= this.maxHoldMillis) {
+                    release(it, slot); // the share turns over (its tiles wait for a re-grant)
+                    continue;
+                } else if (!queued && !slot.committed && slot.grantedAtMillis == 0) {
+                    release(it, slot); // admitted, nothing left to write
                     continue;
                 }
                 loaded.add(key);
             } else if (state == 3 || state == 4) {
-                it.remove(); // Xaero parked or released it
+                release(it, slot); // Xaero parked or released it
             } else if (slot.grantedAtMillis > 0 && state == 0
-                    && now - slot.grantedAtMillis > XaeroSession.GRANT_RESERVE_MILLIS) {
-                it.remove(); // the load never started
+                    && ((requestable && now - slot.grantedAtMillis > XaeroSession.GRANT_RESERVE_MILLIS)
+                        || now - slot.grantedAtMillis > GRANT_QUEUED_MAX_MILLIS)) {
+                release(it, slot); // the load never started (request lost, or queued too long)
             }
         }
     }
 
-    /** Commits a bucket's entries, oldest first, up to {@code limit} commits and the budget.
-     *  @return commits made. */
+    private void release(java.util.Iterator<java.util.Map.Entry<RegionKey, Slot>> it, Slot slot) {
+        it.remove();
+        if (slot.grantedAtMillis > 0 && !slot.committed) this.fruitlessGrants.incrementAndGet();
+    }
+
+    /** Commits a bucket's entries, oldest first, up to {@code limit} commits and the budget
+     *  (at least one commit is always attempted; a first-load batch's first commit may use
+     *  the debt cap's small {@link #FIRST_LOAD_DEBT_HEADROOM}). @return commits made. */
     private int commitBucket(Object mp, Object world, Object dimensionId, boolean loadNew, boolean update,
                              XaeroSession.NativeReach reach, RegionKey key,
                              List<java.util.Map.Entry<TileKey, Entry>> bucket, int limit, long budgetNanos,
-                             long start) throws Throwable {
+                             long start, boolean firstLoad) throws Throwable {
         int commits = 0;
-        var reb = this.session.rebuilds;
+        int handled = 0;
+        Slot slot = this.open.get(key);
         for (var e : bucket) {
             if (commits >= limit) break;
             if (commits > 0 && System.nanoTime() - start > budgetNanos) break;
-            if (reb.pendingUpdates.size() >= this.session.pendingUpdatesSoftCap) break; // the sub-cap
+            if (debtFull() && !(firstLoad && commits == 0)) break; // the best-effort rebuild cap
+            handled++;
             Entry entry = e.getValue();
             if (this.session.writer.nativelyWritable(world, entry.tile, reach)) {
                 // The band became the one Xaero shows and the native writer reaches it.
@@ -415,7 +523,6 @@ final class XaeroBestEffortPipeline {
                     this.written.incrementAndGet();
                     this.session.consecutiveFailures = 0;
                     commits++;
-                    Slot slot = this.open.get(key);
                     if (slot != null) {
                         slot.committed = true;
                         slot.lastCommitMillis = this.session.nowMillis();
@@ -434,15 +541,15 @@ final class XaeroBestEffortPipeline {
                 }
             }
         }
+        if (slot != null && handled >= bucket.size()) slot.draining = false; // the batch is through
         return commits;
     }
 
     /** Load grants for READY batches (≥ K tiles, or the oldest ≥ T old), largest first, while
-     *  the reliable path waits on no region and Xaero's save queue is empty. */
+     *  the reliable path is clear and Xaero's save queue is empty — requested without priority. */
     private void grant(Object mp, Object saveLoad, LinkedHashMap<RegionKey, List<java.util.Map.Entry<TileKey, Entry>>> buckets,
                        java.util.Set<RegionKey> loaded, long now) throws Throwable {
-        if (buckets.isEmpty() || this.session.acquisition.regionsWaiting > 0) return;
-        if (this.session.rebuilds.pendingUpdates.size() >= this.session.pendingUpdatesSoftCap) return;
+        if (buckets.isEmpty() || debtFull()) return;
         if (!saveQueueEmpty(saveLoad)) return;
         int outstanding = 0;
         for (var slot : this.open.values()) {
@@ -453,28 +560,43 @@ final class XaeroBestEffortPipeline {
         var ready = new ArrayList<java.util.Map.Entry<RegionKey, List<java.util.Map.Entry<TileKey, Entry>>>>();
         for (var e : buckets.entrySet()) {
             if (this.open.containsKey(e.getKey()) || loaded.contains(e.getKey())) continue;
-            var bucket = e.getValue();
-            if (bucket.size() >= this.batchTiles
-                    || now - bucket.get(0).getValue().enqueuedAtMillis >= this.batchMillis) {
-                ready.add(e);
-            }
+            if (ready(e.getValue(), now)) ready.add(e);
         }
         ready.sort((a, b) -> Integer.compare(b.getValue().size(), a.getValue().size()));
         for (int i = 0; i < ready.size() && budget > 0; i++) {
             RegionKey key = ready.get(i).getKey();
             if (!this.session.requestRegionLoad(mp, saveLoad, key, true)) continue;
             budget--;
-            this.open.put(key, new Slot(Math.max(1L, now)));
+            this.open.put(key, new Slot(Math.max(1L, now), now));
             this.grants.incrementAndGet();
-            int count = this.grantCounts.merge(key, 1, Integer::sum);
-            if (count > 1) this.regrants.incrementAndGet();
-            if (count > this.grantMax) this.grantMax = count;
+            long[] history = this.grantCounts.get(key);
+            if (history == null) {
+                this.grantCounts.put(key, new long[]{1, now});
+            } else {
+                history[0]++;
+                this.regrants.incrementAndGet();
+                if (history[0] > this.grantMax) this.grantMax = (int) history[0];
+            }
+            if (this.grantMax < 1) this.grantMax = 1;
             while (this.grantCounts.size() > MAX_GRANT_COUNTS) {
                 var it = this.grantCounts.entrySet().iterator();
                 it.next();
                 it.remove();
             }
         }
+    }
+
+    /** The most re-grants per minute any followed (layer, region) took since its first grant
+     *  (minutes floored at one): a load/remove loop re-grants every few seconds, trickling
+     *  arrival every few minutes. */
+    double regrantRateMax(long now) {
+        double max = 0;
+        for (var h : this.grantCounts.values()) {
+            if (h[0] < 2) continue;
+            double minutes = Math.max(1.0, (now - h[1]) / 60_000.0);
+            max = Math.max(max, (h[0] - 1) / minutes);
+        }
+        return max;
     }
 
     /** Xaero's save queue is empty — and its size sampled for the diag (a throw reads busy). */
@@ -495,6 +617,7 @@ final class XaeroBestEffortPipeline {
         this.toSaveGauge = toSave;
         if (toSave > this.toSaveMax) this.toSaveMax = toSave;
         this.toLoadGauge = toLoad;
+        if (toLoad > this.toLoadMax) this.toLoadMax = toLoad;
     }
 
     /** The diag tokens (cave-layers plan §B8 + the §B0 instrumentation). */
@@ -515,7 +638,27 @@ final class XaeroBestEffortPipeline {
                 + ", best_effort_grants=" + this.grants.get()
                 + ", best_effort_regrants=" + this.regrants.get()
                 + ", best_effort_grant_max=" + this.grantMax
+                + ", best_effort_fruitless_grants=" + this.fruitlessGrants.get()
+                + ", best_effort_grant_refused=" + this.grantRefused.get()
+                + ", best_effort_grants_per_ktile=" + grantsPerKiloTile()
+                + ", best_effort_regrant_rate_max=" + String.format(java.util.Locale.ROOT, "%.2f",
+                        regrantRateMax(this.session.nowMillis())) + "/min"
+                + ", best_effort_refused=" + this.refused.get()
+                + ", best_effort_held_pumps=" + this.heldPumps.get()
+                + ", best_effort_pending_updates=" + this.session.rebuilds.bestEffortUpdatesGauge
+                + "/" + this.maxRebuildDebt
+                + ", best_effort_buffer_updates=" + this.session.rebuilds.bestEffortBufferUpdates.get()
+                + ", best_effort_dropped_updates=" + this.session.rebuilds.bestEffortDroppedUpdates.get()
+                + ", best_effort_rebuild_stalled=" + this.session.rebuilds.stalledBestEffortGauge
+                + ", best_effort_defers=" + this.session.bestEffortDefers.describe()
                 + ", best_effort_bands=" + (this.enabled ? "on" : "off");
+    }
+
+    /** Load grants per 1000 best-effort tiles written (-1 before the first write) — loads
+     *  per unit of work, so trickling arrival is not read as a load/remove loop. */
+    long grantsPerKiloTile() {
+        long written = this.written.get();
+        return written == 0 ? -1 : this.grants.get() * 1000 / written;
     }
 
     void putMetrics(java.util.Map<String, Object> out) {
@@ -537,8 +680,21 @@ final class XaeroBestEffortPipeline {
         out.put("best_effort_grants", this.grants.get());
         out.put("best_effort_regrants", this.regrants.get());
         out.put("best_effort_grant_max", this.grantMax);
+        out.put("best_effort_fruitless_grants", this.fruitlessGrants.get());
+        out.put("best_effort_grant_refused", this.grantRefused.get());
+        out.put("best_effort_grants_per_ktile", grantsPerKiloTile());
+        out.put("best_effort_regrant_rate_max", regrantRateMax(this.session.nowMillis()));
+        out.put("best_effort_refused", this.refused.get());
+        out.put("best_effort_held_pumps", this.heldPumps.get());
+        out.put("best_effort_pending_updates", this.session.rebuilds.bestEffortUpdatesGauge);
+        out.put("best_effort_rebuild_cap", this.maxRebuildDebt);
+        out.put("best_effort_buffer_updates", this.session.rebuilds.bestEffortBufferUpdates.get());
+        out.put("best_effort_dropped_updates", this.session.rebuilds.bestEffortDroppedUpdates.get());
+        out.put("best_effort_rebuild_stalled", this.session.rebuilds.stalledBestEffortGauge);
+        this.session.bestEffortDefers.putMetrics(out, "best_effort_");
         out.put("to_save", this.toSaveGauge);
         out.put("to_save_max", this.toSaveMax);
         out.put("to_load", this.toLoadGauge);
+        out.put("to_load_max", this.toLoadMax);
     }
 }

@@ -66,10 +66,19 @@ final class XaeroTileWriter {
             Object region = this.session.h.getLeafMapRegion.invoke(mp, tile.layer(),
                     tileChunkX >> 3, tileChunkZ >> 3, true);
             var regionKey = new XaeroSession.RegionKey(tile.layer(), XaeroSession.regionKeyOf(chunkX, chunkZ));
-            if (region == null) return Outcome.DEFERRED; // detection-completeness race
+            // B-II coupling diag: why commits wait, per tile class.
+            var why = tile.tileClass() == XaeroTileExtractor.TileClass.BEST_EFFORT
+                    ? this.session.bestEffortDefers : this.session.reliableDefers;
+            if (region == null) { // detection-completeness race
+                why.other.incrementAndGet();
+                return Outcome.DEFERRED;
+            }
             Object writerPause = this.session.h.writerThreadPauseSync.invoke(region);
             synchronized (writerPause) {
-                if ((boolean) this.session.h.regionIsWritingPaused.invoke(region)) return Outcome.DEFERRED;
+                if ((boolean) this.session.h.regionIsWritingPaused.invoke(region)) {
+                    why.paused.incrementAndGet(); // Xaero is saving the region
+                    return Outcome.DEFERRED;
+                }
                 boolean resting;
                 boolean createdTileChunk = false;
                 Object tileChunk = null;
@@ -107,12 +116,17 @@ final class XaeroTileWriter {
                                 : Outcome.AWAITING_IN_FLIGHT;
                     }
                 }
-                if (!resting || tileChunk == null) return Outcome.DEFERRED;
+                if (!resting || tileChunk == null) {
+                    why.notResting.incrementAndGet(); // a save's recache (or a refresh) is pending
+                    return Outcome.DEFERRED;
+                }
                 if ((int) this.session.h.tileChunkGetLoadState.invoke(tileChunk) != 2) {
+                    why.tileBusy.incrementAndGet();
                     return Outcome.DEFERRED_TILE;
                 }
                 Object leafTexture = this.session.h.getLeafTexture.invoke(tileChunk);
                 if ((boolean) this.session.h.shouldDownloadFromPBO.invoke(leafTexture)) {
+                    why.tileBusy.incrementAndGet();
                     return Outcome.DEFERRED_TILE;
                 }
 
@@ -129,6 +143,11 @@ final class XaeroTileWriter {
                 // temporarily busy with a PBO/load must not lose its one invalidation.
                 var neighbors = this.slopeNeighbors(region, tile);
                 if (neighbors == null || !this.session.rebuilds.hasRebuildCapacity(dimensionId, tile, neighbors)) {
+                    if (neighbors == null) {
+                        why.tileBusy.incrementAndGet();
+                    } else {
+                        why.capacity.incrementAndGet(); // the class's owed-rebuild cap
+                    }
                     if (createdTileChunk) {
                         synchronized (region) {
                             this.session.h.regionSetChunk.invoke(region, localTcX, localTcZ, null);
@@ -215,8 +234,9 @@ final class XaeroTileWriter {
         // isResting() check, i.e. possibly after the region was queued for
         // cache-saving on prepared textures — the saver then throws ("Trying to
         // save cache for a region with cache not prepared", 3 crashes/hour live).
+        boolean bestEffort = tile.tileClass() == XaeroTileExtractor.TileClass.BEST_EFFORT;
         this.session.rebuilds.notePendingUpdate(mp, dimensionId, tile.layer(), region, tileChunk, localTcX, localTcZ,
-                tile.chunkX() >> 2, tile.chunkZ() >> 2);
+                tile.chunkX() >> 2, tile.chunkZ() >> 2, bestEffort);
         for (var neighbor : neighbors) {
             // Native slope dependencies: south row, east column excluding its
             // first pixel, and the southeast corner (MapWriter.writeChunk).
@@ -230,7 +250,7 @@ final class XaeroTileWriter {
             this.session.h.tileChunkSetChanged.invoke(neighbor.tileChunk(), true);
             this.session.rebuilds.notePendingUpdate(mp, dimensionId, tile.layer(), region, neighbor.tileChunk(),
                     (neighbor.chunkX() >> 2) & 7, (neighbor.chunkZ() >> 2) & 7,
-                    neighbor.chunkX() >> 2, neighbor.chunkZ() >> 2);
+                    neighbor.chunkX() >> 2, neighbor.chunkZ() >> 2, bestEffort);
         }
     }
 

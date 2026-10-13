@@ -260,12 +260,32 @@ class XaeroBestEffortTest {
     }
 
     @Test
-    void overflowDropsTheOldestAndNeverOwesOrReports() {
+    void aFullQueueRefusesTheColumnsBandsBeforeExtraction() {
         show(3);
-        this.bridge.bestEffort.maxQueue = 3;
+        this.bridge.bestEffort.maxQueue = 10;
         offer(64, 64, PLATFORMS);
+        assertEquals(7, count("best_effort_queued"));
+        offer(65, 64, PLATFORMS);
+        assertEquals(7, count("best_effort_queued"), "7 more do not fit: not extracted at all");
+        assertEquals(7, count("best_effort_refused"));
+        assertEquals(7, count("best_effort_enqueued"));
+        assertEquals(0, count("best_effort_drop_overflow"), "no extraction paid for a drop");
+        assertEquals(2 * 2, this.bridge.queuedForTest(), "the reliable tiles are never refused");
+        assertEquals(0, count("owed"));
+        assertTrue(this.reports.isEmpty(), "refusals are never reported");
+    }
+
+    @Test
+    void theOverflowBeltDropsTheOldestAndNeverOwesOrReports() {
+        show(3);
+        offer(64, 64, PLATFORMS);
+        long perTile = this.bridge.bestEffort.queuedBytesGauge / 7;
+        this.bridge.bestEffort.clear();
+        // Admission passes on an empty queue (no average yet); the byte cap then holds 3 tiles.
+        this.bridge.bestEffort.maxQueueBytes = perTile * 3 + perTile / 2;
+        offer(65, 64, PLATFORMS);
         assertEquals(3, count("best_effort_queued"));
-        assertEquals(4, count("best_effort_drop_overflow"), "oldest-first past the count cap");
+        assertEquals(4, count("best_effort_drop_overflow"), "oldest-first past the byte cap");
         assertEquals(0, count("owed"));
         assertTrue(this.reports.isEmpty(), "best-effort drops are never reported");
     }
@@ -340,7 +360,7 @@ class XaeroBestEffortTest {
     }
 
     @Test
-    void theFirstLoadBatchCommitsEvenWithNoBudgetLeft() {
+    void theFirstLoadBatchStartsWithNoBudgetLeftAndFinishesOnLaterPumps() {
         show(3);
         offer(64, 64, PLATFORMS);
         this.bridge.pump(); // the reliable regions load
@@ -355,7 +375,11 @@ class XaeroBestEffortTest {
             if (r != null && band != 3) r.loadState = 2;
         }
         this.bridge.pump();
-        assertEquals(6, count("best_effort_written"), "first-load batches are budget-exempt, and only they ran");
+        assertEquals(2, count("best_effort_written"),
+                "each just-loaded region takes its first commit (a chunk before its first save), bounded");
+        this.bridge.pumpNanosBudget = Long.MAX_VALUE;
+        this.bridge.pump();
+        assertEquals(6, count("best_effort_written"), "the rest of each batch follows (no re-batching)");
     }
 
     @Test
@@ -416,29 +440,147 @@ class XaeroBestEffortTest {
     }
 
     @Test
-    void anAlreadyLoadedRegionCommitsWithoutAGrantWithinTheCommitCap() {
-        show(3);
-        this.bridge.bestEffort.commitsPerPump = 4;
-        offer(64, 64, PLATFORMS); // band regions pre-exist loaded:
+    void anAlreadyLoadedRegionCommitsReadyBatchesWithoutAGrantWithinTheCommitCap() {
         for (int band = 0; band < 8; band++) this.processor.getLeafMapRegion(band, 2, 2, true);
+        this.bridge.bestEffort.commitsPerPump = 4;
+        threeColumnsInBand3View(); // band regions pre-exist loaded; every batch reaches K
         this.bridge.pump();
         assertEquals(0, count("best_effort_grants"));
         assertEquals(4, count("best_effort_written"), "leftover budget, its own commit cap");
+        for (int i = 0; i < 5; i++) this.bridge.pump();
+        assertEquals(21, count("best_effort_written"), "a started batch drains without re-waiting for K");
+    }
+
+    @Test
+    void aLoadedRegionGetsBatchesNeverATrickle() {
+        for (int band = 0; band < 8; band++) this.processor.getLeafMapRegion(band, 2, 2, true);
+        show(3);
+        offer(64, 64, PLATFORMS);
         this.bridge.pump();
-        assertEquals(7, count("best_effort_written"));
+        assertEquals(0, count("best_effort_written"), "one tile per band: under K, younger than T");
+        this.clockMillis += this.bridge.bestEffort.batchMillis;
+        this.bridge.pump();
+        assertEquals(7, count("best_effort_written"), "the oldest reached T");
     }
 
     @Test
     void aQuietCommittedRegionLeavesTheShareAndXaerosLimiterGovernsIt() {
-        show(3);
-        offer(64, 64, PLATFORMS);
         for (int band = 0; band < 8; band++) this.processor.getLeafMapRegion(band, 2, 2, true);
+        threeColumnsInBand3View();
         this.bridge.pump();
-        assertEquals(7, count("best_effort_written"));
+        assertEquals(21, count("best_effort_written"));
         assertEquals(7, this.bridge.bestEffort.open.size(), "held while committing");
         this.clockMillis += this.bridge.bestEffort.idleReleaseMillis;
         this.bridge.pump();
         assertTrue(this.bridge.bestEffort.open.isEmpty(), "nothing queued for them, quiet: released");
+    }
+
+    @Test
+    void aRegionWithQueuedTilesStaysVisitedAndTheShareTurnsOver() {
+        for (int band = 0; band < 8; band++) this.processor.getLeafMapRegion(band, 2, 2, true);
+        threeColumnsInBand3View();
+        this.bridge.pump();
+        assertEquals(21, count("best_effort_written"));
+        offer(67, 64, PLATFORMS); // one more tile per band: queued, not ready
+        int before = bandRegion(5).visits;
+        this.bridge.pump();
+        assertEquals(21, count("best_effort_written"));
+        assertTrue(bandRegion(5).visits > before, "kept visited: Xaero must not park it between batches");
+        this.clockMillis += this.bridge.bestEffort.maxHoldMillis;
+        this.bridge.pump(); // past the hold: released whether or not tiles wait (T not reached)
+        assertTrue(this.bridge.bestEffort.open.isEmpty(), this.bridge.describe());
+        assertEquals(21, count("best_effort_written"), "its tiles wait (under K, younger than T)");
+    }
+
+    // ---- decoupling (spike round 2): the reliable path always goes first ----
+
+    @Test
+    void aBestEffortDebtFloodNeverDefersAReliableCommit() {
+        for (int band = 0; band < 8; band++) this.processor.getLeafMapRegion(band, 2, 2, true);
+        this.bridge.bestEffort.maxRebuildDebt = 2;
+        threeColumnsInBand3View();
+        this.bridge.pump();
+        assertEquals(2, count("best_effort_pending_updates"), "best-effort commits stop at their own cap");
+        assertTrue(count("best_effort_written") < 21);
+        int reliableDebt = this.bridge.rebuilds.pendingUpdates.size();
+        assertEquals(2, reliableDebt, "surface + band 3 tile chunks");
+        // The reliable hard cap counts reliable debt only: a new column needs two more keys.
+        this.bridge.pendingUpdatesHardCap = reliableDebt + 2;
+        this.bridge.pendingUpdatesSoftCap = reliableDebt + 2;
+        long written = count("written");
+        offer(68, 64, PLATFORMS);
+        this.bridge.pump();
+        assertEquals(written + 2, count("written"), "both reliable tiles committed past a full best-effort debt");
+        assertEquals(0, count("defer_capacity"));
+        assertEquals(0, count("capped_pumps"));
+    }
+
+    @Test
+    void reliableRebuildsGoFirstAndBestEffortNeverBorrows() {
+        for (int band = 0; band < 8; band++) this.processor.getLeafMapRegion(band, 2, 2, true);
+        threeColumnsInBand3View();
+        this.bridge.pump();
+        var reb = this.bridge.rebuilds;
+        assertEquals(2, reb.pendingUpdates.size());
+        assertEquals(7, reb.bestEffortUpdates.size());
+        this.bridge.updateIdlePumps = 0; // everything is due
+        reb.flushPendingUpdates(this.processor, NETHER, Long.MAX_VALUE, 1, false); // one frame
+        assertEquals(1, reb.pendingUpdates.size(), "the frame's one rebuild went to the reliable debt");
+        assertEquals(7, reb.bestEffortUpdates.size());
+        reb.flushPendingUpdates(this.processor, NETHER, Long.MAX_VALUE, 1, false);
+        assertEquals(0, reb.pendingUpdates.size());
+        assertEquals(7, reb.bestEffortUpdates.size());
+        reb.flushPendingUpdates(this.processor, NETHER, Long.MAX_VALUE, 1, false);
+        assertEquals(6, reb.bestEffortUpdates.size(), "best-effort only once no reliable rebuild is due");
+        assertEquals(1, count("best_effort_buffer_updates"));
+        // The borrow is the reliable path's: with no base budget left, best-effort waits.
+        this.bridge.updateIdlePumps = 1_000_000;
+        offer(68, 64, PLATFORMS);
+        this.bridge.pump();
+        assertEquals(2, reb.pendingUpdates.size());
+        this.bridge.updateIdlePumps = 0;
+        this.bridge.updateNanosBudget = 0;
+        this.bridge.updateBorrowNanos = Long.MAX_VALUE;
+        reb.flushPendingUpdates(this.processor, NETHER, Long.MAX_VALUE, Integer.MAX_VALUE, false);
+        assertEquals(0, reb.pendingUpdates.size(), "the tick fallback's borrow rebuilt the reliable debt");
+        assertEquals(6, reb.bestEffortUpdates.size(), "and none of it went to best-effort");
+    }
+
+    @Test
+    void aReliableBacklogHoldsBestEffortCommitsAndGrants() {
+        for (int band = 0; band < 8; band++) this.processor.getLeafMapRegion(band, 2, 2, true);
+        var surface = this.processor.getLeafMapRegion(Integer.MAX_VALUE, 2, 2, true);
+        surface.resting = false; // its save's recache is pending (a non-current layer in the Nether)
+        threeColumnsInBand3View();
+        this.bridge.pump();
+        assertEquals(3, count("held_surface"), "the surface tiles wait on the region");
+        assertTrue(count("defer_not_resting") >= 1);
+        assertEquals(0, count("best_effort_written"), "best-effort holds while the reliable path retains work");
+        assertEquals(0, count("best_effort_grants"));
+        assertTrue(count("best_effort_held_pumps") >= 1);
+        surface.resting = true;
+        this.bridge.pump();
+        assertEquals(0, count("held_surface"));
+        assertEquals(21, count("best_effort_written"), "clear again: best-effort runs in the same pump");
+    }
+
+    @Test
+    void bestEffortGrantsAskWithoutPriorityAndARefusedAskIsRetried() {
+        show(3);
+        offer(64, 64, PLATFORMS);
+        this.bridge.pump(); // reliable regions load
+        this.processor.createdRegionLoadState = 0;
+        this.processor.saveLoad.loadingFiles = true; // the loader is mid-drain: appends refused
+        offer(65, 64, PLATFORMS);
+        offer(66, 64, PLATFORMS);
+        this.bridge.pump();
+        assertEquals(0, count("best_effort_grants"));
+        assertTrue(count("best_effort_grant_refused") >= 1);
+        assertTrue(this.bridge.bestEffort.open.isEmpty(), "a refused ask holds no share slot");
+        this.processor.saveLoad.loadingFiles = false;
+        this.bridge.pump();
+        assertEquals(2, count("best_effort_grants"));
+        assertEquals(2, this.processor.saveLoad.unprioritizedRequests.size(), "appended, never front-inserted");
     }
 
     // ---- the §B0 instrumentation ----
@@ -459,6 +601,7 @@ class XaeroBestEffortTest {
         }
         this.bridge.pump();
         assertEquals(2, count("best_effort_region_vanished"), "removed before the first commit");
+        assertEquals(2, count("best_effort_fruitless_grants"), "released without a commit");
         assertEquals(4, count("best_effort_grants"), "the still-ready batches are granted again");
         assertEquals(2, count("best_effort_regrants"));
         assertEquals(2, count("best_effort_grant_max"));
@@ -486,7 +629,11 @@ class XaeroBestEffortTest {
                 ", best_effort_drops=overflow:", ", best_effort_void=", ", best_effort_queued=",
                 ", best_effort_open=", ", best_effort_batches=", ", best_effort_grants=", ", best_effort_regrants=",
                 ", best_effort_grant_max=", ", best_effort_bands=on", ", load_ms=p50:", ", best_effort_load_ms=p50:",
-                ", region_vanished=", ", best_effort_region_vanished=", ", to_save=", ", to_load=")) {
+                ", region_vanished=", ", best_effort_region_vanished=", ", to_save=", ", to_load=",
+                ", best_effort_fruitless_grants=", ", best_effort_grants_per_ktile=", ", best_effort_regrant_rate_max=",
+                ", best_effort_refused=", ", best_effort_held_pumps=", ", best_effort_pending_updates=",
+                ", best_effort_rebuild_stalled=", ", best_effort_defers=not_resting:", ", rebuild_stalled=",
+                ", capped_pumps=", ", defers=not_resting:", ", held=surface:")) {
             assertTrue(line.contains(token), token + " missing: " + line);
         }
         XaeroSession.instance = this.bridge;
@@ -499,7 +646,15 @@ class XaeroBestEffortTest {
                     "best_effort_batches", "best_effort_grants", "best_effort_regrants", "best_effort_grant_max",
                     "to_save", "to_save_max", "to_load", "load_count", "load_ms_p50", "load_ms_p95",
                     "best_effort_load_count", "best_effort_load_ms_p50", "best_effort_load_ms_p95",
-                    "region_vanished", "best_effort_region_vanished")) {
+                    "region_vanished", "best_effort_region_vanished",
+                    // spike round 2: the coupling diag and the honest load metrics
+                    "pending_updates", "buffer_updates", "dropped_updates", "dropped_unloaded", "rebuild_stalled",
+                    "capped_pumps", "defer_not_resting", "defer_paused", "defer_capacity", "defer_tile_busy",
+                    "defer_other", "held_surface", "held_cave", "held_regions", "best_effort_pending_updates",
+                    "best_effort_rebuild_cap", "best_effort_buffer_updates", "best_effort_dropped_updates",
+                    "best_effort_rebuild_stalled", "best_effort_defer_not_resting", "best_effort_defer_capacity",
+                    "best_effort_fruitless_grants", "best_effort_grant_refused", "best_effort_grants_per_ktile",
+                    "best_effort_regrant_rate_max", "best_effort_refused", "best_effort_held_pumps", "to_load_max")) {
                 assertTrue(metrics.containsKey(key), key + " missing from the exporter group: " + metrics.keySet());
             }
         } finally {

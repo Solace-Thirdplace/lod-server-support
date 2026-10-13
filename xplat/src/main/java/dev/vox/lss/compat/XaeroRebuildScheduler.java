@@ -16,6 +16,14 @@ final class XaeroRebuildScheduler {
      *  coords and ordered by LAST TOUCH (a re-touch re-inserts at the tail, so
      *  idle-due entries are always a prefix). Main thread only. */
     final LinkedHashMap<PendingKey, PendingUpdate> pendingUpdates = new LinkedHashMap<>();
+    /** Best-effort tile chunks' owed rebuilds (cave-layers plan §B6, the B-II decoupling):
+     *  their OWN map with their own small cap, so best-effort debt never counts against the
+     *  reliable hard cap (which would DEFER reliable commits) — and a lower-priority flush
+     *  pass that runs only when no reliable rebuild is due, on the base budget (never the
+     *  borrow). A reliable commit into a tile chunk promotes its entry to
+     *  {@link #pendingUpdates}; a best-effort commit into a reliable one just touches it.
+     *  Main thread only. */
+    final LinkedHashMap<PendingKey, PendingUpdate> bestEffortUpdates = new LinkedHashMap<>();
     long pumpCount; // main thread only
     final AtomicLong bufferUpdates = new AtomicLong();
     /** Frame flushes that passed the gate ladder — the per-frame scheduler is alive
@@ -47,6 +55,34 @@ final class XaeroRebuildScheduler {
      *  from the stall/dimension/session drops. */
     final AtomicLong droppedUnloaded = new AtomicLong();
     volatile int pendingUpdatesGauge;
+    volatile int bestEffortUpdatesGauge;
+    /** Best-effort tile-chunk recolors (a subset of {@link #bufferUpdates}) and the
+     *  best-effort owed rebuilds dropped (stall/session/failure; a subset of
+     *  {@link #droppedUpdates}). */
+    final AtomicLong bestEffortBufferUpdates = new AtomicLong();
+    final AtomicLong bestEffortDroppedUpdates = new AtomicLong();
+    /** Due entries the last flush found not ready (their region was saving, recaching or
+     *  in another dimension) — per class, the stall gauge of the B-II coupling diag. */
+    volatile int stalledReliableGauge;
+    volatile int stalledBestEffortGauge;
+
+    /** Both maps empty: nothing owed. */
+    boolean idle() {
+        return this.pendingUpdates.isEmpty() && this.bestEffortUpdates.isEmpty();
+    }
+
+    /** Session end / a dead bridge: both maps dropped. @return the entries dropped. */
+    int clearAll() {
+        int n = this.pendingUpdates.size() + this.bestEffortUpdates.size();
+        this.bestEffortDroppedUpdates.addAndGet(this.bestEffortUpdates.size());
+        this.pendingUpdates.clear();
+        this.bestEffortUpdates.clear();
+        this.pendingUpdatesGauge = 0;
+        this.bestEffortUpdatesGauge = 0;
+        this.stalledReliableGauge = 0;
+        this.stalledBestEffortGauge = 0;
+        return n;
+    }
 
     /**
      * Per-frame flush (plan §17/§17.1): the texture-rebuild phase runs at FRAME
@@ -63,7 +99,7 @@ final class XaeroRebuildScheduler {
      * pump's containment + death latch.
      */
     void frameFlush() {
-        if (this.session.dead || this.session.sessionEndPending || this.pendingUpdates.isEmpty()) return;
+        if (this.session.dead || this.session.sessionEndPending || idle()) return;
         this.framesSinceLastPump++;
         // §17.1 fast-outs, both arming the stand-down marker WITHOUT the reflective
         // ladder (safe: a tick flush with nothing due — or after this interval's
@@ -96,10 +132,21 @@ final class XaeroRebuildScheduler {
      *  age or stall waits at most one idle window extra — accepted slack. */
     boolean nothingDueAtHead() {
         if (this.pendingUpdates.size() > this.session.pendingUpdatesSoftCap) return false;
-        var head = this.pendingUpdates.values().iterator().next();
+        if (this.bestEffortUpdates.size() > bestEffortOverflowFloor()) return false;
+        return nothingDueAtHead(this.pendingUpdates) && nothingDueAtHead(this.bestEffortUpdates);
+    }
+
+    private boolean nothingDueAtHead(LinkedHashMap<PendingKey, PendingUpdate> map) {
+        if (map.isEmpty()) return true;
+        var head = map.values().iterator().next();
         return this.pumpCount - head.lastTouchPump < this.session.updateIdlePumps
                 && this.pumpCount - head.firstTouchPump < this.session.updateMaxDeferPumps
                 && head.stalledSincePump < 0;
+    }
+
+    /** Best-effort entries past half their cap are due oldest-first (the soft-cap analogue). */
+    int bestEffortOverflowFloor() {
+        return Math.max(0, this.session.bestEffort.maxRebuildDebt / 2);
     }
 
     void frameLadder() throws Throwable {
@@ -168,6 +215,16 @@ final class XaeroRebuildScheduler {
             keys.add(XaeroSession.pendingKey(dimensionId, tile.layer(), neighbor.chunkX() >> 2, neighbor.chunkZ() >> 2));
         }
         keys.removeAll(this.pendingUpdates.keySet());
+        if (tile.tileClass() == XaeroTileExtractor.TileClass.BEST_EFFORT) {
+            // §B6: best-effort debt has its own cap and never touches the reliable one (a
+            // best-effort commit into a reliable tile chunk only re-touches its entry).
+            keys.removeAll(this.bestEffortUpdates.keySet());
+            // (The pipeline stops at the cap itself; the headroom lets a just-loaded region's
+            // first commit land so it holds a chunk before its first save.)
+            return this.bestEffortUpdates.size() + keys.size()
+                    <= this.session.bestEffort.maxRebuildDebt + XaeroBestEffortPipeline.FIRST_LOAD_DEBT_HEADROOM;
+        }
+        // A reliable commit promotes a best-effort entry: it counts as new reliable debt.
         return this.pendingUpdates.size() + keys.size() <= this.session.pendingUpdatesHardCap;
     }
 
@@ -176,22 +233,37 @@ final class XaeroRebuildScheduler {
     void notePendingUpdate(Object mp, Object dimensionId, int layer, Object region, Object tileChunk,
                                    int localTcX, int localTcZ, int tileChunkX, int tileChunkZ)
             throws Throwable {
+        notePendingUpdate(mp, dimensionId, layer, region, tileChunk, localTcX, localTcZ, tileChunkX, tileChunkZ,
+                false);
+    }
+
+    void notePendingUpdate(Object mp, Object dimensionId, int layer, Object region, Object tileChunk,
+                                   int localTcX, int localTcZ, int tileChunkX, int tileChunkZ, boolean bestEffort)
+            throws Throwable {
         var key = XaeroSession.pendingKey(dimensionId, layer, tileChunkX, tileChunkZ);
-        var existing = this.pendingUpdates.remove(key); // re-insert at the tail = last touch
+        // §B6: a best-effort touch of a tile chunk the reliable path already owes stays
+        // reliable; a reliable touch promotes a best-effort entry (carrying its first touch).
+        var map = bestEffort && !this.pendingUpdates.containsKey(key) ? this.bestEffortUpdates : this.pendingUpdates;
+        var existing = map.remove(key); // re-insert at the tail = last touch
+        if (map == this.pendingUpdates) {
+            var promoted = this.bestEffortUpdates.remove(key);
+            if (existing == null) existing = promoted;
+        }
         if (existing != null && existing.tileChunk == tileChunk) {
             existing.lastTouchPump = this.pumpCount;
             existing.stalledSincePump = -1; // the commit gate just passed: the stall ended
-            this.pendingUpdates.put(key, existing);
+            map.put(key, existing);
         } else {
             // A replaced tile chunk (Xaero reloaded the region) gets a FRESH entry —
             // the old object's rebuild would fail its identity check and drop; count
             // the old one now (a reload rebuilds its own textures).
             if (existing != null) this.droppedUnloaded.incrementAndGet();
-            this.pendingUpdates.put(key, new PendingUpdate(mp,
+            map.put(key, new PendingUpdate(mp,
                     (String) this.session.h.getCurrentWorldId.invoke(mp), dimensionId, region, tileChunk,
                     localTcX, localTcZ, this.pumpCount));
         }
         this.pendingUpdatesGauge = this.pendingUpdates.size();
+        this.bestEffortUpdatesGauge = this.bestEffortUpdates.size();
     }
 
     /**
@@ -242,8 +314,9 @@ final class XaeroRebuildScheduler {
 
     void flushPendingUpdates(Object mp, Object dimensionId, long budget,
                                      int maxRebuilds, boolean keepVisited) {
-        if (this.pendingUpdates.isEmpty()) {
+        if (idle()) {
             this.pendingUpdatesGauge = 0;
+            this.bestEffortUpdatesGauge = 0;
             return;
         }
         long start = System.nanoTime();
@@ -257,9 +330,34 @@ final class XaeroRebuildScheduler {
             this.session.noteFailure(t);
             return;
         }
+        boolean reliableDueLeft = this.flushMap(this.pendingUpdates, false, mp, dimensionId, worldId, budget,
+                maxRebuilds, args, start, this.pendingUpdates.size() - this.session.pendingUpdatesSoftCap);
+        this.pendingUpdatesGauge = this.pendingUpdates.size();
+        // §B6: best-effort rebuilds only when no reliable rebuild is due (left unprocessed or
+        // stalled), within what the reliable pass left of the BASE budget (never the borrow)
+        // and of the caller's rebuild cap.
+        if (!reliableDueLeft && !this.bestEffortUpdates.isEmpty() && !this.session.dead
+                && (maxRebuilds <= 0 || args.rebuilt < maxRebuilds)) {
+            long left = Math.min(budget, this.session.updateNanosBudget) - (System.nanoTime() - start);
+            if (left > 0 || maxRebuilds == 0) {
+                int beCap = maxRebuilds <= 0 ? maxRebuilds : maxRebuilds - args.rebuilt;
+                this.flushMap(this.bestEffortUpdates, true, mp, dimensionId, worldId, Math.max(0, left), beCap,
+                        args, System.nanoTime(), this.bestEffortUpdates.size() - bestEffortOverflowFloor());
+            }
+        }
+        this.bestEffortUpdatesGauge = this.bestEffortUpdates.size();
+    }
+
+    /** One class's pass (oldest touch first). @return whether a due entry was left —
+     *  unprocessed (budget, cap, frames-own-the-rebuilds) or not ready. */
+    private boolean flushMap(LinkedHashMap<PendingKey, PendingUpdate> map, boolean bestEffort, Object mp,
+                             Object dimensionId, String worldId, long budget, int maxRebuilds, RebuildArgs args,
+                             long start, int overflow) {
         int removed = 0;
-        int overflow = this.pendingUpdates.size() - this.session.pendingUpdatesSoftCap;
-        var it = this.pendingUpdates.values().iterator();
+        int stalled = 0;
+        boolean dueLeft = false;
+        int rebuiltBefore = args.rebuilt;
+        var it = map.values().iterator();
         while (it.hasNext()) {
             // The §15 exemption: removing outcomes arm the budget check, and not-ready
             // probes stay FREE up to a small floor (memoized per region, so the floor
@@ -268,7 +366,10 @@ final class XaeroRebuildScheduler {
             // (§17.1, review B m4: an all-not-ready set must not walk hundreds of
             // region monitors unbounded at frame cadence on the render thread).
             if ((removed > 0 || args.probes > FLUSH_PROBE_EXEMPT_FLOOR)
-                    && System.nanoTime() - start > budget) break;
+                    && System.nanoTime() - start > budget) {
+                dueLeft = true;
+                break;
+            }
             var pu = it.next();
             boolean due = overflow-- > 0
                     || this.pumpCount - pu.lastTouchPump >= this.session.updateIdlePumps
@@ -281,6 +382,7 @@ final class XaeroRebuildScheduler {
             } else if (pu.dimension != dimensionId) {
                 result = UpdateResult.NOT_READY;
             } else if (maxRebuilds == 0) {
+                dueLeft = true;
                 continue; // frames own the rebuilds while they flush — cheap classes only
             } else {
                 result = this.rebuildTileChunk(mp, pu, args);
@@ -295,27 +397,44 @@ final class XaeroRebuildScheduler {
                     removed++;
                     if (pu.processor != mp || !java.util.Objects.equals(pu.worldId, worldId)) {
                         this.droppedUpdates.incrementAndGet(); // the session-identity drop
+                        if (bestEffort) this.bestEffortDroppedUpdates.incrementAndGet();
                     } // else: the rebuild counted dropped_unloaded itself
                 }
                 case NOT_READY -> {
                     if (pu.stalledSincePump < 0) {
                         pu.stalledSincePump = this.pumpCount;
+                        stalled++;
+                        dueLeft = true;
                     } else if (this.pumpCount - pu.stalledSincePump >= this.session.updateMaxStallPumps) {
                         it.remove();
                         removed++;
                         this.droppedUpdates.incrementAndGet();
+                        if (bestEffort) this.bestEffortDroppedUpdates.incrementAndGet();
+                    } else {
+                        stalled++;
+                        dueLeft = true;
                     }
                 }
                 case FAILED -> {
                     it.remove();
                     removed++;
                     this.droppedUpdates.incrementAndGet(); // owed, never rebuilt
+                    if (bestEffort) this.bestEffortDroppedUpdates.incrementAndGet();
                 }
             }
             if (this.session.dead) break;
-            if (maxRebuilds > 0 && args.rebuilt >= maxRebuilds) break;
+            if (maxRebuilds > 0 && args.rebuilt - rebuiltBefore >= maxRebuilds) {
+                if (it.hasNext()) dueLeft = true; // conservative: the rest may be due
+                break;
+            }
         }
-        this.pendingUpdatesGauge = this.pendingUpdates.size();
+        if (bestEffort) {
+            this.bestEffortBufferUpdates.addAndGet(args.rebuilt - rebuiltBefore);
+            this.stalledBestEffortGauge = stalled;
+        } else {
+            this.stalledReliableGauge = stalled;
+        }
+        return dueLeft;
     }
 
     /**
@@ -331,7 +450,13 @@ final class XaeroRebuildScheduler {
      */
     void keepOwedRegionsVisited(Object mp, String worldId, Object dimensionId) throws Throwable {
         var seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-        for (var pu : this.pendingUpdates.values()) {
+        keepVisited(this.pendingUpdates, mp, worldId, dimensionId, seen);
+        keepVisited(this.bestEffortUpdates, mp, worldId, dimensionId, seen); // §B6: same park guard
+    }
+
+    private void keepVisited(LinkedHashMap<PendingKey, PendingUpdate> map, Object mp, String worldId,
+                             Object dimensionId, java.util.Set<Object> seen) throws Throwable {
+        for (var pu : map.values()) {
             if (pu.processor != mp || !java.util.Objects.equals(pu.worldId, worldId)
                     || pu.dimension != dimensionId || !seen.add(pu.region)) {
                 continue;

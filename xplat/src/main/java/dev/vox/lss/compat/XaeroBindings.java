@@ -100,11 +100,14 @@ final class XaeroBindings {
      * {@code getCaveModeType()} (0 off, 1 Layered, 2 Full — best-effort bands are written in
      * Layered only), {@code WorldMapClientConfigUtils.getEffectiveCaveModeAllowed()}, and
      * the save/load queues ({@code MapSaveLoad.getToSave()}, {@code getSizeOfToLoad()}):
-     * best-effort load grants wait for an empty save queue. Null = best-effort bands off;
-     * phase B-I is unaffected.
+     * best-effort load grants wait for an empty save queue — and {@code MapSaveLoad
+     * .requestLoad(MapRegion, String, boolean)}: best-effort grants ask WITHOUT priority
+     * (appended behind every front-inserted request; the loader refuses it mid-drain).
+     * Null = best-effort bands off; phase B-I is unaffected.
      */
     record BestEffortGate(MethodHandle getCaveModeType, MethodHandle getEffectiveCaveModeAllowed,
-                          MethodHandle getToSave, MethodHandle getSizeOfToLoad) {}
+                          MethodHandle getToSave, MethodHandle getSizeOfToLoad,
+                          MethodHandle requestLoadWithPriority) {}
     final BestEffortGate bestEffortGate;
     /** {@code WorldMapProfiledConfigOptions.WRITING_DISTANCE}, read through
      *  {@link #settingsGate}'s {@code getEffective} — the native writer's distance input
@@ -453,7 +456,11 @@ final class XaeroBindings {
                     virtual(lookup, saveLoadClass, "getToSave",
                             MethodType.methodType(java.util.ArrayList.class), Object.class),
                     virtual(lookup, saveLoadClass, "getSizeOfToLoad",
-                            MethodType.methodType(int.class), int.class));
+                            MethodType.methodType(int.class), int.class),
+                    findVirtual(lookup, saveLoadClass, "requestLoad",
+                            MethodType.methodType(void.class, regionClass, String.class, boolean.class))
+                            .asType(MethodType.methodType(void.class, Object.class, Object.class, String.class,
+                                    boolean.class)));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             this.rollbackGroup(markBestEffort);
             missing.append("best-effort ");

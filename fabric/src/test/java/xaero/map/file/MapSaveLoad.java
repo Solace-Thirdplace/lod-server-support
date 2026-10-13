@@ -23,11 +23,23 @@ public class MapSaveLoad {
     public boolean isRegionDetectionComplete() { return this.regionDetectionComplete; }
 
     public void requestLoad(MapRegion region, String reason) {
+        this.requestLoad(region, reason, true);
+    }
+
+    /** Models the real overload: a prioritized request front-inserts; an unprioritized one
+     *  appends — and is REFUSED while the loader is mid-drain ({@link #loadingFiles}). */
+    public void requestLoad(MapRegion region, String reason, boolean prioritize) {
+        if (!prioritize && this.loadingFiles) return;
         this.loadRequests.add(region);
+        if (!prioritize) this.unprioritizedRequests.add(region);
         region.canRequestReload = false; // models reloadHasBeenRequested
         dev.vox.lss.compat.XaeroStubEvents.record("saveLoad.requestLoad " + reason
                 + (Boolean.TRUE.equals(region.beingWritten) ? " beingWritten" : " NOT-beingWritten"));
     }
+
+    /** The loader is mid-drain: unprioritized requests are refused. */
+    public boolean loadingFiles;
+    public final java.util.List<MapRegion> unprioritizedRequests = new java.util.ArrayList<>();
 
     public LeveledRegion<?> getNextToLoadByViewing() { return this.nextToLoadByViewing; }
 

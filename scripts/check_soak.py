@@ -1964,7 +1964,9 @@ def check_xaero_memory(ctx):
 # criteria (old-gen heap <= 1.2x, reliable region-load p95 <= 1.25x and LOD delivery >= 0.9x of
 # the B-I-only arm) compare two recordings and are read off the same xaero group by hand.
 XAERO_BANDS_MAX_GRANTS_PER_REGION = 3   # re-grants of one (layer, region) <= 2
-XAERO_BANDS_MAX_DROP_RATE = 0.05        # best-effort drops / enqueued on the stock join
+XAERO_BANDS_MAX_DROP_RATE = 0.05        # best-effort tiles lost / offered on the stock join (drops AND
+                                        # refusals: since spike round 2 a full queue refuses a column's
+                                        # bands before extraction instead of dropping the oldest after it)
 XAERO_BANDS_MIN_DISTINCT_BANDS = 3      # the height walk really moved Xaero's band
 
 
@@ -1977,7 +1979,8 @@ def check_xaero_nether_bands(ctx):
     """Both arms: the windows stay within their caps and the walk moved Xaero across at least
     three Layered bands (else the run proved nothing about bands). B-II arm (best_effort_on):
     it wrote best-effort tiles, no (layer, region) took more than three grants, and fewer
-    than 5% of the enqueued best-effort tiles dropped."""
+    than 5% of the offered best-effort tiles were lost — dropped after enqueueing, or refused
+    before extraction by a full queue (round-1 recordings carry no refusal field: 0)."""
     for run, snaps in sorted(ctx.runs.items()):
         rows = [s for s in snaps if isinstance(s.get("xaero"), dict) and "best_effort_on" in s["xaero"]]
         if not rows:
@@ -2013,15 +2016,21 @@ def check_xaero_nether_bands(ctx):
                             {"best_effort_enqueued": enqueued, "best_effort_written": last["best_effort_written"]})
             continue
         if last["best_effort_grant_max"] > XAERO_BANDS_MAX_GRANTS_PER_REGION:
+            # Context only (round 2): a trickling server re-grants a region as new tiles arrive;
+            # the load/remove loop shows as fruitless grants and a high per-minute re-grant rate.
             yield Violation("xaero-nether-bands", f"run{run}",
                             "a (layer, region) was granted more than three times (re-grants > 2)",
-                            {"best_effort_grant_max": last["best_effort_grant_max"]})
-        rate = last["best_effort_dropped"] / enqueued
+                            {"best_effort_grant_max": last["best_effort_grant_max"],
+                             "best_effort_fruitless_grants": last.get("best_effort_fruitless_grants"),
+                             "best_effort_regrant_rate_max": last.get("best_effort_regrant_rate_max"),
+                             "best_effort_grants_per_ktile": last.get("best_effort_grants_per_ktile")})
+        refused = last.get("best_effort_refused", 0)
+        rate = (last["best_effort_dropped"] + refused) / (enqueued + refused)
         if rate >= XAERO_BANDS_MAX_DROP_RATE:
             yield Violation("xaero-nether-bands", f"run{run}",
-                            "best-effort drop rate at or above 5%",
-                            {"best_effort_dropped": last["best_effort_dropped"], "best_effort_enqueued": enqueued,
-                             "rate": round(rate, 4)})
+                            "best-effort loss rate (drops + refusals) at or above 5%",
+                            {"best_effort_dropped": last["best_effort_dropped"], "best_effort_refused": refused,
+                             "best_effort_enqueued": enqueued, "rate": round(rate, 4)})
 
 
 @named_check("rate-limit-storm", ["server.service.superseded", "server.generation.completed"])
@@ -5457,6 +5466,11 @@ def selftest():
          list(check_xaero_nether_bands(nb_ctx(walk(gmax=4)))), "xaero-nether-bands")
     hits("xaero-nether-bands a 5% drop rate",
          list(check_xaero_nether_bands(nb_ctx(walk(dropped=50)))), "xaero-nether-bands")
+    refusing = nb_ctx(walk(dropped=10))
+    for snap in refusing.runs[1]:
+        snap["xaero"]["best_effort_refused"] = 60  # (10 + 60) / (1000 + 60) = 6.6%
+    hits("xaero-nether-bands refusals count as losses", list(check_xaero_nether_bands(refusing)),
+         "xaero-nether-bands")
     hits("xaero-nether-bands the walk never left one band",
          list(check_xaero_nether_bands(nb_ctx([("2", "layered", 10, 32, True, 1000, 900, 0, 1, 1, 4)] * 5))),
          "xaero-nether-bands")
