@@ -122,8 +122,9 @@ class MapPolicyGateTest {
 
     @Test
     void theSharedTextNamesTheBrandAndTheDiagLineIsArmedOnly() {
-        assertTrue(MapPolicy.refusalNotice().startsWith("Distant terrain on this server needs "
-                + Brand.shortName() + " 0.19.0 or newer."), MapPolicy.refusalNotice());
+        // The user-approved wording names the mod in full ("LOD Server Support"), not "LSS".
+        assertEquals("Distant terrain on this server needs " + Brand.displayName()
+                + " 0.19.0 or newer. Update the mod to see it.", MapPolicy.refusalNotice());
         assertNull(MapPolicy.diagLineOrNull(false, 3), "no line while the policy is off");
         assertEquals("MapPolicy: on refused=2", MapPolicy.diagLineOrNull(true, 2));
         assertTrue(MapPolicy.refusalLogLine("Steve", 19, 3).contains("protocol v19, capabilities=3"));

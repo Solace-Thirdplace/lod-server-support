@@ -14,7 +14,7 @@ public final class MapPolicy {
      *  server-originated text; only LSS clients ever see it (vanilla clients never
      *  handshake). */
     public static String refusalNotice() {
-        return "Distant terrain on this server needs " + Brand.shortName()
+        return "Distant terrain on this server needs " + Brand.displayName()
                 + " 0.19.0 or newer. Update the mod to see it.";
     }
 
