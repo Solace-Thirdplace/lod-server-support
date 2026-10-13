@@ -86,6 +86,50 @@ final class XaeroSession {
     final XaeroRebuildScheduler rebuilds = new XaeroRebuildScheduler(this);
     final XaeroAcquisitionQueue acquisition = new XaeroAcquisitionQueue(this);
     final XaeroTileWriter writer = new XaeroTileWriter(this);
+    /** Phase B-II (cave-layers plan §B6): the best-effort band pipeline — its own queue,
+     *  window share and budget; OFF for a bare constructor, production reads the levers. */
+    final XaeroBestEffortPipeline bestEffort = new XaeroBestEffortPipeline(this);
+    /** Region-load latency and vanished-grant instrumentation (§B0). Main thread. */
+    final XaeroLoadStats loadStats = new XaeroLoadStats();
+
+    /** Why commits were deferred, per tile class — the B-II coupling diag: a reliable
+     *  backlog that sits on {@code not_resting} is waiting for Xaero's save/recache cycle,
+     *  one on {@code capacity} for the owed-rebuild cap. */
+    static final class DeferReasons {
+        final AtomicLong notResting = new AtomicLong();
+        final AtomicLong paused = new AtomicLong();
+        final AtomicLong capacity = new AtomicLong();
+        final AtomicLong tileBusy = new AtomicLong();
+        final AtomicLong other = new AtomicLong();
+
+        String describe() {
+            return "not_resting:" + this.notResting.get() + "/paused:" + this.paused.get()
+                    + "/capacity:" + this.capacity.get() + "/tile_busy:" + this.tileBusy.get()
+                    + "/other:" + this.other.get();
+        }
+
+        void putMetrics(java.util.Map<String, Object> out, String prefix) {
+            out.put(prefix + "defer_not_resting", this.notResting.get());
+            out.put(prefix + "defer_paused", this.paused.get());
+            out.put(prefix + "defer_capacity", this.capacity.get());
+            out.put(prefix + "defer_tile_busy", this.tileBusy.get());
+            out.put(prefix + "defer_other", this.other.get());
+        }
+    }
+
+    final DeferReasons reliableDefers = new DeferReasons();
+    final DeferReasons bestEffortDefers = new DeferReasons();
+    /** The last reliable drain RETAINED work (deferred, awaiting a load, window-held, capped
+     *  or cut by its budget): best-effort commits and grants hold while it is set (§B6 —
+     *  the reliable path goes first). Main thread. */
+    boolean reliableBacklog;
+    /** Entries the last reliable drain retained, surface vs cave layers, and their regions —
+     *  the backlog's shape (gauges). */
+    volatile int heldSurfaceGauge;
+    volatile int heldCaveGauge;
+    volatile int heldRegionsGauge;
+    /** Reliable drains stopped by the owed-rebuild hard cap. */
+    final AtomicLong cappedPumps = new AtomicLong();
 
     static final int MAX_QUEUE = 8192;
     /** Byte gauge companion to the count cap (the ClientColumnProcessor discipline —
@@ -195,9 +239,10 @@ final class XaeroSession {
      *  report degrades to -1 (warn once) — the bridge may PACE the stream, never
      *  STOP it (the #71 halt was designed for Voxy's unbounded-queue OOM
      *  emergency; this queue is bounded and self-shedding). §12.8: this window
-     *  now also bounds STRUCTURAL pauses (cave layer, map locked, long gate
-     *  blocks) — a movement burst holds the halt up to this long, then the fill
-     *  resumes and the map wears the loss (doctrine (d)). */
+     *  now also bounds STRUCTURAL pauses (map locked, long gate blocks; the
+     *  cave-layer wait is gone — cave-layers plan §B5) — a movement burst holds
+     *  the halt up to this long, then the fill resumes and the map wears the
+     *  loss (doctrine (d)). */
     static final long BP_HALT_WEDGE_MILLIS = 7000;
     /** A wedge-degraded report re-arms once the queue drains below this. */
     static final double BP_WEDGE_REARM_OCCUPANCY = 0.5;
@@ -275,7 +320,88 @@ final class XaeroSession {
     }
 
     /** The surface layer — native {@code caveLayer} sentinel. */
-    static final int SURFACE_LAYER = Integer.MAX_VALUE;
+    static final int SURFACE_LAYER = XaeroTileExtractor.SURFACE;
+    /** The native writer's cave-mode reach cap ({@code writeMap}: min(16, write distance)
+     *  while it writes a cave layer outside the map screen). */
+    static final int NATIVE_CAVE_WRITE_DISTANCE = 16;
+    /** {@code getWriteDistance}'s own cap on the render distance. */
+    static final int NATIVE_MAX_WRITE_DISTANCE = 32;
+
+    /** A queue key: Xaero LAYER + packed chunk — every layer reuses the chunk coords, so a
+     *  column's surface and band tiles are distinct entries (cave-layers plan §B5). */
+    record TileKey(int layer, long chunk) {}
+
+    /** A map region in one Xaero layer: each layer has its own regions (and files), so every
+     *  region-scoped key — buckets, grants, debts, the window — carries the layer. */
+    record RegionKey(int layer, long region) {}
+
+    static RegionKey surfaceRegion(long regionKey) {
+        return new RegionKey(SURFACE_LAYER, regionKey);
+    }
+
+    static TileKey tileKey(XaeroTileExtractor.PreparedTile tile) {
+        return new TileKey(tile.layer(), ((long) tile.chunkX() << 32) | (tile.chunkZ() & 0xFFFFFFFFL));
+    }
+
+    /**
+     * What Xaero shows, read by the pump at the TOP of every pump — before its gates — and
+     * tagged with Xaero's current dimension, for the decode thread's band set (§B3). The mode
+     * IS the current layer ({@code getCurrentCaveLayer} is the result of Xaero's own
+     * {@code updateCaveStart}): {@code MAX_VALUE} surface, {@code MIN_VALUE} Full, else the
+     * band. {@code worldSave}: Xaero writes this dimension from the world save (singleplayer /
+     * LAN host) — cave writes are off there (§B5: native writes outdate the other layers and
+     * rebuild them from the save).
+     */
+    record LayerPlan(Object dimension, int currentLayer, int depth, boolean ignoreHeightmaps,
+                     boolean worldSave, int caveModeType, boolean caveModeAllowed) {
+        LayerPlan(Object dimension, int currentLayer, int depth, boolean ignoreHeightmaps, boolean worldSave) {
+            this(dimension, currentLayer, depth, ignoreHeightmaps, worldSave, -1, false);
+        }
+
+        /** Xaero's cave mode for this dimension is Layered (type 1) and allowed — the only mode
+         *  with bands to fill (Full is one layer; off is none). Needs the B-II bindings. */
+        boolean layeredMode() {
+            return this.caveModeAllowed && this.caveModeType == 1;
+        }
+
+        String mode() {
+            return this.currentLayer == SURFACE_LAYER ? "surface"
+                    : this.currentLayer == XaeroTileExtractor.FULL ? "full" : "layered";
+        }
+
+        String layerToken() {
+            return this.currentLayer == SURFACE_LAYER ? "surface"
+                    : this.currentLayer == XaeroTileExtractor.FULL ? "full" : Integer.toString(this.currentLayer);
+        }
+    }
+
+    /** The local player's position, with the dimension it is in. */
+    record PlayerPos(Object dimension, double x, double y, double z) {}
+
+    /** Reads the local player (any thread: the decode thread for the dimension-mismatch band,
+     *  the pump for the native-distance check) — test seam; null = unknown. */
+    @FunctionalInterface
+    interface PlayerProbe {
+        PlayerPos position();
+    }
+
+    /**
+     * The native writer's reach this pump (§B5): the layer it writes and the Chebyshev square
+     * around the player it writes in ({@code writeChunk}'s own distance test) — min(16, write
+     * distance) for a cave layer. A player of unknown position skips the distance leg (the
+     * loaded-and-surrounded rule alone, the pre-cave behavior).
+     */
+    record NativeReach(int layer, int distance, PlayerPos player) {
+        static final NativeReach SURFACE_ANYWHERE = new NativeReach(SURFACE_LAYER, Integer.MAX_VALUE, null);
+
+        boolean reaches(int tileLayer, int chunkX, int chunkZ) {
+            if (tileLayer != this.layer) return false;
+            if (this.player == null || this.distance == Integer.MAX_VALUE) return true;
+            int px = ((int) Math.floor(this.player.x())) >> 4;
+            int pz = ((int) Math.floor(this.player.z())) >> 4;
+            return Math.abs(chunkX - px) <= this.distance && Math.abs(chunkZ - pz) <= this.distance;
+        }
+    }
 
     static final LogThrottle EXTRACT_FAIL_WARN = new LogThrottle(60_000);
     static final LogThrottle COMMIT_FAIL_WARN = new LogThrottle(60_000);
@@ -322,6 +448,18 @@ final class XaeroSession {
         }
     };
 
+    static PlayerPos productionPlayer() {
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        var player = mc == null ? null : mc.player;
+        if (player == null) return null;
+        return new PlayerPos(player.level().dimension(), player.getX(), player.getY(), player.getZ());
+    }
+
+    static int productionRenderDistance() {
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        return mc == null || mc.options == null ? NATIVE_MAX_WRITE_DISTANCE : mc.options.getEffectiveRenderDistance();
+    }
+
     // ---- static facade (production wiring; ModCompat owns the instance) ----
 
     static volatile XaeroSession instance;
@@ -350,11 +488,17 @@ final class XaeroSession {
                     // §18.1 churn regime).
                     () -> LSSClientConfig.CONFIG.enableIngestBackpressure()
                             && LSSClientConfig.CONFIG.mapIngestionBackpressure(),
-                    XaeroSession::reportDroppedProduction);
+                    XaeroSession::reportDroppedProduction,
+                    // Map-policy plan A4: the server's map-ingestion request (write paths only).
+                    dev.vox.lss.networking.client.ClientNetGlue::serverAllowsMapIngestion);
             bridge.openRegionCap = openRegionCapFor(Runtime.getRuntime().maxMemory(),
                     Integer.getInteger("lss.xaero.openRegionWindow", -1));
             bridge.memory = MapMemoryGuard.PRODUCTION;
             bridge.connected = XaeroSession::productionConnected;
+            bridge.playerProbe = XaeroSession::productionPlayer;
+            bridge.renderDistance = XaeroSession::productionRenderDistance;
+            bridge.serverLodDistance = LSSApi::getServerLodDistance;
+            bridge.bestEffort.configureFromSystemProperties();
             bridge.maybeRegister();
             instance = bridge;
             LSSLogger.info(LSSClientConfig.CONFIG.mapIngestionEnabled()
@@ -428,6 +572,31 @@ final class XaeroSession {
         out.put("state", bridge.dead ? "dead" : "available");
         out.put("queued", bridge.acquisition.queuedGauge);
         out.put("written", bridge.written.get());
+        out.put("written_cave", bridge.writtenCave.get());
+        out.put("layer", bridge.layerToken());
+        out.put("mode", bridge.modeToken());
+        bridge.bestEffort.putMetrics(out);
+        var stats = bridge.loadStats;
+        out.put("load_count", stats.reliable.total);
+        out.put("load_ms_p50", stats.reliable.quantileMillis(0.5));
+        out.put("load_ms_p95", stats.reliable.quantileMillis(0.95));
+        out.put("best_effort_load_count", stats.bestEffort.total);
+        out.put("best_effort_load_ms_p50", stats.bestEffort.quantileMillis(0.5));
+        out.put("best_effort_load_ms_p95", stats.bestEffort.quantileMillis(0.95));
+        out.put("region_vanished", stats.vanishedReliable.get());
+        out.put("best_effort_region_vanished", stats.vanishedBestEffort.get());
+        // The B-II coupling diag (spike round 2): the reliable path's owed rebuilds, stalls and
+        // why its commits waited, and the shape of what its last drain retained.
+        out.put("pending_updates", bridge.rebuilds.pendingUpdatesGauge);
+        out.put("buffer_updates", bridge.rebuilds.bufferUpdates.get());
+        out.put("dropped_updates", bridge.rebuilds.droppedUpdates.get());
+        out.put("dropped_unloaded", bridge.rebuilds.droppedUnloaded.get());
+        out.put("rebuild_stalled", bridge.rebuilds.stalledReliableGauge);
+        out.put("capped_pumps", bridge.cappedPumps.get());
+        bridge.reliableDefers.putMetrics(out, "");
+        out.put("held_surface", bridge.heldSurfaceGauge);
+        out.put("held_cave", bridge.heldCaveGauge);
+        out.put("held_regions", bridge.heldRegionsGauge);
         out.put("open_regions", bridge.openRegionsGauge);
         out.put("open_region_cap", bridge.openRegionCap);
         out.put("window_waits", bridge.windowWaits.get());
@@ -446,7 +615,8 @@ final class XaeroSession {
         boolean retiring = bridge.sessionEndPending || bridge.acquisition.retiringAcquisition;
         return new ModCompat.XaeroStatus("available",
                 bridge.dead, retiring, retiring ? 0 : bridge.acquisition.queuedGauge,
-                bridge.sessionEndPending ? 0 : bridge.rebuilds.pendingUpdatesGauge);
+                bridge.sessionEndPending ? 0
+                        : bridge.rebuilds.pendingUpdatesGauge + bridge.rebuilds.bestEffortUpdatesGauge);
     }
 
     /** Test seam: forget the static facade state. */
@@ -477,6 +647,11 @@ final class XaeroSession {
      *  {@code integrations.map_ingestion.backpressure}); composes UNDER the global
      *  {@code enableIngestBackpressure} (#71 owns the signal path manager-side). */
     final BooleanSupplier backpressureEnabled;
+    /** The server allows map writes on this connection (map-policy plan A4) — composed
+     *  ONLY on the write paths ({@link #offerColumn}, {@link #pump},
+     *  {@link #reportBackpressure}), never into {@link #enabled}, which also drives
+     *  registration settling and the diag state. A bare constructor allows. */
+    final BooleanSupplier serverAllowsWrites;
     /** Reports a dropped position back to LSS for its bounded re-serve — test seam. */
     final DropReporter dropReporter;
     final VoxelColumnConsumer consumer;
@@ -487,6 +662,8 @@ final class XaeroSession {
     java.util.function.BooleanSupplier connected = () -> true;
 
     final AtomicLong written = new AtomicLong();
+    /** Commits into a cave layer (a band or Full) — the per-layer write diag (§B8). */
+    final AtomicLong writtenCave = new AtomicLong();
     final AtomicLong skippedNative = new AtomicLong();
     final AtomicLong deferEvents = new AtomicLong();
     final AtomicLong droppedOverflow = new AtomicLong();
@@ -521,8 +698,17 @@ final class XaeroSession {
     /** Entries the user's own Xaero map-writing switches refused (plan §16): "Load New
      *  Chunks" off for a new tile, "Update Chunks" off for an existing one, or both off. */
     final AtomicLong skippedSettings = new AtomicLong();
-    /** Pumps that waited because Xaero was rendering a cave layer (diag). */
-    final AtomicLong caveLayerWaits = new AtomicLong();
+    /** What Xaero shows, published at the top of every pump (§B3); null until read. */
+    volatile LayerPlan layerPlan;
+    /** The local player — test seam (unknown by default; production reads the client). */
+    PlayerProbe playerProbe = () -> null;
+    /** The client's effective render distance — test seam (production reads the options). */
+    java.util.function.IntSupplier renderDistance = () -> NATIVE_MAX_WRITE_DISTANCE;
+    /** Xaero's WRITING_DISTANCE as the last ladder read it (-1 or unbound = unlimited). Main thread. */
+    int writingDistanceConfig = -1;
+    /** The server's LOD distance for the current dimension (the session config; 0 = unknown)
+     *  — the best-effort radius bound's second input. Read on the decode thread. Test seam. */
+    java.util.function.IntSupplier serverLodDistance = () -> 0;
     // §12 backpressure state. The drainable latch is DERIVED, never enumerated:
     // pumpLadder's outcome sets it, so every early return — present and future —
     // reads as not-draining by construction (review MAJOR). §12.8: the latch is
@@ -578,7 +764,7 @@ final class XaeroSession {
     // test default; production init arms it from the heap size.
     int openRegionCap;
     /** Window regions → 0 once committed into, or the grant time of a reserved load. */
-    final java.util.LinkedHashMap<Long, Long> openRegions = new java.util.LinkedHashMap<>();
+    final java.util.LinkedHashMap<RegionKey, Long> openRegions = new java.util.LinkedHashMap<>();
     /** The last time a region left the window or the window filled (the B1 turnover clock). */
     long windowProgressMillis;
     Object openRegionsDimension;
@@ -593,15 +779,56 @@ final class XaeroSession {
     boolean heapHolding;
     final AtomicLong heapHolds = new AtomicLong();
 
-    final class Origin {
+    /**
+     * One column delivery as the bridge holds it: the ingest handle captured in the callback,
+     * the acquisition generation it belongs to, and the once-per-column report latch its
+     * tiles share (§B5: one re-serve per column, however many of its tiles dropped — the
+     * handle dedupes too, the latch also covers the null-handle {@link DropReporter} path).
+     */
+    final class Receipt {
         final long generation = acquisition.acquisitionGeneration.get();
         final LSSApi.IngestFailureHandle handle = LSSApi.captureIngestFailureHandle();
-        final Runnable release = this.handle == null ? () -> {} : this.handle.deferAcceptance();
-        final java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean();
+        final java.util.concurrent.atomic.AtomicBoolean reported = new java.util.concurrent.atomic.AtomicBoolean();
 
         boolean active() {
-            return !this.closed.get() && !acquisition.retiringAcquisition && this.generation == acquisition.acquisitionGeneration.get()
+            return !acquisition.retiringAcquisition && this.generation == acquisition.acquisitionGeneration.get()
                     && (this.handle == null || this.handle.isActive());
+        }
+    }
+
+    /**
+     * One tile's hold on its column's {@link Receipt}. A RELIABLE tile takes its own
+     * {@code deferAcceptance()} lease (§B5: a shared lease would close on the first commit
+     * and orphan a sibling's later drop report; {@code ColumnDelivery} counts leases); a
+     * best-effort tile (B-II) holds a lease-free generation token and never reports.
+     */
+    final class Origin {
+        final Receipt receipt;
+        final long generation;
+        final LSSApi.IngestFailureHandle handle;
+        final boolean reliable;
+        final Runnable release;
+        final java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean();
+
+        Origin() {
+            this(new Receipt(), true);
+        }
+
+        Origin(Receipt receipt, boolean reliable) {
+            this.receipt = receipt;
+            this.generation = receipt.generation;
+            this.handle = receipt.handle;
+            this.reliable = reliable;
+            this.release = !reliable || this.handle == null ? () -> {} : this.handle.deferAcceptance();
+        }
+
+        boolean active() {
+            return !this.closed.get() && this.receipt.active();
+        }
+
+        /** The column's one report: the first of its tiles to drop claims it. */
+        boolean claimReport() {
+            return this.reliable && this.receipt.reported.compareAndSet(false, true);
         }
 
         void close() {
@@ -612,6 +839,7 @@ final class XaeroSession {
     /** Acquisition OFF retains the native world: committed texture rebuilds still run. */
     void onAcquisitionEnd() {
         this.acquisition.retireAcquisitionWork();
+        this.bestEffort.clear();
         this.acquisition.discardDeferredReports(); // main thread only; no native-world disconnect here
     }
 
@@ -625,6 +853,17 @@ final class XaeroSession {
                    java.util.function.Consumer<VoxelColumnConsumer> registrar,
                    java.util.function.Consumer<VoxelColumnConsumer> deregistrar,
                    BooleanSupplier backpressureEnabled, DropReporter dropReporter) {
+        this(h, levelOps, enabled, sessionActive, registrar, deregistrar, backpressureEnabled,
+                dropReporter, () -> true);
+    }
+
+    XaeroSession(XaeroBindings h, LevelOps levelOps, BooleanSupplier enabled,
+                   BooleanSupplier sessionActive,
+                   java.util.function.Consumer<VoxelColumnConsumer> registrar,
+                   java.util.function.Consumer<VoxelColumnConsumer> deregistrar,
+                   BooleanSupplier backpressureEnabled, DropReporter dropReporter,
+                   BooleanSupplier serverAllowsWrites) {
+        this.serverAllowsWrites = serverAllowsWrites;
         this.h = h;
         this.levelOps = levelOps;
         this.enabled = enabled;
@@ -683,6 +922,7 @@ final class XaeroSession {
         // state (owed rebuilds, registration, the failure count) settles at the top of
         // the next pump, which runs on the title screen too.
         this.acquisition.retireAcquisitionWork();
+        this.bestEffort.clear();
         this.consecutiveExtractFailures.set(0);
         this.dead = false;
         this.settingsGateBroken = false;
@@ -700,10 +940,9 @@ final class XaeroSession {
         // owed are lost (counted — Xaero's world is going away under us, so no
         // best-effort flush here). The last ≤2 s of commits before a disconnect can
         // thus reach the region cache with a stale texture (review A N5, accepted).
-        this.rebuilds.droppedUpdates.addAndGet(this.rebuilds.pendingUpdates.size());
-        this.rebuilds.pendingUpdates.clear();
-        this.rebuilds.pendingUpdatesGauge = 0;
+        this.rebuilds.droppedUpdates.addAndGet(this.rebuilds.clearAll());
         this.acquisition.regionsWaiting = 0;
+        this.reliableBacklog = false;
         this.consecutiveFailures = 0;
         this.rebuilds.frameFlushRan = false;
         this.rebuilds.frameActiveThisPump = false;
@@ -711,6 +950,9 @@ final class XaeroSession {
         this.rebuilds.framesSinceLastPump = 0;
         this.rebuilds.rebuildNanosMax = 0; // session-scoped worst recolor; the total stays lifetime
         this.lastWorldId = null;
+        this.layerPlan = null; // the next session re-reads what Xaero shows
+        this.bestEffort.resetSession();
+        this.loadStats.clearPending();
         // §12 (review m5): the main-thread half re-clears the latches — an
         // in-flight ladder's finally can re-latch AFTER onSessionEnd's off-thread
         // clear; this half runs at the next pump top, after any such ladder.
@@ -755,7 +997,7 @@ final class XaeroSession {
                                               VoxelColumnData columnData) {
             try {
                 offerColumn(dimension, chunkX, chunkZ,
-                        level.getMinY(), level.getMaxY() + 1, columnData);
+                        level.getMinY(), level.getMaxY() + 1, columnData, level.dimensionType());
                 XaeroSession.this.consecutiveExtractFailures.set(0);
             } catch (Throwable t) {
                 // Swallow EVERYTHING, Errors included: LSSApi.dispatchColumn converts
@@ -805,7 +1047,8 @@ final class XaeroSession {
         double occupancy = this.heapHolding
                 ? Math.max(this.acquisition.occupancy, BP_HALT_OCCUPANCY) : this.acquisition.occupancy;
         if (!this.backpressureEnabled.getAsBoolean()) return noSignal();
-        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
+        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()
+                || !this.serverAllowsWrites.getAsBoolean()) { // a blocked map never throttles Voxy
             return noSignal();
         }
         if (this.haltWedged) {
@@ -892,13 +1135,98 @@ final class XaeroSession {
         return this.bpClock.getAsLong();
     }
 
-    /** Decode-thread entry: extract + enqueue (latest-wins, bounded, oldest drops). */
+    /** Decode-thread entry for a sky-lit, ceiling-less level of these heights (tests). */
     void offerColumn(ResourceKey<Level> dimension, int chunkX, int chunkZ,
                      int worldBottomY, int worldTopY, VoxelColumnData columnData) {
-        Origin origin = new Origin();
+        offerColumn(dimension, chunkX, chunkZ, new XaeroTileExtractor.LevelFacts(worldBottomY, worldTopY,
+                true, false, worldTopY - worldBottomY), columnData);
+    }
+
+    /** The consumer's entry: the level facts come from the column's own level. */
+    void offerColumn(ResourceKey<Level> dimension, int chunkX, int chunkZ,
+                     int worldBottomY, int worldTopY, VoxelColumnData columnData,
+                     net.minecraft.world.level.dimension.DimensionType type) {
+        offerColumn(dimension, chunkX, chunkZ, type == null
+                ? new XaeroTileExtractor.LevelFacts(worldBottomY, worldTopY, true, false, worldTopY - worldBottomY)
+                : new XaeroTileExtractor.LevelFacts(worldBottomY, worldTopY, type.hasSkyLight(), type.hasCeiling(),
+                        type.logicalHeight()), columnData);
+    }
+
+    /**
+     * The layers one column writes (§B2/§B3, phase B-I): always the surface, plus the layer
+     * Xaero shows — the current band in Layered mode, the Full layer, nothing more on the
+     * surface — when the published plan is for THIS column's dimension. On a mismatch (the
+     * Nether-entry burst lands before the pump re-reads Xaero) a ceiling dimension gets
+     * Xaero's default Layered band at (playerY+4)>>4; elsewhere only the surface, since Xaero
+     * shows the surface wherever the player has open sky above. Cave writes are off without
+     * the cave bindings and in world-save mode. Decode thread.
+     */
+    List<XaeroTileExtractor.LayerTarget> planTargets(Object dimension, int chunkX, int chunkZ,
+                                                     XaeroTileExtractor.LevelFacts level) {
+        var reliable = reliableTargets(dimension, level);
+        if (!this.bestEffort.enabled || this.h.bestEffortGate == null || !level.ceiling() || !caveWritesOn()) {
+            return reliable;
+        }
+        // B-II (§B2/§B6): every OTHER band covering the logical height, best-effort — in
+        // Layered mode only (from the plan; Xaero's default on a dimension mismatch), within
+        // min(radius cap, the server's LOD distance) of the player at extraction.
+        var plan = this.layerPlan;
+        if (plan != null && plan.dimension() == dimension && !plan.layeredMode()) return reliable;
+        PlayerPos player = this.playerProbe.position();
+        if (player == null || player.dimension() != dimension) return reliable;
+        int radius = this.bestEffort.radiusChunks;
+        int lod = this.serverLodDistance.getAsInt();
+        if (lod > 0) radius = Math.min(radius, lod);
+        long dx = chunkX - (((int) Math.floor(player.x())) >> 4);
+        long dz = chunkZ - (((int) Math.floor(player.z())) >> 4);
+        if (dx * dx + dz * dz > (long) radius * radius) return reliable;
+        int reliableBand = reliable.size() > 1 ? reliable.get(1).layer() : SURFACE_LAYER;
+        int maxY = level.topY() - 1;
+        int depth = reliable.get(0).depth();
+        int low = level.minY() >> 4;
+        int high = (level.minY() + Math.max(1, level.logicalHeight()) - 1) >> 4;
+        int bands = high - low + 1 - (reliableBand >= low && reliableBand <= high ? 1 : 0);
+        if (bands <= 0) return reliable;
+        if (!this.bestEffort.admit(bands)) return reliable; // a full queue: not extracted (refused)
+        var out = new ArrayList<XaeroTileExtractor.LayerTarget>(reliable.size() + high - low + 1);
+        out.addAll(reliable);
+        for (int band = low; band <= high; band++) {
+            if (band == reliableBand) continue;
+            out.add(XaeroTileExtractor.LayerTarget.band(band, maxY, depth, XaeroTileExtractor.TileClass.BEST_EFFORT));
+        }
+        return out;
+    }
+
+    /** Phase B-I's targets: the surface plus the layer Xaero shows (see {@link #planTargets}). */
+    List<XaeroTileExtractor.LayerTarget> reliableTargets(Object dimension, XaeroTileExtractor.LevelFacts level) {
+        var plan = this.layerPlan;
+        int depth = plan != null ? plan.depth() : XaeroTileExtractor.DEFAULT_CAVE_DEPTH;
+        var surface = XaeroTileExtractor.LayerTarget.surface(depth);
+        if (this.h.caveGate == null || plan != null && plan.worldSave()) return List.of(surface);
+        int maxY = level.topY() - 1;
+        if (plan != null && plan.dimension() == dimension) {
+            int layer = plan.currentLayer();
+            if (layer == SURFACE_LAYER) return List.of(surface);
+            if (layer == XaeroTileExtractor.FULL) return List.of(surface, XaeroTileExtractor.LayerTarget.full(depth));
+            return List.of(surface, XaeroTileExtractor.LayerTarget.band(layer, maxY, depth,
+                    XaeroTileExtractor.TileClass.RELIABLE));
+        }
+        if (!level.ceiling()) return List.of(surface);
+        PlayerPos player = this.playerProbe.position();
+        if (player == null || player.dimension() != dimension) return List.of(surface);
+        int caveStart = Math.max(level.minY(), Math.min(maxY, (int) Math.floor(player.y()) + 4));
+        return List.of(surface, XaeroTileExtractor.LayerTarget.band(XaeroTileExtractor.caveLayerOf(caveStart),
+                maxY, depth, XaeroTileExtractor.TileClass.RELIABLE));
+    }
+
+    /** Decode-thread entry: extract + enqueue (latest-wins, bounded, oldest drops). */
+    void offerColumn(ResourceKey<Level> dimension, int chunkX, int chunkZ,
+                     XaeroTileExtractor.LevelFacts level, VoxelColumnData columnData) {
+        Receipt receipt = new Receipt();
+        List<Origin> origins = List.of();
         try {
-            if (!origin.active() || this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
-                origin.close();
+            if (!receipt.active() || this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()
+                    || !this.serverAllowsWrites.getAsBoolean()) { // map-policy plan A4: no write, no report
                 return;
             }
             // §12.9: the one pre-extraction refusal that survives — Xaero's own
@@ -907,9 +1235,14 @@ final class XaeroSession {
             // map is off by the user's choice, not dropped work.
             if (this.settingsWritesOff && this.backpressureEnabled.getAsBoolean()) {
                 this.skippedSettings.incrementAndGet();
-                origin.close();
                 return;
             }
+            var targets = planTargets(dimension, chunkX, chunkZ, level);
+            var held = new ArrayList<Origin>(targets.size());
+            for (var target : targets) {
+                held.add(new Origin(receipt, target.tileClass() == XaeroTileExtractor.TileClass.RELIABLE));
+            }
+            origins = held;
             // §12.8: offers are ACCEPTED during pump pauses — the queue is the
             // movement-burst buffer AND the pressure gauge (the deleted §12.1(b)
             // refusal shed 56k tiles into silent permanent holes on the first live
@@ -921,14 +1254,30 @@ final class XaeroSession {
             long key = ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
             boolean overflowed = false;
             synchronized (this.acquisition.queueLock) {
-                // Don't pay the 256-pixel extraction for a tile the full queue would
-                // evict on arrival (sustained-overflow CPU on the LOD decode thread). Count
-                // cap only: the byte cap (which binds first on overlay-heavy tiles — sweep C
-                // N3) needs the tile's size, unknown before extraction, and past it the
-                // enqueue evicts the OLDEST entry, so that extraction is not wasted.
-                if (this.acquisition.queue.size() >= this.maxQueue && !this.acquisition.queue.containsKey(key)) {
-                    this.droppedOverflow.incrementAndGet();
+                // Don't pay the 256-pixel extraction for tiles the full queue would evict
+                // on arrival (sustained-overflow CPU on the LOD decode thread): full, and
+                // none of the column's (layer, chunk) keys queued for an in-place
+                // replacement. Count cap only: the byte cap (which binds first on
+                // overlay-heavy tiles — sweep C N3) needs the tile's size, unknown before
+                // extraction, and past it the enqueue evicts the OLDEST entry, so that
+                // extraction is not wasted. (B-II: best-effort targets have their own caps
+                // and must not count here — B-I extracts none.)
+                if (this.acquisition.queue.size() >= this.maxQueue) {
                     overflowed = true;
+                    for (var target : targets) {
+                        if (target.tileClass() == XaeroTileExtractor.TileClass.RELIABLE
+                                && this.acquisition.queue.containsKey(new TileKey(target.layer(), key))) {
+                            overflowed = false;
+                            break;
+                        }
+                    }
+                    if (overflowed) {
+                        for (var target : targets) {
+                            if (target.tileClass() == XaeroTileExtractor.TileClass.RELIABLE) {
+                                this.droppedOverflow.incrementAndGet();
+                            }
+                        }
+                    }
                 }
             }
             if (overflowed) {
@@ -936,16 +1285,64 @@ final class XaeroSession {
                 // one self-heals via the reporter. OUTSIDE the lock (§18.1 discipline).
                 // WI-3: a tile whose region the last pump saw awaiting is OWED instead —
                 // its re-serve lands once the region loads (an immediate report would
-                // re-serve into the same shed).
-                if (!this.acquisition.shedToOwed(dimension, key, origin)) this.acquisition.reportDroppedIfGoverned(dimension, chunkX, chunkZ, origin);
-                return;
+                // re-serve into the same shed). One report per column (the receipt latch).
+                // The reliable queue's pre-gate never blocks best-effort tiles: they have their
+                // own caps (§B6), so they are still extracted below.
+                var bestEffortTargets = new ArrayList<XaeroTileExtractor.LayerTarget>();
+                var bestEffortOrigins = new ArrayList<Origin>();
+                for (int i = 0; i < targets.size(); i++) {
+                    var origin = origins.get(i);
+                    if (!origin.reliable) {
+                        bestEffortTargets.add(targets.get(i));
+                        bestEffortOrigins.add(origin);
+                    } else if (!this.acquisition.shedToOwed(dimension, targets.get(i).layer(), key, origin)) {
+                        this.acquisition.reportDroppedIfGoverned(dimension, chunkX, chunkZ, origin);
+                    }
+                }
+                targets = bestEffortTargets;
+                origins = bestEffortOrigins;
+                if (targets.isEmpty()) return;
             }
-            var tile = XaeroTileExtractor.extract(chunkX, chunkZ, worldBottomY, worldTopY, columnData);
-            offerPrepared(dimension, tile, origin);
-        } catch (Throwable failure) {
-            origin.close();
-            throw failure;
+            boolean ignoreHeightmaps = this.layerPlan != null && this.layerPlan.ignoreHeightmaps();
+            var tiles = XaeroTileExtractor.extract(chunkX, chunkZ, level, columnData, targets, ignoreHeightmaps);
+            int next = 0;
+            for (int i = 0; i < targets.size(); i++) {
+                var tile = next < tiles.size() && tiles.get(next).layer() == targets.get(i).layer() ? tiles.get(next++) : null;
+                if (tile == null) {
+                    origins.get(i).close(); // an all-void best-effort band: nothing to write
+                    this.bestEffort.voidSkipped.incrementAndGet();
+                    continue;
+                }
+                offerTile(dimension, tile, origins.get(i));
+            }
+            origins = List.of(); // every lease is the queue's (or released) now
+        } finally {
+            // Early returns and throws release every lease (close is idempotent: a throw
+            // mid-hand-off also releases the already-queued siblings, whose entries then
+            // drop at the drain — the pre-cave single-origin behavior).
+            for (var origin : origins) origin.close();
         }
+    }
+
+    /**
+     * Routes an extracted tile by its class: reliable tiles enter the reliable queue (the
+     * occupancy, owed debt and drop reports); a BEST_EFFORT tile must never — it belongs to
+     * phase B-II's own pipeline (cave-layers plan §B6: its own queue and caps, outside the
+     * occupancy and the report). Phase B-I extracts none; until B-II exists one is dropped,
+     * counted, its lease-free token closed.
+     */
+    void offerTile(Object dimension, XaeroTileExtractor.PreparedTile tile, Origin origin) {
+        if (tile.tileClass() == XaeroTileExtractor.TileClass.RELIABLE) {
+            offerPrepared(dimension, tile, origin);
+            return;
+        }
+        this.bestEffort.offer(dimension, tile, origin);
+    }
+
+    /** Writes are open: alive, enabled, in a session, and allowed by the server. */
+    boolean writesOpen() {
+        return !this.dead && this.enabled.getAsBoolean() && this.sessionActive.getAsBoolean()
+                && this.serverAllowsWrites.getAsBoolean();
     }
 
     /** Approximate retained bytes for the byte gauge (shallow arrays + overlay runs). */
@@ -980,7 +1377,7 @@ final class XaeroSession {
         return this.acquisition.owedGauge;
     }
 
-    java.util.Set<Long> awaitingRegionsForTest() {
+    java.util.Set<RegionKey> awaitingRegionsForTest() {
         return this.acquisition.awaitingRegions;
     }
 
@@ -989,6 +1386,7 @@ final class XaeroSession {
      *  user turned off; §12.8 deleted the refusal these clears used to hand over
      *  to). @return how many entries were dropped. */
     int clearQueue() {
+        this.bestEffort.clear(); // never reported, never counted as reliable drops
         return this.acquisition.clearQueue();
     }
 
@@ -1000,6 +1398,7 @@ final class XaeroSession {
      *  un-stamps up to a queue's worth (~3k) and re-downloads it — the new map
      *  needs those tiles; ~4 s of re-serves, rare event (recorded §12.6). */
     int clearQueueCollectingReports() {
+        this.bestEffort.clear(); // best-effort tiles never report (§B6)
         return this.acquisition.clearQueueCollectingReports();
     }
 
@@ -1010,8 +1409,12 @@ final class XaeroSession {
     }
 
     boolean hasQueuedForTest(int chunkX, int chunkZ) {
+        return hasQueuedForTest(SURFACE_LAYER, chunkX, chunkZ);
+    }
+
+    boolean hasQueuedForTest(int layer, int chunkX, int chunkZ) {
         synchronized (this.acquisition.queueLock) {
-            return this.acquisition.queue.containsKey(((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL));
+            return this.acquisition.queue.containsKey(new TileKey(layer, ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL)));
         }
     }
 
@@ -1063,7 +1466,38 @@ final class XaeroSession {
             case "dropped_updates" -> this.rebuilds.droppedUpdates.get();
             case "dropped_unloaded" -> this.rebuilds.droppedUnloaded.get();
             case "skipped_settings" -> this.skippedSettings.get();
-            case "cave_layer_waits" -> this.caveLayerWaits.get();
+            case "written_cave" -> this.writtenCave.get();
+            case "best_effort_written" -> this.bestEffort.written.get();
+            case "best_effort_dropped" -> this.bestEffort.dropped();
+            case "best_effort_enqueued" -> this.bestEffort.enqueued.get();
+            case "best_effort_drop_overflow" -> this.bestEffort.droppedOverflow.get();
+            case "best_effort_drop_expired" -> this.bestEffort.droppedExpired.get();
+            case "best_effort_drop_stale" -> this.bestEffort.droppedStale.get();
+            case "best_effort_drop_other" -> this.bestEffort.droppedOther.get();
+            case "best_effort_cleared" -> this.bestEffort.cleared.get();
+            case "best_effort_void" -> this.bestEffort.voidSkipped.get();
+            case "best_effort_skipped_native" -> this.bestEffort.skippedNative.get();
+            case "best_effort_queued" -> this.bestEffort.queued();
+            case "best_effort_batches" -> this.bestEffort.batches.get();
+            case "best_effort_grants" -> this.bestEffort.grants.get();
+            case "best_effort_regrants" -> this.bestEffort.regrants.get();
+            case "best_effort_grant_max" -> this.bestEffort.grantMax;
+            case "best_effort_fruitless_grants" -> this.bestEffort.fruitlessGrants.get();
+            case "best_effort_grant_refused" -> this.bestEffort.grantRefused.get();
+            case "best_effort_refused" -> this.bestEffort.refused.get();
+            case "best_effort_held_pumps" -> this.bestEffort.heldPumps.get();
+            case "best_effort_pending_updates" -> this.rebuilds.bestEffortUpdates.size();
+            case "best_effort_buffer_updates" -> this.rebuilds.bestEffortBufferUpdates.get();
+            case "best_effort_defer_capacity" -> this.bestEffortDefers.capacity.get();
+            case "defer_capacity" -> this.reliableDefers.capacity.get();
+            case "defer_not_resting" -> this.reliableDefers.notResting.get();
+            case "capped_pumps" -> this.cappedPumps.get();
+            case "held_surface" -> this.heldSurfaceGauge;
+            case "held_cave" -> this.heldCaveGauge;
+            case "region_vanished" -> this.loadStats.vanishedReliable.get();
+            case "best_effort_region_vanished" -> this.loadStats.vanishedBestEffort.get();
+            case "load_count" -> this.loadStats.reliable.total;
+            case "best_effort_load_count" -> this.loadStats.bestEffort.total;
             case "xaero_crashed" -> this.xaeroCrashed ? 1 : 0;
             case "pending_updates" -> this.rebuilds.pendingUpdatesGauge;
             default -> throw new IllegalArgumentException(name);
@@ -1077,7 +1511,8 @@ final class XaeroSession {
      *  {@link #reportBackpressure} so the token never contradicts the report. */
     String bpToken() {
         if (!this.backpressureEnabled.getAsBoolean()) return "off";
-        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
+        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()
+                || !this.serverAllowsWrites.getAsBoolean()) {
             return "-1(inactive)";
         }
         if (this.haltWedged) return "-1(wedged)";
@@ -1086,8 +1521,24 @@ final class XaeroSession {
         return this.pumpDrainable ? f : f + "(blocked)"; // §12.8: blocked still governs
     }
 
+    /** The layer Xaero shows, as the last pump read it ({@code -} before the first read). */
+    String layerToken() {
+        var plan = this.layerPlan;
+        return plan == null ? "-" : plan.layerToken();
+    }
+
+    /** surface | layered | full — or why cave writes are off (§B8: the diag says so). */
+    String modeToken() {
+        if (this.h.caveGate == null) return "surface(cave_unbound)";
+        var plan = this.layerPlan;
+        if (plan == null) return "-";
+        if (plan.worldSave()) return plan.mode() + "(cave_off:world_save)";
+        return plan.mode();
+    }
+
     String describe() {
-        String state = this.dead ? "dead" : this.enabled.getAsBoolean() ? "active" : "disabled";
+        String state = this.dead ? "dead" : !this.enabled.getAsBoolean() ? "disabled"
+                : !this.serverAllowsWrites.getAsBoolean() ? "blocked_by_server" : "active";
         long dropped = this.droppedOverflow.get() + this.droppedStale.get()
                 + this.droppedExpired.get();
         return "XaeroMap: state=" + state + ", queued=" + queuedForTest()
@@ -1109,7 +1560,24 @@ final class XaeroSession {
                 + ", dropped_updates=" + this.rebuilds.droppedUpdates.get()
                 + ", dropped_unloaded=" + this.rebuilds.droppedUnloaded.get()
                 + ", skipped_settings=" + this.skippedSettings.get()
-                + ", cave_layer_waits=" + this.caveLayerWaits.get()
+                + ", written_cave=" + this.writtenCave.get()
+                + ", layer=" + layerToken() + ", mode=" + modeToken()
+                + ", " + this.bestEffort.describe()
+                + ", load_ms=p50:" + this.loadStats.reliable.quantileMillis(0.5)
+                + "/p95:" + this.loadStats.reliable.quantileMillis(0.95)
+                + "(n " + this.loadStats.reliable.total + ")"
+                + ", best_effort_load_ms=p50:" + this.loadStats.bestEffort.quantileMillis(0.5)
+                + "/p95:" + this.loadStats.bestEffort.quantileMillis(0.95)
+                + "(n " + this.loadStats.bestEffort.total + ")"
+                + ", region_vanished=" + this.loadStats.vanishedReliable.get()
+                + ", best_effort_region_vanished=" + this.loadStats.vanishedBestEffort.get()
+                + ", to_save=" + this.bestEffort.toSaveGauge + "(max " + this.bestEffort.toSaveMax + ")"
+                + ", to_load=" + this.bestEffort.toLoadGauge + "(max " + this.bestEffort.toLoadMax + ")"
+                + ", rebuild_stalled=" + this.rebuilds.stalledReliableGauge
+                + ", capped_pumps=" + this.cappedPumps.get()
+                + ", defers=" + this.reliableDefers.describe()
+                + ", held=surface:" + this.heldSurfaceGauge + "/cave:" + this.heldCaveGauge
+                + "(" + this.heldRegionsGauge + " regions)"
                 + ", drops_reported=" + this.acquisition.dropsReported.get()
                 + ", owed=" + this.acquisition.owedGauge
                 + ", owed_regions=" + this.acquisition.owedRegionsGauge
@@ -1133,27 +1601,27 @@ final class XaeroSession {
         if (this.dead) {
             // A dead bridge must not pin Xaero's regions/tile chunks (each leaf
             // texture holds a direct buffer) for the rest of the session (review B).
-            if (!this.rebuilds.pendingUpdates.isEmpty()) {
-                this.rebuilds.pendingUpdates.clear();
-                this.rebuilds.pendingUpdatesGauge = 0;
-            }
+            if (!this.rebuilds.idle()) this.rebuilds.clearAll();
             this.undrainablePumps = 0; // no ladder ran: the consecutive chain breaks
             return;
         }
         this.rebuilds.pumpCount++;
         this.lastPumpMillis = nowMillis(); // §12 watchdog: the pump machinery is alive
+        if (this.enabled.getAsBoolean()) publishLayerPlan();
         // §17.1 (review fold): the frame marker is consumed HERE, once per pump — and
         // the interval allowance / frame-scarcity meters re-arm.
         this.rebuilds.frameActiveThisPump = this.rebuilds.frameFlushRan;
         this.rebuilds.frameFlushRan = false;
         this.rebuilds.rebuildSpentSinceLastPumpNanos = 0;
         this.rebuilds.framesSinceLastPump = 0;
-        if (!this.enabled.getAsBoolean()) {
+        if (!this.enabled.getAsBoolean() || !this.serverAllowsWrites.getAsBoolean()) {
+            // (Map-policy plan A4: a server deny takes the local-off branch — queue and debt
+            // dropped unreported, committed rebuilds still flush.)
             clearQueue(); // the live toggle: flipping off drops the backlog immediately
             this.acquisition.clearOwed();  // …and the debt (WI-3): a disabled bridge must not un-stamp anything
             // ...but rebuilds already OWED to committed tile chunks still flush —
             // dropping them would leave written tiles invisible until a reload.
-            if (this.rebuilds.pendingUpdates.isEmpty()) {
+            if (this.rebuilds.idle()) {
                 this.undrainablePumps = 0; // a ladder-skipping exit breaks the chain (§12.7)
                 return;
             }
@@ -1163,7 +1631,8 @@ final class XaeroSession {
             // "drainable again" and clear it — the idle fast-out must not bypass
             // it entirely.
             synchronized (this.acquisition.queueLock) {
-                if (this.acquisition.queue.isEmpty() && this.rebuilds.pendingUpdates.isEmpty()) {
+                if (this.acquisition.queue.isEmpty() && this.rebuilds.idle()
+                        && this.bestEffort.queuedGauge == 0) {
                     if (this.acquisition.owedRegionsGauge == 0) {
                         this.acquisition.regionsWaiting = 0;
                         this.undrainablePumps = 0; // idle: gate flaps here are meaningless
@@ -1186,8 +1655,8 @@ final class XaeroSession {
             synchronized (this.acquisition.queueLock) {
                 // (WI-3: an owed-only pump shares this ~1 Hz throttle — the debt cannot
                 // drain while blocked anyway, and §12.9's contention finding stands.)
-                if (this.acquisition.queue.isEmpty() && this.rebuilds.pendingUpdates.isEmpty()
-                        && this.blockedIdleSkips++ % 20 != 0) {
+                if (this.acquisition.queue.isEmpty() && this.rebuilds.idle()
+                        && this.bestEffort.queuedGauge == 0 && this.blockedIdleSkips++ % 20 != 0) {
                     return;
                 }
             }
@@ -1208,6 +1677,51 @@ final class XaeroSession {
     /** Drain the ladder-collected reports (main thread, no monitors held). */
     void drainDeferredReports() {
         this.acquisition.drainDeferredReports();
+    }
+
+    /**
+     * Publishes what Xaero shows (§B3) — at the TOP of the pump, ahead of every gate, so a
+     * blocked or idle pump still tracks layer switches and the Nether entry. Plain reads of
+     * Xaero's own fields, tagged with Xaero's current dimension (the decode thread compares
+     * it with each column's). A throw is a drifted Xaero: the bridge's failure latch.
+     */
+    void publishLayerPlan() {
+        var g = this.h.caveGate;
+        if (g == null) return;
+        try {
+            if (this.h.crashGate != null) {
+                // The one-tick crash shield holds here too: never touch a crashed Xaero.
+                Object handler = this.h.crashGate.crashHandler().invoke();
+                if (handler != null && this.h.crashGate.getCrashedBy().invoke(handler) != null) return;
+            }
+            Object session = this.h.getCurrentSession.invoke();
+            if (session == null || !(boolean) this.h.sessionIsUsable.invoke(session)) return;
+            Object mp = this.h.getMapProcessor.invoke(session);
+            if (mp == null) return;
+            Object mapWorld = this.h.getMapWorld.invoke(mp);
+            if (mapWorld == null) return;
+            Object dimensionId = this.h.getCurrentDimensionId.invoke(mapWorld);
+            if (dimensionId == null) return;
+            int layer = (int) g.getCurrentCaveLayer().invoke(mp);
+            int depth = (int) this.h.getCaveModeDepthConfig.invoke(mp);
+            boolean ignoreHeightmaps = (boolean) g.isIgnoreHeightmaps().invoke(mapWorld);
+            Object mapDimension = g.getCurrentDimension().invoke(mapWorld);
+            boolean worldSave = mapDimension != null && (boolean) g.isUsingWorldSave().invoke(mapDimension);
+            int caveModeType = -1;
+            boolean caveModeAllowed = false;
+            var be = this.h.bestEffortGate;
+            if (be != null) {
+                if (mapDimension != null) caveModeType = (int) be.getCaveModeType().invoke(mapDimension);
+                caveModeAllowed = (boolean) be.getEffectiveCaveModeAllowed().invoke();
+                this.bestEffort.saveQueueEmpty(this.h.getMapSaveLoad.invoke(mp)); // samples the queues
+            }
+            var plan = new LayerPlan(dimensionId, layer, depth, ignoreHeightmaps, worldSave, caveModeType,
+                    caveModeAllowed);
+            if (!plan.equals(this.layerPlan)) this.layerPlan = plan;
+        } catch (Throwable t) {
+            if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
+            noteFailure(t);
+        }
     }
 
     /**
@@ -1314,11 +1828,17 @@ final class XaeroSession {
                             g.getCurrentDimension().invoke(mapWorld));
                     loadNew = !(l instanceof Boolean b) || b || worldSave;
                     update = !(u instanceof Boolean b) || b || worldSave;
+                    // The native writer's distance input (getWriteDistance): unlimited in
+                    // world-save mode or when unset/negative (§B5 natively-writable skip).
+                    Object w = this.h.writingDistanceOption == null ? null
+                            : g.getEffective().invoke(manager, this.h.writingDistanceOption.invoke());
+                    this.writingDistanceConfig = worldSave || !(w instanceof Integer d) ? -1 : d;
                 } catch (Throwable t) {
                     if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
                     this.settingsGateBroken = true;
                     loadNew = true;
                     update = true;
+                    this.writingDistanceConfig = -1;
                     LSSLogger.warn("Xaero map bridge: reading Xaero's map-writing switches failed —"
                             + " treating both as on for this session", t);
                 }
@@ -1343,15 +1863,8 @@ final class XaeroSession {
             // silently (review); the window already bounds how many regions are open.
             this.rebuilds.tickFlush(mp, dimensionId);
             if (this.dead) return false;
-            if (this.h.getCurrentCaveLayer != null
-                    && (int) this.h.getCurrentCaveLayer.invoke(mp) != SURFACE_LAYER) {
-                // The map is showing a cave layer: our surface-layer writes would be
-                // invisible and still cost regions/loads/saves — wait (entries retained;
-                // the bounded queue is the TTL), owed rebuilds above still ran.
-                this.caveLayerWaits.incrementAndGet();
-                this.acquisition.regionsWaiting = 0;
-                return false;
-            }
+            // No cave-layer wait (§B5): a tile's layer is fixed at extraction and commits to
+            // that layer — a queued band tile whose band is no longer shown is still valid data.
             probeOpenRegions(mp, dimensionId);
             this.heapHolding = heapHalt;
             if (heapHalt) {
@@ -1362,9 +1875,44 @@ final class XaeroSession {
                 this.windowBound = false;
                 return true;
             }
-            drainEntries(mp, saveLoad, world, dimensionId, loadNew, update);
+            long drainStart = System.nanoTime();
+            var reach = nativeReach(dimensionId);
+            drainEntries(mp, saveLoad, world, dimensionId, loadNew, update, reach);
+            if (this.dead) return true;
+            if (this.bestEffort.queuedGauge > 0 || !this.bestEffort.open.isEmpty()) {
+                // §B6: only the budget the reliable drain left (its own commit cap inside).
+                long left = this.pumpNanosBudget - (System.nanoTime() - drainStart);
+                this.bestEffort.drain(mp, saveLoad, world, dimensionId, loadNew, update, reach, Math.max(0, left));
+            }
             return true;
         }
+    }
+
+    /**
+     * The native writer's reach this pump (§B5): it writes only the layer it currently writes
+     * (the layer Xaero shows — the writer follows it after a 300 ms debounce), only within its
+     * write distance — min(WRITING_DISTANCE, 32, render distance), and min(16, that) for a cave
+     * layer — and only chunks whose 8 neighbours are loaded ({@link XaeroTileWriter#nativelyWritable}).
+     * Without the cave bindings or a plan for this dimension, the writer is assumed on the
+     * surface (the pre-cave rule).
+     */
+    NativeReach nativeReach(Object dimensionId) {
+        var plan = this.layerPlan;
+        int layer = this.h.caveGate != null && plan != null && plan.dimension() == dimensionId
+                ? plan.currentLayer() : SURFACE_LAYER;
+        int distance = this.writingDistanceConfig < 0 ? Integer.MAX_VALUE : this.writingDistanceConfig;
+        distance = Math.min(distance, Math.min(NATIVE_MAX_WRITE_DISTANCE, this.renderDistance.getAsInt()));
+        if (layer != SURFACE_LAYER) distance = Math.min(NATIVE_CAVE_WRITE_DISTANCE, distance);
+        PlayerPos player = this.playerProbe.position();
+        if (player != null && player.dimension() != dimensionId) player = null;
+        return new NativeReach(layer, distance, player);
+    }
+
+    /** Cave writes are on for this dimension: the cave bindings resolved and Xaero does not
+     *  write it from the world save (§B5). */
+    boolean caveWritesOn() {
+        var plan = this.layerPlan;
+        return this.h.caveGate != null && (plan == null || !plan.worldSave());
     }
 
     /**
@@ -1373,10 +1921,10 @@ final class XaeroSession {
      * tick, at most a pressure-capped few recolors per call (base
      * {@link #frameMaxRebuilds}; scarce-frame bumps; allowance-bounded). Mirrors the
      * pump ladder's gate envelope exactly down to the dimension equality (a rebuild
-     * must never run under weaker gates than the pump's flush did); the settings and
-     * cave-layer gates sit BELOW the flush in the pump ladder (rebuilds are owed
-     * debt to already-committed tile chunks, not new writes) and are skipped here
-     * for the same reason. Never drains commits, never grants loads, never visits
+     * must never run under weaker gates than the pump's flush did); the settings
+     * gate sits BELOW the flush in the pump ladder (rebuilds are owed debt to
+     * already-committed tile chunks, not new writes) and is skipped here for the
+     * same reason. Never drains commits, never grants loads, never visits
      * regions (tick-side — the 1 s park guard needs only pump cadence), and defers
      * the world-change queue drop to the pump (it returns instead). Shares the
      * pump's containment + death latch.
@@ -1386,11 +1934,11 @@ final class XaeroSession {
     }
 
     /** One queue entry paired with its key for the bucketed drain. */
-    record Pending(Long key, Entry entry, XaeroTileExtractor.PreparedTile tile, Origin origin) {}
+    record Pending(TileKey key, Entry entry, XaeroTileExtractor.PreparedTile tile, Origin origin) {}
 
     /** A region probed this pump whose bucket is awaiting its Xaero load — the
      *  verdict is Xaero's own state, read inside the probe's region monitor. */
-    record WaitingRegion(long regionKey, int tiles, Outcome verdict) {}
+    record WaitingRegion(RegionKey regionKey, int tiles, Outcome verdict) {}
 
     /**
      * The bucketed drain (the region-throughput round, plan §14 as reshaped by the
@@ -1412,6 +1960,12 @@ final class XaeroSession {
     void drainEntries(Object mp, Object saveLoad,
                               Object world, Object dimensionId,
                               boolean loadNew, boolean update) throws Throwable {
+        drainEntries(mp, saveLoad, world, dimensionId, loadNew, update, NativeReach.SURFACE_ANYWHERE);
+    }
+
+    void drainEntries(Object mp, Object saveLoad,
+                              Object world, Object dimensionId,
+                              boolean loadNew, boolean update, NativeReach reach) throws Throwable {
         long generation = this.acquisition.acquisitionGeneration.get();
         long start = System.nanoTime();
 
@@ -1422,11 +1976,13 @@ final class XaeroSession {
                 snapshot.add(new Pending(e.getKey(), e.getValue(), e.getValue().tile, e.getValue().origin));
             }
         }
-        var buckets = new LinkedHashMap<Long, List<Pending>>(); // keeps spiral locality
+        var buckets = new LinkedHashMap<RegionKey, List<Pending>>(); // keeps spiral locality
         for (var pending : snapshot) {
-            long regionKey = regionKeyOf(pending.tile().chunkX(), pending.tile().chunkZ());
+            var regionKey = new RegionKey(pending.tile().layer(),
+                    regionKeyOf(pending.tile().chunkX(), pending.tile().chunkZ()));
             buckets.computeIfAbsent(regionKey, k -> new ArrayList<>()).add(pending);
         }
+        boolean caveWritesOn = caveWritesOn();
 
         var bucketKeys = new ArrayList<>(buckets.keySet());
         var waiting = new ArrayList<WaitingRegion>();
@@ -1436,11 +1992,17 @@ final class XaeroSession {
         int size = bucketKeys.size();
         int startIndex = size == 0 ? 0 : Math.floorMod(this.acquisition.drainRotation++, size);
         boolean capped = false;
+        // §B6 / B-II coupling diag: what this drain RETAINED (any reason) — the best-effort
+        // hold reads the flag; the gauges show the backlog's shape.
+        var held = new HeldTally();
+        int stoppedAt = size;
         bucketLoop:
         for (int n = 0; n < size; n++) {
-            Long regionKey = bucketKeys.get((startIndex + n) % size);
+            RegionKey regionKey = bucketKeys.get((startIndex + n) % size);
             var bucket = buckets.get(regionKey);
+            int index = -1;
             for (var pending : bucket) {
+                index++;
                 if (!pending.origin().active()) {
                     this.acquisition.removeIfCurrent(pending.key(), pending.entry(), pending.tile());
                     pending.origin().close();
@@ -1450,10 +2012,15 @@ final class XaeroSession {
                     // Owed rebuilds at the hard cap (plan §15): commits pause until
                     // the flush drains — the set must never grow without bound.
                     capped = true;
+                    this.cappedPumps.incrementAndGet();
+                    held.add(regionKey, bucket.size() - index);
+                    stoppedAt = n;
                     break bucketLoop;
                 }
                 if (progressed && (commits >= MAX_COMMITS_PER_PUMP
                         || System.nanoTime() - start > this.pumpNanosBudget)) {
+                    held.add(regionKey, bucket.size() - index);
+                    stoppedAt = n;
                     break bucketLoop;
                 }
                 if (pending.entry().dimension != dimensionId) {
@@ -1468,9 +2035,19 @@ final class XaeroSession {
                     progressed = true;
                     continue;
                 }
-                if (this.writer.nativelyWritable(world, pending.tile().chunkX(), pending.tile().chunkZ())) {
+                if (pending.tile().cave() && !caveWritesOn) {
+                    // World-save mode came on after this cave tile was extracted (§B5):
+                    // cave writes are off — dropped, unreported (the native writer owns it).
+                    if (this.acquisition.removeIfCurrent(pending.key(), pending.entry(), pending.tile())) {
+                        pending.origin().close();
+                    }
+                    progressed = true;
+                    continue;
+                }
+                if (this.writer.nativelyWritable(world, pending.tile(), reach)) {
                     // The native writer owns these chunks and rewrites them on its
-                    // clean-flag anyway — never fight it (plan §2.6).
+                    // clean-flag anyway — never fight it (plan §2.6) — but only in the
+                    // layer it writes, within its distance (§B5).
                     if (this.acquisition.removeIfCurrent(pending.key(), pending.entry(), pending.tile())) {
                         pending.origin().close();
                         this.skippedNative.incrementAndGet();
@@ -1483,6 +2060,7 @@ final class XaeroSession {
                     // this bucket waits (entries retained) and the report paces the stream.
                     this.windowWaits.incrementAndGet();
                     windowWaited = true;
+                    held.add(regionKey, bucket.size() - index);
                     continue bucketLoop;
                 }
                 progressed = true;
@@ -1493,6 +2071,7 @@ final class XaeroSession {
                         pending.origin().close();
                         if (this.openRegionCap > 0) admitToWindow(regionKey, 0L);
                         this.written.incrementAndGet();
+                        if (pending.tile().cave()) this.writtenCave.incrementAndGet();
                         this.consecutiveFailures = 0;
                         commits++;
                     }
@@ -1506,13 +2085,15 @@ final class XaeroSession {
                         // deleted §18 header's own indictment; the silent hole
                         // heals by revisit or clearcache).
                         this.deferEvents.incrementAndGet();
+                        held.add(regionKey, 1);
                         if (++pending.entry().ladderReadyDeferrals > this.deferCap
                                 && this.acquisition.removeIfCurrent(pending.key(), pending.entry(), pending.tile())) {
                             this.droppedExpired.incrementAndGet();
                             // WI-3: the silent hole becomes a DEBT — released once the
                             // region (whose tile chunk was busy) is loaded and resting,
                             // never a strike against the stalled resource.
-                            oweExpired(pending.entry().dimension, pending.key(), regionKey, pending.origin());
+                            this.acquisition.oweExpired(pending.entry().dimension, regionKey.layer(),
+                                    pending.key().chunk(), regionKey.region(), pending.origin());
                         }
                     }
                     case DEFERRED -> {
@@ -1525,6 +2106,7 @@ final class XaeroSession {
                         // DESIGNED for it. Foreign-dimension entries still exit
                         // via the per-entry stale filter above each pump.
                         this.deferEvents.incrementAndGet();
+                        held.add(regionKey, bucket.size() - index);
                         continue bucketLoop;
                     }
                     case AWAITING_REQUESTABLE, AWAITING_PARKED, AWAITING_IN_FLIGHT -> {
@@ -1534,6 +2116,7 @@ final class XaeroSession {
                         // feeds the grant phase's memoryless window.
                         this.deferEvents.incrementAndGet();
                         waiting.add(new WaitingRegion(regionKey, bucket.size(), outcome));
+                        held.add(regionKey, bucket.size() - index);
                         continue bucketLoop;
                     }
                     case SKIPPED_SETTINGS -> {
@@ -1558,6 +2141,14 @@ final class XaeroSession {
         // already-open regions do not clear it: a trickle that cannot recede the occupancy
         // is exactly what the window makes, and the short time box would wedge it
         // (re-review; the turnover clause bounds a window that is wide enough).
+        for (int n = stoppedAt + 1; n < size; n++) {
+            RegionKey regionKey = bucketKeys.get((startIndex + n) % size);
+            held.add(regionKey, buckets.get(regionKey).size()); // never reached this pump
+        }
+        this.reliableBacklog = held.entries > 0;
+        this.heldSurfaceGauge = held.surface;
+        this.heldCaveGauge = held.entries - held.surface;
+        this.heldRegionsGauge = held.regions.size();
         boolean turningOver = nowMillis() - this.windowProgressMillis <= BP_PACE_HOLD_MILLIS;
         if (this.windowBound && !windowWaited && turningOver) this.windowReleased = true;
         this.windowBound = windowWaited && turningOver;
@@ -1572,7 +2163,7 @@ final class XaeroSession {
             if (waiting.isEmpty()) {
                 this.acquisition.awaitingRegions = java.util.Set.of();
             } else {
-                var awaiting = new java.util.HashSet<Long>();
+                var awaiting = new java.util.HashSet<RegionKey>();
                 for (var w : waiting) awaiting.add(w.regionKey());
                 this.acquisition.awaitingRegions = awaiting;
             }
@@ -1580,9 +2171,23 @@ final class XaeroSession {
         grantLoads(mp, saveLoad, waiting);
     }
 
+    /** One reliable drain's retained work (B-II coupling diag; main thread). */
+    static final class HeldTally {
+        int entries;
+        int surface;
+        final java.util.Set<RegionKey> regions = new java.util.HashSet<>();
+
+        void add(RegionKey regionKey, int count) {
+            if (count <= 0) return;
+            this.entries += count;
+            if (regionKey.layer() == SURFACE_LAYER) this.surface += count;
+            this.regions.add(regionKey);
+        }
+    }
+
     /** Whether a commit may land in {@code regionKey}: the window is off, already holds
      *  the region, or has a free slot (the region joins on its first COMMITTED). */
-    boolean windowAdmits(long regionKey) {
+    boolean windowAdmits(RegionKey regionKey) {
         return this.openRegionCap <= 0 || this.openRegions.containsKey(regionKey)
                 || this.openRegions.size() < this.openRegionCap;
     }
@@ -1594,7 +2199,7 @@ final class XaeroSession {
      *  always (re)stamps its reservation — also onto a committed region, whose reload is then
      *  in flight and must not be released as parked (re-review); a commit turns a
      *  reservation into a committed slot. */
-    void admitToWindow(long regionKey, long reservedAt) {
+    void admitToWindow(RegionKey regionKey, long reservedAt) {
         Long previous = this.openRegions.get(regionKey);
         if (reservedAt == 0L && previous != null && previous == 0L) return;
         this.openRegions.put(regionKey, reservedAt);
@@ -1616,19 +2221,23 @@ final class XaeroSession {
             return;
         }
         long now = nowMillis();
-        var batch = new ArrayList<java.util.Map.Entry<Long, Long>>(OPEN_REGION_PROBES_PER_PUMP);
+        var batch = new ArrayList<java.util.Map.Entry<RegionKey, Long>>(OPEN_REGION_PROBES_PER_PUMP);
         for (var e : this.openRegions.entrySet()) {
             if (batch.size() >= OPEN_REGION_PROBES_PER_PUMP) break;
             batch.add(java.util.Map.entry(e.getKey(), e.getValue()));
         }
         for (var e : batch) {
-            long key = e.getKey();
-            Object region = this.h.getLeafMapRegion.invoke(mp, SURFACE_LAYER, (int) (key >> 32), (int) key, false);
+            RegionKey key = e.getKey();
+            Object region = this.h.getLeafMapRegion.invoke(mp, key.layer(), (int) (key.region() >> 32),
+                    (int) key.region(), false);
             byte state = -1;
             if (region != null) {
                 synchronized (region) {
                     state = (byte) this.h.getLoadState.invoke(region);
                 }
+                this.loadStats.onObserve(key, region, state, now);
+            } else {
+                this.loadStats.onMissing(key);
             }
             boolean reserved = e.getValue() != 0L && now - e.getValue() < GRANT_RESERVE_MILLIS;
             this.openRegions.remove(key);
@@ -1647,11 +2256,7 @@ final class XaeroSession {
      *  TILE-scoped debt: released once its own tile chunk is ready. */
     // Direct debt seam retained for the owed-set fixture; production transfers an existing origin.
     void oweExpired(Object dimension, long packedChunk, long regionKey) {
-        this.acquisition.oweExpired(dimension, packedChunk, regionKey);
-    }
-
-    void oweExpired(Object dimension, long packedChunk, long regionKey, Origin origin) {
-        this.acquisition.oweExpired(dimension, packedChunk, regionKey, origin);
+        this.acquisition.oweExpired(dimension, SURFACE_LAYER, packedChunk, regionKey);
     }
 
     /**
@@ -1700,7 +2305,7 @@ final class XaeroSession {
         var chosen = candidates.subList(0, Math.min(budget, candidates.size()));
         for (int i = chosen.size() - 1; i >= 0; i--) {
             if (this.dead) return;
-            if (requestRegionLoad(mp, saveLoad, chosen.get(i).regionKey())) {
+            if (requestRegionLoad(mp, saveLoad, chosen.get(i).regionKey(), false)) {
                 this.loadRequests.incrementAndGet();
                 if (this.openRegionCap > 0) admitToWindow(chosen.get(i).regionKey(), Math.max(1L, nowMillis()));
             }
@@ -1726,11 +2331,11 @@ final class XaeroSession {
      * despite its queue-add look — its tail runs a highlight prepare that
      * hard-throws off Minecraft.isSameThread().
      */
-    boolean requestRegionLoad(Object mp, Object saveLoad, long regionKey) {
+    boolean requestRegionLoad(Object mp, Object saveLoad, RegionKey regionKey, boolean bestEffortGrant) {
         try {
-            int regionX = (int) (regionKey >> 32);
-            int regionZ = (int) regionKey;
-            Object region = this.h.getLeafMapRegion.invoke(mp, SURFACE_LAYER,
+            int regionX = (int) (regionKey.region() >> 32);
+            int regionZ = (int) regionKey.region();
+            Object region = this.h.getLeafMapRegion.invoke(mp, regionKey.layer(),
                     regionX, regionZ, true);
             if (region == null) return false;
             synchronized (region) {
@@ -1747,7 +2352,21 @@ final class XaeroSession {
                     return false;
                 }
                 this.h.setBeingWritten.invoke(region, true);
-                this.h.requestLoad.invoke(saveLoad, region, "lss-xaero-bridge");
+                if (bestEffortGrant && this.h.bestEffortGate != null) {
+                    // §B6: no priority — appended behind the reliable path's and Xaero's own
+                    // front-inserted requests (the loader drains toLoad.get(0)). Xaero refuses
+                    // an append while its loader is mid-drain: the region then still reads
+                    // requestable, and the grant is retried on a later pump.
+                    this.h.bestEffortGate.requestLoadWithPriority().invoke(saveLoad, region, "lss-xaero-bridge", false);
+                    if ((boolean) this.h.canRequestReload.invoke(region)) {
+                        if (revived) this.h.setLoadState.invoke(region, (byte) 3);
+                        this.bestEffort.grantRefused.incrementAndGet();
+                        return false;
+                    }
+                } else {
+                    this.h.requestLoad.invoke(saveLoad, region, "lss-xaero-bridge");
+                }
+                this.loadStats.onGrant(regionKey, region, bestEffortGrant, nowMillis());
                 return true;
             }
         } catch (Throwable t) {
@@ -1763,8 +2382,8 @@ final class XaeroSession {
         SKIPPED_SETTINGS, FAILED
     }
 
-    static PendingKey pendingKey(Object dimension, int tileChunkX, int tileChunkZ) {
-        return new PendingKey(dimension, ((long) tileChunkX << 32) | (tileChunkZ & 0xFFFFFFFFL));
+    static PendingKey pendingKey(Object dimension, int layer, int tileChunkX, int tileChunkZ) {
+        return new PendingKey(dimension, layer, ((long) tileChunkX << 32) | (tileChunkZ & 0xFFFFFFFFL));
     }
 
     void noteFailure(Throwable t) {

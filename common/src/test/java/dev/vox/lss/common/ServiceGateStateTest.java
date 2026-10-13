@@ -119,4 +119,61 @@ class ServiceGateStateTest {
         assertEquals(1, snapshot.size(), "the sweep iterates a copy — concurrent sweeps are safe");
         assertTrue(state.deniedSnapshot().isEmpty());
     }
+    // ---- map policy (map-policy plan A3.4): the memo's reason mask ----
+
+    @Test
+    void reasonsMergeAndEachCountsItsOwnTransitions() {
+        assertTrue(state.rememberDenied(uuid, "Steve", 18, 1, ServiceGateState.REASON_MAP_POLICY),
+                "the first policy refusal is a transition");
+        assertFalse(state.rememberDenied(uuid, "Steve", 16, 1, ServiceGateState.REASON_MAP_POLICY),
+                "a re-refusal while refused is not");
+        assertEquals(1, state.mapPolicyRefusedTotal());
+        assertEquals(0, state.permissionDeniedTotal(),
+                "a policy refusal never counts as a permission denial");
+
+        // A permission denial on the same connection MERGES (the latest handshake wins)
+        // and counts a permission transition.
+        state.rememberDenied(uuid, "Steve", 20, 9);
+        assertEquals(1, state.permissionDeniedTotal());
+        assertEquals(1, state.mapPolicyRefusedTotal(), "the policy reason did not re-count");
+        var entry = state.peekDenied(uuid);
+        assertEquals(new ServiceGateState.DeniedHandshake(20, 9, "Steve",
+                ServiceGateState.REASON_PERMISSION | ServiceGateState.REASON_MAP_POLICY), entry,
+                "the memo holds BOTH reasons — a replay waits until every one has cleared");
+        assertTrue(entry.has(ServiceGateState.REASON_PERMISSION)
+                && entry.has(ServiceGateState.REASON_MAP_POLICY));
+    }
+
+    @Test
+    void theDiagCountsSeparateThePermissionAndPolicyEntries() {
+        var other = UUID.randomUUID();
+        state.rememberDenied(uuid, "Steve", 20, 1);
+        state.rememberDenied(other, "Alex", 19, 1, ServiceGateState.REASON_MAP_POLICY);
+        assertEquals(2, state.deniedCount());
+        assertEquals(1, state.deniedCount(ServiceGateState.REASON_PERMISSION),
+                "Gate: denied= must not mix in policy refusals");
+        assertEquals(1, state.deniedCount(ServiceGateState.REASON_MAP_POLICY),
+                "MapPolicy: refused= counts only policy refusals");
+    }
+
+    @Test
+    void thePolicyNoticeLatchIsPerConnectionAndSurvivesRegistration() {
+        assertTrue(state.claimMapPolicyNotice(uuid), "the first refusal of a connection notifies");
+        assertFalse(state.claimMapPolicyNotice(uuid), "never twice on one connection");
+        state.onRegistered(uuid);
+        assertFalse(state.claimMapPolicyNotice(uuid),
+                "a registration (an arm/disarm cycle) must not re-arm the chat line — that is "
+                        + "exactly why it cannot share the denial-log latch");
+        state.onDisconnect(uuid);
+        assertTrue(state.claimMapPolicyNotice(uuid), "a new connection gets its line again");
+        state.clear();
+        assertTrue(state.claimMapPolicyNotice(uuid), "server stop clears it too");
+    }
+
+    @Test
+    void thePermissionOnlyShapeKeepsItsRecordIdentity() {
+        assertEquals(ServiceGateState.REASON_PERMISSION,
+                new ServiceGateState.DeniedHandshake(20, 1, "Steve").reasons(),
+                "every pre-policy deposit is a PERMISSION entry");
+    }
 }

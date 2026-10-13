@@ -30,7 +30,10 @@ public class MapProcessor {
     public BlockStateShortShapeCache shapeCache = new BlockStateShortShapeCache();
     public BlockTintProvider tintProvider = new BlockTintProvider();
     public MapRegionHighlightsPreparer highlightsPreparer = new MapRegionHighlightsPreparer();
+    /** The SURFACE layer's regions (every pre-cave-layer test reads these). */
     public final java.util.Map<Long, MapRegion> regions = new java.util.HashMap<>();
+    /** Cave layers' regions, per layer — each Xaero layer has its own regions (and files). */
+    public final java.util.Map<Integer, java.util.Map<Long, MapRegion>> caveRegions = new java.util.HashMap<>();
     public boolean leafMapRegionReturnsNull;
     /** LoadState for regions getLeafMapRegion auto-creates. FAITHFUL default 0: the
      *  real detection creates fresh regions UNLOADED (panel fold, 2026-09-05 — a
@@ -70,11 +73,14 @@ public class MapProcessor {
                 "processor.getLeafMapRegion layer=" + caveLayer + " " + regX + "," + regZ);
         if (this.leafMapRegionReturnsNull) return null;
         long key = ((long) regX << 32) | (regZ & 0xFFFFFFFFL);
-        var existing = this.regions.get(key);
+        var layerRegions = caveLayer == Integer.MAX_VALUE ? this.regions
+                : this.caveRegions.computeIfAbsent(caveLayer, l -> new java.util.HashMap<>());
+        var existing = layerRegions.get(key);
         if (existing == null && create) {
             existing = new MapRegion();
+            existing.caveLayer = caveLayer;
             existing.loadState = this.createdRegionLoadState;
-            this.regions.put(key, existing);
+            layerRegions.put(key, existing);
         }
         return existing;
     }
@@ -89,8 +95,10 @@ public class MapProcessor {
 
     public MapRegionHighlightsPreparer getMapRegionHighlightsPreparer() { return this.highlightsPreparer; }
 
-    public int getCaveModeDepthConfig() { return 30; }
-    /** The rendered layer (Integer.MAX_VALUE = surface); a cave layer makes the bridge wait. */
+    public int caveModeDepthConfig = 30;
+
+    public int getCaveModeDepthConfig() { return this.caveModeDepthConfig; }
+    /** The layer Xaero shows (Integer.MAX_VALUE = surface, MIN_VALUE = Full, else the band). */
     public int currentCaveLayer = Integer.MAX_VALUE;
 
     public int getCurrentCaveLayer() { return this.currentCaveLayer; }

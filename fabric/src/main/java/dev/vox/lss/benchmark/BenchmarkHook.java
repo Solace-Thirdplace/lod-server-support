@@ -115,7 +115,11 @@ public final class BenchmarkHook {
         Path outputFile = Path.of("soak-results", "client.jsonl");
 
         // Register a no-op consumer so the handshake includes CAPABILITY_VOXEL_COLUMNS.
-        LSSApi.registerColumnConsumer((level, dimension, chunkX, chunkZ, columnData) -> {});
+        // -Dlss.soak.mapOnly=true skips it for the map-only live gate (map-policy plan A4):
+        // a map mod on the client is then the session's only consumer.
+        if (!Boolean.getBoolean("lss.soak.mapOnly")) {
+            LSSApi.registerColumnConsumer((level, dimension, chunkX, chunkZ, columnData) -> {});
+        }
 
         int[] actionAt = {-1};
         String[] actionName = {null};

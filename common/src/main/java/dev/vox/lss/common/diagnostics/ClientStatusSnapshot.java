@@ -11,8 +11,10 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
         int ingestBacklog, long ingestFailures, int rateCap, long rateGatedTicks,
         int xaeroPendingRebuilds, Discovery discovery, Availability xaeroAvailability, ClientDiagnosticSnapshot details, DiagnosticVersions versions, ClientSettingsStatus settings, DhStatusSnapshot dh,
         Availability journeyMapAvailability, int journeyMapPending) {
-    /** 4: settings.mapIngestionEnabled (was xaeroMapEnabled) and the JourneyMap fields. */
-    public static final int SCHEMA_VERSION = 4;
+    /** 4: settings.mapIngestionEnabled (was xaeroMapEnabled) and the JourneyMap fields.
+     *  5: {@link Availability#SERVER_BLOCKED} (the server's map-ingestion request,
+     *  map-policy plan A4). */
+    public static final int SCHEMA_VERSION = 5;
     /** Callers with no JourneyMap observation (JourneyMap UNKNOWN, nothing pending). */
     public ClientStatusSnapshot(int schemaVersion, long lifecycle, long capturedAtMillis,
             boolean connected, boolean negotiated, boolean receptionEnabled, boolean serverEnabled,
@@ -53,7 +55,9 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
                 receivedBytes, queuedColumns, ingestBacklog, ingestFailures, rateCap, rateGatedTicks,
                 xaeroPendingRebuilds, discovery, xaeroAvailability, details, versions, null);
     }
-    public enum Availability { UNKNOWN, ABSENT, UNAVAILABLE, AVAILABLE, DISABLED, FAILED }
+    /** {@code SERVER_BLOCKED}: installed, enabled locally, but the connected server asks
+     *  clients not to write LOD terrain into map mods (map-policy plan A4). */
+    public enum Availability { UNKNOWN, ABSENT, UNAVAILABLE, AVAILABLE, DISABLED, FAILED, SERVER_BLOCKED }
     public enum Discovery { NOT_CONNECTED, DORMANT, AWAITING_NEGOTIATION, SEND_FAILED, PROTOCOL_REJECTED, NEGOTIATED }
     public ClientStatusSnapshot(int schemaVersion, long lifecycle, long capturedAtMillis,
             boolean connected, boolean negotiated, boolean receptionEnabled, boolean serverEnabled,
