@@ -1973,7 +1973,7 @@
         "group": "integrations.map_ingestion",
         "units": "mib",
         "minimum": 16.0,
-        "maximum": 65536.0,
+        "maximum": 1024.0,
         "zeroSentinel": true,
         "description": "Disk cap (MiB) for the terrain kept to fill Xaero cave layers when you switch layer; 0 = no store and no fill on switch.",
         "translationKey": "lss.settings.integrations.map_ingestion.nether_store_mib"
