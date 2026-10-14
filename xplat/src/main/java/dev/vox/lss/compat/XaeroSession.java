@@ -370,8 +370,9 @@ final class XaeroSession {
     /** The local player's position, with the dimension it is in. */
     record PlayerPos(Object dimension, double x, double y, double z) {}
 
-    /** Reads the local player (any thread: the decode thread for the dimension-mismatch band,
-     *  the pump for the native-distance check) — test seam; null = unknown. */
+    /** Reads the local player (any thread: the decode thread for the live cave bound and the
+     *  capture gate, the pump for the native-distance check and the fill) — test seam; null =
+     *  unknown. */
     @FunctionalInterface
     interface PlayerProbe {
         PlayerPos position();
@@ -1185,34 +1186,38 @@ final class XaeroSession {
      * The layers one column writes (§B2/§B3, phase B-I): always the surface, plus the layer
      * Xaero shows — the current band in Layered mode, the Full layer, nothing more on the
      * surface — when the published plan is for THIS column's dimension. On a mismatch (the
-     * Nether-entry burst lands before the pump re-reads Xaero) a ceiling dimension gets
-     * Xaero's default Layered band at (playerY+4)>>4; elsewhere only the surface, since Xaero
-     * shows the surface wherever the player has open sky above. Cave writes are off without
-     * the cave bindings and in world-save mode. Decode thread.
+     * Nether-entry burst lands before the pump re-reads Xaero) only the surface (O3-2): a
+     * guessed band ignored Xaero's roof probe, its cave-mode switches (allowed, Full, off) and
+     * its height clamp, so it wrote layers Xaero would not show (a roof-highway entry, a server
+     * that disallows cave maps). In a ceiling dimension the column is still kept, and
+     * fill-on-switch writes the layer Xaero shows from the store once the plan names the
+     * dimension. Cave writes are off without the cave bindings and in world-save mode. Decode
+     * thread.
      */
     List<XaeroTileExtractor.LayerTarget> planTargets(Object dimension, XaeroTileExtractor.LevelFacts level) {
         var plan = this.layerPlan;
         int depth = plan != null ? plan.depth() : XaeroTileExtractor.DEFAULT_CAVE_DEPTH;
         var surface = XaeroTileExtractor.LayerTarget.surface(depth);
-        if (this.h.caveGate == null || plan != null && plan.worldSave()) return List.of(surface);
-        int maxY = level.topY() - 1;
-        if (plan != null && plan.dimension() == dimension) {
-            int layer = plan.currentLayer();
-            if (layer == SURFACE_LAYER) return List.of(surface);
-            if (layer == XaeroTileExtractor.FULL) return List.of(surface, XaeroTileExtractor.LayerTarget.full(depth));
-            return List.of(surface, XaeroTileExtractor.LayerTarget.band(layer, maxY, depth));
+        if (this.h.caveGate == null || plan == null || plan.worldSave() || plan.dimension() != dimension) {
+            return List.of(surface);
         }
-        if (!level.ceiling()) return List.of(surface);
-        PlayerPos player = this.playerProbe.position();
-        if (player == null || player.dimension() != dimension) return List.of(surface);
-        // CaveStartCalculator.getCaving: y = (int) playerY + 1 (truncation), the surface when y
-        // is outside [minY, maxY], else caveStart = y + 3. (Its roof probe — min with the first
-        // roof block above the player — needs the world, so the default stands here.)
-        int y = (int) player.y() + 1;
-        if (y < level.minY() || y > maxY) return List.of(surface);
-        int caveStart = y + 3;
-        return List.of(surface, XaeroTileExtractor.LayerTarget.band(XaeroTileExtractor.caveLayerOf(caveStart),
-                maxY, depth));
+        int layer = plan.currentLayer();
+        if (layer == SURFACE_LAYER) return List.of(surface);
+        if (layer == XaeroTileExtractor.FULL) return List.of(surface, XaeroTileExtractor.LayerTarget.full(depth));
+        return List.of(surface, XaeroTileExtractor.LayerTarget.band(layer, level.topY() - 1, depth));
+    }
+
+    /**
+     * A tile layer that is neither the surface nor the layer Xaero shows for this dimension: a
+     * map-only leftover (cave-layers plan fold item 12). It still commits when its region takes
+     * it (valid data), but it never reports, never owes and never wins a load grant (O3-1): a
+     * re-serve writes only the surface and the shown layer, so its report or debt would only
+     * re-download the column and cost the position an ingest strike, and its grants would load
+     * regions Xaero saves every 600 ms. Any thread (one volatile read).
+     */
+    boolean leftoverLayer(Object dimension, int layer) {
+        var plan = this.layerPlan;
+        return plan != null && layer != SURFACE_LAYER && layer != plan.currentLayer() && plan.dimension() == dimension;
     }
 
     /**
@@ -2263,7 +2268,8 @@ final class XaeroSession {
                             this.droppedExpired.incrementAndGet();
                             // WI-3: the silent hole becomes a DEBT — released once the
                             // region (whose tile chunk was busy) is loaded and resting,
-                            // never a strike against the stalled resource.
+                            // never a strike against the stalled resource (a leftover
+                            // layer's stays silent: oweExpired refuses it, O3-1).
                             this.acquisition.oweExpired(pending.entry().dimension, regionKey.layer(),
                                     pending.key().chunk(), regionKey.region(), pending.origin());
                         }
@@ -2278,17 +2284,22 @@ final class XaeroSession {
                         // DESIGNED for it. Foreign-dimension entries still exit
                         // via the per-entry stale filter above each pump.
                         this.deferEvents.incrementAndGet();
-                        expireStaleLayer(regionKey, bucket);
+                        expireStaleLayer(regionKey, bucket, dimensionId);
                         continue bucketLoop;
                     }
                     case AWAITING_REQUESTABLE, AWAITING_PARKED, AWAITING_IN_FLIGHT -> {
                         // The whole bucket waits on this region's load: one defer
                         // event per BUCKET per pump, entries stay queued (awaiting-
                         // load is exempt from the deferral cap), and the verdict
-                        // feeds the grant phase's memoryless window.
+                        // feeds the grant phase's memoryless window — except a
+                        // leftover layer's bucket, which never competes for a load
+                        // (fold item 12, O3-1); one whose load is already in flight
+                        // still counts against the in-flight budget.
                         this.deferEvents.incrementAndGet();
-                        waiting.add(new WaitingRegion(regionKey, bucket.size(), outcome));
-                        expireStaleLayer(regionKey, bucket);
+                        boolean leftover = expireStaleLayer(regionKey, bucket, dimensionId);
+                        if (!leftover || outcome == Outcome.AWAITING_IN_FLIGHT) {
+                            waiting.add(new WaitingRegion(regionKey, bucket.size(), outcome));
+                        }
                         continue bucketLoop;
                     }
                     case SKIPPED_SETTINGS -> {
@@ -2341,13 +2352,13 @@ final class XaeroSession {
      * occupancy — and so pace Voxy — for a region that never rests or loads. Its entries expire
      * SILENTLY after {@link #staleLayerPumps} held pumps (no report, no debt: they are map-only
      * leftovers, and fill-on-switch refills that layer from the store when it is shown again).
-     * @return true when the bucket is such a leftover.
+     * An entry of another dimension in the bucket is left to the stale-dimension filter.
+     * @return true when the bucket is such a leftover (the caller grants it no load).
      */
-    private boolean expireStaleLayer(RegionKey regionKey, List<Pending> bucket) {
-        var plan = this.layerPlan;
-        int layer = regionKey.layer();
-        if (plan == null || layer == SURFACE_LAYER || layer == plan.currentLayer()) return false;
+    private boolean expireStaleLayer(RegionKey regionKey, List<Pending> bucket, Object dimensionId) {
+        if (!leftoverLayer(dimensionId, regionKey.layer())) return false;
         for (var pending : bucket) {
+            if (pending.entry().dimension != dimensionId) continue;
             if (++pending.entry().staleLayerPumps > this.staleLayerPumps
                     && this.acquisition.removeIfCurrent(pending.key(), pending.entry(), pending.tile())) {
                 pending.origin().close();
