@@ -559,6 +559,7 @@ final class XaeroSession {
         out.put("written_cave", bridge.writtenCave.get());
         out.put("layer", bridge.layerToken());
         out.put("mode", bridge.modeToken());
+        out.put("server_blocked", !bridge.serverAllowsWrites.getAsBoolean()); // map-policy plan A5
         var stats = bridge.loadStats;
         out.put("load_count", stats.loads.total);
         out.put("load_ms_p50", stats.loads.quantileMillis(0.5));
@@ -1512,10 +1513,11 @@ final class XaeroSession {
      *  {@link #reportBackpressure} so the token never contradicts the report. */
     String bpToken() {
         if (!this.backpressureEnabled.getAsBoolean()) return "off";
-        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()
-                || !this.serverAllowsWrites.getAsBoolean()) {
+        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
             return "-1(inactive)";
         }
+        // Map-policy plan A5: the server's request, not a local state — name it.
+        if (!this.serverAllowsWrites.getAsBoolean()) return "-1(blocked_by_server)";
         if (this.haltWedged) return "-1(wedged)";
         if (nowMillis() - this.lastPumpMillis > this.bpPumpStaleMillis) return "-1(stale)";
         String f = String.format(java.util.Locale.ROOT, "%.2f", this.acquisition.occupancy);

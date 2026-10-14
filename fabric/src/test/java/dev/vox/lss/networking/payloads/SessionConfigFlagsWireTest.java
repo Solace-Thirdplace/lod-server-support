@@ -19,12 +19,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The SessionConfig {@code sessionFlags} append (map-policy plan A2/A5 "wire"): the
  * frames a 0.18.0 client and every legacy echo receive must stay BYTE-IDENTICAL to
  * 0.18.0 — the expected hex below was captured from the pre-change codec
- * (2026-10-13, this line's data version 5023 = {@code 9f27}) before the field
- * existed, not re-derived from the new code. Every 0.10.0–0.18.0 v20 client hard-kicks
- * on a trailing byte, and a 0.19 client's 19 arm would read stray flags as the data
- * version, so the append rides ONLY a version-20 frame to a session that declared
- * {@code CAPABILITY_MAP_POLICY}. The Paper hand encoder pins the same hex
- * ({@code dev.vox.lss.paper.WireParityTest}).
+ * (2026-10-13) before the field existed, not re-derived from the new code. The v20
+ * frames here carry an EXPLICIT data version, 4554 = {@code ca23} (the constructor
+ * argument), so they do not move with the line. Every 0.10.0–0.18.0 v20 client
+ * hard-kicks on a trailing byte, and a 0.19 client's 19 arm would read stray flags as
+ * the data version, so the append rides ONLY a version-20 frame to a session that
+ * declared {@code CAPABILITY_MAP_POLICY}. The Paper hand encoder pins the same LAYOUT
+ * ({@code dev.vox.lss.paper.WireParityTest}); its v20 bytes embed the RUNTIME data
+ * version instead (5023 = {@code 9f27} on this line), and the legacy echoes are
+ * byte-identical across the two.
  */
 class SessionConfigFlagsWireTest {
 

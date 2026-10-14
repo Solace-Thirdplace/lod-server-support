@@ -100,7 +100,10 @@ final class XaeroAcquisitionQueue {
         boolean accepted = false;
         synchronized (this.queueLock) {
             // Teardown may have overtaken extraction; never enqueue into a dead session.
-            if (!origin.active() || this.session.dead || !this.session.enabled.getAsBoolean() || !this.session.sessionActive.getAsBoolean()) {
+            // (Map-policy plan A4: nor into a map the server's request blocked meanwhile —
+            // the pump's clear already ran; queued now, the tile would be written later.)
+            if (!origin.active() || this.session.dead || !this.session.enabled.getAsBoolean() || !this.session.sessionActive.getAsBoolean()
+                    || !this.session.serverAllowsWrites.getAsBoolean()) {
                 origin.close();
                 return;
             }
@@ -547,6 +550,7 @@ final class XaeroAcquisitionQueue {
         synchronized (this.queueLock) {
             if (!origin.active() || this.session.dead || !this.session.enabled.getAsBoolean()
                     || !this.session.sessionActive.getAsBoolean()
+                    || !this.session.serverAllowsWrites.getAsBoolean() // map-policy plan A4
                     || this.queue.containsKey(key) || this.queue.size() >= this.session.maxQueue
                     || this.queuedBytes + bytes > this.session.maxQueueBytes) {
                 origin.close();

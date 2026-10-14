@@ -73,7 +73,9 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
     public enum Reason {
         NOT_CONNECTED, AWAITING_NEGOTIATION, RECEPTION_OFF, NO_CONSUMER,
         SERVER_DISABLED, PROTOCOL_REJECTED, HANDSHAKE_SEND_FAILED, LOCAL_RATE_CAP, DECODE_QUEUE_PENDING, INGEST_QUEUE_PENDING, XAERO_UNAVAILABLE, XAERO_FAILED, XAERO_REBUILDS,
-        JOURNEYMAP_UNAVAILABLE, JOURNEYMAP_FAILED, JOURNEYMAP_PENDING
+        JOURNEYMAP_UNAVAILABLE, JOURNEYMAP_FAILED, JOURNEYMAP_PENDING,
+        /** A map backend reads {@link Availability#SERVER_BLOCKED} (map-policy plan A5). */
+        MAP_INGESTION_SERVER_BLOCKED
     }
     public List<Reason> reasons() {
         var reasons = new ArrayList<Reason>();
@@ -94,6 +96,8 @@ public record ClientStatusSnapshot(int schemaVersion, long lifecycle, long captu
         if (journeyMapAvailability == Availability.UNAVAILABLE) reasons.add(Reason.JOURNEYMAP_UNAVAILABLE);
         if (journeyMapAvailability == Availability.FAILED) reasons.add(Reason.JOURNEYMAP_FAILED);
         if (journeyMapPending > 0) reasons.add(Reason.JOURNEYMAP_PENDING);
+        if (xaeroAvailability == Availability.SERVER_BLOCKED || journeyMapAvailability == Availability.SERVER_BLOCKED)
+            reasons.add(Reason.MAP_INGESTION_SERVER_BLOCKED);
         return List.copyOf(reasons);
     }
     public List<String> lines() {

@@ -72,9 +72,12 @@ public record Tooltip(Condition condition, String whenTrueKey, String whenFalseK
     }
 
     public String resolve(MenuContext ctx) {
-        return nativeOnlyKey != null && !ctx.nativeTerrain() ? nativeOnlyKey
-                : serverBlockedKey != null && ctx.mapIngestionServerBlocked() ? serverBlockedKey
-                : condition.test(ctx) ? whenTrueKey : whenFalseKey;
+        // The server block ranks below the condition's false branch, in the status ladder's
+        // order (ClientStatus.mapAvailability: an integration fact — "not installed" —
+        // outranks a server's request; review fold A5).
+        if (nativeOnlyKey != null && !ctx.nativeTerrain()) return nativeOnlyKey;
+        if (!condition.test(ctx)) return whenFalseKey;
+        return serverBlockedKey != null && ctx.mapIngestionServerBlocked() ? serverBlockedKey : whenTrueKey;
     }
 
     /** Facts that can change after a modern page is registered once at game start (the
