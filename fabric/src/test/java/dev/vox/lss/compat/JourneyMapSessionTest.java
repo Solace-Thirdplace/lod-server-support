@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.vox.lss.api.LSSApi;
 import dev.vox.lss.api.VoxelColumnConsumer;
 import dev.vox.lss.networking.client.LodRequestManager;
 import java.io.File;
@@ -197,6 +198,51 @@ class JourneyMapSessionTest {
     /** Through the consumer-side gate; the gate drops before the (never-reached) encoder. */
     private void gatedOffer(int x, int z) {
         this.session.offerColumn(null, OVERWORLD, x, z, null);
+    }
+
+    /** A delivery's ingest handle: counts the acceptance leases its receipts take, their
+     *  releases, and its re-serve reports (with a handle, a report goes here, never to the
+     *  session's drop reporter). */
+    private static final class Handle implements LSSApi.IngestFailureHandle {
+        int leases;
+        int released;
+        int reports;
+
+        @Override
+        public void report() {
+            this.reports++;
+        }
+
+        @Override
+        public boolean isActive() {
+            return true;
+        }
+
+        @Override
+        public Runnable deferAcceptance() {
+            this.leases++;
+            var done = new java.util.concurrent.atomic.AtomicBoolean();
+            return () -> {
+                if (done.compareAndSet(false, true)) this.released++;
+            };
+        }
+    }
+
+    /** {@link #offer} inside a delivery that carries {@code handle}. */
+    private void offerWith(Handle handle, int x, int z) {
+        LSSApi.withIngestFailureHandle(OVERWORLD, x, z, handle, () -> offer(x, z));
+    }
+
+    /** {@link #gatedOffer} inside a delivery that carries {@code handle}. */
+    private void gatedOfferWith(Handle handle, int x, int z) {
+        LSSApi.withIngestFailureHandle(OVERWORLD, x, z, handle, () -> gatedOffer(x, z));
+    }
+
+    /** Every lease the handle's receipts took was released, and none was reported. */
+    private static void assertClosedUnreported(Handle handle, int receipts, String message) {
+        assertEquals(receipts, handle.leases, "premise: one lease per receipt");
+        assertEquals(receipts, handle.released, message + ": every receipt closes");
+        assertEquals(0, handle.reports, message + ": none is reported for a re-serve");
     }
 
     /** Observe the identity, then wait out the settle window: the next pump may submit. */
@@ -446,6 +492,65 @@ class JourneyMapSessionTest {
         this.session.pump();
         assertEquals(0, counter("replayed"));
         assertTrue(this.reports.isEmpty());
+    }
+
+    @Test
+    void aLateWorldIdReplaysEveryColumnRenderedInTheWindowAtFullThroughput() {
+        dayOnly();
+        // 1 ms per column on JourneyMap's thread, faster than the measured ~1.2 ms: the adaptive
+        // pick fills the 1000 ms box, about 770 columns/s with the gap (the 26.2 restage: 550).
+        this.jm.renderController.result = (type, md) -> {
+            this.clock += 1;
+            return true;
+        };
+        int side = 90; // 8100 columns: about twice the 4096 entries the ring used to hold
+        var offered = new java.util.HashSet<Long>();
+        for (int z = 0; z < side; z++) for (int x = 0; x < side; x++) {
+            offer(x, z);
+            offered.add(JourneyMapSession.packed(x, z));
+        }
+        settle();
+        long firstBatch = this.clock;
+        for (int i = 0; i < 100 && this.session.queuedGauge > 0; i++) {
+            cycle();
+            this.clock += this.session.renderDelayMillis / 2; // the idle gap
+        }
+        assertEquals(side * side, counter("rendered"), "premise: every column rendered");
+        assertEquals(0, counter("requeued"), "premise: measured picks fit the box");
+        assertTrue(this.clock - firstBatch < JourneyMapSession.REPLAY_WINDOW_MILLIS,
+                "premise: all of it inside the window: " + (this.clock - firstBatch) + " ms");
+        assertTrue(this.reports.isEmpty());
+
+        FileHandler.worldDir = new File("jm-test/mp/Server_A_abcdef"); // the late world id
+        this.jm.worldId = "abcdef";
+        this.clock += JourneyMapSession.IDENTITY_POLL_MILLIS;
+        this.session.pump();
+        assertEquals(side * side, counter("replayed"), "every column drawn into the id-less directory");
+        var reported = new java.util.HashSet<Long>();
+        for (long[] r : this.reports) {
+            assertEquals(0, r[0], "the overworld");
+            reported.add(JourneyMapSession.packed((int) r[1], (int) r[2]));
+        }
+        assertEquals(side * side, this.reports.size(), "each once");
+        assertEquals(offered, reported, "no hole is left in the new directory's map");
+    }
+
+    @Test
+    void theReplayRingHoldsTheWindowNotAFixedCount() {
+        offer(0, 0);
+        offer(1, 0);
+        settle();
+        cycle();
+        assertEquals(2, this.session.replay.size());
+        this.clock += JourneyMapSession.REPLAY_WINDOW_MILLIS + 1;
+        offer(5, 5);
+        cycle();
+        assertEquals(1, this.session.replay.size(),
+                "renders older than the window leave as new ones arrive: memory follows the window");
+        assertEquals(new JourneyMapSession.Rendered(OVERWORLD, 5, 5, FileHandler.worldDir, this.clock),
+                this.session.replay.peekFirst());
+        assertEquals(49_152, JourneyMapSession.REPLAY_CAPACITY,
+                "the hard cap: the window at one full pick per default batch cycle, 24 × 2048");
     }
 
     @Test
@@ -1350,12 +1455,16 @@ class JourneyMapSessionTest {
 
     @Test
     void aServerDenyDropsOffersUnreportedAndNeverThrottlesTheStream() {
+        this.session.pump(); // a fresh pump: the report below is a live signal, not a stale one
+        assertEquals(0, this.session.reportBackpressure(), "premise: allowed, an empty queue reports 0");
         this.serverAllows = false;
-        gatedOffer(0, 0);
+        var handle = new Handle();
+        gatedOfferWith(handle, 0, 0);
         assertEquals(0, this.session.queuedGauge);
         assertEquals(0, this.session.encodedColumns.get(), "dropped before encoding");
-        offer(1, 1); // an encode that raced the deny lands in offerEncoded's re-check
+        offerWith(handle, 1, 1); // an encode that raced the deny lands in offerEncoded's re-check
         assertEquals(0, this.session.queuedGauge);
+        assertClosedUnreported(handle, 2, "both offer paths");
         assertEquals(-1, this.session.reportBackpressure(),
                 "a blocked map never paces Voxy's stream");
         assertTrue(this.reports.isEmpty(), "nothing is reported for re-serve");
@@ -1365,13 +1474,36 @@ class JourneyMapSessionTest {
     }
 
     @Test
-    void aMidSessionDenyClearsTheQueueAndAnAllowResumesWriting() {
+    void aDenyWithdrawsEvenTheHeapBeltsFullHaltAndAnAllowRestoresIt() {
+        this.session.memory = new MapMemoryGuard(() -> 0.95, () -> this.clock);
         offer(0, 0);
-        offer(1, 0);
+        settle();
+        this.session.pump();
+        assertTrue(this.session.heapHolding);
+        int halt = LodRequestManager.INGEST_BACKLOG_HALT_SECTIONS;
+        assertEquals(halt, this.session.reportBackpressure(), "premise: allowed, the belt halts the stream");
+        this.serverAllows = false; // the deny lands between pumps: the queue and the hold are still there
+        assertEquals(1, this.session.queuedGauge);
+        assertTrue(this.session.heapHolding);
+        assertEquals(-1, this.session.reportBackpressure(), "a blocked map never throttles Voxy");
+        assertEquals(-1, this.session.consumer.pendingIngestBacklog());
+        this.session.pump();
+        assertEquals(-1, this.session.reportBackpressure(), "nor after the deny's pump");
+        this.serverAllows = true;
+        this.session.pump();
+        assertEquals(halt, this.session.reportBackpressure(), "an allow restores the signal");
+    }
+
+    @Test
+    void aMidSessionDenyClearsTheQueueAndAnAllowResumesWriting() {
+        var handle = new Handle();
+        offerWith(handle, 0, 0);
+        offerWith(handle, 1, 0);
         assertEquals(2, this.session.queuedGauge);
         this.serverAllows = false;
         this.session.pump();
         assertEquals(0, this.session.queuedGauge, "the local-off branch: queue dropped");
+        assertClosedUnreported(handle, 2, "the dropped queue");
         assertTrue(this.reports.isEmpty(), "…unreported");
         assertEquals(0, this.jm.queued.size(), "nothing written while denied");
         this.session.onSessionEnd();
@@ -1386,9 +1518,41 @@ class JourneyMapSessionTest {
     }
 
     @Test
-    void aBatchStillQueuedWhenTheDenyLandsNeverWrites() {
+    void aDenyAndAnAllowInsideOneSessionStopAndResumeWriting() {
         offer(0, 0);
-        offer(1, 0);
+        settle();
+        assertEquals(1, cycle());
+        assertEquals(1, counter("rendered"));
+        this.clock += 500;
+        var handle = new Handle();
+        offerWith(handle, 1, 0);
+        this.serverAllows = false; // the deny frame, mid-session
+        this.session.pump();
+        assertEquals("blocked_by_server", this.session.state());
+        assertEquals(0, this.jm.queued.size(), "nothing is submitted while denied");
+        assertEquals(0, this.session.queuedGauge);
+        assertClosedUnreported(handle, 1, "the column queued at the deny");
+        gatedOffer(2, 0);
+        assertEquals(0, this.session.queuedGauge, "offers drop while denied");
+
+        this.clock += 500;
+        this.serverAllows = true; // the allow frame, on the same connection: no session end
+        offer(3, 0);
+        assertEquals(1, cycle(), "writing resumes at the next pump: the identity was kept, so no new settle");
+        assertEquals(2, counter("rendered"));
+        assertEquals(1, this.registered.size());
+        assertTrue(this.reports.isEmpty());
+        offer(4, 0);
+        this.clock += 500;
+        assertEquals(1, cycle(), "and keeps writing");
+        assertEquals(3, counter("rendered"));
+    }
+
+    @Test
+    void aBatchStillQueuedWhenTheDenyLandsNeverWrites() {
+        var handle = new Handle();
+        offerWith(handle, 0, 0);
+        offerWith(handle, 1, 0);
         settle();
         this.session.pump();
         assertEquals(1, this.jm.queued.size(), "one batch handed to JourneyMap's task thread");
@@ -1396,6 +1560,7 @@ class JourneyMapSessionTest {
         this.serverAllows = false;
         this.session.pump(); // the deny branch abandons the still-QUEUED batch
         assertNull(this.session.inFlight, "the slot is reclaimed at once");
+        assertClosedUnreported(handle, 2, "the abandoned batch");
         this.jm.runQueued();
         assertEquals(0, renders().size(), "the abandoned runnable loses its start CAS: nothing written");
         assertTrue(this.reports.isEmpty(), "a blocked map is owed nothing: receipts close unreported");
@@ -1410,16 +1575,19 @@ class JourneyMapSessionTest {
 
     @Test
     void aBatchTheTaskThreadStartsAfterTheDenyWritesNothing() {
-        offer(0, 0);
-        offer(1, 0);
+        var handle = new Handle();
+        offerWith(handle, 0, 0);
+        offerWith(handle, 1, 0);
         settle();
         this.session.pump();
         assertEquals(1, this.jm.queued.size());
         this.serverAllows = false; // the deny lands; the task thread wins the race to start
         this.jm.runQueued();
         assertEquals(0, renders().size(), "render() checks the gate before touching JourneyMap");
+        assertEquals(0, handle.released, "premise: the receipts close when the pump applies the result");
         this.session.pump();
         assertNull(this.session.inFlight);
+        assertClosedUnreported(handle, 2, "the refused batch");
         assertTrue(this.reports.isEmpty(), "receipts close unreported");
         assertEquals(0, counter("rendered"));
     }
@@ -1742,6 +1910,148 @@ class JourneyMapSessionTest {
         }
     }
 
+    /**
+     * A real worker thread that STARTS the decode-ahead job of one column (it wins the job) and
+     * parks inside that decode until {@link #finish} (bounded). The executor returns only once
+     * the decode is running, so JourneyMap's thread always finds that job started: its wait is
+     * reached deterministically. Every other job stays in {@link #aheadQueue}, never started.
+     */
+    private final class ParkedWorker {
+        static final long PARK_BOUND_SECONDS = 20;
+        final long key;
+        final java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        volatile Thread thread;
+
+        ParkedWorker(int chunkX, int chunkZ) {
+            this.key = JourneyMapSession.packed(chunkX, chunkZ);
+            var queueing = session.decodeAheadExecutor;
+            session.decodeAheadExecutor = job -> {
+                if (((JourneyMapSession.AheadJob) job).key != this.key) {
+                    queueing.execute(job);
+                    return;
+                }
+                var t = new Thread(job, "test-parked-decode");
+                t.setDaemon(true);
+                this.thread = t;
+                t.start();
+                try {
+                    assertTrue(this.started.await(PARK_BOUND_SECONDS, java.util.concurrent.TimeUnit.SECONDS),
+                            "the worker started the decode");
+                } catch (InterruptedException e) {
+                    throw new AssertionError(e);
+                }
+            };
+            var plain = session.decoder;
+            session.decoder = (bytes, level) -> {
+                if (Thread.currentThread() == this.thread) {
+                    this.started.countDown();
+                    try {
+                        this.release.await(PARK_BOUND_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                return plain.decode(bytes, level);
+            };
+        }
+
+        /** Releases the parked decode and waits (bounded) for the worker to end. */
+        void finish() throws InterruptedException {
+            this.release.countDown();
+            var t = this.thread;
+            assertNotNull(t, "premise: the job was handed to the worker");
+            t.join(PARK_BOUND_SECONDS * 1000);
+            assertFalse(t.isAlive(), "the worker ended");
+        }
+    }
+
+    @Test
+    void aStartedDecodeThatOverrunsTheWaitIsDecodedInlineNeverDropped() throws Exception {
+        dayOnly();
+        this.session.decodeAheadWaitMillis = 20;
+        var worker = new ParkedWorker(1, 0); // (0,0)'s east look-ahead
+        try {
+            offer(0, 0);
+            offer(1, 0);
+            settle();
+            cycle(); // JourneyMap's thread waits 20 ms for (1,0), then decodes it itself
+            assertEquals(2, counter("rendered"), "the column whose wait timed out renders and is accepted");
+            assertEquals(0, counter("decode_failures"), "never a decode failure closed unreported");
+            assertEquals(0, counter("column_failures"));
+            assertTrue(this.reports.isEmpty());
+            assertEquals(0, this.session.decodedAhead.get(), "the snapshot came from the inline decode");
+            assertEquals(0, this.session.predecodedColumns.get(), "premise: the worker is still inside its decode");
+            assertEquals(2, this.session.replay.size());
+        } finally {
+            worker.finish();
+        }
+        assertEquals(1, this.session.predecodedColumns.get(), "the worker finished alone");
+        this.session.pump();
+        assertEquals(2, counter("rendered"), "and its late snapshot changed nothing");
+        assertTrue(DataCache.INSTANCE.cache.isEmpty());
+    }
+
+    /**
+     * JourneyMap interrupts its task thread from {@code stopMapping} while that thread waits for
+     * a started decode of (5,5): the interrupt arrives during the decode of (5,5)'s west context
+     * column (4,5), after the column loop's stop check, so it lands in the wait itself. With
+     * {@code next}, a later column (20,20) follows in the batch.
+     */
+    private void interruptedWhileWaitingForAWorker(boolean next) throws Exception {
+        dayOnly();
+        offer(4, 5);
+        settle();
+        cycle(); // (4,5) becomes context for the next batch
+        assertEquals(1, counter("rendered"));
+        this.session.decodeAheadWaitMillis = 60_000; // only the interrupt can end this wait early
+        var worker = new ParkedWorker(5, 5);
+        var parked = this.session.decoder;
+        this.session.decoder = (bytes, level) -> {
+            if (ByteBuffer.wrap(bytes).getInt() == 4) Thread.currentThread().interrupt(); // stopMapping
+            return parked.decode(bytes, level);
+        };
+        offer(5, 5);
+        if (next) offer(20, 20);
+        this.clock += 500;
+        boolean interruptKept;
+        long waitedNanos;
+        try {
+            this.session.pump();
+            long t0 = System.nanoTime();
+            assertEquals(1, this.jm.runQueued());
+            waitedNanos = System.nanoTime() - t0;
+        } finally {
+            interruptKept = Thread.interrupted(); // never leak the flag into the next test
+            worker.finish();
+        }
+        this.session.pump();
+        assertTrue(interruptKept, "the interrupt is kept for JourneyMap's thread");
+        assertTrue(waitedNanos < java.util.concurrent.TimeUnit.SECONDS.toNanos(ParkedWorker.PARK_BOUND_SECONDS),
+                "the wait ended at the interrupt, not when the worker finished");
+        assertEquals(0, this.session.decodedAhead.get(), "the worker's snapshot was never taken");
+        assertEquals(0, counter("decode_failures"));
+        assertTrue(renderedPositions().contains(JourneyMapSession.packed(5, 5)),
+                "the interrupted column finished from an inline decode");
+    }
+
+    @Test
+    void anInterruptDuringTheWaitFinishesTheLastColumnInline() throws Exception {
+        interruptedWhileWaitingForAWorker(false);
+        assertEquals(2, counter("rendered"), "the batch's last column is accepted");
+        assertEquals(0, counter("abandoned"));
+        assertTrue(this.reports.isEmpty(), "never closed unreported, never re-served");
+    }
+
+    @Test
+    void anInterruptDuringTheWaitStopsTheBatchAtTheNextColumn() throws Exception {
+        interruptedWhileWaitingForAWorker(true);
+        assertFalse(renderedPositions().contains(JourneyMapSession.packed(20, 20)), "no column after the stop renders");
+        assertEquals(1, counter("rendered"), "nothing of the stopped batch is accepted");
+        assertEquals(1, counter("abandoned"));
+        assertEquals(2, this.reports.size(), "every column re-serves into the next mapping");
+    }
+
     @Test
     void noDecodeAheadWorkOrReferenceOutlivesTheBatchOrTheSession() {
         dayOnly();
@@ -1805,9 +2115,19 @@ class JourneyMapSessionTest {
             wrapThreads.add(Thread.currentThread());
             return plainWrap.wrap(level, snapshot);
         };
+        // The first render waits (bounded) until a worker has started a decode. Without it a
+        // starved box could start the workers only after JourneyMap's thread had claimed every
+        // job, and decoded_ahead would read 0 (O6 review: a possible flake).
+        var workerDecoded = new java.util.concurrent.CountDownLatch(1);
+        var plainDecode = this.session.decoder;
+        this.session.decoder = (bytes, level) -> {
+            if (Thread.currentThread().getName().contains("-JM-DecodeAhead-")) workerDecoded.countDown();
+            return plainDecode.decode(bytes, level);
+        };
+        boolean[] noWorker = {false};
         this.jm.renderController.result = (type, md) -> {
             try {
-                Thread.sleep(2); // rendering is the slow half: the workers get ahead
+                if (!workerDecoded.await(30, java.util.concurrent.TimeUnit.SECONDS)) noWorker[0] = true;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -1816,6 +2136,7 @@ class JourneyMapSessionTest {
         for (int z = 0; z < 2; z++) for (int x = 0; x < 32; x++) offer(x, z);
         settle();
         cycle();
+        assertFalse(noWorker[0], "a pool worker started a decode within 30 s");
         assertEquals(64, counter("rendered"));
         assertEquals(java.util.Set.of(Thread.currentThread()), wrapThreads, "every wrap on JourneyMap's thread");
         assertTrue(this.session.decodedAhead.get() > 0, "the workers decoded ahead: " + this.session.decodedAhead.get());
@@ -1829,7 +2150,9 @@ class JourneyMapSessionTest {
         JourneyMapSession.instance = this.session;
         var metrics = JourneyMapSession.metrics();
         assertEquals(this.session.decodedAhead.get(), metrics.get("decoded_ahead"));
-        assertTrue((long) metrics.get("predecode_us_per_column") >= 0);
+        long predecoded = this.session.predecodedColumns.get();
+        assertTrue(predecoded > 0);
+        assertEquals(this.session.predecodeNanos.get() / predecoded / 1000, metrics.get("predecode_us_per_column"));
         assertEquals(this.session.batchPick, metrics.get("batch_pick"));
     }
 }
