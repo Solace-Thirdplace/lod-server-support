@@ -19,6 +19,9 @@ import java.util.ArrayList;
  * stored column's extraction identical to the live one's.
  */
 final class XaeroColumnCodec {
+    /** The stored column format (part of the store's registry fingerprint). */
+    static final int FORMAT = 1;
+
     private XaeroColumnCodec() {}
 
     /** The column's stored bytes (decode thread). Throws if a section refuses to serialize —

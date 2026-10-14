@@ -54,6 +54,33 @@ class MapIngestionSettingsTest {
         assertFalse(template().contains("xaero_map"), "new files are written canonical");
     }
 
+    @Test void theNetherStoreKnobLivesInTheSidecarSoOlderVersionsStillReadTheMainFile() {
+        var schema = SettingsSchema.client();
+        var codec = new YamlSettingsCodec<>(schema);
+        String path = "integrations.map_ingestion.nether_store_mib";
+        assertEquals(256, schema.defaults().integrations().mapIngestion().netherStoreMb());
+        assertNull(SettingsSchema.lookup(YamlSettingsCodec.readTree(codec.defaults()), path),
+                "new files carry no key a 0.18.0 client would reject");
+        var off = codec.editSplit(codec.parse(codec.defaults()), Map.of(path, 0));
+        assertNull(SettingsSchema.lookup(YamlSettingsCodec.readTree(off.main()), path));
+        assertEquals(0, ((Number) SettingsSchema.lookup(YamlSettingsCodec.readTree(off.sidecar()), path)).intValue());
+        assertEquals(0, codec.parse(off.main(), off.sidecar()).normalized().integrations().mapIngestion().netherStoreMb(),
+                "0 = no store and no fill on switch");
+        var tiny = codec.parse(off.main(), bytes("integrations:\n  map_ingestion:\n    nether_store_mib: 5\n"));
+        assertEquals(16, tiny.normalized().integrations().mapIngestion().netherStoreMb(), "the 16 MiB floor");
+        // An upgraded (alias-group) file: a main-file save canonicalizes the group and still
+        // keeps the knob out of the main file.
+        var saved = codec.editSplit(codec.parse(bytes(oldFile(true, true)), off.sidecar()), Map.of("lod.receive", false));
+        String main = new String(saved.main(), StandardCharsets.UTF_8);
+        assertTrue(main.contains("map_ingestion:") && !main.contains("xaero_map:"), main);
+        assertFalse(main.contains("nether_store_mib:"), main);
+        assertEquals(0, codec.parse(saved.main(), saved.sidecar()).configured().integrations().mapIngestion().netherStoreMb());
+        var back = codec.editSplit(codec.parse(saved.main(), saved.sidecar()), Map.of(path, 256));
+        assertNull(back.sidecar(), "the default needs no sidecar");
+        assertTrue(schema.aliases().keySet().stream().noneMatch(a -> a.endsWith("nether_store_mib")),
+                "the old group never had it");
+    }
+
     @Test void oldFilesReadUnderTheCanonicalPath() {
         var codec = new YamlSettingsCodec<>(SettingsSchema.client());
         var off = codec.parse(bytes(oldFile(false, true)));

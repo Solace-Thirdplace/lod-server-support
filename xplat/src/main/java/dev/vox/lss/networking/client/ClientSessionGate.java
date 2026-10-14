@@ -139,7 +139,10 @@ final class ClientSessionGate {
     boolean reconcileReception(boolean enabled, boolean hasConsumers) {
         if (!this.joined) return false;
         if (enabled == this.receiveEnabled) {
-            if (!enabled && this.pendingWithdrawal != null && this.pendingWithdrawal.withdrawWants()) {
+            // The withheld empty declaration's retry (this runs every client tick): reception
+            // OFF, or a map-policy park (no manager while reception stays on — review fold A1).
+            if ((!enabled || this.requestManager == null) && this.pendingWithdrawal != null
+                    && this.pendingWithdrawal.withdrawWants()) {
                 this.pendingWithdrawal = null;
             }
             return false;
@@ -576,6 +579,9 @@ final class ClientSessionGate {
             }
             this.parkedGovernor = null;
             this.parkedSubKey = java.util.Optional.empty();
+            // A fresh declaration supersedes a map-policy park's withheld empty batch: it
+            // must never clear the re-armed manager's asks (the reception-ON rule).
+            this.pendingWithdrawal = null;
             this.connectionStartMs = System.currentTimeMillis();
             this.requestManager = this.managerFactory.create(config);
             if (carried != null) {
@@ -585,7 +591,8 @@ final class ClientSessionGate {
                 // unreadable — a readable answer always wins.
                 this.requestManager.adoptCarriedSubKey(carriedSubKey);
             }
-        } else if (!config.enabled() && this.requestManager != null) {
+        } else if (!config.enabled() && (this.requestManager != null
+                || (wasEstablished && previousAccepted != null && previousAccepted.enabled()))) {
             // §2.4 (service-permission-gate-plan.md): a VALID same-or-higher-rung
             // enabled=false arriving on an established session — the server-wide
             // disable push, or a per-player service-gate revocation, which this shape
@@ -598,17 +605,24 @@ final class ClientSessionGate {
             // session and must keep taking the guard's early return above, never this
             // teardown. The governor + world sub-key PARK for a re-enable on this
             // connection (the grant sweep's re-offer).
+            //
+            // No manager but an established ENABLED session (review fold A2): a map-only
+            // session the map policy parked, or reception off — there is no manager to
+            // retire (a map-policy park already parked the governor), but the server's
+            // far-player session still ends here.
             var retiring = this.requestManager;
-            var parked = new TransferRateGovernor();
-            parked.adoptFrom(retiring.governor);
-            this.parkedGovernor = parked;
-            this.parkedSubKey = retiring.worldSubKeySnapshot();
-            this.requestManager = null;
-            teardownManager(retiring);
+            if (retiring != null) {
+                var parked = new TransferRateGovernor();
+                parked.adoptFrom(retiring.governor);
+                this.parkedGovernor = parked;
+                this.parkedSubKey = retiring.worldSubKeySnapshot();
+                this.requestManager = null;
+                teardownManager(retiring);
+            }
             FarPlayerClientSupport.onSessionEnd();
             LSSLogger.info(Brand.shortName() + " disabled by the server mid-session — "
-                    + "LOD session retired (cache saved); it re-arms automatically if the "
-                    + "server re-enables this session.");
+                    + (retiring != null ? "LOD session retired (cache saved)" : "far-player session ended")
+                    + "; it re-arms automatically if the server re-enables this session.");
         } else if (mapPolicyPark && this.requestManager != null) {
             // Map policy (plan A4): the deny flag reached a map-only session mid-session —
             // retire and PARK the manager the §2.4 way (the governor + world sub-key carry
@@ -620,6 +634,11 @@ final class ClientSessionGate {
             this.parkedGovernor = parked;
             this.parkedSubKey = retiring.worldSubKeySnapshot();
             this.requestManager = null;
+            // Withdraw the declared want-set first, like reception OFF (review fold A1):
+            // without it the server keeps serving up to WANT_SET_BUDGET columns this client
+            // now drops. A failed send is retried each tick from reconcileReception.
+            retiring.retireAcquisition();
+            this.pendingWithdrawal = retiring.withdrawWants() ? null : retiring;
             teardownManager(retiring);
             LSSLogger.info("This server asks clients not to add distant terrain to map mods,"
                     + " and a map mod is this client's only LOD consumer — LOD session parked"

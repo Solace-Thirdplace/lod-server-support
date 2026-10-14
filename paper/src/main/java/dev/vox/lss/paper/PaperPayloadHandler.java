@@ -37,8 +37,10 @@ public final class PaperPayloadHandler {
     // ---- S2C Encoding ----
 
     /** Four fields since the server-owned-generation fold into v17: both per-player
-     *  concurrency caps left the wire (server-internal admission limiters only). */
-    public static byte[] encodeSessionConfig(int protocolVersion, boolean enabled,
+     *  concurrency caps left the wire (server-internal admission limiters only).
+     *  Package-private (review fold A12): the capability-less frame is for tests only —
+     *  every production send passes the session's capabilities. */
+    static byte[] encodeSessionConfig(int protocolVersion, boolean enabled,
                                              int lodDistanceChunks,
                                              boolean generationEnabled) {
         // No session capabilities = no flags field: the pre-map-policy frame, byte for byte.

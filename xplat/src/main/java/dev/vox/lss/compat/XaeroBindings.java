@@ -100,6 +100,9 @@ final class XaeroBindings {
      *  for the natively-writable skip (§B5). Null = unbound: the distance counts as
      *  unlimited, i.e. capped by the render distance only, as Xaero's own default. */
     final MethodHandle writingDistanceOption;
+    /** {@code MapSaveLoad.getToSave()} — the save queue's size, sampled for the exporter's
+     *  {@code to_save} (optional group {@code save-queue}; null = unbound, the gauge reads 0). */
+    final MethodHandle getToSave;
     /** {@code MapTile.CURRENT_WORLD_INTERPRETATION_VERSION}, read live (a javac literal
      *  would silently lag a bump); 1 when unreadable. */
     final int interpretationVersion;
@@ -439,6 +442,16 @@ final class XaeroBindings {
                 missing.append("write-distance ");
             }
         }
+        MethodHandle toSave = null;
+        int markSaveQueue = this.beginGroup("save-queue");
+        try {
+            toSave = virtual(lookup, saveLoadClass, "getToSave",
+                    MethodType.methodType(java.util.ArrayList.class), Object.class);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            this.rollbackGroup(markSaveQueue);
+            missing.append("save-queue ");
+        }
+        this.getToSave = toSave;
         this.caveGate = cave;
         this.writingDistanceOption = writingDistance;
         this.crashGate = crash;

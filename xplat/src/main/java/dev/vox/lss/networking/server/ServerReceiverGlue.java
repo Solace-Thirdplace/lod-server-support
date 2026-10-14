@@ -370,7 +370,11 @@ public final class ServerReceiverGlue {
         return serviceGateFor(player, service, false);
     }
 
-    /** @param replay the grant sweep's re-offer: a map-policy refusal sends no chat line */
+    /** @param replay the grant sweep's re-offer: a map-policy refusal sends the chat line
+     *                only when it is a MAP_POLICY transition (review fold A6 — a player
+     *                permission-denied first and granted while the policy is armed lands
+     *                here and has never seen the line; the per-connection latch prevents
+     *                repeats) */
     static PlayerServiceGate serviceGateFor(ServerPlayer player,
                                             RequestProcessingService service,
                                             boolean replay) {
@@ -404,12 +408,13 @@ public final class ServerReceiverGlue {
                 if (service == null) return false; // no service: nothing to remember
                 // Map-policy plan A3.2: the memo deposit (reason MAP_POLICY — a disarm
                 // re-offers through the grant sweep), the once-per-connection chat line
-                // (never from a replay), then the unregistration composite for a live
-                // session re-handshaking while the policy is armed (no-op otherwise).
+                // (from a replay only on a MAP_POLICY transition), then the unregistration
+                // composite for a live session re-handshaking while the policy is armed
+                // (no-op otherwise).
                 boolean transition = service.getServiceGateState().rememberDenied(
                         player.getUUID(), player.getName().getString(), protocolVersion,
                         capabilities, dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY);
-                if (!replay) service.noticeMapPolicyRefusal(player);
+                if (!replay || transition) service.noticeMapPolicyRefusal(player);
                 service.unregisterForServiceGate(player.getUUID());
                 return transition;
             }
@@ -530,7 +535,13 @@ public final class ServerReceiverGlue {
                 // is separate state).
                 service.getV16CompatManager().onNonV16Handshake(player.getUUID());
             }
-            if (!decision.registerPlayer()) {
+            // A QUIET map-policy refusal (a legacy rung WITH the bit — a 0.19 client's
+            // raced discovery rung) must not shed the live CURRENT mark (review fold A8):
+            // its downgrade guard re-announces v20, and until then the session keeps
+            // serving in the CURRENT dialect.
+            boolean quietMapPolicyRefusal = decision.outcome() == HandshakeGate.Outcome.MAP_POLICY_REFUSED
+                    && (payload.capabilities() & LSSConstants.CAPABILITY_MAP_POLICY) != 0;
+            if (!decision.registerPlayer() && !quietMapPolicyRefusal) {
                 // Non-register outcomes still shed a stale CROSS-dialect membership.
                 service.getDialectTracker().onNonRegisterHandshake(
                         player.getUUID(), decision.dialect());

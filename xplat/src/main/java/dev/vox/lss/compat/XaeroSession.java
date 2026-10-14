@@ -119,6 +119,17 @@ final class XaeroSession {
     }
 
     final DeferReasons defers = new DeferReasons();
+    /** Columns whose cave tile was not written: outside the live cave-layer bound. */
+    final AtomicLong caveOutOfRange = new AtomicLong();
+    /** Queued tiles of a layer that is neither shown nor the surface, dropped silently after
+     *  {@link #staleLayerPumps} held pumps. */
+    final AtomicLong droppedStaleLayer = new AtomicLong();
+    /** Held pumps after which a non-current, non-surface entry expires (~30 s at 20 Hz). */
+    int staleLayerPumps = STALE_LAYER_PUMPS;
+    static final int STALE_LAYER_PUMPS = 600;
+    /** Xaero's save queue as the last pump sampled it (optional {@code save-queue} binding). */
+    volatile int toSaveGauge;
+    volatile int toSaveMax;
     /** Drains stopped by the owed-rebuild hard cap. */
     final AtomicLong cappedPumps = new AtomicLong();
 
@@ -481,8 +492,12 @@ final class XaeroSession {
             bridge.serverLodDistance = LSSApi::getServerLodDistance;
             bridge.fillLevelProbe = XaeroSession::productionFillLevel;
             bridge.storeBucketProbe = XaeroSession::productionStoreBucket;
+            bridge.acquisitionActive = () -> LSSClientConfig.CONFIG.receiveServerLods();
+            bridge.singleplayer = XaeroSession::productionSingleplayer;
             bridge.fill.configureFromSystemProperties();
-            if (bridge.fill.enabled) bridge.fill.store = productionColumnStore();
+            bridge.storeMbSetting = XaeroSession::productionStoreMb;
+            bridge.storeFactory = XaeroSession::productionColumnStore;
+            bridge.applyStoreSetting();
             bridge.maybeRegister();
             instance = bridge;
             LSSLogger.info(LSSClientConfig.CONFIG.mapIngestionEnabled()
@@ -559,6 +574,7 @@ final class XaeroSession {
         out.put("written_cave", bridge.writtenCave.get());
         out.put("layer", bridge.layerToken());
         out.put("mode", bridge.modeToken());
+        out.put("server_blocked", !bridge.serverAllowsWrites.getAsBoolean()); // map-policy plan A5
         var stats = bridge.loadStats;
         out.put("load_count", stats.loads.total);
         out.put("load_ms_p50", stats.loads.quantileMillis(0.5));
@@ -567,6 +583,12 @@ final class XaeroSession {
         bridge.defers.putMetrics(out);
         out.put("capped_pumps", bridge.cappedPumps.get());
         out.put("pending_updates", bridge.rebuilds.pendingUpdatesGauge);
+        out.put("buffer_updates", bridge.rebuilds.bufferUpdates.get());
+        out.put("dropped_updates", bridge.rebuilds.droppedUpdates.get());
+        out.put("to_save", bridge.toSaveGauge);
+        out.put("to_save_max", bridge.toSaveMax);
+        out.put("cave_out_of_range", bridge.caveOutOfRange.get());
+        out.put("dropped_stale_layer", bridge.droppedStaleLayer.get());
         out.put("fill_queued", bridge.acquisition.fillQueuedGauge);
         bridge.fill.putMetrics(out);
         out.put("open_regions", bridge.openRegionsGauge);
@@ -684,6 +706,21 @@ final class XaeroSession {
     java.util.function.Supplier<String> storeBucketProbe = () -> null;
     /** {@link #storeBucketProbe} as the last pump read it — what captures key by. */
     volatile String storeBucket;
+    /** LOD acquisition is on (the client's {@code lod.receive}) — fills and captures are
+     *  acquisition work. Test seam. */
+    BooleanSupplier acquisitionActive = () -> true;
+    /** An integrated (singleplayer) server is running: Xaero may write from the world save.
+     *  Test seam. */
+    BooleanSupplier singleplayer = () -> false;
+    /** {@code integrations.map_ingestion.nether_store_mib} (MiB; 0 = no store and no fill on
+     *  switch), re-read every pump so /lss reload applies it. Test seam. */
+    java.util.function.IntSupplier storeMbSetting = () -> 0;
+    /** Builds THE column store, once per bridge (production registers it as a column-cache
+     *  tenant). Null = the store is not settings-managed: bare sessions and tests assign
+     *  {@code fill.store} directly. */
+    java.util.function.LongFunction<XaeroColumnStore> storeFactory;
+    private XaeroColumnStore columnStore;
+    private int appliedStoreMb = -1;
     /** Xaero's WRITING_DISTANCE as the last ladder read it (-1 or unbound = unlimited). Main thread. */
     int writingDistanceConfig = -1;
     // §12 backpressure state. The drainable latch is DERIVED, never enumerated:
@@ -753,7 +790,7 @@ final class XaeroSession {
      *  constructor (Tier 1 must not read the test JVM's heap); production arms it. */
     MapMemoryGuard memory = MapMemoryGuard.NEVER;
     /** The last pump held all writes for the heap belt (the report's pacing hold). */
-    boolean heapHolding;
+    volatile boolean heapHolding; // read by the fill worker too
     final AtomicLong heapHolds = new AtomicLong();
 
     /**
@@ -816,7 +853,9 @@ final class XaeroSession {
 
     /** Acquisition OFF retains the native world: committed texture rebuilds still run. */
     void onAcquisitionEnd() {
-        this.fill.cancel(this.fill.job); // its tiles would be refused anyway (the generation moved)
+        // Receive OFF: no fill while acquisition is off (the fill gate's acquisition term keeps
+        // a new job from starting; coverage stays — the session goes on).
+        this.fill.cancel(this.fill.job);
         this.acquisition.retireAcquisitionWork();
         this.acquisition.discardDeferredReports(); // main thread only; no native-world disconnect here
     }
@@ -1161,9 +1200,36 @@ final class XaeroSession {
         if (!level.ceiling()) return List.of(surface);
         PlayerPos player = this.playerProbe.position();
         if (player == null || player.dimension() != dimension) return List.of(surface);
-        int caveStart = Math.max(level.minY(), Math.min(maxY, (int) Math.floor(player.y()) + 4));
+        // CaveStartCalculator.getCaving: y = (int) playerY + 1 (truncation), the surface when y
+        // is outside [minY, maxY], else caveStart = y + 3. (Its roof probe — min with the first
+        // roof block above the player — needs the world, so the default stands here.)
+        int y = (int) player.y() + 1;
+        if (y < level.minY() || y > maxY) return List.of(surface);
+        int caveStart = y + 3;
         return List.of(surface, XaeroTileExtractor.LayerTarget.band(XaeroTileExtractor.caveLayerOf(caveStart),
                 maxY, depth));
+    }
+
+    /**
+     * {@link #planTargets(Object, XaeroTileExtractor.LevelFacts)} bounded by distance: a cave
+     * layer (band or Full) is written only within min(the server's LOD distance, the fill
+     * radius cap) chunks of the player — a Chebyshev square, the fill's bound — in EVERY
+     * dimension; the surface stays unbounded. Xaero's auto cave mode switches on under any roof,
+     * so an indoor Overworld player would otherwise double the map writes (and the region files)
+     * across the whole LOD radius. A player of unknown position skips the bound.
+     */
+    List<XaeroTileExtractor.LayerTarget> planTargets(Object dimension, int chunkX, int chunkZ,
+                                                     XaeroTileExtractor.LevelFacts level) {
+        var targets = planTargets(dimension, level);
+        if (targets.size() < 2) return targets;
+        PlayerPos player = this.playerProbe.position();
+        if (player == null || player.dimension() != dimension) return targets;
+        int radius = this.fill.fillRadius();
+        int px = ((int) Math.floor(player.x())) >> 4;
+        int pz = ((int) Math.floor(player.z())) >> 4;
+        if (Math.abs(chunkX - px) <= radius && Math.abs(chunkZ - pz) <= radius) return targets;
+        this.caveOutOfRange.incrementAndGet();
+        return List.of(targets.get(0));
     }
 
     /** Decode-thread entry: extract + enqueue (latest-wins, bounded, oldest drops). */
@@ -1191,7 +1257,7 @@ final class XaeroSession {
                 this.skippedSettings.incrementAndGet();
                 return;
             }
-            var targets = planTargets(dimension, level);
+            var targets = planTargets(dimension, chunkX, chunkZ, level);
             var held = new ArrayList<Origin>(targets.size());
             for (var target : targets) {
                 held.add(new Origin(receipt, true));
@@ -1261,9 +1327,12 @@ final class XaeroSession {
      *  column of the dimension just left would reopen that store). */
     void captureForFill(Object dimension, int chunkX, int chunkZ, XaeroTileExtractor.LevelFacts level,
                         VoxelColumnData columnData, Object clientLevel) {
-        if (this.h.caveGate == null || this.fill.store == null) return;
+        if (this.h.caveGate == null || this.fill.store == null || !this.acquisitionActive.getAsBoolean()) return;
         var plan = this.layerPlan;
         if (plan != null && plan.dimension() == dimension && plan.worldSave()) return;
+        // Singleplayer can be world-save mode (no cave writes, nothing to keep): unknown until
+        // the plan for this dimension is read, so nothing is kept before it.
+        if ((plan == null || plan.dimension() != dimension) && this.singleplayer.getAsBoolean()) return;
         PlayerPos player = this.playerProbe.position();
         if (player == null || player.dimension() != dimension) return;
         var fillLevel = clientLevel != null ? productionFillLevel(clientLevel) : this.fillLevelProbe.get();
@@ -1271,12 +1340,45 @@ final class XaeroSession {
         this.fill.capture(fillLevel, this.storeBucket, dimension, chunkX, chunkZ, columnData);
     }
 
+    /** The store setting, every pump (main thread): a new value re-caps the store; 0 detaches
+     *  it and deletes its files; the {@code -Dlss.xaero.bandFill=false} kill switch detaches
+     *  it and keeps them. */
+    void applyStoreSetting() {
+        if (this.storeFactory == null) return;
+        int mb = Math.max(0, this.storeMbSetting.getAsInt());
+        int effective = this.fill.enabled ? mb : 0;
+        if (effective == this.appliedStoreMb) return;
+        this.appliedStoreMb = effective;
+        if (effective == 0) {
+            this.fill.onWorldChange(); // the job, coverage and stale set named the store
+            this.fill.store = null;
+            if (this.fill.enabled) { // the user's 0, not the kill switch: give the disk back
+                if (this.columnStore == null) {
+                    this.columnStore = this.storeFactory.apply(XaeroColumnStore.DEFAULT_CAP_BYTES);
+                }
+                this.columnStore.purgeAll();
+            } else if (this.columnStore != null) {
+                this.columnStore.closeActive();
+            }
+            return;
+        }
+        long cap = (long) Math.max(16, effective) << 20;
+        if (this.columnStore == null) {
+            this.columnStore = this.storeFactory.apply(cap);
+        } else {
+            this.columnStore.setCapBytes(cap);
+            this.columnStore.resetSession(); // a settings change retries a write-failed store
+        }
+        this.fill.store = this.columnStore;
+    }
+
     /** The fill trigger, every pump (main thread). */
     void tickFill() {
         if (this.fill.store == null) return;
         this.storeBucket = this.storeBucketProbe.get();
         this.fill.tick(this.layerPlan, this.fillLevelProbe.get(),
-                writesOpen() && this.h.caveGate != null, this.storeBucket);
+                writesOpen() && this.h.caveGate != null && !this.settingsWritesOff
+                        && this.acquisitionActive.getAsBoolean(), this.storeBucket);
     }
 
     /** Writes are open: alive, enabled, in a session, and allowed by the server. */
@@ -1288,7 +1390,8 @@ final class XaeroSession {
     /** The fill worker may offer: writes are open, the heap belt is not holding, and the
      *  reliable queue is short (live arrivals keep priority). */
     boolean fillRoom() {
-        return writesOpen() && !this.heapHolding && this.acquisition.queuedGauge < this.fill.queueHigh;
+        return writesOpen() && !this.heapHolding && !this.settingsWritesOff
+                && this.acquisition.queuedGauge < this.fill.queueHigh;
     }
 
     /** One band-fill tile into the reliable queue, lease-free (any thread). */
@@ -1328,17 +1431,44 @@ final class XaeroSession {
      *  order, and the dimension's heights. A different value discards a store. */
     static long registryFingerprint(net.minecraft.core.RegistryAccess registries, XaeroTileExtractor.LevelFacts facts) {
         long h = 0xcbf29ce484222325L;
-        h = (h ^ net.minecraft.world.level.block.Block.BLOCK_STATE_REGISTRY.size()) * 0x100000001b3L;
+        // The stored format: the store's segment version and the column codec's.
+        h = mix(h, XaeroColumnStore.VERSION);
+        h = mix(h, XaeroColumnCodec.FORMAT);
+        h = mix(h, net.minecraft.SharedConstants.getCurrentVersion().getDataVersion().getVersion());
+        // Block-state ids: every block's key and state count, in id order (a mod set that keeps
+        // the same total but reorders or swaps blocks changes this).
+        var blocks = net.minecraft.core.registries.BuiltInRegistries.BLOCK;
+        for (int id = 0; id < blocks.size(); id++) {
+            var block = blocks.byId(id);
+            if (block == null) {
+                h = mix(h, 0);
+                continue;
+            }
+            var key = blocks.getKey(block);
+            h = mix(h, key == null ? 0 : key.toString().hashCode());
+            h = mix(h, block.getStateDefinition().getPossibleStates().size());
+        }
+        h = mix(h, net.minecraft.world.level.block.Block.BLOCK_STATE_REGISTRY.size());
+        // Biome ids: this connection's synced registry, id → key.
         // LINE FLAVOR (1.21.1): registryOrThrow (26.x lookupOrThrow returns the Registry).
         var biomes = registries.registryOrThrow(net.minecraft.core.registries.Registries.BIOME);
         for (int id = 0; id < biomes.size(); id++) {
             var biome = biomes.byId(id);
             var key = biome == null ? null : biomes.getKey(biome);
-            h = (h ^ (key == null ? 0 : key.toString().hashCode())) * 0x100000001b3L;
+            h = mix(h, key == null ? 0 : key.toString().hashCode());
         }
-        h = (h ^ facts.minY()) * 0x100000001b3L;
-        h = (h ^ facts.topY()) * 0x100000001b3L;
-        return (h ^ facts.logicalHeight()) * 0x100000001b3L;
+        h = mix(h, facts.minY());
+        h = mix(h, facts.topY());
+        return mix(h, facts.logicalHeight());
+    }
+
+    private static long mix(long h, int value) {
+        return (h ^ value) * 0x100000001b3L;
+    }
+
+    static boolean productionSingleplayer() {
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        return mc != null && mc.hasSingleplayerServer();
     }
 
     /** This connection's column-cache bucket (main thread). */
@@ -1347,12 +1477,19 @@ final class XaeroSession {
         return manager == null ? null : manager.cacheBucket();
     }
 
+    /** {@code -Dlss.xaero.bandFill.storeMB}: a dev override of the client setting. */
+    private static final Integer STORE_MB_OVERRIDE = Integer.getInteger("lss.xaero.bandFill.storeMB");
+
+    /** The store cap in MiB: the dev override, else {@code integrations.map_ingestion.nether_store_mib}. */
+    static int productionStoreMb() {
+        return STORE_MB_OVERRIDE != null ? STORE_MB_OVERRIDE : LSSClientConfig.CONFIG.mapIngestionNetherStoreMb();
+    }
+
     /** The production store: inside the column cache's buckets, closed around every clear. */
-    static XaeroColumnStore productionColumnStore() {
-        long capMb = Math.max(16, Long.getLong("lss.xaero.bandFill.storeMB", XaeroColumnStore.DEFAULT_CAP_BYTES >> 20));
+    static XaeroColumnStore productionColumnStore(long capBytes) {
         var codec = dev.vox.lss.networking.payloads.ZstdWireSupport.codecOrNull();
         var store = new XaeroColumnStore(dev.vox.lss.networking.client.ColumnCacheStore::bucketDir,
-                dev.vox.lss.networking.client.ColumnCacheStore::cacheRootPath, codec, capMb << 20);
+                dev.vox.lss.networking.client.ColumnCacheStore::cacheRootPath, codec, capBytes);
         dev.vox.lss.networking.client.ColumnCacheStore.addBucketTenant(
                 new dev.vox.lss.networking.client.ColumnCacheStore.BucketTenant() {
                     @Override
@@ -1494,6 +1631,12 @@ final class XaeroSession {
             case "defer_not_resting" -> this.defers.notResting.get();
             case "defer_capacity" -> this.defers.capacity.get();
             case "capped_pumps" -> this.cappedPumps.get();
+            case "cave_out_of_range" -> this.caveOutOfRange.get();
+            case "dropped_stale_layer" -> this.droppedStaleLayer.get();
+            case "fill_rearms" -> this.fill.rearms.get();
+            case "fill_moved_passes" -> this.fill.movedPasses.get();
+            case "fill_bad_columns" -> this.fill.badColumns.get();
+            case "store_corrupt" -> this.fill.store == null ? 0 : this.fill.store.corrupt.get();
             case "fill_queued" -> this.acquisition.fillQueuedGauge;
             case "fill_started" -> this.fill.started.get();
             case "fill_completed" -> this.fill.completed.get();
@@ -1516,10 +1659,11 @@ final class XaeroSession {
      *  {@link #reportBackpressure} so the token never contradicts the report. */
     String bpToken() {
         if (!this.backpressureEnabled.getAsBoolean()) return "off";
-        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()
-                || !this.serverAllowsWrites.getAsBoolean()) {
+        if (this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
             return "-1(inactive)";
         }
+        // Map-policy plan A5: the server's request, not a local state — name it.
+        if (!this.serverAllowsWrites.getAsBoolean()) return "-1(blocked_by_server)";
         if (this.haltWedged) return "-1(wedged)";
         if (nowMillis() - this.lastPumpMillis > this.bpPumpStaleMillis) return "-1(stale)";
         String f = String.format(java.util.Locale.ROOT, "%.2f", this.acquisition.occupancy);
@@ -1567,12 +1711,6 @@ final class XaeroSession {
                 + ", skipped_settings=" + this.skippedSettings.get()
                 + ", written_cave=" + this.writtenCave.get()
                 + ", layer=" + layerToken() + ", mode=" + modeToken()
-                + ", load_ms=p50:" + this.loadStats.loads.quantileMillis(0.5)
-                + "/p95:" + this.loadStats.loads.quantileMillis(0.95) + "(n " + this.loadStats.loads.total + ")"
-                + ", region_vanished=" + this.loadStats.vanished.get()
-                + ", defers=" + this.defers.describe()
-                + ", capped_pumps=" + this.cappedPumps.get()
-                + ", fill_queued=" + this.acquisition.fillQueuedGauge
                 + ", " + this.fill.describe()
                 + ", drops_reported=" + this.acquisition.dropsReported.get()
                 + ", owed=" + this.acquisition.owedGauge
@@ -1608,6 +1746,7 @@ final class XaeroSession {
         this.rebuilds.pumpCount++;
         this.lastPumpMillis = nowMillis(); // §12 watchdog: the pump machinery is alive
         if (this.enabled.getAsBoolean()) publishLayerPlan();
+        applyStoreSetting();
         tickFill();
         // §17.1 (review fold): the frame marker is consumed HERE, once per pump — and
         // the interval allowance / frame-scarcity meters re-arm.
@@ -1709,6 +1848,12 @@ final class XaeroSession {
             boolean worldSave = mapDimension != null && (boolean) g.isUsingWorldSave().invoke(mapDimension);
             var plan = new LayerPlan(dimensionId, layer, depth, ignoreHeightmaps, worldSave);
             if (!plan.equals(this.layerPlan)) this.layerPlan = plan;
+            if (this.h.getToSave != null) {
+                // Xaero reads this list unsynchronized too; a size is all the exporter needs.
+                int toSave = ((java.util.List<?>) this.h.getToSave.invoke(this.h.getMapSaveLoad.invoke(mp))).size();
+                this.toSaveGauge = toSave;
+                if (toSave > this.toSaveMax) this.toSaveMax = toSave;
+            }
         } catch (Throwable t) {
             if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
             noteFailure(t);
@@ -1786,6 +1931,7 @@ final class XaeroSession {
                 // that world never re-declares them.
                 this.droppedStale.addAndGet(clearQueueCollectingReports());
                 this.acquisition.clearOwedCollectingReports(); // WI-3: the old world's debts are reported like its tiles
+                this.fill.onWorldChange(); // its coverage and job named the old world
             }
             this.lastWorldId = worldId;
             Object dimensionId;
@@ -1877,7 +2023,11 @@ final class XaeroSession {
      * write distance — min(WRITING_DISTANCE, 32, render distance), and min(16, that) for a cave
      * layer — and only chunks whose 8 neighbours are loaded ({@link XaeroTileWriter#nativelyWritable}).
      * Without the cave bindings or a plan for this dimension, the writer is assumed on the
-     * surface (the pre-cave rule).
+     * surface (the pre-cave rule). Two native cases this does not model (writeMap): with the
+     * map screen open a cave layer is NOT capped at 16 (the bridge then writes tiles 17..32 the
+     * native writer also writes — harmless duplicates), and while a layer switch is in progress
+     * (its caveStart differs from the one last written) the native reach drops to 4 chunks for
+     * that sweep (tiles 5..16 the bridge skipped are written by the native writer's next sweep).
      */
     NativeReach nativeReach(Object dimensionId) {
         var plan = this.layerPlan;
@@ -2086,6 +2236,7 @@ final class XaeroSession {
                         // DESIGNED for it. Foreign-dimension entries still exit
                         // via the per-entry stale filter above each pump.
                         this.deferEvents.incrementAndGet();
+                        expireStaleLayer(regionKey, bucket);
                         continue bucketLoop;
                     }
                     case AWAITING_REQUESTABLE, AWAITING_PARKED, AWAITING_IN_FLIGHT -> {
@@ -2095,6 +2246,7 @@ final class XaeroSession {
                         // feeds the grant phase's memoryless window.
                         this.deferEvents.incrementAndGet();
                         waiting.add(new WaitingRegion(regionKey, bucket.size(), outcome));
+                        expireStaleLayer(regionKey, bucket);
                         continue bucketLoop;
                     }
                     case SKIPPED_SETTINGS -> {
@@ -2139,6 +2291,28 @@ final class XaeroSession {
             }
         }
         grantLoads(mp, saveLoad, waiting);
+    }
+
+    /**
+     * A held bucket of a layer that is neither the one Xaero shows nor the surface (tiles queued
+     * before a switch): exempt from the deferral cap like every region-scoped wait, it could pin
+     * occupancy — and so pace Voxy — for a region that never rests or loads. Its entries expire
+     * SILENTLY after {@link #staleLayerPumps} held pumps (no report, no debt: they are map-only
+     * leftovers, and fill-on-switch refills that layer from the store when it is shown again).
+     * @return true when the bucket is such a leftover.
+     */
+    private boolean expireStaleLayer(RegionKey regionKey, List<Pending> bucket) {
+        var plan = this.layerPlan;
+        int layer = regionKey.layer();
+        if (plan == null || layer == SURFACE_LAYER || layer == plan.currentLayer()) return false;
+        for (var pending : bucket) {
+            if (++pending.entry().staleLayerPumps > this.staleLayerPumps
+                    && this.acquisition.removeIfCurrent(pending.key(), pending.entry(), pending.tile())) {
+                pending.origin().close();
+                this.droppedStaleLayer.incrementAndGet();
+            }
+        }
+        return true;
     }
 
     /** Whether a commit may land in {@code regionKey}: the window is off, already holds

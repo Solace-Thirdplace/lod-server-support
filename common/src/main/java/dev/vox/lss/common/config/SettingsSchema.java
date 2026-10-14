@@ -50,6 +50,7 @@ public final class SettingsSchema<T> {
                 // LSS still wins on every server that offers it; the sidecar stores only "lss".
                 case "lod.source" -> "distant_horizons";
                 case "lod.dh.sync_on_load", "lod.dh.real_time_updates", "lod.voxy_border_fill" -> true;
+                case "integrations.map_ingestion.nether_store_mib" -> 256;
                 default -> null;
             };
             if (raw==null && spec.path().equals("lod.distance.by_world")) raw=Map.of();
@@ -63,6 +64,7 @@ public final class SettingsSchema<T> {
                 case "lod.dh.sync_on_load" -> "Check saved DH terrain timestamps when loading it, if the server permits synchronization.";
                 case "lod.dh.real_time_updates" -> "Receive server-pushed DH terrain changes when allowed; no periodic polling.";
                 case "lod.voxy_border_fill" -> "Fill Voxy's missing vanilla border chunks while a native or DH terrain session is active.";
+                case "integrations.map_ingestion.nether_store_mib" -> "Disk cap (MiB) for the terrain kept to fill Xaero cave layers when you switch layer; 0 = no store and no fill on switch.";
                 default -> "";
             };
             if (inline.isEmpty()) inline=inlineComment(resource("server"),spec.path());
@@ -73,7 +75,9 @@ public final class SettingsSchema<T> {
         defaults=Collections.unmodifiableMap(defs); descriptors=Collections.unmodifiableMap(descs);
         var leafAliases=new LinkedHashMap<String,String>();
         if (client) CLIENT_ALIAS_GROUPS.forEach((alias,canonical)->{
-            for (String path:descs.keySet()) if (path.startsWith(canonical+".")) leafAliases.put(alias+path.substring(canonical.length()),path);
+            // Sidecar keys postdate the rename: the old group never carried them.
+            for (String path:descs.keySet()) if (path.startsWith(canonical+".") && !YamlSettingsCodec.SIDECAR_PATHS.contains(path))
+                leafAliases.put(alias+path.substring(canonical.length()),path);
         });
         aliases=Collections.unmodifiableMap(leafAliases);
     }
@@ -291,6 +295,7 @@ public final class SettingsSchema<T> {
         if(p.equals("far_players.distance.max_blocks"))return new double[]{client?0:128,16384,0};
         if(p.startsWith("far_players.")&&p.endsWith("blocks"))return new double[]{0,16384,0};
         if(p.equals("lod.download.max_columns_per_second"))return new double[]{10,100000,1};
+        if(p.equals("integrations.map_ingestion.nether_store_mib"))return new double[]{16,65536,1};
         return null;
     }
 }

@@ -92,9 +92,15 @@ public class PaperRequestProcessingService {
 
     /** The once-per-CONNECTION chat line to a refused player (map-policy plan A3.3, the
      *  xplat twin): claims the gate state's own latch, contained send. Pump thread — the
-     *  handshake's refusal hook marshals here; never called from a grant-sweep replay. */
+     *  handshake's refusal hook marshals here (a grant-sweep replay only on a MAP_POLICY
+     *  transition, review fold A6). Review fold A7: the claim is tied to the CONNECTION
+     *  (the player instance), and a player the player list no longer holds — quit before
+     *  this marshaled task drained, or replaced by a rejoin — is skipped before claiming:
+     *  the quit's cleanup already ran, so a claim now would leak. */
     public void noticeMapPolicyRefusal(ServerPlayer player) {
-        if (!this.serviceGateState.claimMapPolicyNotice(player.getUUID())) return;
+        var playerList = this.server == null ? null : this.server.getPlayerList();
+        if (playerList != null && playerList.getPlayer(player.getUUID()) != player) return;
+        if (!this.serviceGateState.claimMapPolicyNotice(player.getUUID(), player)) return;
         try {
             this.mapPolicyNoticeSender.accept(player, dev.vox.lss.common.MapPolicy.refusalNotice());
         } catch (Exception e) {
@@ -745,8 +751,15 @@ public class PaperRequestProcessingService {
          *  {@code replyAfterRegister} immediately after. See the enqueueRegister javadoc
          *  for why the dialect flip must be the former and the reply the latter. */
         record Register(ServerPlayer player, int capabilities,
-                        Runnable beforeRegister, Runnable replyAfterRegister)
-                implements LifecycleEvent {}
+                        Runnable beforeRegister, Runnable replyAfterRegister,
+                        dev.vox.lss.common.HandshakeGate.WireDialect dialect)
+                implements LifecycleEvent {
+            /** The pre-map-policy shape: no handshake dialect — the drain re-check skips. */
+            Register(ServerPlayer player, int capabilities, Runnable beforeRegister,
+                     Runnable replyAfterRegister) {
+                this(player, capabilities, beforeRegister, replyAfterRegister, null);
+            }
+        }
         /** {@code connectionEpoch} = the dying connection's epoch at quit time —
          *  the R4 guard's comparator (Folia review 2026-08-27). */
         record Remove(UUID uuid, long connectionEpoch) implements LifecycleEvent {}
@@ -777,6 +790,54 @@ public class PaperRequestProcessingService {
                                 Runnable beforeRegister, Runnable replyAfterRegister) {
         this.lifecycleMailbox.add(new LifecycleEvent.Register(
                 player, capabilities, beforeRegister, replyAfterRegister));
+    }
+
+    /**
+     * A HANDSHAKE registration (the production path): as above, plus the handshake's
+     * dialect so the drain can re-check the map policy (review fold A10). A Register
+     * decided on the pre-arm config that drains after an arm is REFUSED instead of
+     * registered: the reply (which re-reads the policy at send time) says enabled=false
+     * in the client's own dialect, and a real refusal (no capability bit) deposits the
+     * memo, sends the chat line and logs its transition — exactly what the handshake
+     * would have done on the armed config. Without this the 200-tick cadence would
+     * revoke the session up to 10 s later, after a full enabled=true reply.
+     */
+    public void enqueueRegister(ServerPlayer player, int capabilities,
+                                Runnable beforeRegister, Runnable replyAfterRegister,
+                                dev.vox.lss.common.HandshakeGate.WireDialect dialect) {
+        this.lifecycleMailbox.add(new LifecycleEvent.Register(
+                player, capabilities, beforeRegister, replyAfterRegister, dialect));
+    }
+
+    /** The drain's map-policy refusal of a deferred Register (review fold A10). */
+    private void refuseDeferredRegister(LifecycleEvent.Register r) {
+        var player = r.player();
+        int capabilities = r.capabilities();
+        // The reply re-reads the policy at send time: enabled=false in the client's own
+        // dialect (and a quiet refusal's sender leaves the live dialect mark alone).
+        r.replyAfterRegister().run();
+        if ((capabilities & LSSConstants.CAPABILITY_MAP_POLICY) != 0) return; // quiet: reply only
+        UUID uuid = player.getUUID();
+        String name = player.getName().getString();
+        int protocolVersion = protocolVersionOf(r.dialect());
+        boolean transition = this.serviceGateState.rememberDenied(uuid, name, protocolVersion,
+                capabilities, dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY);
+        noticeMapPolicyRefusal(player);
+        // A live session of this connection re-handshaking can no longer be served.
+        unregisterForServiceGate(uuid);
+        if (transition) {
+            LSSLogger.info(dev.vox.lss.common.MapPolicy.refusalLogLine(name, protocolVersion, capabilities));
+        }
+    }
+
+    /** The handshake version a dialect was decided from (HandshakeGate maps them 1:1). */
+    private static int protocolVersionOf(dev.vox.lss.common.HandshakeGate.WireDialect dialect) {
+        return switch (dialect) {
+            case CURRENT -> LSSConstants.PROTOCOL_VERSION;
+            case V19 -> LSSConstants.V19_COMPAT_PROTOCOL_VERSION;
+            case V18 -> LSSConstants.V18_COMPAT_PROTOCOL_VERSION;
+            case V16 -> LSSConstants.V16_COMPAT_PROTOCOL_VERSION;
+        };
     }
 
     /** Any thread. Applied at the top of the next tick(). */
@@ -889,11 +950,23 @@ public class PaperRequestProcessingService {
                     // Map-policy plan A2: the policy is read at SEND time.
                     capabilities, cfg.requestNoMapIngestion());
 
+    /** Test seam: the adopted map policy, as the reconcile would set it (the 200-tick
+     *  cadence sweep runs only once the arm is adopted — review fold A9). */
+    void adoptMapPolicyForTest(boolean armed) {
+        this.adoptedMapPolicy = armed;
+    }
+
     void setSessionConfigSender(SessionConfigSender sender) {
         this.sessionConfigSender = sender;
     }
 
     public int[] repushSessionConfig() {
+        return repushSessionConfig(false);
+    }
+
+    /** @param flagsOnly a map-policy-only change (review fold A9, the xplat twin): no off-world
+     *                   re-register and no far-player roster re-send — only the new flags */
+    public int[] repushSessionConfig(boolean flagsOnly) {
         int pushed = 0;
         int legacy = 0;
         for (var state : java.util.List.copyOf(this.players.values())) {
@@ -904,7 +977,7 @@ public class PaperRequestProcessingService {
             }
             try {
                 int dist = PaperWorldLod.distance(this.config, state.getPlayer());
-                if (dist <= 0) {
+                if (dist <= 0 && !flagsOnly) {
                     // The reload turned this player's world off: abandon its in-flight work
                     // via the dimension-change remove + fresh register (the Fabric twin) — a
                     // world later turned back on cannot answer up_to_date off an old done-bit.
@@ -1102,8 +1175,8 @@ public class PaperRequestProcessingService {
         int revoked = 0;
         for (var state : java.util.List.copyOf(this.players.values())) {
             UUID uuid = state.getPlayerUUID();
-            if (this.dialects.dialectOf(uuid)
-                    != dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT) {
+            // An EXPLICIT CURRENT mark (review fold A9; the xplat twin).
+            if (!this.dialects.isCurrent(uuid)) {
                 continue; // legacy sessions keep serving until rejoin (recorded)
             }
             int capabilities = state.getCapabilities();
@@ -1140,6 +1213,12 @@ public class PaperRequestProcessingService {
             try {
                 switch (ev) {
                     case LifecycleEvent.Register r -> {
+                        if (r.dialect() != null && this.config.requestNoMapIngestion()
+                                && !dev.vox.lss.common.HandshakeGate.honorsMapPolicy(
+                                        r.dialect(), r.capabilities())) {
+                            refuseDeferredRegister(r); // review fold A10: the arm raced the drain
+                            continue;
+                        }
                         // On the PUMP, before registration: the wire-dialect flip. It must
                         // be here rather than on the calling thread, because on Folia the
                         // handshake arrives on a REGION thread and the flip takes effect
@@ -1528,13 +1607,15 @@ public class PaperRequestProcessingService {
     private volatile long settingsRevision;
     private volatile int settingsLegacyReconnects;
     private volatile int settingsMapPolicyRevoked = -1;
+    private volatile boolean settingsMapPolicyArmed;
     /** @param mapPolicyRevoked sessions the map-policy arm sweep revoked at this revision,
-     *                          or -1 when the policy did not change (the xplat twin) */
+     *                          or -1 when the policy did not change (the xplat twin)
+     *  @param mapPolicyArmed   the policy THIS revision adopted (review fold A9) */
     public record SettingsFeedback(long revision, int legacyReconnects, java.util.List<String> draining,
-                                   int mapPolicyRevoked) {
+                                   int mapPolicyRevoked, boolean mapPolicyArmed) {
         public SettingsFeedback { draining = java.util.List.copyOf(draining); }
         public SettingsFeedback(long revision, int legacyReconnects, java.util.List<String> draining) {
-            this(revision, legacyReconnects, draining, -1);
+            this(revision, legacyReconnects, draining, -1, false);
         }
     }
     private volatile SettingsFeedback settingsFeedback = new SettingsFeedback(0, 0, java.util.List.of());
@@ -1623,11 +1704,12 @@ public class PaperRequestProcessingService {
             boolean mapPolicyChanged = adoptedMapPolicy != mapPolicy;
             // Map-policy plan A3.4: REVOKE FIRST — a session about to lose service must
             // not first get an enabled=true manager rebuild from the re-push below.
-            if (mapPolicyChanged) settingsMapPolicyRevoked = runMapPolicySweep();
+            settingsMapPolicyRevoked = mapPolicyChanged ? runMapPolicySweep() : -1;
+            settingsMapPolicyArmed = mapPolicy;
             if (generationChanged || !advertisedLod.equals(next.lod()))
                 settingsLegacyReconnects = repushSessionConfig()[1];
             else if (mapPolicyChanged)
-                repushSessionConfig(); // the flags change alone; legacy sessions are not told
+                repushSessionConfig(true); // the flags change alone; legacy sessions are not told
             refreshedGeneration = next.generation().enabled();
             advertisedLod = next.lod();
             generationRefreshPending = false;
@@ -1651,7 +1733,7 @@ public class PaperRequestProcessingService {
                 .thenCompose(ignored -> submitSettingsControl(() -> {
                     if (revision != settingsRevision) throw new java.util.concurrent.CancellationException("Superseded settings revision");
                     settingsFeedback = new SettingsFeedback(revision, settingsLegacyReconnects, settingsDrainingStatus(),
-                            settingsMapPolicyRevoked);
+                            settingsMapPolicyRevoked, settingsMapPolicyArmed);
                     return (Void) null;
                 }));
         settingsReceipts.add(result);
@@ -1707,8 +1789,9 @@ public class PaperRequestProcessingService {
             this.permissionRecheckCounter = 0;
             // Map-policy plan A3.4: the idempotent enforcement — closes the Folia race (a
             // region thread decided a handshake on the pre-arm config and its Register
-            // drained after the reload's one-shot sweep).
-            runMapPolicySweep();
+            // drained after the reload's one-shot sweep). Only once the reconcile ADOPTED
+            // the arm (review fold A9: the reload owns the transition and its count).
+            if (this.adoptedMapPolicy) runMapPolicySweep();
             runServiceGateSweeps();
         }
         var generationReady = tickGenerationService();
