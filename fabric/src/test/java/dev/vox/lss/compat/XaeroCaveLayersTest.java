@@ -516,6 +516,72 @@ class XaeroCaveLayersTest {
     }
 
     @Test
+    void theFallbackBandFollowsXaerosGetCavingArithmetic() {
+        this.processor.mapWorld.currentDimensionId = OVERWORLD; // the plan names another dimension
+        this.clientDimension = OVERWORLD;
+        show(SURFACE);
+        this.player = new XaeroSession.PlayerPos(NETHER, 0, 12.5, 0);
+        var targets = this.bridge.planTargets(NETHER, NETHER_FACTS);
+        assertEquals(31, targets.get(1).caveStart(), "y = (int) 12.5 + 1 = 13, caveStart 16: band 1");
+        this.player = new XaeroSession.PlayerPos(NETHER, 0, -3.5, 0);
+        assertEquals(1, this.bridge.planTargets(NETHER, NETHER_FACTS).size(),
+                "(int) -3.5 + 1 = -2 truncates toward zero and is below the floor: the surface");
+        this.player = new XaeroSession.PlayerPos(NETHER, 0, 255.0, 0);
+        assertEquals(1, this.bridge.planTargets(NETHER, NETHER_FACTS).size(),
+                "y = 256 is above maxY 255: the surface");
+        this.player = new XaeroSession.PlayerPos(NETHER, 0, 254.0, 0);
+        assertEquals(2, this.bridge.planTargets(NETHER, NETHER_FACTS).size(), "y = 255 is inside");
+    }
+
+    @Test
+    void caveLayerWritesStayWithinTheFillBoundInEveryDimension() {
+        var overworldFacts = new XaeroTileExtractor.LevelFacts(-64, 320, true, false, 384);
+        this.processor.mapWorld.currentDimensionId = OVERWORLD;
+        this.clientDimension = OVERWORLD;
+        this.player = new XaeroSession.PlayerPos(OVERWORLD, 8, 70, 8); // chunk (0, 0), indoors
+        show(3);
+        this.bridge.offerColumn(OVERWORLD, 128, 0, overworldFacts, NETHER_COLUMN);
+        assertTrue(this.bridge.hasQueuedForTest(3, 128, 0), "Chebyshev 128: inside the radius cap");
+        this.bridge.offerColumn(OVERWORLD, 129, -129, overworldFacts, NETHER_COLUMN);
+        assertFalse(this.bridge.hasQueuedForTest(3, 129, -129), "outside: no cave tile");
+        assertTrue(this.bridge.hasQueuedForTest(SURFACE, 129, -129), "the surface is unbounded");
+        assertEquals(1, this.bridge.counterForTest("cave_out_of_range"));
+        this.bridge.serverLodDistance = () -> 32; // the server's LOD distance is the tighter bound
+        this.bridge.offerColumn(OVERWORLD, 20, 32, overworldFacts, NETHER_COLUMN);
+        assertTrue(this.bridge.hasQueuedForTest(3, 20, 32));
+        this.bridge.offerColumn(OVERWORLD, 33, 0, overworldFacts, NETHER_COLUMN);
+        assertFalse(this.bridge.hasQueuedForTest(3, 33, 0));
+        show(FULL);
+        this.bridge.offerColumn(OVERWORLD, 0, 40, overworldFacts, NETHER_COLUMN);
+        assertFalse(this.bridge.hasQueuedForTest(FULL, 0, 40), "Full is a cave layer too");
+        assertEquals(3, this.bridge.counterForTest("cave_out_of_range"));
+        this.player = null; // an unknown position skips the bound
+        this.bridge.offerColumn(OVERWORLD, 500, 0, overworldFacts, NETHER_COLUMN);
+        assertTrue(this.bridge.hasQueuedForTest(FULL, 500, 0));
+    }
+
+    @Test
+    void aLeftoverBandOfARegionThatNeverRestsExpiresSilently() {
+        this.bridge.staleLayerPumps = 3;
+        var busy = new MapRegion();
+        busy.resting = false; // a region that never rests: the bucket would be held forever
+        this.processor.caveRegions.computeIfAbsent(3, l -> new java.util.HashMap<>()).put((2L << 32) | 2L, busy);
+        show(3);
+        offer(64, 64);
+        for (int i = 0; i < 6; i++) this.bridge.pump();
+        assertTrue(this.bridge.hasQueuedForTest(3, 64, 64), "the layer Xaero shows is held, never expired");
+        assertEquals(0, this.bridge.counterForTest("dropped_stale_layer"));
+        show(5); // band 3 is a leftover now
+        for (int i = 0; i < 2; i++) this.bridge.pump();
+        assertTrue(this.bridge.hasQueuedForTest(3, 64, 64), "not before the bound");
+        for (int i = 0; i < 2; i++) this.bridge.pump();
+        assertFalse(this.bridge.hasQueuedForTest(3, 64, 64), "expired past the bound");
+        assertEquals(1, this.bridge.counterForTest("dropped_stale_layer"));
+        assertTrue(this.reports.isEmpty(), "silently: a map-only leftover, never a hole report");
+        assertEquals(0, this.bridge.counterForTest("owed"));
+    }
+
+    @Test
     void thePublishRespectsXaerosCrashShield() {
         xaero.map.WorldMap.crashHandler.crashedBy = new IllegalStateException("xaero worker died");
         try {

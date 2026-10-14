@@ -81,6 +81,9 @@ final class SettingsSchemaSpecs {
         // Xaero-only keys were; integrations.xaero_map.* is a read alias (SettingsSchema).
         client.add(new Spec("integrations.map_ingestion.enabled", "enableXaeroMapBridge", Kind.BOOLEAN, Timing.S, Platform.ALL, false));
         client.add(new Spec("integrations.map_ingestion.backpressure", "enableXaeroMapBackpressure", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
+        // Xaero cave-layer fill store (cave-layers plan §B10.3): lives in the experimental
+        // sidecar so the main file stays readable by 0.18.0 and older.
+        client.add(new Spec("integrations.map_ingestion.nether_store_mb", "xaeroNetherStoreMB", Kind.INTEGER, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.enabled", "farPlayersEnabled", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.distance.min_blocks", "farPlayersMinDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.distance.max_blocks", "farPlayersMaxDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));

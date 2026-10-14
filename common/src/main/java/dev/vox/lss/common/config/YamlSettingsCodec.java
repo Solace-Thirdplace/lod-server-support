@@ -36,7 +36,7 @@ public final class YamlSettingsCodec<T> {
      *  plan §2.4). Reads still accept them in the main file
      *  (development builds wrote them there); every write moves them out. */
     public static final List<String> SIDECAR_PATHS = List.of("lod.source", "lod.dh.sync_on_load",
-            "lod.dh.real_time_updates", "lod.voxy_border_fill");
+            "lod.dh.real_time_updates", "lod.voxy_border_fill", "integrations.map_ingestion.nether_store_mb");
     /** Retired keys are tolerated on read and removed from the main file by the next write. */
     public static final List<String> RETIRED_PATHS = List.of("lod.dh.refresh_seconds", "lod.dh.profile");
 
@@ -144,7 +144,7 @@ public final class YamlSettingsCodec<T> {
                 if (parent.getValue().get(canonicalIndex).getValueNode() instanceof MappingNode canonicalGroup) {
                     String prefix = group.getValue() + ".";
                     for (var leaf : configured.entrySet())
-                        if (leaf.getKey().startsWith(prefix))
+                        if (leaf.getKey().startsWith(prefix) && !SIDECAR_PATHS.contains(leaf.getKey()))
                             replace(canonicalGroup, leaf.getKey().substring(prefix.length()).split("\\."), 0, node(leaf.getValue()));
                 }
                 parent.getValue().remove(aliasIndex);
@@ -156,7 +156,7 @@ public final class YamlSettingsCodec<T> {
             var templateGroup = (MappingNode) templatePair.getValueNode();
             String prefix = group.getValue() + ".";
             for (var leaf : configured.entrySet())
-                if (leaf.getKey().startsWith(prefix))
+                if (leaf.getKey().startsWith(prefix) && !SIDECAR_PATHS.contains(leaf.getKey()))
                     replace(templateGroup, leaf.getKey().substring(prefix.length()).split("\\."), 0, node(leaf.getValue()));
             parent.getValue().set(aliasIndex, templatePair);
             changed = true;
