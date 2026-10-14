@@ -12,7 +12,9 @@ same-client-run, same-dimension windows; dimension/join boundaries get anomaly c
   A5 disk triage: d(disk.not_found) == d(generation.submitted) + d(client.responses.not_generated)  [only when d(generation.timeouts)==0];
                   d(disk.successful) == d(disk.completed - not_found - all_air - errors - saturated)
   A6 monotonic:   server cumulative whitelist (disk totals, generation totals, service.*, bandwidth.total_bytes) over process lifetime;
-                  client cumulative counters within one run AND one dimension segment only; server per-player rows are never checked
+                  client cumulative counters within one run (across dimension segments), except that the manager-scoped
+                  counters restart at a distance-changing dimension change (the request-manager rebuild — listed as an
+                  exemption, never silently skipped); server per-player rows are never checked
   A7 anomalies:   disk.errors / generation.timeouts / client.dropped > 0 always fail; disk.saturated fails unless the scenario opts in
   B2 pacing:      d(bandwidth.total_bytes) <= network.bandwidth.global_mib_per_second (converted to bytes/s) * dt * 1.3 over every consecutive
                   server snapshot pair — armed only when the scenario config sets the global cap
@@ -136,6 +138,20 @@ ANOMALY_OPT_INS = {
 # (their converged tails run 40+ s at 5 s snapshot cadence).
 # Scenarios allowed to finish with zero nonzero-delta client-law windows (no LSS traffic).
 TRAFFIC_FLOOR_EXEMPT = frozenset({"enabled-false", "store-offline-mutate"})
+# Scenarios whose LSS traffic exists but lands, by the scenario's shape, outside every
+# client-laws window, so the traffic floor is unsatisfiable. Unlike TRAFFIC_FLOOR_EXEMPT
+# this is conditional: it applies only while the recording shows that shape, i.e. no run
+# got a virtual run-start window (each run's first quiescent point lies past its first
+# client segment). A run-start window carries the run's initial fill, so if one exists the
+# floor stays armed. The verdict lists the exemption; it is never silently dropped.
+TRAFFIC_FLOOR_SHAPE_EXEMPT = {
+    "xaero-nether-bands": (
+        "the client joins in the Overworld and is teleported to the Nether at 5 s, before "
+        "the Overworld segment can quiesce, so no run-start window exists; the Nether fill "
+        "runs before that segment's first quiescent point (a later segment gets no virtual "
+        "start window: the server is mid-teardown at the dimension change); and the height "
+        "walk at one X/Z declares nothing new, so every Nether window is zero-delta"),
+}
 
 MIN_CLIENT_WINDOWS = {
     "fresh-backfill": {(1, 0): 10},
@@ -152,6 +168,10 @@ MIN_CLIENT_WINDOWS = {
     "xaero-memory": {(1, 0): 1},
     # Run 1 joins in the Overworld and is in the Nether within 5 s: the Nether segment (1, 1)
     # carries the run; the spike's verdict is the xaero group, not the conservation tail.
+    # Kept although the traffic floor is shape-exempt (TRAFFIC_FLOOR_SHAPE_EXEMPT): this
+    # floor is satisfiable (the pre-generated world records 165+ Nether windows) and proves
+    # the Nether fill drained and got its laws evaluated. A generation-bound world whose fill
+    # never drains in 900 s misses it, and also reds quiescence and A7 disk.errors.
     "xaero-nether-bands": {(1, 1): 1},
     "rate-limit-storm": {(1, 0): 3},
     "disk-saturation": {(1, 0): 3},
@@ -354,6 +374,14 @@ CLIENT_MONOTONIC = (
     "responses.columns", "responses.up_to_date", "responses.not_generated",
     "requested_total", "send_cycles",
 )
+# The subset ClientMetricsExporter reads off the LodRequestManager: these restart from zero
+# when the client rebuilds its request manager (client_rebuild_pairs). received_columns,
+# received_bytes and dropped are connection-scoped (ClientSessionGate/ClientColumnProcessor),
+# survive a rebuild, and so stay monotonic for the whole run with no exemption.
+CLIENT_MANAGER_COUNTERS = frozenset({
+    "responses.columns", "responses.up_to_date", "responses.not_generated",
+    "requested_total", "send_cycles",
+})
 
 # Fields the global laws index directly; verified against the first row of each series
 # so a schema drift fails loudly with the field name instead of a stray KeyError.
@@ -493,7 +521,9 @@ def load_client_run(path, warnings, unknown_keys, unknown_events):
     the disconnect row carries the final snapshot inline), each tagged _seg, plus the
     scripted-action rows. Segments split on dimension change AND on action rows. Client
     counters are run-CUMULATIVE across segments (RequestMetrics.reset() clears only
-    in-flight state, never the totals); segmentation exists because conservation windows
+    in-flight state, never the totals) — except the manager-scoped ones at a
+    distance-changing dimension change, where the client rebuilds its request manager
+    (see client_rebuild_pairs); segmentation exists because conservation windows
     must not span a boundary — the switch intentionally drops in-flight tracking, so a
     request answered after it increments requested_total with no response counter."""
     rows = parse_jsonl(path, warnings, path.name)
@@ -865,17 +895,74 @@ def law_A6_server(snaps):
     return out
 
 
-def law_A6_client(run, snaps):
+def _row_lod(row):
+    v = row.get("effective_lod")
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def client_rebuild_pairs(snaps):
+    """The set of row indices i whose pair (snaps[i-1], snaps[i]) holds the client's
+    request-manager rebuild at a distance-changing dimension change.
+
+    Why it restarts counters: on a dimension change the server re-pushes SessionConfig
+    ONLY when the new world's LOD distance differs (RequestProcessingService, the
+    dimension-change push), and the client rebuilds its whole LodRequestManager on any
+    SessionConfig whose distance differs (ClientSessionGate: sameSessionShape fails), so
+    the manager-scoped counters (CLIENT_MANAGER_COUNTERS) start again from zero.
+
+    The rule is structural, from data the rows carry, so it applies to any scenario: the
+    row's dimension changes AND its effective_lod (read off the manager's session config)
+    changes with it. A distance change is the rebuild's own evidence; a dimension change
+    without one is no rebuild, and a distance change away from a dimension change (an
+    admin re-push) is not exempted. Each dimension change licenses at most one pair: the
+    change pair itself, or the next pair when the row right after the change still shows
+    the old distance (the old manager can tick the new dimension before the push lands, a
+    window of about a tick). Rows without effective_lod (older recordings) never
+    qualify. "dimension" is taken as the row carries it ("none" while no manager has
+    ticked; the exporter zero-fills a missing manager's counters, also a restart)."""
+    out = set()
+    for i in range(1, len(snaps)):
+        if snaps[i]["dimension"] == snaps[i - 1]["dimension"]:
+            continue
+        for j in (i, i + 1):
+            if j >= len(snaps) or (j > i and snaps[j]["dimension"] != snaps[i]["dimension"]):
+                break
+            before, after = _row_lod(snaps[j - 1]), _row_lod(snaps[j])
+            if before is None or after is None:
+                break
+            if before != after:
+                out.add(j)
+                break
+    return out
+
+
+def law_A6_client(run, snaps, exempt=None):
     """Client counters are cumulative for the whole run — dimension/action boundaries do
     NOT reset them (RequestMetrics.reset() clears only in-flight state, never the totals),
-    so monotonicity holds across segment boundaries too. Only a new process (run) resets."""
+    so monotonicity holds across segment boundaries too. Only a new process (run) resets,
+    plus ONE structural exception: a manager-scoped counter may drop at the request-manager
+    rebuild of a distance-changing dimension change (client_rebuild_pairs). That drop is
+    appended to ``exempt`` (when given) so the verdict lists it; a drop of any counter
+    anywhere else, or of a connection-scoped counter even at the rebuild, still fails."""
     out = []
+    rebuilds = client_rebuild_pairs(snaps)
     for i in range(1, len(snaps)):
         prev, cur = snaps[i - 1], snaps[i]
         for path in CLIENT_MONOTONIC:
             pv, cv = get_path(prev, path), get_path(cur, path)
             if cv < pv:
-                out.append(Violation("A6", window_label(prev, cur, run=run, dim=cur.get("dimension")),
+                win = window_label(prev, cur, run=run, dim=cur.get("dimension"))
+                if i in rebuilds and path in CLIENT_MANAGER_COUNTERS:
+                    if exempt is not None:
+                        exempt.append(Violation(
+                            "A6", win,
+                            f"client counter {path} restarted at the request-manager rebuild "
+                            f"of a distance-changing dimension change",
+                            {"field": path, "prev": pv, "cur": cv,
+                             "dimension": [prev.get("dimension"), cur.get("dimension")],
+                             "effective_lod": [_row_lod(prev), _row_lod(cur)]}))
+                    continue
+                out.append(Violation("A6", win,
                                      f"client counter {path} decreased within one run",
                                      {"field": path, "prev": pv, "cur": cv}))
     return out
@@ -995,13 +1082,14 @@ def evaluate_laws(ctx):
     windows = 0
     client_windows = {}
     traffic_windows = 0
+    run_start_windows = 0
     snaps = ctx.server_snaps
     opt_ins = ANOMALY_OPT_INS.get(ctx.scenario, frozenset())
 
     # A6 over raw series.
     violations += law_A6_server(snaps)
     for run, csnaps in sorted(ctx.runs.items()):
-        violations += law_A6_client(run, csnaps)
+        violations += law_A6_client(run, csnaps, ctx.exemptions)
 
     # B2 uses the normalized canonical raw-work MiB/s budget.
     cap = None
@@ -1055,6 +1143,7 @@ def evaluate_laws(ctx):
         win = window_label(ps, cs, run=run, dim=cc.get("dimension")) + " run-start"
         violations += run_client_laws(ps, cs, pc, cc, win, (run, first_q.cseg))
         windows += 1
+        run_start_windows += 1
 
     for k in range(1, len(ctx.qpoints)):
         q1, q2 = ctx.qpoints[k - 1], ctx.qpoints[k]
@@ -1119,12 +1208,26 @@ def evaluate_laws(ctx):
     # deltas. Without this, a regression in window construction (e.g. the two-sided
     # endpoint skip this guards against) can leave every evaluated window zero-delta —
     # conservation 'verified' as 0 == 0. enabled-false is exempt: it legitimately has
-    # no LSS traffic at all.
-    if ctx.scenario not in TRAFFIC_FLOOR_EXEMPT and traffic_windows == 0:
-        violations.append(Violation("law-coverage", "entire run",
-                                    "no client-laws window carried nonzero request deltas — "
-                                    "conservation laws never fired on real traffic",
-                                    {"client_windows": sum(client_windows.values())}))
+    # no LSS traffic at all. TRAFFIC_FLOOR_SHAPE_EXEMPT scenarios are exempt only while
+    # the recording shows the shape that puts their traffic outside every window. Either
+    # exemption is listed in the verdict, never silently dropped.
+    if traffic_windows == 0:
+        values = {"client_windows": sum(client_windows.values())}
+        if ctx.scenario in TRAFFIC_FLOOR_EXEMPT:
+            ctx.exemptions.append(Violation(
+                "law-coverage", "entire run",
+                "traffic floor: the scenario has no LSS traffic by design (TRAFFIC_FLOOR_EXEMPT)",
+                values))
+        elif ctx.scenario in TRAFFIC_FLOOR_SHAPE_EXEMPT and run_start_windows == 0:
+            ctx.exemptions.append(Violation(
+                "law-coverage", "entire run",
+                "traffic floor: " + TRAFFIC_FLOOR_SHAPE_EXEMPT[ctx.scenario],
+                dict(values, run_start_windows=0)))
+        else:
+            violations.append(Violation("law-coverage", "entire run",
+                                        "no client-laws window carried nonzero request deltas — "
+                                        "conservation laws never fired on real traffic",
+                                        values))
     violations += far_players_inert_violations(ctx.server_snaps)
     violations += summary_inert_violations(ctx.server_snaps, ctx.scenario, ctx.runs)
     return violations, windows, sum(client_windows.values())
@@ -1215,6 +1318,9 @@ class Ctx:
     quiescent_server: set = field(default_factory=set)   # server snapshot indices
     quiescent_client: set = field(default_factory=set)   # (run, client index) join targets
     run_actions: dict = field(default_factory=dict)      # run number -> list of action rows
+    # Law checks the checker deliberately did not apply (A6 rebuild pairs, the traffic-floor
+    # exemptions), as Violation-shaped records: run_checker lists them in the verdict.
+    exemptions: list = field(default_factory=list)
 
     def final_client(self, run):
         snaps = self.runs.get(run)
@@ -3911,6 +4017,7 @@ def run_checker(results_dir, scenario, expect_session_version=None, platform="fa
         warnings.append(f"{cfg_path.name} not found; using defaults")
 
     qpoints, windows, client_windows = [], 0, 0
+    exemptions = []
     schema_ok = check_global_schema(server["snapshots"], runs, violations)
     if server["snapshots"] and schema_ok:
         try:
@@ -3929,6 +4036,7 @@ def run_checker(results_dir, scenario, expect_session_version=None, platform="fa
                   quiescent_server={q.si for q in qpoints},
                   quiescent_client={(q.run, q.ci) for q in qpoints},
                   run_actions=run_actions, platform=platform)
+        exemptions = ctx.exemptions
         try:
             law_violations, windows, client_windows = evaluate_laws(ctx)
             violations += law_violations
@@ -3959,6 +4067,9 @@ def run_checker(results_dir, scenario, expect_session_version=None, platform="fa
         "scenario": scenario,
         "passed": not violations,
         "violations": [vars(v) for v in violations],
+        # Checks deliberately not applied (never part of "passed"): listed so an exempt
+        # law is visible in the verdict instead of silently absent.
+        "exemptions": [vars(e) for e in exemptions],
         "warnings": warnings,
         "windows_evaluated": windows,
         "client_windows_evaluated": client_windows,
@@ -3973,9 +4084,12 @@ def run_checker(results_dir, scenario, expect_session_version=None, platform="fa
     status = "PASS" if not violations else "FAIL"
     print(f"{status}: {scenario} — {windows} windows ({client_windows} client-laws), "
           f"{len(qpoints)} quiescent snapshots, "
-          f"{len(violations)} violations, {len(warnings)} warnings")
+          f"{len(violations)} violations, {len(warnings)} warnings"
+          + (f", {len(exemptions)} exemptions" if exemptions else ""))
     for v in violations:
         print("  " + v.line())
+    for e in exemptions:
+        print("  exempt: " + e.line())
     for w in warnings:
         print(f"  WARNING: {w}")
     return 0 if not violations else 1
@@ -4237,6 +4351,55 @@ def selftest():
     clean("A6 client cross-segment growth", law_A6_client(1, [
         _cli(1000, seg=0, over={"responses.up_to_date": 5}),
         _cli(6000, seg=1, over={"responses.up_to_date": 5})]))
+
+    # --- A6 client: the request-manager rebuild at a distance-changing dimension change.
+    # The server re-pushes SessionConfig on a dimension change only when the new world's
+    # LOD distance differs; the client rebuilds its LodRequestManager and the manager-scoped
+    # counters restart. Only that pair is exempt (and listed), only for those counters. ---
+    def _rb(wall, dim, lod, req, recv=None):
+        over = {"dimension": "minecraft:" + dim, "requested_total": req,
+                "responses.columns": req // 2, "send_cycles": req // 500,
+                "received_columns": wall // 10 if recv is None else recv}
+        if lod is not None:
+            over["effective_lod"] = lod
+        return _cli(wall, over=over)
+
+    def a6_rebuild(rows):
+        exempt = []
+        return law_A6_client(1, rows, exempt), exempt
+
+    vs, ex = a6_rebuild([_rb(1000, "overworld", 32, 1500), _rb(6000, "the_nether", 64, 800)])
+    clean("A6 rebuild: manager counters restart at a distance-changing dimension change", vs)
+    cases[0] += 1
+    assert (sorted(e.values["field"] for e in ex)
+            == ["requested_total", "responses.columns", "send_cycles"]
+            and all(e.law == "A6" for e in ex)), \
+        f"A6 rebuild: the exempt restart must be listed, got {[e.line() for e in ex]}"
+    vs, ex = a6_rebuild([_rb(1000, "overworld", 32, 1500), _rb(6000, "the_nether", 32, 1600),
+                         _rb(11000, "the_nether", 64, 800)])
+    clean("A6 rebuild: the push may land one snapshot after the new dimension shows", vs)
+    cases[0] += 1
+    assert len(ex) == 3, f"A6 rebuild one row late: expected 3 listed exemptions, got {len(ex)}"
+    hits("A6 rebuild: a connection-scoped counter still may not drop at the rebuild",
+         a6_rebuild([_rb(1000, "overworld", 32, 1500, recv=900),
+                     _rb(6000, "the_nether", 64, 800, recv=300)])[0], "A6")
+    hits("A6 rebuild: a dimension change without a distance change is no rebuild",
+         a6_rebuild([_rb(1000, "overworld", 24, 1500), _rb(6000, "the_nether", 24, 800)])[0], "A6")
+    hits("A6 rebuild: a decrease with no dimension change still fails",
+         a6_rebuild([_rb(1000, "the_nether", 64, 1500), _rb(6000, "the_nether", 64, 800)])[0], "A6")
+    hits("A6 rebuild: a distance change with no dimension change (admin re-push) still fails",
+         a6_rebuild([_rb(1000, "overworld", 32, 1500), _rb(6000, "overworld", 64, 800)])[0], "A6")
+    hits("A6 rebuild: a distance change two rows after the dimension change still fails",
+         a6_rebuild([_rb(1000, "overworld", 32, 1500), _rb(6000, "the_nether", 32, 1600),
+                     _rb(11000, "the_nether", 32, 1700), _rb(16000, "the_nether", 64, 800)])[0], "A6")
+    hits("A6 rebuild: rows without effective_lod (older recordings) never qualify",
+         a6_rebuild([_rb(1000, "overworld", None, 1500), _rb(6000, "the_nether", None, 800)])[0], "A6")
+    vs, ex = a6_rebuild([_rb(1000, "overworld", 32, 1500), _rb(6000, "the_nether", 64, 800),
+                         _rb(11000, "the_nether", 64, 700)])
+    hits("A6 rebuild: a later decrease in the same run still fails", vs, "A6")
+    cases[0] += 1
+    assert (all(v.window.startswith("wallMs[6000..11000]") for v in vs) and len(ex) == 3), \
+        f"A6 rebuild: only the later pair may fail, got {[v.line() for v in vs]}"
 
     # --- A7 server: errors/timeouts always fail; saturated honors the opt-in ---
     hits("A7 disk.errors", law_A7_server(
@@ -5482,6 +5645,93 @@ def selftest():
     hits("xaero-nether-bands the window overflows",
          list(check_xaero_nether_bands(nb_ctx([(b, "layered", 33, 32, False, 0, "-", 0, 0, -1)
                                                for b in ("2", "4", "6")]))), "xaero-nether-bands")
+
+    # ---- xaero-nether-bands verdict: the scenario's structural reds (A6 at the rebuild, the
+    # traffic floor) are exempt and listed; every other law and the scenario law decide ----
+    nb_join = {"event": "join", "wallMs": 1500, "tick": 30, "player": "p", "joinIndex": 1}
+
+    def nb_recording(overflow=False, disk_errors=0):
+        """The scenario's shape: join in the Overworld (lod 32), a distance-changing hop to
+        the Nether (lod 64; manager counters restart), the Nether fill BEFORE the first
+        quiescent point, then a converged zero-delta tail across the band walk."""
+        srv = [_srv(1000, seg=0)] + [
+            _srv(w, seg=1, over={"service.requests_received": min(k, 3) * 100,
+                                 "disk.errors": disk_errors if k >= 4 else 0})
+            for k, w in enumerate((6000, 11000, 16000, 21000, 26000, 31000), start=1)]
+        rows = ([("minecraft:overworld", 32, 1500, 900, 3, 900),
+                 ("minecraft:the_nether", 64, 800, 300, 1, 1200)]
+                + [("minecraft:the_nether", 64, 1600, 1000, 2, 1900)] * 5)
+        cli = []
+        for k, (dim, lod, req, cols, sc, recv) in enumerate(rows):
+            cli.append(_cli((1600, 6000, 11000, 16000, 21000, 26000, 31000)[k],
+                            seg=0 if k == 0 else 1, over={
+                "dimension": dim, "effective_lod": lod, "requested_total": req,
+                "responses.columns": cols, "send_cycles": sc, "received_columns": recv,
+                "received_bytes": recv * 100, "server_enabled": True, "session_version": 20,
+                "xaero": {"layer": ("2", "2", "3", "4", "6", "6", "6")[k], "mode": "layered",
+                          "open_regions": 40 if overflow and k == 3 else 10,
+                          "open_region_cap": 32, "fill_on": False, "fill_started": 0,
+                          "fill_layer": "-", "fill_target": 0, "fill_covered": 0,
+                          "fill_age_ms": -1}}))
+        cli[-1]["event"], cli[-1]["reason"] = "disconnect", "kicked"
+        return srv, cli
+
+    def nb_laws(scenario, srv, cli):
+        ctx = Ctx(scenario=scenario, server_snaps=srv, commands=[], joins=[nb_join], ends=[],
+                  runs={1: cli}, qpoints=find_quiescent(srv, {1: cli}), config={})
+        return evaluate_laws(ctx)[0], ctx.exemptions
+
+    def entire_run_coverage(vs):
+        return any(v.law == "law-coverage" and v.window == "entire run" for v in vs)
+
+    vs, ex = nb_laws("xaero-nether-bands", *nb_recording())
+    clean("xaero-nether-bands shape: the generic laws pass, the structural reds exempt", vs)
+    cases[0] += 1
+    assert ({e.law for e in ex} == {"A6", "law-coverage"}
+            and any(e.window == "entire run" for e in ex if e.law == "law-coverage")), \
+        f"xaero-nether-bands shape: both exemptions must be listed, got {[e.line() for e in ex]}"
+    vs, ex = nb_laws("dimension-trip", *nb_recording())
+    cases[0] += 1
+    assert entire_run_coverage(vs) and not any(v.law == "A6" for v in vs), \
+        "traffic-floor shape exemption is xaero-nether-bands only (another scenario with the " \
+        f"same shape still fails it; the A6 rebuild rule is generic): {[v.line() for v in vs]}"
+    sg_srv = [_srv(1000, seg=0)] + [_srv(w, seg=1) for w in (6000, 11000, 16000)]
+    sg_cli = [_cli(w, over={"effective_lod": 32}) for w in (6000, 11000, 16000)]
+    cases[0] += 1
+    assert entire_run_coverage(nb_laws("xaero-nether-bands", sg_srv, sg_cli)[0]), \
+        "xaero-nether-bands: a recording with a run-start window loses the traffic-floor " \
+        "exemption (the shape that justifies it is absent)"
+    hits("xaero-nether-bands shape: the other generic laws still bite (A7 disk.errors)",
+         nb_laws("xaero-nether-bands", *nb_recording(disk_errors=1))[0], "A7")
+
+    # The same recordings through run_checker, so verdict.json itself is what is judged.
+    import contextlib
+    import io
+
+    def nb_verdict(srv, cli):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            end = {"event": "end", "wallMs": 32000, "tick": 640, "reason": "timeline-complete"}
+            for name, rows in (("server.jsonl", [srv[0], nb_join] + srv[1:] + [end]),
+                               ("client-run1.jsonl", cli)):
+                (d / name).write_text("".join(json.dumps({k: v for k, v in r.items() if k != "_seg"})
+                                              + "\n" for r in rows), encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = run_checker(d, "xaero-nether-bands", 20)
+            return code, json.loads((d / "verdict.json").read_text(encoding="utf-8")), out.getvalue()
+
+    code, v, out = nb_verdict(*nb_recording())
+    cases[0] += 1
+    assert (code == 0 and v["passed"] and not v["violations"]
+            and {e["law"] for e in v["exemptions"]} == {"A6", "law-coverage"}
+            and "exempt: [A6]" in out and "exempt: [law-coverage]" in out), \
+        f"xaero-nether-bands verdict: the scenario law decides a lawful run: {v['violations']} / {out}"
+    code, v, _ = nb_verdict(*nb_recording(overflow=True))
+    cases[0] += 1
+    assert (code == 1 and not v["passed"] and v["violations"]
+            and all(x["law"] == "xaero-nether-bands" for x in v["violations"])), \
+        f"xaero-nether-bands verdict: a failing scenario law must fail the verdict: {v['violations']}"
 
     # ---- session-version assertion (C6 negotiated-protocol observability) ----
     sv_rows = [{"event": "snapshot", "session_version": 0},
