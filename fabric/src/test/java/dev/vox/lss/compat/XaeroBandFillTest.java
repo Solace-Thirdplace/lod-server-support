@@ -575,6 +575,27 @@ class XaeroBandFillTest {
     }
 
     @Test
+    void aDroppedReServeIsNotFilledInALaterSession() throws Exception {
+        // Review fold O4-F3: the stale guard is session-scoped; the store forgets the older copy
+        // for good, so the next session (LSS never re-sends: the cache stamp is current) does not
+        // write the pre-change terrain into every other band.
+        show(3);
+        offer(64, 64, PLATFORMS);
+        offer(65, 64, PLATFORMS);
+        this.bridge.pump();
+        assertEquals(2, stored());
+        this.store.suspendForClear(); // the re-serve of 65 is dropped: the stored copy is older now
+        offer(65, 64, column(y -> y == 0 || (y & 15) == 4, false));
+        this.store.resumeAfterClear();
+        this.bridge.onSessionEnd(); // the player disconnects
+        this.bridge.pump();
+        show(3); // the next session
+        switchTo(5);
+        runFill();
+        assertEquals(1, count("fill_committed"), "only 64: the old copy of 65 is gone for good");
+    }
+
+    @Test
     void inSingleplayerNothingIsKeptBeforeThePlanIsKnown() {
         this.bridge.singleplayer = () -> true;
         offer(64, 64, PLATFORMS); // no plan yet: Xaero may be writing from the world save
