@@ -538,7 +538,8 @@ from a plan published for another dimension.
   and band (playerY+4)>>4. This covers the burst of columns on Nether entry,
   which arrives before the pump re-reads Xaero. LSS never re-sends those
   columns, so extracting them with the Overworld's surface-only plan would leave
-  them unmapped.
+  them unmapped. *Superseded by §B10.4 item 3: the surface only; the store keeps
+  the columns and fill-on-switch writes the shown layer.*
 
 **caveStart for every LSS band tile** is the band top, min(16b+15, maxY). That
 includes the current band.
@@ -882,8 +883,9 @@ The fill-on-switch review's findings, as built (tests in parentheses):
     every dimension; the surface stays unbounded (`cave_out_of_range`).
 12. Queued tiles of a non-current, non-surface layer expire silently after 600 held pumps
     (`dropped_stale_layer`).
-13. The dimension-mismatch band follows Xaero's `getCaving` arithmetic; the native-reach
-    skip documents the map-screen and 4-chunk transitional reach.
+13. ~~The dimension-mismatch band follows Xaero's `getCaving` arithmetic~~ (superseded by
+    §B10.4 item 3: no band is guessed); the native-reach skip documents the map-screen and
+    4-chunk transitional reach.
 14. `/lss diag` keeps what a player or admin needs (`band_fill=on|off`, the store size, the
     last fill); the spike instrumentation is exporter-only, which regains
     `buffer_updates`, `dropped_updates` and `to_save`.
@@ -893,6 +895,46 @@ The fill-on-switch review's findings, as built (tests in parentheses):
     store, files deleted, no fill), in the experimental sidecar so the main file stays
     readable by 0.18.0; applied by `/lss reload`. The system properties stay as
     development overrides.
+
+#### B10.4 Implementation review fold (2026-10-14)
+
+The 0.19.0 implementation review (`O3`, `O4`, `F1`, `O6` reports) as folded; items 3, 8, 13 and
+16 of §B10.3 are amended as noted.
+
+1. **No level outlives its use (O4-F1, MAJOR).** `FillLevel` no longer holds the `ClientLevel`;
+   the production fill-level cache keys it weakly and clears at session end; `reset()` and a
+   Xaero world change drop the last job. A GC-polling test pins it.
+2. **Leftover layers (O3-1).** A tile of a layer that is neither the surface nor the shown one
+   never reports, owes or wins a load grant on any path (overflow eviction, the pre-gate shed,
+   deferral expiry, the owed probe, held buckets), per item 12; it still commits when its region
+   takes it.
+3. **No guessed band (O3-2; supersedes item 13).** Until Xaero's plan names a column's dimension
+   the column writes only the surface. The `getCaving` guess ignored the roof probe, the cave-mode
+   switches and the height clamp. In a ceiling dimension the column is kept and fill-on-switch
+   writes the shown layer once the plan names the dimension; with the store off
+   (`nether_store_mib: 0`) those first columns reach only the surface.
+4. **The store is keyed by Xaero's world (O4-F5; amends item 3).** File key
+   `<dimension>.w<hash of getCurrentWorldId>`. A Xaero world change still forgets the coverage
+   and restarts the debounce, but the new world reads only its own store. Captures before
+   Xaero names its world are held (512 columns / 16 MiB) and keyed once it does.
+5. **Forgotten for good (O4-F3; amends item 8).** A dropped capture and an unreadable or
+   undecodable record write a tombstone that a reopen honours; the session-scoped stale guard
+   stays for the window before the forget lands.
+6. **Store robustness.** The capture bounds roll back only what they added (O4-F2). A session's
+   first write appends to the newest clean segment; read handles open lazily (LRU 8); a new
+   segment is created exclusively after every number seen (O4-F4). A read never deletes a file
+   (O4-F8).
+7. **Cap (O4-F6; amends item 16).** `nether_store_mib` is 16–1024 MiB (the index is on the heap,
+   ~2.5% of the cap); a lowered cap trims at the next open or write (O4-F7, README).
+8. **Small fixes.** Fill tiles carry their job's receipt, revoked on cancel (O3 N2); the job is
+   cleared by compare-and-set (O4-F9); load stats forget grants on a world or dimension change
+   (O3 N3); one `layerPlan` read per offer (O3 N1); the pump-top store/fill steps are contained
+   like the ladder (F1-NIT3). Captures continue while Xaero's own writing switches are off, by
+   decision (F1-NIT2): the copy writes the shown band when writing returns.
+9. **Test gaps (O6 T1–T9)** are pinned: fill never replaces a queued tile; the surface's
+   stale-layer exemption and the 600-pump bound; the ceiling-only capture gate; the singleplayer
+   plan wait (no longer vacuous); the failure-count reset; the window probe's layer; fill-first
+   eviction; the real `/lss clearcache` tenant; `registryFingerprint`.
 
 ## C. Shared: validation, docs, release, ports
 
