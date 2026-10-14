@@ -295,7 +295,9 @@ public final class SettingsSchema<T> {
         if(p.equals("far_players.distance.max_blocks"))return new double[]{client?0:128,16384,0};
         if(p.startsWith("far_players.")&&p.endsWith("blocks"))return new double[]{0,16384,0};
         if(p.equals("lod.download.max_columns_per_second"))return new double[]{10,100000,1};
-        if(p.equals("integrations.map_ingestion.nether_store_mib"))return new double[]{16,65536,1};
+        // O4-F6: the active store indexes every stored column on the heap (~100 bytes each, ~2.5% of
+        // the disk cap), so the cap stops where that index stays modest (~25 MiB at 1024 MiB).
+        if(p.equals("integrations.map_ingestion.nether_store_mib"))return new double[]{16,1024,1};
         return null;
     }
 }

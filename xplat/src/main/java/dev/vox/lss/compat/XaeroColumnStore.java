@@ -63,7 +63,8 @@ import java.util.zip.CRC32;
  * whole (oldest first), then the active store's oldest segment; a record read by a fill from
  * the older half of the segments is copied forward, so eviction is least-recently-USED at
  * segment granularity. The active store's index lives on the heap: ~100 bytes per stored
- * column, ~2.5% of its disk bytes.
+ * column, ~2.5% of its disk bytes — why the setting tops out at 1024 MiB (O4-F6). A lowered cap
+ * trims at the next open or write (pinned), not at the reload.
  *
  * <p><b>Threads.</b> All file and index work runs on one daemon IO thread. Captures queue
  * with a bound (count and bytes) and DROP past it — the decode thread never blocks. Forgets
