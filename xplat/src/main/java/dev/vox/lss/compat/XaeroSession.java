@@ -969,6 +969,7 @@ final class XaeroSession {
         this.lastWorldId = null;
         this.layerPlan = null; // the next session re-reads what Xaero shows
         this.fill.reset(); // coverage is session-scoped; the store closes (its files stay)
+        lastProductionFillLevel = null; // the old connection's level facts and registries
         this.loadStats.clearPending();
         // §12 (review m5): the main-thread half re-clears the latches — an
         // in-flight ladder's finally can re-latch AFTER onSessionEnd's off-thread
@@ -1399,7 +1400,24 @@ final class XaeroSession {
         return this.acquisition.offerFill(dimension, tile, new Origin(new Receipt(), false));
     }
 
-    private static volatile XaeroBandFill.FillLevel lastProductionFillLevel;
+    /** The production fill-level cache entry: the level is held WEAKLY — it is only the cache's
+     *  identity key, and a strong hold pinned a whole ClientLevel (chunks, light, entities) past
+     *  leaving its dimension (O4-F1). */
+    record CachedFillLevel(java.lang.ref.WeakReference<Object> level, XaeroBandFill.FillLevel fill) {}
+
+    /** The last level's fill facts (any thread); cleared at session end so the old connection's
+     *  registries do not outlive it either. */
+    static volatile CachedFillLevel lastProductionFillLevel;
+
+    /** {@code level}'s fill facts from the cache, else {@code compute}d and cached (keyed weakly). */
+    static XaeroBandFill.FillLevel cachedFillLevel(Object level,
+                                                   java.util.function.Function<Object, XaeroBandFill.FillLevel> compute) {
+        var cached = lastProductionFillLevel;
+        if (cached != null && cached.level().get() == level) return cached.fill();
+        var fill = compute.apply(level);
+        lastProductionFillLevel = new CachedFillLevel(new java.lang.ref.WeakReference<>(level), fill);
+        return fill;
+    }
 
     /** The current client level's fill facts (main thread). */
     static XaeroBandFill.FillLevel productionFillLevel() {
@@ -1409,19 +1427,19 @@ final class XaeroSession {
 
     /** A client level's fill facts, cached per level (any thread: registries are frozen). */
     static XaeroBandFill.FillLevel productionFillLevel(Object clientLevel) {
-        var cached = lastProductionFillLevel;
-        if (cached != null && cached.levelRef() == clientLevel) return cached;
+        return cachedFillLevel(clientLevel, XaeroSession::computeFillLevel);
+    }
+
+    private static XaeroBandFill.FillLevel computeFillLevel(Object clientLevel) {
         var level = (net.minecraft.client.multiplayer.ClientLevel) clientLevel;
         var type = level.dimensionType();
         var facts = new XaeroTileExtractor.LevelFacts(level.getMinY(), level.getMaxY() + 1, type.hasSkyLight(),
                 type.hasCeiling(), type.logicalHeight());
         var registries = level.registryAccess();
-        var fillLevel = new XaeroBandFill.FillLevel(level, level.dimension(),
+        return new XaeroBandFill.FillLevel(level.dimension(),
                 dev.vox.lss.networking.client.ColumnCacheStore.dimensionFileKey(level.dimension()), facts,
                 net.minecraft.world.level.chunk.PalettedContainerFactory.create(registries),
                 registryFingerprint(registries, facts));
-        lastProductionFillLevel = fillLevel;
-        return fillLevel;
     }
 
     /** What the stored ids mean: the block-state id space, the biome registry's id → key
