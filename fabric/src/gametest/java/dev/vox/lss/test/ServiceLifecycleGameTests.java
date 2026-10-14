@@ -2433,7 +2433,7 @@ public class ServiceLifecycleGameTests {
      * (the reload's one-shot and the 200-tick cadence both run it): dropped, or loosened
      * to {@code dialectOf}, a reload would revoke an old client with a v20 frame.
      */
-    @GameTest(template = "fabric-gametest-api-v1:empty", maxTicks = 400)
+    @GameTest(template = "fabric-gametest-api-v1:empty", timeoutTicks = 400)
     public void mapPolicyArmNeverRevokesALegacySessionMidSession(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         var server = level.getServer();
@@ -2505,7 +2505,7 @@ public class ServiceLifecycleGameTests {
      * line — and the stale pre-respawn instance (the cadence sweep runs before the
      * lifecycle pass swaps it) claims nothing either. A new connection still gets its own.
      */
-    @GameTest(template = "fabric-gametest-api-v1:empty", maxTicks = 400)
+    @GameTest(template = "fabric-gametest-api-v1:empty", timeoutTicks = 400)
     public void mapPolicyChatLineIsOncePerConnectionAcrossARespawn(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         var server = level.getServer();
