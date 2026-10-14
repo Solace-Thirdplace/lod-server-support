@@ -2446,12 +2446,12 @@ public class ServiceLifecycleGameTests {
             LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
                     LSSConstants.PROTOCOL_VERSION, VOXEL), current, service, reply -> { });
             for (var p : legacy) {
-                helper.assertTrue(service.getPlayers().get(p.getUUID()) != null
+                Gt.assertTrue(helper, service.getPlayers().get(p.getUUID()) != null
                                 && !service.getDialectTracker().isCurrent(p.getUUID()),
                         "premise: a registered legacy-dialect session ("
                                 + service.getDialectTracker().dialectOf(p.getUUID()) + ")");
             }
-            helper.assertTrue(service.getPlayers().get(current.getUUID()) != null
+            Gt.assertTrue(helper, service.getPlayers().get(current.getUUID()) != null
                             && service.getDialectTracker().isCurrent(current.getUUID()),
                     "premise: a registered CURRENT session without the bit");
             var pushes = new ArrayList<Object[]>();
@@ -2459,23 +2459,23 @@ public class ServiceLifecycleGameTests {
 
             config.set("privacy.request_no_map_ingestion", true);
             service.adoptMapPolicyForTest(true); // as the arming reconcile would
-            helper.assertTrue(service.runMapPolicySweep(config) == 1,
+            Gt.assertTrue(helper, service.runMapPolicySweep(config) == 1,
                     "the arm revokes exactly the CURRENT session without the bit");
-            helper.assertTrue(service.getPlayers().get(current.getUUID()) == null
+            Gt.assertTrue(helper, service.getPlayers().get(current.getUUID()) == null
                             && notices.equals(java.util.List.of(current.getUUID())),
                     "control: the CURRENT session is revoked and told once");
             var gateState = service.getServiceGateState();
             for (var p : legacy) {
                 var uuid = p.getUUID();
                 var dialect = service.getDialectTracker().dialectOf(uuid);
-                helper.assertTrue(service.getPlayers().get(uuid) != null,
+                Gt.assertTrue(helper, service.getPlayers().get(uuid) != null,
                         dialect + ": a legacy session keeps serving until rejoin");
-                helper.assertTrue(pushes.stream().noneMatch(e -> e[0] == p),
+                Gt.assertTrue(helper, pushes.stream().noneMatch(e -> e[0] == p),
                         dialect + ": no mid-session disable push (a v20 frame it cannot read)");
-                helper.assertTrue(!gateState.isDenied(uuid) && !notices.contains(uuid),
+                Gt.assertTrue(helper, !gateState.isDenied(uuid) && !notices.contains(uuid),
                         dialect + ": no memo and no chat line");
             }
-            helper.assertTrue(service.runMapPolicySweep(config) == 0 && pushes.size() == 1,
+            Gt.assertTrue(helper, service.runMapPolicySweep(config) == 0 && pushes.size() == 1,
                     "a repeated sweep (the 200-tick cadence) revokes nobody");
         } finally {
             service.shutdown();
@@ -2511,33 +2511,33 @@ public class ServiceLifecycleGameTests {
             service.adoptMapPolicyForTest(true);
             LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
                     LSSConstants.PROTOCOL_VERSION, VOXEL), mock, service, reply -> { });
-            helper.assertTrue(told.size() == 1 && service.getPlayers().get(uuid) == null,
+            Gt.assertTrue(helper, told.size() == 1 && service.getPlayers().get(uuid) == null,
                     "premise: refused at handshake with one chat line");
 
             var fresh = playerList.respawn(mock, true, Entity.RemovalReason.DISCARDED);
-            helper.assertTrue(fresh != mock && fresh.connection == mock.connection,
+            Gt.assertTrue(helper, fresh != mock && fresh.connection == mock.connection,
                     "premise: respawn builds a NEW ServerPlayer on the SAME connection");
 
             config.set("privacy.request_no_map_ingestion", false);
             service.adoptMapPolicyForTest(false);
             service.replayDeniedHandshakes(config);
             var state = service.getPlayers().get(uuid);
-            helper.assertTrue(state != null && state.getPlayer() == fresh,
+            Gt.assertTrue(helper, state != null && state.getPlayer() == fresh,
                     "premise: the disarm replay registers the respawned instance");
 
             config.set("privacy.request_no_map_ingestion", true);
             service.adoptMapPolicyForTest(true);
-            helper.assertTrue(service.runMapPolicySweep(config) == 1
+            Gt.assertTrue(helper, service.runMapPolicySweep(config) == 1
                             && service.getPlayers().get(uuid) == null,
                     "premise: the re-arm sweep revokes the session");
-            helper.assertTrue(told.size() == 1,
+            Gt.assertTrue(helper, told.size() == 1,
                     "ONE line per connection across respawn + disarm + re-arm, got " + told.size());
             service.noticeMapPolicyRefusal(mock);
-            helper.assertTrue(told.size() == 1, "the stale pre-respawn instance claims nothing");
+            Gt.assertTrue(helper, told.size() == 1, "the stale pre-respawn instance claims nothing");
 
             service.getServiceGateState().onDisconnect(uuid);
             service.noticeMapPolicyRefusal(fresh);
-            helper.assertTrue(told.size() == 2 && told.get(1) == fresh,
+            Gt.assertTrue(helper, told.size() == 2 && told.get(1) == fresh,
                     "after the disconnect sweep a connection claims afresh");
         } finally {
             service.shutdown();
