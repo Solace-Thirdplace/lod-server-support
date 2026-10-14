@@ -27,12 +27,21 @@ import dev.vox.lss.platform.LoaderServices;
  *                                 ({@link FarPlayerRenderer#RENDER_AVAILABLE} — false on
  *                                 NeoForge v1, where the renderer-only options are hidden;
  *                                 "Share My Position" is the prefs carrier and always shows)
+ * @param mapIngestionServerBlocked the connected server asks clients not to write LOD
+ *                                 terrain into map mods (map-policy plan A4) — the map
+ *                                 ingestion tooltip says "Turned off by this server"
  */
 public record MenuContext(boolean governorOn, boolean mapModSupported,
-                          boolean farPlayerRenderAvailable, boolean nativeTerrain) {
+                          boolean farPlayerRenderAvailable, boolean nativeTerrain,
+                          boolean mapIngestionServerBlocked) {
 
     public MenuContext(boolean governorOn, boolean mapModSupported, boolean farPlayerRenderAvailable) {
-        this(governorOn, mapModSupported, farPlayerRenderAvailable, true);
+        this(governorOn, mapModSupported, farPlayerRenderAvailable, true, false);
+    }
+
+    public MenuContext(boolean governorOn, boolean mapModSupported, boolean farPlayerRenderAvailable,
+                       boolean nativeTerrain) {
+        this(governorOn, mapModSupported, farPlayerRenderAvailable, nativeTerrain, false);
     }
 
     /** Every fact ON: the default for tests and the tooltip-key enumeration. */
@@ -69,6 +78,14 @@ public record MenuContext(boolean governorOn, boolean mapModSupported,
                     || !dev.vox.lss.networking.client.DhClientSession.selected();
         }
         catch (Throwable unavailable) { nativeTerrain = true; }
-        return new MenuContext(governor, maps, FarPlayerRenderer.RENDER_AVAILABLE, nativeTerrain);
+        boolean serverBlocked;
+        try {
+            // Only a live connection can block (the flag resets at join and disconnect).
+            serverBlocked = !dev.vox.lss.networking.client.ClientNetGlue.serverAllowsMapIngestion();
+        } catch (Throwable unavailable) {
+            serverBlocked = false;
+        }
+        return new MenuContext(governor, maps, FarPlayerRenderer.RENDER_AVAILABLE, nativeTerrain,
+                serverBlocked);
     }
 }

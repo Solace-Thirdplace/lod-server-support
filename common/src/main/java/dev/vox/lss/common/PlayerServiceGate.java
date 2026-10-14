@@ -47,6 +47,25 @@ public interface PlayerServiceGate {
     void onServiceDenied(int protocolVersion, int capabilities);
 
     /**
+     * The map-ingestion policy's REAL-refusal hook (map-policy plan A3.2/A3.3), called
+     * after the {@code enabled=false} reply when the outcome is
+     * {@code MAP_POLICY_REFUSED} and the handshake did NOT declare
+     * {@code CAPABILITY_MAP_POLICY} — never for the QUIET refusal (a 0.19 client's raced
+     * legacy rung). Production implementations deposit the memo with reason
+     * {@code MAP_POLICY} (so a disarm re-offers the session through the grant sweep),
+     * send the once-per-connection chat line (never from a grant-sweep replay), and run
+     * the unregistration composite for an already-registered player (a live session
+     * re-handshaking while the policy is armed).
+     *
+     * @return whether this refusal is a TRANSITION (the memo newly gained the reason) —
+     *         the core logs its once-per-transition INFO line exactly then. The default
+     *         (the {@link #OPEN} gate and test gates) remembers nothing and returns false.
+     */
+    default boolean onMapPolicyRefused(int protocolVersion, int capabilities) {
+        return false;
+    }
+
+    /**
      * The gate the pre-gate handshake overloads ride: permits everything, never logs,
      * remembers nothing — exactly the behavior of every build before
      * {@code requireServicePermission} existed.

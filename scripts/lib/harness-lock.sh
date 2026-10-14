@@ -48,6 +48,11 @@ harness_acquire() {
 # signals even while a build or nested wrapper is running (foreground Bash waits
 # otherwise defer traps until the child exits).
 harness_cleanup() {
+    harness_stop_owned
+    harness_reap_jobs
+}
+
+harness_stop_owned() {
     local pid
     for pid in "$HARNESS_TASK_PID" "$HARNESS_OBSERVER_PID"; do
         if [[ -n "$pid" ]]; then
@@ -57,6 +62,20 @@ harness_cleanup() {
     done
     HARNESS_TASK_PID=""
     HARNESS_OBSERVER_PID=""
+}
+
+# Bash runs a pending trap between commands, so a signal can land after a
+# background launch and before its `$!` is recorded. That supervisor holds the
+# lock descriptor and would outlive this shell (it only stops on its parent-death
+# signal), refusing the next run. Stop and reap every remaining background job.
+harness_reap_jobs() {
+    local pids
+    pids="$(jobs -pr)"
+    if [[ -n "$pids" ]]; then
+        # shellcheck disable=SC2086
+        kill $pids 2>/dev/null || true
+    fi
+    wait 2>/dev/null || true
 }
 
 harness_run() {

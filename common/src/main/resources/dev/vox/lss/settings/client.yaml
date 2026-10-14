@@ -62,6 +62,8 @@ integrations:
   # Maps save these tiles like explored terrain (they stay until you revisit), and a large LOD
   # distance can add GBs of map data. Map writing paces downloads so maps stay complete; turning
   # this off stops future writes after reconnect without removing terrain already saved.
+  # map_ingestion.nether_store_mib (experimental file, default 256) caps the disk kept to fill
+  # Xaero's cave layers when you switch layer; 0 = no store and no fill on switch.
   map_ingestion:
     enabled: true # [reconnect] Write server terrain into installed map mods; off = maps show only explored terrain.
     backpressure: true # Pace downloads to map writes; requires ingest_backpressure.

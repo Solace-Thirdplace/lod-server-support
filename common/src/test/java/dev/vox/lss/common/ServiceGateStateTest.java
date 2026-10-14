@@ -27,14 +27,33 @@ class ServiceGateStateTest {
         assertTrue(state.isDenied(uuid));
         assertEquals(1, state.permissionDeniedTotal(), "absent->present is the transition");
 
-        state.rememberDenied(uuid, "Steve", 16, 1);
+        state.rememberDenied(uuid, "Steve", 20, 1);
         assertEquals(1, state.permissionDeniedTotal(),
                 "a re-handshake while already denied is NOT re-counted (pinned: §2.5)");
-        assertEquals(new ServiceGateState.DeniedHandshake(16, 1, "Steve"),
+        assertEquals(new ServiceGateState.DeniedHandshake(20, 1, "Steve"),
                 state.takeDenied(uuid),
-                "the LATEST handshake is the one worth replaying (capability staleness "
-                        + "is accepted; any real re-handshake overwrites)");
+                "at the same rung the LATEST handshake is the one worth replaying "
+                        + "(capability staleness is accepted; any real re-handshake overwrites)");
         assertNull(state.takeDenied(uuid), "take is a removal — the sweep replays once");
+    }
+
+    /** Review fold A11 (supersedes the old "latest wins" pin for lower rungs): an old
+     *  client's discovery ladder answers a v20 denial with 19 and 16 rungs on the same
+     *  connection — the replay must use the highest rung it announced, or a disarm/grant
+     *  would serve a v20-capable client in the v16 dialect. */
+    @Test
+    void aLaterLowerLadderRungNeverReplacesAStoredHigherOne() {
+        state.rememberDenied(uuid, "Steve", 20, 5, ServiceGateState.REASON_MAP_POLICY);
+        state.rememberDenied(uuid, "Steve", 19, 1, ServiceGateState.REASON_MAP_POLICY);
+        state.rememberDenied(uuid, "Steve", 16, 1, ServiceGateState.REASON_PERMISSION);
+        assertEquals(new ServiceGateState.DeniedHandshake(20, 5, "Steve",
+                        ServiceGateState.REASON_MAP_POLICY | ServiceGateState.REASON_PERMISSION),
+                state.peekDenied(uuid), "the CURRENT handshake (and its capabilities) is kept; reasons still merge");
+        state.onDisconnect(uuid);
+        state.rememberDenied(uuid, "Steve", 16, 1);
+        state.rememberDenied(uuid, "Steve", 19, 3);
+        assertEquals(new ServiceGateState.DeniedHandshake(19, 3, "Steve"), state.peekDenied(uuid),
+                "a HIGHER later rung replaces a lower one");
     }
 
     @Test
@@ -118,5 +137,75 @@ class ServiceGateStateTest {
         state.onDisconnect(uuid);
         assertEquals(1, snapshot.size(), "the sweep iterates a copy — concurrent sweeps are safe");
         assertTrue(state.deniedSnapshot().isEmpty());
+    }
+    // ---- map policy (map-policy plan A3.4): the memo's reason mask ----
+
+    @Test
+    void reasonsMergeAndEachCountsItsOwnTransitions() {
+        assertTrue(state.rememberDenied(uuid, "Steve", 18, 1, ServiceGateState.REASON_MAP_POLICY),
+                "the first policy refusal is a transition");
+        assertFalse(state.rememberDenied(uuid, "Steve", 16, 1, ServiceGateState.REASON_MAP_POLICY),
+                "a re-refusal while refused is not");
+        assertEquals(1, state.mapPolicyRefusedTotal());
+        assertEquals(0, state.permissionDeniedTotal(),
+                "a policy refusal never counts as a permission denial");
+
+        // A permission denial on the same connection MERGES (the latest handshake wins)
+        // and counts a permission transition.
+        state.rememberDenied(uuid, "Steve", 20, 9);
+        assertEquals(1, state.permissionDeniedTotal());
+        assertEquals(1, state.mapPolicyRefusedTotal(), "the policy reason did not re-count");
+        var entry = state.peekDenied(uuid);
+        assertEquals(new ServiceGateState.DeniedHandshake(20, 9, "Steve",
+                ServiceGateState.REASON_PERMISSION | ServiceGateState.REASON_MAP_POLICY), entry,
+                "the memo holds BOTH reasons — a replay waits until every one has cleared");
+        assertTrue(entry.has(ServiceGateState.REASON_PERMISSION)
+                && entry.has(ServiceGateState.REASON_MAP_POLICY));
+    }
+
+    @Test
+    void theDiagCountsSeparateThePermissionAndPolicyEntries() {
+        var other = UUID.randomUUID();
+        state.rememberDenied(uuid, "Steve", 20, 1);
+        state.rememberDenied(other, "Alex", 19, 1, ServiceGateState.REASON_MAP_POLICY);
+        assertEquals(2, state.deniedCount());
+        assertEquals(1, state.deniedCount(ServiceGateState.REASON_PERMISSION),
+                "Gate: denied= must not mix in policy refusals");
+        assertEquals(1, state.deniedCount(ServiceGateState.REASON_MAP_POLICY),
+                "MapPolicy: refused= counts only policy refusals");
+    }
+
+    @Test
+    void thePolicyNoticeLatchIsPerConnectionAndSurvivesRegistration() {
+        Object connection = new Object();
+        assertTrue(state.claimMapPolicyNotice(uuid, connection), "the first refusal of a connection notifies");
+        assertFalse(state.claimMapPolicyNotice(uuid, connection), "never twice on one connection");
+        state.onRegistered(uuid);
+        assertFalse(state.claimMapPolicyNotice(uuid, connection),
+                "a registration (an arm/disarm cycle) must not re-arm the chat line — that is "
+                        + "exactly why it cannot share the denial-log latch");
+        state.onDisconnect(uuid);
+        assertFalse(state.hasMapPolicyNotice(uuid), "the disconnect drops the claim");
+        assertTrue(state.claimMapPolicyNotice(uuid, connection), "a new connection gets its line again");
+        state.clear();
+        assertTrue(state.claimMapPolicyNotice(uuid, connection), "server stop clears it too");
+    }
+
+    /** Review fold A7: the claim is tied to the CONNECTION token — a rejoin whose old
+     *  connection's cleanup has not drained yet (Paper's mailboxed quit) claims afresh. */
+    @Test
+    void aNewConnectionTokenClaimsAfreshBeforeTheOldOneIsCleared() {
+        Object oldConnection = new Object();
+        Object rejoin = new Object();
+        assertTrue(state.claimMapPolicyNotice(uuid, oldConnection));
+        assertTrue(state.claimMapPolicyNotice(uuid, rejoin), "the rejoin gets its own line");
+        assertFalse(state.claimMapPolicyNotice(uuid, rejoin), "once");
+    }
+
+    @Test
+    void thePermissionOnlyShapeKeepsItsRecordIdentity() {
+        assertEquals(ServiceGateState.REASON_PERMISSION,
+                new ServiceGateState.DeniedHandshake(20, 1, "Steve").reasons(),
+                "every pre-policy deposit is a PERMISSION entry");
     }
 }

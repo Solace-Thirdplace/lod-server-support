@@ -266,6 +266,14 @@ class ExporterContractTest {
         src.gateState.rememberDenied(java.util.UUID.randomUUID(), "denied", 20, 1);
         var m3 = BenchmarkMetricsExporter.buildServerMetrics(src);
         assertEquals(1L, section(m3, "service").get("permission_denied"));
+        assertEquals(0L, section(m3, "service").get("map_policy_refused"),
+                "a permission denial never counts as a map-policy refusal");
+        // Map policy (map-policy plan A3.5): its own transition counter, own key.
+        src.gateState.rememberDenied(java.util.UUID.randomUUID(), "refused", 19, 1,
+                dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY);
+        var m4 = BenchmarkMetricsExporter.buildServerMetrics(src);
+        assertEquals(1L, section(m4, "service").get("map_policy_refused"));
+        assertEquals(1L, section(m4, "service").get("permission_denied"));
     }
 
     // ---- HD-021 leg: disk map stays empty (not zero-filled) when no reader exists ----

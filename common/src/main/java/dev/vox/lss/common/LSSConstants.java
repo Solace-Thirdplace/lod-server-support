@@ -360,6 +360,21 @@ public final class LSSConstants {
      *  session registers normally: no compat rung, no version bump. INERT at E1 — the
      *  client-side composition compiles the bit OFF until E2 flips the defaults. */
     public static final int CAPABILITY_FAR_PLAYERS = 4;
+    /** Map policy (0.19.0, map-policy plan A2): "I honor the server's map-ingestion
+     *  policy" — the client obeys {@link #SESSION_FLAG_DENY_MAP_INGESTION}. Declared
+     *  unconditionally by 0.19+ clients (with no map mod, honoring is trivial) at every
+     *  discovery rung. Every server back to v0.2.1 only tests specific bits, so an old
+     *  server ignores it; a server with {@code privacy.request_no_map_ingestion} armed
+     *  serves only sessions that are CURRENT-dialect and carry it. */
+    public static final int CAPABILITY_MAP_POLICY = 8;
+
+    /** The v20 SessionConfig's trailing {@code sessionFlags} VarInt (map-policy plan A2):
+     *  appended after {@code serverDataVersion} ONLY for a version-20, non-v16 frame to a
+     *  session that declared {@link #CAPABILITY_MAP_POLICY}. Unknown bits are ignored. */
+    public static final int SESSION_FLAG_DENY_MAP_INGESTION = 0x1;
+    /** {@code sessionFlags} sentinel: the field is absent from the frame (the encoder omits
+     *  it; the client decodes absence as "unchanged" and keeps the connection's value). */
+    public static final int SESSION_FLAGS_ABSENT = -1;
 
     // VoxelColumn codec tag values (one wire byte, protocol 19+, after the source tag).
     // Unlike the source tag, unknown values are NOT passed through verbatim client-side:
