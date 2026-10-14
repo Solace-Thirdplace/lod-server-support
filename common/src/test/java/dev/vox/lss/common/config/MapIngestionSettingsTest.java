@@ -68,6 +68,16 @@ class MapIngestionSettingsTest {
                 "0 = no store and no fill on switch");
         var tiny = codec.parse(off.main(), bytes("integrations:\n  map_ingestion:\n    nether_store_mib: 5\n"));
         assertEquals(16, tiny.normalized().integrations().mapIngestion().netherStoreMb(), "the 16 MiB floor");
+        // Review fold O4-F6: the store's index lives on the heap, so the cap tops out at 1 GiB. A
+        // file written with more (a 0.19.0 candidate allowed 65536) applies the maximum and says
+        // so; the file keeps its value (startup never rewrites a file).
+        var huge = codec.parse(off.main(), bytes("integrations:\n  map_ingestion:\n    nether_store_mib: 65536\n"));
+        assertEquals(1024, huge.normalized().integrations().mapIngestion().netherStoreMb(), "the 1024 MiB ceiling");
+        assertEquals(65536, huge.configured().integrations().mapIngestion().netherStoreMb(), "the file's value is kept");
+        assertTrue(huge.normalizations().stream().anyMatch(n -> n.path().equals(path)
+                && Integer.valueOf(65536).equals(n.requested()) && Integer.valueOf(1024).equals(n.effective())),
+                huge.normalizations().toString());
+        assertEquals(1024, schema.descriptorsByPath().get(path).maximum().intValue());
         // An upgraded (alias-group) file: a main-file save canonicalizes the group and still
         // keeps the knob out of the main file.
         var saved = codec.editSplit(codec.parse(bytes(oldFile(true, true)), off.sidecar()), Map.of("lod.receive", false));

@@ -539,7 +539,7 @@ paper:
 | compatibility.block_fallbacks.overrides | string_map | {} |  | S | all |
 | integrations.map_ingestion.enabled | boolean | true |  | S | all |
 | integrations.map_ingestion.backpressure | boolean | true |  | H | all |
-| integrations.map_ingestion.nether_store_mib | integer | 256 | 0 sentinel; 16–65536 mib | H | all |
+| integrations.map_ingestion.nether_store_mib | integer | 256 | 0 sentinel; 16–1024 mib | H | all |
 | far_players.enabled | boolean | true |  | H | all |
 | far_players.distance.min_blocks | integer | 0 | 0–16384 blocks | H | all |
 | far_players.distance.max_blocks | integer | 0 | 0–16384 blocks | H | all |
