@@ -484,7 +484,11 @@ class XaeroBandFillTest {
     }
 
     @Test
-    void aXaeroWorldChangeForgetsTheCoverageAndRestartsTheDebounce() throws Exception {
+    void aXaeroWorldChangeForgetsTheCoverageAndNeverFillsFromTheOldWorldsStore() throws Exception {
+        // Plan fold item 3 (coverage names Xaero's map, so a new Xaero world forgets it and
+        // restarts the debounce), amended by review fold O4-F5: the store is keyed by Xaero's
+        // world too, so a world change inside one LSS cache bucket (a proxy backend switch with
+        // no disconnect) never fills the old world's terrain into the new world's map.
         show(3);
         for (int x = 64; x < 67; x++) offer(x, 64, PLATFORMS);
         this.bridge.pump();
@@ -492,7 +496,7 @@ class XaeroBandFillTest {
         runFill();
         assertEquals(3, count("fill_committed"));
         this.processor.currentWorldId = "another-world";
-        this.bridge.pump(); // the ladder sees the new world id
+        this.bridge.pump(); // the pump reads the new world id
         assertNull(this.bridge.fill.job, "the job named the old world");
         this.bridge.pump();
         assertEquals(1, count("fill_started"), "the debounce restarts");
@@ -500,7 +504,30 @@ class XaeroBandFillTest {
         this.bridge.pump();
         assertEquals(2, count("fill_started"));
         runFill();
-        assertEquals(6, count("fill_committed"), "the old world's coverage was forgotten");
+        assertEquals(3, count("fill_committed"), "nothing from the old world's store");
+        offer(70, 64, PLATFORMS); // the new world's own column (live: surface and band 5)
+        this.bridge.pump();
+        switchTo(6);
+        runFill();
+        assertEquals(4, count("fill_committed"), "the new world fills from its own store");
+        this.processor.currentWorldId = "stub-world"; // back to the first world
+        this.bridge.pump();
+        switchTo(4);
+        runFill();
+        assertEquals(7, count("fill_committed"), "its store was kept, its coverage forgotten");
+    }
+
+    @Test
+    void columnsArrivingBeforeXaeroNamesItsWorldAreKeptUnderItOnceKnown() throws Exception {
+        this.processor.currentWorldId = null; // Xaero has not read its world yet (the join burst)
+        show(3);
+        offer(64, 64, PLATFORMS);
+        offer(65, 64, PLATFORMS);
+        assertEquals(0, stored(), "held: the store is keyed by Xaero's world");
+        this.processor.currentWorldId = "stub-world";
+        switchTo(5); // the pump reads the world: the held captures go to its store first
+        runFill();
+        assertEquals(2, count("fill_committed"), "kept under the world once Xaero named it");
     }
 
     @Test
@@ -533,7 +560,8 @@ class XaeroBandFillTest {
         this.bridge.pump();
         stored();
         // A record that passes its CRC but will not decode (another format, a bad id).
-        this.store.capture("bucket", "minecraft_the_nether", FP, (66L << 32) | 64L, new byte[]{1, 2, 3, 4, 5});
+        this.store.capture("bucket", XaeroBandFill.storeKey("minecraft_the_nether", "stub-world"), FP,
+                (66L << 32) | 64L, new byte[]{1, 2, 3, 4, 5});
         assertEquals(3, stored());
         switchTo(5);
         runFill();

@@ -53,6 +53,8 @@ final class XaeroBandFill {
         final XaeroTileExtractor.LayerTarget target;
         final FillLevel level;
         final String bucket;
+        /** The store this job reads: its dimension in Xaero's world ({@link #storeKey}). */
+        final String storeKey;
         final boolean ignoreHeightmaps;
         final int centerX;
         final int centerZ;
@@ -73,7 +75,8 @@ final class XaeroBandFill {
         final XaeroSession.Receipt receipt;
 
         Job(Object dimension, int layer, XaeroTileExtractor.LayerTarget target, FillLevel level, String bucket,
-            boolean ignoreHeightmaps, int centerX, int centerZ, int radius, long startedMillis, boolean rearm) {
+            String storeKey, boolean ignoreHeightmaps, int centerX, int centerZ, int radius, long startedMillis,
+            boolean rearm) {
             this.receipt = session.new Receipt();
             this.rearm = rearm;
             this.dimension = dimension;
@@ -81,6 +84,7 @@ final class XaeroBandFill {
             this.target = target;
             this.level = level;
             this.bucket = bucket;
+            this.storeKey = storeKey;
             this.ignoreHeightmaps = ignoreHeightmaps;
             this.centerX = centerX;
             this.centerZ = centerZ;
@@ -150,6 +154,8 @@ final class XaeroBandFill {
     volatile Object coverDimension;
     /** The column-cache bucket the coverage belongs to (main thread). */
     private String coverBucket;
+    /** Xaero's world the coverage and the job belong to (main thread; null = none yet). */
+    private String world;
 
     // ---- the trigger (main thread) ----
     private Object seenDimension;
@@ -225,10 +231,39 @@ final class XaeroBandFill {
         }
     }
 
+    // ---- the store key ----
+
+    /**
+     * The store's file key (O4-F5): the dimension, then Xaero's world (its server world id,
+     * {@code MapProcessor.getCurrentWorldId}) as a hash. Two Xaero worlds that share one LSS cache
+     * bucket (a proxy backend switch without a disconnect; two backends with one seed, or
+     * {@code cache.split_by_world: false}) never fill one's terrain into the other's map, in this
+     * session or a later one. The file name never carries the id itself.
+     */
+    static String storeKey(String dimKey, String xaeroWorld) {
+        long h = 0xcbf29ce484222325L;
+        for (int i = 0; i < xaeroWorld.length(); i++) {
+            h = (h ^ xaeroWorld.charAt(i)) * 0x100000001b3L;
+        }
+        return dimKey + ".w" + Long.toHexString(h);
+    }
+
     // ---- capture (decode thread) ----
 
-    /** Keep a delivered column of a ceiling dimension (the caller has passed the write gates). */
-    void capture(FillLevel level, String bucket, Object dimension, int chunkX, int chunkZ,
+    /** A capture made before Xaero named its world this session, keyed once it does. */
+    private record Unkeyed(String bucket, FillLevel level, Object dimension, long pos, long seq, byte[] raw) {}
+
+    /** Captures held while Xaero's world is unknown (the join burst can beat Xaero's first
+     *  world read): bounded, released in order once it is known, dropped at session end.
+     *  Guarded by itself. */
+    private final java.util.ArrayDeque<Unkeyed> unkeyed = new java.util.ArrayDeque<>();
+    private long unkeyedBytes; // under unkeyed
+    static final int MAX_UNKEYED = 512;
+    static final long MAX_UNKEYED_BYTES = 16L << 20;
+
+    /** Keep a delivered column of a ceiling dimension (the caller has passed the write gates).
+     *  {@code xaeroWorld} null = Xaero has not named its world yet: the capture is held. */
+    void capture(FillLevel level, String bucket, String xaeroWorld, Object dimension, int chunkX, int chunkZ,
                  dev.vox.lss.api.VoxelColumnData columnData) {
         var store = this.store;
         if (!this.enabled || store == null || level == null || bucket == null) return;
@@ -242,22 +277,69 @@ final class XaeroBandFill {
             this.captureFailures.incrementAndGet();
             store.captureDrops.incrementAndGet();
             captureOutcome(dimension, pos, seq, false);
-            store.forget(bucket, level.dimKey(), level.fingerprint(), pos); // the stored copy is older (O4-F3)
+            // The stored copy is older now: forget it for good (O4-F3).
+            if (xaeroWorld != null) store.forget(bucket, storeKey(level.dimKey(), xaeroWorld), level.fingerprint(), pos);
             return;
         }
-        store.capture(bucket, level.dimKey(), level.fingerprint(), pos, raw,
+        synchronized (this.unkeyed) {
+            if (xaeroWorld == null) {
+                if (this.unkeyed.size() < MAX_UNKEYED && this.unkeyedBytes + raw.length <= MAX_UNKEYED_BYTES) {
+                    this.unkeyed.add(new Unkeyed(bucket, level, dimension, pos, seq, raw));
+                    this.unkeyedBytes += raw.length;
+                } else {
+                    store.captureDrops.incrementAndGet();
+                    captureOutcome(dimension, pos, seq, false); // the session's stale guard
+                }
+                return;
+            }
+            releaseUnkeyedLocked(store, xaeroWorld); // the held captures are older: they go first
+        }
+        store.capture(bucket, storeKey(level.dimKey(), xaeroWorld), level.fingerprint(), pos, raw,
                 stored -> captureOutcome(dimension, pos, seq, stored));
+    }
+
+    /** Key the held captures under Xaero's world once it is known (main thread, every pump). */
+    void releaseUnkeyed(String xaeroWorld) {
+        var store = this.store;
+        if (xaeroWorld == null || store == null) return;
+        synchronized (this.unkeyed) {
+            releaseUnkeyedLocked(store, xaeroWorld);
+        }
+    }
+
+    private void releaseUnkeyedLocked(XaeroColumnStore store, String xaeroWorld) {
+        while (!this.unkeyed.isEmpty()) {
+            var u = this.unkeyed.poll();
+            this.unkeyedBytes -= u.raw().length;
+            store.capture(u.bucket(), storeKey(u.level().dimKey(), xaeroWorld), u.level().fingerprint(), u.pos(),
+                    u.raw(), stored -> captureOutcome(u.dimension(), u.pos(), u.seq(), stored));
+        }
+    }
+
+    private void dropUnkeyed() {
+        synchronized (this.unkeyed) {
+            this.unkeyed.clear();
+            this.unkeyedBytes = 0;
+        }
     }
 
     // ---- the trigger (main thread, every pump) ----
 
     /** Start, keep or cancel the fill for what Xaero shows now. {@code open} = writes are
      *  allowed (session live, ingestion on, server allows, not dead) and the cave bindings
-     *  are bound. */
-    void tick(LayerPlan plan, FillLevel level, boolean open, String bucket) {
+     *  are bound. {@code xaeroWorld}: Xaero's world id as the pump last read it (null =
+     *  unknown) — the store key's second half, and a change of it forgets the session's
+     *  coverage and job (the old world's map). */
+    void tick(LayerPlan plan, FillLevel level, boolean open, String bucket, String xaeroWorld) {
+        if (xaeroWorld != null && !xaeroWorld.equals(this.world)) {
+            if (this.world != null) onWorldChange(); // Xaero moved to another world mid-session
+            this.world = xaeroWorld;
+        }
+        releaseUnkeyed(xaeroWorld);
         var current = this.job;
         boolean eligible = this.enabled && this.store != null && open && plan != null && !plan.worldSave()
-                && level != null && level.facts().ceiling() && plan.dimension() == level.dimension();
+                && level != null && level.facts().ceiling() && plan.dimension() == level.dimension()
+                && xaeroWorld != null;
         // Coverage is kept for the ceiling dimension the player is in (marks elsewhere are ignored).
         this.coverDimension = this.enabled && this.store != null && level != null && level.facts().ceiling()
                 ? level.dimension() : null;
@@ -320,8 +402,8 @@ final class XaeroBandFill {
         }
         var target = layer == XaeroTileExtractor.FULL ? XaeroTileExtractor.LayerTarget.full(plan.depth())
                 : XaeroTileExtractor.LayerTarget.band(layer, level.facts().topY() - 1, plan.depth());
-        var next = new Job(plan.dimension(), layer, target, level, bucket, plan.ignoreHeightmaps(),
-                centerX, centerZ, radius, now, rearm);
+        var next = new Job(plan.dimension(), layer, target, level, bucket, storeKey(level.dimKey(), xaeroWorld),
+                plan.ignoreHeightmaps(), centerX, centerZ, radius, now, rearm);
         this.job = next;
         this.lastJob = next;
         this.started.incrementAndGet();
@@ -340,8 +422,8 @@ final class XaeroBandFill {
         return progress[1] < progress[0];
     }
 
-    /** Xaero moved to another world under a live session: this session's coverage and the
-     *  job name the old one. Main thread. */
+    /** Xaero moved to another world under a live session (or the store detached): this
+     *  session's coverage and the job name the old one. Main thread. */
     void onWorldChange() {
         cancel(this.job);
         this.job = null;
@@ -361,6 +443,8 @@ final class XaeroBandFill {
         this.seenDimension = null;
         this.coverage.clear();
         this.coverBucket = null;
+        this.world = null;
+        dropUnkeyed();
         synchronized (this.stale) {
             this.stale.clear();
         }
@@ -412,7 +496,7 @@ final class XaeroBandFill {
         try {
             if (j.cancelled || store == null) return;
             var level = j.level;
-            long[] positions = store.positionsNear(j.bucket, level.dimKey(), level.fingerprint(),
+            long[] positions = store.positionsNear(j.bucket, j.storeKey, level.fingerprint(),
                     j.centerX, j.centerZ, j.radius).get(60, TimeUnit.SECONDS);
             j.positions = positions;
             for (int i = 0; i < positions.length && !j.cancelled; i += this.batch) {
@@ -427,7 +511,7 @@ final class XaeroBandFill {
                     }
                 }
                 if (slice.isEmpty()) continue;
-                List<XaeroColumnStore.Column> columns = store.read(j.bucket, level.dimKey(), level.fingerprint(),
+                List<XaeroColumnStore.Column> columns = store.read(j.bucket, j.storeKey, level.fingerprint(),
                         slice.toLongArray()).get(60, TimeUnit.SECONDS);
                 for (var column : columns) {
                     if (j.cancelled) break;
@@ -471,7 +555,7 @@ final class XaeroBandFill {
             // it and go on — the job never dies on one column.
             this.badColumns.incrementAndGet();
             var store = this.store;
-            if (store != null) store.dropCorrupt(j.bucket, j.level.dimKey(), j.level.fingerprint(), pos);
+            if (store != null) store.dropCorrupt(j.bucket, j.storeKey, j.level.fingerprint(), pos);
             return true;
         }
         long waitStart = System.nanoTime();
