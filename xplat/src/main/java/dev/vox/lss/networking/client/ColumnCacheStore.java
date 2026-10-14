@@ -435,7 +435,74 @@ public class ColumnCacheStore {
         });
     }
 
+    /**
+     * Another store keeping files FLAT inside the buckets (the Xaero band-fill column store,
+     * {@code <dim>.xfill.<n>}) — it rides this cache's keying and is deleted with every bucket
+     * clear. It closes its files before a clear (Windows cannot delete an open file) and may
+     * reopen after it.
+     */
+    public interface BucketTenant {
+        void beforeClear();
+
+        void afterClear();
+    }
+
+    private static final java.util.concurrent.CopyOnWriteArrayList<BucketTenant> TENANTS =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    public static void addBucketTenant(BucketTenant tenant) {
+        TENANTS.add(tenant);
+    }
+
+    public static void removeBucketTenant(BucketTenant tenant) {
+        TENANTS.remove(tenant);
+    }
+
+    private static void tenantsBeforeClear() {
+        for (var tenant : TENANTS) {
+            try {
+                tenant.beforeClear();
+            } catch (RuntimeException e) {
+                LSSLogger.warn("A column-cache tenant failed to close before a clear", e);
+            }
+        }
+    }
+
+    private static void tenantsAfterClear() {
+        for (var tenant : TENANTS) {
+            try {
+                tenant.afterClear();
+            } catch (RuntimeException e) {
+                LSSLogger.warn("A column-cache tenant failed to resume after a clear", e);
+            }
+        }
+    }
+
+    /** A bucket's directory (tenants place their flat files there). */
+    public static Path bucketDir(String bucket) {
+        return getServerDir(bucket);
+    }
+
+    /** The cache root (tenants' cross-bucket accounting). */
+    public static Path cacheRootPath() {
+        return cacheDir();
+    }
+
+    /** A dimension's file stem inside a bucket. */
+    public static String dimensionFileKey(ResourceKey<Level> dimension) {
+        return dimensionKey(dimension);
+    }
+
     public static void clearForServer(String serverAddress) {
+        tenantsBeforeClear();
+        try {
+            clearForServerNow(serverAddress);
+        } finally {
+            tenantsAfterClear();
+        }
+    }
+
+    private static void clearForServerNow(String serverAddress) {
         // Run on the IO thread (serialized FIFO with in-flight saves/loads so a queued save can't
         // re-create the files we delete) and wait, to preserve the synchronous clear contract.
         runIoAndWait(() -> {
@@ -477,6 +544,15 @@ public class ColumnCacheStore {
 
     private static void clearForServers(java.util.Collection<String> addressComponents, boolean strict) {
         if (addressComponents.isEmpty()) return;
+        tenantsBeforeClear();
+        try {
+            clearForServersNow(addressComponents, strict);
+        } finally {
+            tenantsAfterClear();
+        }
+    }
+
+    private static void clearForServersNow(java.util.Collection<String> addressComponents, boolean strict) {
         var targets = new java.util.HashSet<String>();
         for (String component : addressComponents) {
             if (component != null && !component.isBlank()) {
@@ -659,6 +735,15 @@ public class ColumnCacheStore {
     }
 
     public static void clearAll() {
+        tenantsBeforeClear();
+        try {
+            clearAllNow();
+        } finally {
+            tenantsAfterClear();
+        }
+    }
+
+    private static void clearAllNow() {
         runIoAndWait(() -> {
             if (!Files.exists(cacheDir(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return;
             IOException failure=null;

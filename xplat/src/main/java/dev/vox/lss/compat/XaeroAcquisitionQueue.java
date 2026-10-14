@@ -26,6 +26,12 @@ final class XaeroAcquisitionQueue {
      *  backpressure poll (§12.2). */
     volatile double occupancy;
     volatile int queuedGauge;
+    /** Band-fill entries (lease-free, re-extracted from the column store) and their bytes —
+     *  part of the queue but NOT of {@link #occupancy}: the LSS backpressure report must
+     *  never slow Voxy for map-only work. Under {@link #queueLock}. */
+    int fillCount;
+    long fillBytes;
+    volatile int fillQueuedGauge;
     /** Pump-side reports collected INSIDE the ladder (which runs under Xaero's
      *  renderThreadPauseSync monitor) and drained by {@link #pump} AFTER the
      *  ladder returns — up to a whole queue's worth on a world-id change, and an
@@ -105,6 +111,7 @@ final class XaeroAcquisitionQueue {
                 if (existing != null) {
                     this.queue.remove(key);
                     this.queuedBytes -= existing.bytes;
+                    forgetFillLocked(existing);
                     if (existing.dimension == dimension) existing.origin.close();
                     if (existing.dimension != dimension) {
                         this.session.droppedStale.incrementAndGet();
@@ -120,6 +127,7 @@ final class XaeroAcquisitionQueue {
                 if (replaced) {
                     // Keep Entry identity: an in-flight commit's compare-and-remove
                     // must see the replacement tile and retain these fresher bytes.
+                    forgetFillLocked(existing); // a live tile takes a fill entry's place
                     this.queuedBytes += bytes - existing.bytes;
                     existing.origin.close();
                     existing.origin = origin;
@@ -129,9 +137,24 @@ final class XaeroAcquisitionQueue {
                 } else if (existing != null) {
                     this.queuedBytes -= existing.bytes;
                     this.queue.remove(key);
+                    forgetFillLocked(existing);
                     this.session.droppedStale.incrementAndGet();
                     evictedOut = new java.util.ArrayList<>();
                     evictedOut.add(new Object[]{existing.dimension, key, existing.origin, Boolean.TRUE});
+                }
+                // Band-fill entries make room first: lease-free, they drop without a report.
+                if (this.fillCount > 0) {
+                    var fills = this.queue.entrySet().iterator();
+                    while (fills.hasNext() && this.fillCount > 0
+                            && (this.queue.size() + (replaced ? 0 : 1) > this.session.maxQueue
+                            || this.queuedBytes + (replaced ? 0 : bytes) > this.session.maxQueueBytes)) {
+                        var candidate = fills.next();
+                        if (!candidate.getValue().fill || candidate.getKey().equals(key)) continue;
+                        fills.remove();
+                        this.queuedBytes -= candidate.getValue().bytes;
+                        forgetFillLocked(candidate.getValue());
+                        candidate.getValue().origin.close();
+                    }
                 }
                 var it = this.queue.entrySet().iterator();
                 while (it.hasNext() && (this.queue.size() + (replaced ? 0 : 1) > this.session.maxQueue
@@ -139,6 +162,7 @@ final class XaeroAcquisitionQueue {
                     var evicted = it.next();
                     if (replaced && evicted.getKey().equals(key)) continue;
                     this.queuedBytes -= evicted.getValue().bytes;
+                    forgetFillLocked(evicted.getValue());
                     it.remove();
                     this.session.droppedOverflow.incrementAndGet();
                     if (evictedOut == null) evictedOut = new java.util.ArrayList<>();
@@ -182,8 +206,8 @@ final class XaeroAcquisitionQueue {
      * Never under {@link #queueLock}. @return true if owed (caller must not report).
      */
     boolean shedToOwed(Object dimension, int layer, long packedChunk, Origin origin) {
-        if (!origin.reliable) {
-            origin.close(); // only reliable tiles owe (§B5)
+        if (!origin.live) {
+            origin.close(); // only live tiles owe (a fill tile never re-serves anything)
             return true;
         }
         if (!this.session.backpressureEnabled.getAsBoolean()) return false;
@@ -495,11 +519,48 @@ final class XaeroAcquisitionQueue {
     /** Recompute the occupancy mirror. Caller holds {@link #queueLock}. */
     void updateOccupancyLocked() {
         this.queuedGauge = this.queue.size();
+        this.fillQueuedGauge = this.fillCount;
+        // Live entries only: band-fill work never reads as LOD backpressure.
         double byBytes = this.session.maxQueueBytes <= 0 ? 1.0
-                : (double) this.queuedBytes / this.session.maxQueueBytes;
+                : (double) (this.queuedBytes - this.fillBytes) / this.session.maxQueueBytes;
         double byCount = this.session.maxQueue <= 0 ? 1.0
-                : (double) this.queue.size() / this.session.maxQueue;
+                : (double) (this.queue.size() - this.fillCount) / this.session.maxQueue;
         this.occupancy = Math.min(1.0, Math.max(byBytes, byCount));
+    }
+
+    /** A band-fill entry left the queue (or a live tile took its place). Under queueLock. */
+    private void forgetFillLocked(Entry entry) {
+        if (!entry.fill) return;
+        entry.fill = false;
+        this.fillCount--;
+        this.fillBytes -= entry.bytes;
+    }
+
+    /**
+     * A band-fill tile (fill-on-switch): enqueued only into ROOM — never over a queued tile of
+     * the same key (a live tile is fresher, or another fill already has it), never evicting
+     * anything. Lease-free: its drops never report or owe. @return false = not taken.
+     */
+    boolean offerFill(Object dimension, XaeroTileExtractor.PreparedTile tile, Origin origin) {
+        TileKey key = XaeroSession.tileKey(tile);
+        int bytes = XaeroSession.approxBytes(tile);
+        synchronized (this.queueLock) {
+            if (!origin.active() || this.session.dead || !this.session.enabled.getAsBoolean()
+                    || !this.session.sessionActive.getAsBoolean()
+                    || this.queue.containsKey(key) || this.queue.size() >= this.session.maxQueue
+                    || this.queuedBytes + bytes > this.session.maxQueueBytes) {
+                origin.close();
+                return false;
+            }
+            var entry = new Entry(dimension, tile, bytes, origin);
+            entry.fill = true;
+            this.queue.put(key, entry);
+            this.queuedBytes += bytes;
+            this.fillCount++;
+            this.fillBytes += bytes;
+            this.updateOccupancyLocked();
+            return true;
+        }
     }
 
     /** A same-dimension drop's report, gated on §12 governance: with backpressure
@@ -527,6 +588,8 @@ final class XaeroAcquisitionQueue {
             for (var entry : this.queue.values()) entry.origin.close();
             this.queue.clear();
             this.queuedBytes = 0;
+            this.fillCount = 0;
+            this.fillBytes = 0;
             this.updateOccupancyLocked();
             return n;
         }
@@ -549,6 +612,8 @@ final class XaeroAcquisitionQueue {
             }
             this.queue.clear();
             this.queuedBytes = 0;
+            this.fillCount = 0;
+            this.fillBytes = 0;
             this.updateOccupancyLocked();
             return n;
         }
@@ -568,6 +633,7 @@ final class XaeroAcquisitionQueue {
             if (current == entry && entry.tile == tile) {
                 this.queuedBytes -= entry.bytes;
                 this.queue.remove(key);
+                forgetFillLocked(entry);
                 this.updateOccupancyLocked();
                 return true;
             }
@@ -592,7 +658,7 @@ final class XaeroAcquisitionQueue {
     }
 
     void oweExpired(Object dimension, int layer, long packedChunk, long regionKey, Origin origin) {
-        if (!origin.reliable || !this.session.backpressureEnabled.getAsBoolean()) { origin.close(); return; }
+        if (!origin.live || !this.session.backpressureEnabled.getAsBoolean()) { origin.close(); return; }
         var key = new OwedKey(dimension, layer, regionKey);
         synchronized (this.owedLock) {
             if (!origin.active()) { origin.close(); return; }
@@ -675,6 +741,8 @@ final class XaeroAcquisitionQueue {
         /** Pump-side (++) with a decode-side reset on tile replace — the race is
          *  benign (one deferral tick lost or kept; the cap is approximate). */
         int ladderReadyDeferrals;
+        /** A band-fill entry (lease-free); a live replacement clears it. Under queueLock. */
+        boolean fill;
 
         Entry(Object dimension, XaeroTileExtractor.PreparedTile tile, int bytes, Origin origin) {
             this.dimension = dimension;

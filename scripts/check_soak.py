@@ -1960,33 +1960,35 @@ def check_xaero_memory(ctx):
                 break
 
 
-# The cave-layers spike (2026-10-13 plan §B0): the pass criteria one run can judge. The A/B
-# criteria (old-gen heap <= 1.2x, reliable region-load p95 <= 1.25x and LOD delivery >= 0.9x of
-# the B-I-only arm) compare two recordings and are read off the same xaero group by hand.
-XAERO_BANDS_MAX_GRANTS_PER_REGION = 3   # re-grants of one (layer, region) <= 2
-XAERO_BANDS_MAX_DROP_RATE = 0.05        # best-effort tiles lost / offered on the stock join (drops AND
-                                        # refusals: since spike round 2 a full queue refuses a column's
-                                        # bands before extraction instead of dropping the oldest after it)
+# The cave-layers spike, FILL-ON-SWITCH (2026-10-13, replacing B-II): the criteria one run can
+# judge. By hand, against the fill-off (B-I) arm: no Xaero exceptions in the client log, reliable
+# region-load p95 (load_ms_p95) <= 1.25x and old-gen heap (heap_fraction) <= 1.2x.
 XAERO_BANDS_MIN_DISTINCT_BANDS = 3      # the height walk really moved Xaero's band
+XAERO_FILL_MIN_COVERAGE = 0.90          # a switched-to band gets >= 90% of the stored positions ...
+XAERO_FILL_WINDOW_MS = 90_000           # ... within radius, within 90 s of its fill starting
+XAERO_FILL_SLACK_MS = 5_000             # one snapshot interval
+XAERO_FILL_MIN_TARGET = 100             # a fill with fewer stored positions in radius is not judged
+XAERO_FILL_MIN_JOBS = 3                 # the walk's three band switches each had a fill to judge
 
 
 @named_check("xaero-nether-bands", ["client.xaero.layer", "client.xaero.mode", "client.xaero.open_regions",
-                                     "client.xaero.open_region_cap", "client.xaero.best_effort_on",
-                                     "client.xaero.best_effort_enqueued", "client.xaero.best_effort_written",
-                                     "client.xaero.best_effort_dropped", "client.xaero.best_effort_grant_max",
-                                     "client.xaero.best_effort_open", "client.xaero.best_effort_window"])
+                                     "client.xaero.open_region_cap", "client.xaero.fill_on",
+                                     "client.xaero.fill_started", "client.xaero.fill_layer",
+                                     "client.xaero.fill_target", "client.xaero.fill_covered",
+                                     "client.xaero.fill_age_ms"])
 def check_xaero_nether_bands(ctx):
-    """Both arms: the windows stay within their caps and the walk moved Xaero across at least
-    three Layered bands (else the run proved nothing about bands). B-II arm (best_effort_on):
-    it wrote best-effort tiles, no (layer, region) took more than three grants, and fewer
-    than 5% of the offered best-effort tiles were lost — dropped after enqueueing, or refused
-    before extraction by a full queue (round-1 recordings carry no refusal field: 0)."""
+    """Both arms: the window stays within its cap and the walk moved Xaero across at least three
+    Layered bands (else the run proved nothing about bands). Fill arm (fill_on): every fill job
+    that ran its 90 s with at least XAERO_FILL_MIN_TARGET stored positions in its radius got
+    >= 90% of them written to its band within those 90 s (fill_covered / fill_target — the
+    positions written to that layer this session, live or filled), and at least three jobs were
+    judged. A job superseded by the next switch before 90 s is not judged."""
     for run, snaps in sorted(ctx.runs.items()):
-        rows = [s for s in snaps if isinstance(s.get("xaero"), dict) and "best_effort_on" in s["xaero"]]
+        rows = [s for s in snaps if isinstance(s.get("xaero"), dict) and "fill_on" in s["xaero"]]
         if not rows:
             yield Violation("xaero-nether-bands", f"run{run}",
-                            "no xaero group with the cave-layer fields (is Xaero's World Map installed, "
-                            "and is this a cave-layers build?)", {})
+                            "no xaero group with the fill-on-switch fields (is Xaero's World Map installed, "
+                            "and is this a fill-on-switch build?)", {})
             continue
         bands = set()
         for s in rows:
@@ -1995,10 +1997,6 @@ def check_xaero_nether_bands(ctx):
                 yield Violation("xaero-nether-bands", f"run{run} wallMs={s['wallMs']}",
                                 "open regions exceed the window cap",
                                 {"open_regions": x["open_regions"], "open_region_cap": x["open_region_cap"]})
-            if x["best_effort_open"] > x["best_effort_window"]:
-                yield Violation("xaero-nether-bands", f"run{run} wallMs={s['wallMs']}",
-                                "best-effort regions exceed their window share",
-                                {"best_effort_open": x["best_effort_open"], "best_effort_window": x["best_effort_window"]})
             layer = str(x["layer"])
             if x["mode"] == "layered" and layer.lstrip("-").isdigit():
                 bands.add(layer)
@@ -2006,31 +2004,33 @@ def check_xaero_nether_bands(ctx):
             yield Violation("xaero-nether-bands", f"run{run}",
                             "the height walk did not move Xaero across enough Layered bands",
                             {"bands_seen": sorted(bands), "need": XAERO_BANDS_MIN_DISTINCT_BANDS})
-        last = rows[-1]["xaero"]
-        if not last["best_effort_on"]:
+        if not rows[-1]["xaero"]["fill_on"]:
             continue
-        enqueued = last["best_effort_enqueued"]
-        if enqueued == 0 or last["best_effort_written"] == 0:
+        jobs = {}
+        for s in rows:
+            x = s["xaero"]
+            if x["fill_started"] > 0 and x["fill_age_ms"] >= 0:
+                jobs.setdefault(x["fill_started"], []).append(x)
+        judged = 0
+        for n, xs in sorted(jobs.items()):
+            target = max(x["fill_target"] for x in xs)
+            if target < XAERO_FILL_MIN_TARGET:
+                continue
+            if not any(x["fill_age_ms"] >= XAERO_FILL_WINDOW_MS for x in xs):
+                continue  # superseded before its window closed
+            judged += 1
+            window = [x for x in xs if x["fill_age_ms"] <= XAERO_FILL_WINDOW_MS + XAERO_FILL_SLACK_MS
+                      and x["fill_target"] > 0]
+            best = max((x["fill_covered"] / x["fill_target"] for x in window), default=0.0)
+            if best < XAERO_FILL_MIN_COVERAGE:
+                yield Violation("xaero-nether-bands", f"run{run} fill#{n}",
+                                f"band {xs[0]['fill_layer']} got under 90% of its stored positions within 90 s",
+                                {"fill_layer": xs[0]["fill_layer"], "fill_target": target,
+                                 "best_coverage": round(best, 4)})
+        if judged < XAERO_FILL_MIN_JOBS:
             yield Violation("xaero-nether-bands", f"run{run}",
-                            "best-effort bands are on but none were enqueued or written",
-                            {"best_effort_enqueued": enqueued, "best_effort_written": last["best_effort_written"]})
-            continue
-        if last["best_effort_grant_max"] > XAERO_BANDS_MAX_GRANTS_PER_REGION:
-            # Context only (round 2): a trickling server re-grants a region as new tiles arrive;
-            # the load/remove loop shows as fruitless grants and a high per-minute re-grant rate.
-            yield Violation("xaero-nether-bands", f"run{run}",
-                            "a (layer, region) was granted more than three times (re-grants > 2)",
-                            {"best_effort_grant_max": last["best_effort_grant_max"],
-                             "best_effort_fruitless_grants": last.get("best_effort_fruitless_grants"),
-                             "best_effort_regrant_rate_max": last.get("best_effort_regrant_rate_max"),
-                             "best_effort_grants_per_ktile": last.get("best_effort_grants_per_ktile")})
-        refused = last.get("best_effort_refused", 0)
-        rate = (last["best_effort_dropped"] + refused) / (enqueued + refused)
-        if rate >= XAERO_BANDS_MAX_DROP_RATE:
-            yield Violation("xaero-nether-bands", f"run{run}",
-                            "best-effort loss rate (drops + refusals) at or above 5%",
-                            {"best_effort_dropped": last["best_effort_dropped"], "best_effort_refused": refused,
-                             "best_effort_enqueued": enqueued, "rate": round(rate, 4)})
+                            "fewer band-switch fills than the walk's switches could be judged",
+                            {"judged": judged, "need": XAERO_FILL_MIN_JOBS, "fills_started": len(jobs)})
 
 
 @named_check("rate-limit-storm", ["server.service.superseded", "server.generation.completed"])
@@ -5449,35 +5449,37 @@ def selftest():
                                      joins=[], ends=[], runs={1: [_cli(1000)]}, qpoints=[], config={}))),
          "xaero-memory")
 
-    # ---- xaero-nether-bands: the cave-layers spike's single-run criteria ----
+    # ---- xaero-nether-bands: the fill-on-switch spike's single-run criteria ----
     def nb_ctx(rows):
-        keys = ("layer", "mode", "open_regions", "open_region_cap", "best_effort_on", "best_effort_enqueued",
-                "best_effort_written", "best_effort_dropped", "best_effort_grant_max", "best_effort_open",
-                "best_effort_window")
+        keys = ("layer", "mode", "open_regions", "open_region_cap", "fill_on", "fill_started", "fill_layer",
+                "fill_target", "fill_covered", "fill_age_ms")
         snaps = [_cli(1000 + 5000 * i, over={"xaero": dict(zip(keys, r))}) for i, r in enumerate(rows)]
         return Ctx(scenario="xaero-nether-bands", server_snaps=[_srv(1000)], commands=[], joins=[],
                    ends=[], runs={1: snaps}, qpoints=[], config={})
-    def walk(on=True, enq=1000, wr=900, dropped=10, gmax=2, opn=2):
-        return [(b, "layered", 10, 32, on, enq, wr, dropped, gmax, opn, 4) for b in ("2", "4", "6", "3")]
-    clean("xaero-nether-bands B-II arm within every criterion", list(check_xaero_nether_bands(nb_ctx(walk()))))
-    clean("xaero-nether-bands B-I arm judges only the windows and the walk",
-          list(check_xaero_nether_bands(nb_ctx(walk(on=False, enq=0, wr=0, dropped=0, gmax=0, opn=0)))))
-    hits("xaero-nether-bands too many grants of one region",
-         list(check_xaero_nether_bands(nb_ctx(walk(gmax=4)))), "xaero-nether-bands")
-    hits("xaero-nether-bands a 5% drop rate",
-         list(check_xaero_nether_bands(nb_ctx(walk(dropped=50)))), "xaero-nether-bands")
-    refusing = nb_ctx(walk(dropped=10))
-    for snap in refusing.runs[1]:
-        snap["xaero"]["best_effort_refused"] = 60  # (10 + 60) / (1000 + 60) = 6.6%
-    hits("xaero-nether-bands refusals count as losses", list(check_xaero_nether_bands(refusing)),
-         "xaero-nether-bands")
+    def fill_walk(on=True, covered_at_60s=950, target=1000, jobs=("4", "6", "3")):
+        rows = [("2", "layered", 10, 32, on, 1, "2", 20, 20, 1000)]  # the entry fill: too small to judge
+        for i, band in enumerate(jobs, start=2):
+            n = i if on else 0
+            for age in (5_000, 60_000, 95_000, 120_000):
+                cov = covered_at_60s if age >= 60_000 else 100
+                rows.append((band, "layered", 10, 32, on, n, band, target, cov, age if on else -1))
+        return rows
+    clean("xaero-nether-bands fill arm within every criterion", list(check_xaero_nether_bands(nb_ctx(fill_walk()))))
+    clean("xaero-nether-bands B-I arm judges only the window and the walk",
+          list(check_xaero_nether_bands(nb_ctx(fill_walk(on=False)))))
+    hits("xaero-nether-bands a band under 90% at 90 s",
+         list(check_xaero_nether_bands(nb_ctx(fill_walk(covered_at_60s=850)))), "xaero-nether-bands")
+    hits("xaero-nether-bands fewer than three judged fills",
+         list(check_xaero_nether_bands(nb_ctx(fill_walk(jobs=("4", "6"))))), "xaero-nether-bands")
+    clean_small = [r for r in fill_walk(target=50, covered_at_60s=10)]
+    hits("xaero-nether-bands small fills are not judged (so the walk's count fails)",
+         list(check_xaero_nether_bands(nb_ctx(clean_small))), "xaero-nether-bands")
     hits("xaero-nether-bands the walk never left one band",
-         list(check_xaero_nether_bands(nb_ctx([("2", "layered", 10, 32, True, 1000, 900, 0, 1, 1, 4)] * 5))),
+         list(check_xaero_nether_bands(nb_ctx([("2", "layered", 10, 32, False, 0, "-", 0, 0, -1)] * 5))),
          "xaero-nether-bands")
-    hits("xaero-nether-bands the best-effort share overflows",
-         list(check_xaero_nether_bands(nb_ctx(walk(opn=5)))), "xaero-nether-bands")
-    hits("xaero-nether-bands B-II on but nothing written",
-         list(check_xaero_nether_bands(nb_ctx(walk(wr=0)))), "xaero-nether-bands")
+    hits("xaero-nether-bands the window overflows",
+         list(check_xaero_nether_bands(nb_ctx([(b, "layered", 33, 32, False, 0, "-", 0, 0, -1)
+                                               for b in ("2", "4", "6")]))), "xaero-nether-bands")
 
     # ---- session-version assertion (C6 negotiated-protocol observability) ----
     sv_rows = [{"event": "snapshot", "session_version": 0},

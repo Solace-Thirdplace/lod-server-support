@@ -270,11 +270,11 @@ case "$SCENARIO" in
                                     exit 1
                                 fi ;;
     xaero-nether-bands)         CLIENT_RUNS=1; EXPECTED_SECONDS=960
-                                # The cave-layers spike (2026-10-13 plan §B0): a lod-64 Nether
-                                # over real terrain (SOAK_WORLD_FROM) walked across four heights
-                                # so Xaero's band changes, Xaero's World Map on the client. The
-                                # arms come from SOAK_CLIENT_GRADLE_ARGS: B-I only with
-                                # -Psoak.clientJvmArgs=-Dlss.xaero.bestEffortBands=false, B-II
+                                # The cave-layers spike (2026-10-13, fill-on-switch): a lod-64
+                                # Nether over real terrain (SOAK_WORLD_FROM) walked across four
+                                # heights so Xaero's band changes, Xaero's World Map on the client.
+                                # The arms come from SOAK_CLIENT_GRADLE_ARGS: B-I (fill off) with
+                                # -Psoak.clientJvmArgs=-Dlss.xaero.bandFill=false, fill-on-switch
                                 # by default; -Psoak.frameThrottle=1000 for the unfocused arm.
                                 if [[ -z "${SOAK_WORLD_FROM:-}" || " ${SOAK_CLIENT_GRADLE_ARGS:-} " != *" -Plss.xaeroRuntime=true "* ]]; then
                                     echo "[soak] ERROR: xaero-nether-bands needs SOAK_WORLD_FROM and -Plss.xaeroRuntime=true in SOAK_CLIENT_GRADLE_ARGS"

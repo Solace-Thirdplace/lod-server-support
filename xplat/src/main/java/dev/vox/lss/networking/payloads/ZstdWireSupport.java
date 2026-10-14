@@ -34,6 +34,12 @@ public final class ZstdWireSupport {
         }
     }
 
+    /** The probed codec, or null without the native (the Xaero band-fill store then keeps
+     *  its columns uncompressed). */
+    public static dev.vox.lss.common.store.StoreCodec codecOrNull() {
+        return Holder.CODEC;
+    }
+
     /** True when the zstd native probe succeeded (round-trip verified). */
     public static boolean available() {
         return Holder.CODEC != null;
