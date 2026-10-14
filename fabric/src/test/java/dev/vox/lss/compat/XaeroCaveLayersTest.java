@@ -498,39 +498,28 @@ class XaeroCaveLayersTest {
     }
 
     @Test
-    void aMismatchedPlanFallsBackToXaerosDefaultBandInACeilingDimension() {
+    void aMismatchedPlanWritesOnlyTheSurface() {
+        // Review fold O3-2: Xaero's plan has not named the Nether yet (the entry burst). No band
+        // is guessed — Xaero's roof probe, its cave-mode switches and its height clamp decide
+        // the layer; the store keeps the column and fill-on-switch writes the shown layer
+        // (XaeroBandFillTest pins the heal).
         this.processor.mapWorld.currentDimensionId = OVERWORLD; // Xaero has not followed yet
         this.clientDimension = OVERWORLD;
         show(SURFACE);
-        this.player = new XaeroSession.PlayerPos(NETHER, 0, 70.4, 0);
+        for (double y : new double[]{12.5, 70.4, 129.0, 254.0}) { // low, below the roof, on the roof, the top
+            this.player = new XaeroSession.PlayerPos(NETHER, 0, y, 0);
+            assertEquals(1, this.bridge.planTargets(NETHER, NETHER_FACTS).size(), "no guessed band at y=" + y);
+        }
         offer(64, 64);
-        assertTrue(this.bridge.hasQueuedForTest(4, 64, 64), "Layered, band (70+4)>>4");
-        var targets = this.bridge.planTargets(NETHER, NETHER_FACTS);
-        assertEquals(79, targets.get(1).caveStart(), "the band top, like every LSS band tile");
-        this.player = new XaeroSession.PlayerPos(OVERWORLD, 0, 70, 0);
-        assertEquals(1, this.bridge.planTargets(NETHER, NETHER_FACTS).size(), "player elsewhere: surface only");
-        this.player = new XaeroSession.PlayerPos(OVERWORLD, 0, -40, 0);
-        assertEquals(1, this.bridge.planTargets(OVERWORLD,
-                        new XaeroTileExtractor.LevelFacts(-64, 320, true, false, 384)).size(),
-                "no ceiling: Xaero shows the surface under open sky");
-    }
-
-    @Test
-    void theFallbackBandFollowsXaerosGetCavingArithmetic() {
-        this.processor.mapWorld.currentDimensionId = OVERWORLD; // the plan names another dimension
-        this.clientDimension = OVERWORLD;
-        show(SURFACE);
-        this.player = new XaeroSession.PlayerPos(NETHER, 0, 12.5, 0);
-        var targets = this.bridge.planTargets(NETHER, NETHER_FACTS);
-        assertEquals(31, targets.get(1).caveStart(), "y = (int) 12.5 + 1 = 13, caveStart 16: band 1");
-        this.player = new XaeroSession.PlayerPos(NETHER, 0, -3.5, 0);
-        assertEquals(1, this.bridge.planTargets(NETHER, NETHER_FACTS).size(),
-                "(int) -3.5 + 1 = -2 truncates toward zero and is below the floor: the surface");
-        this.player = new XaeroSession.PlayerPos(NETHER, 0, 255.0, 0);
-        assertEquals(1, this.bridge.planTargets(NETHER, NETHER_FACTS).size(),
-                "y = 256 is above maxY 255: the surface");
-        this.player = new XaeroSession.PlayerPos(NETHER, 0, 254.0, 0);
-        assertEquals(2, this.bridge.planTargets(NETHER, NETHER_FACTS).size(), "y = 255 is inside");
+        assertEquals(1, this.bridge.queuedForTest());
+        assertTrue(this.bridge.hasQueuedForTest(SURFACE, 64, 64), "the surface only");
+        this.bridge.layerPlan = null; // before Xaero's first read: the same
+        assertEquals(1, this.bridge.planTargets(NETHER, NETHER_FACTS).size());
+        this.processor.mapWorld.currentDimensionId = NETHER; // Xaero follows: band 4 shown
+        this.clientDimension = NETHER;
+        show(4);
+        offer(65, 64);
+        assertTrue(this.bridge.hasQueuedForTest(4, 65, 64), "once the plan names the dimension, the shown band");
     }
 
     @Test
@@ -579,6 +568,93 @@ class XaeroCaveLayersTest {
         assertEquals(1, this.bridge.counterForTest("dropped_stale_layer"));
         assertTrue(this.reports.isEmpty(), "silently: a map-only leftover, never a hole report");
         assertEquals(0, this.bridge.counterForTest("owed"));
+    }
+
+    @Test
+    void theSurfaceIsNeverALeftoverAndABandExpiresOnlyPastSixHundredHeldPumps() {
+        assertEquals(600, this.bridge.staleLayerPumps, "~30 s at 20 Hz");
+        var busySurface = new MapRegion();
+        busySurface.resting = false; // neither region ever rests: both buckets are held
+        this.processor.regions.put((2L << 32) | 2L, busySurface);
+        var busyBand = new MapRegion();
+        busyBand.resting = false;
+        this.processor.caveRegions.computeIfAbsent(3, l -> new java.util.HashMap<>()).put((2L << 32) | 2L, busyBand);
+        show(3);
+        offer(64, 64);
+        show(5); // band 3 is a leftover from here (held pump 1); the surface is not shown either
+        for (int i = 1; i < 600; i++) this.bridge.pump();
+        assertTrue(this.bridge.hasQueuedForTest(3, 64, 64), "still queued after 600 held pumps");
+        this.bridge.pump();
+        assertFalse(this.bridge.hasQueuedForTest(3, 64, 64), "expired on the 601st");
+        for (int i = 0; i < 100; i++) this.bridge.pump();
+        assertTrue(this.bridge.hasQueuedForTest(SURFACE, 64, 64),
+                "the surface is never a leftover: in the Nether its regions rarely rest, and expiring it would"
+                        + " leave permanent holes in the roof map");
+        assertEquals(1, this.bridge.counterForTest("dropped_stale_layer"));
+    }
+
+    // ---- review fold O3-1: a leftover layer never reports, owes or wins a load grant ----
+
+    @Test
+    void aLeftoverBucketNeverWinsALoadGrant() {
+        this.processor.createdRegionLoadState = 0; // every region awaits its load
+        this.processor.currentMapLocked = true;
+        show(3);
+        offer(64, 64); // surface + band 3, queued while the drain is held
+        show(5); // band 3 is a leftover before its region was ever granted
+        this.processor.currentMapLocked = false;
+        this.bridge.pump();
+        var layers = new HashSet<Integer>();
+        for (var r : this.processor.saveLoad.loadRequests) layers.add(r.caveLayer);
+        assertEquals(Set.of(SURFACE), layers, "the surface region is granted, the leftover band's is not");
+        assertTrue(this.bridge.hasQueuedForTest(3, 64, 64), "the leftover still waits (and expires silently)");
+    }
+
+    @Test
+    void aLeftoverDebtIsDroppedUnprobedAndUnreported() {
+        show(3);
+        this.bridge.acquisition.oweExpired(NETHER, 3, ((long) 64 << 32) | 64, XaeroSession.regionKeyOf(64, 64));
+        assertEquals(1, this.bridge.counterForTest("owed"), "a debt of the band Xaero shows");
+        show(5); // band 3 is a leftover now
+        for (int i = 0; i < 8; i++) this.bridge.pump();
+        assertEquals(0, this.bridge.counterForTest("owed"), "dropped");
+        assertTrue(this.reports.isEmpty(), "never released into a re-serve");
+        assertNull(caveRegion(3, 2, 2), "never probed (the probe's lookup creates the region)");
+        assertTrue(this.processor.saveLoad.loadRequests.isEmpty(), "never granted a load");
+    }
+
+    @Test
+    void aLeftoverTileDeferralExpiryOwesNothing() {
+        this.bridge.deferCap = 1;
+        show(3);
+        offer(64, 64);
+        this.bridge.pump(); // commits both, creating the band-3 tile chunk
+        caveRegion(3, 2, 2).getChunk(0, 0).loadState = 0; // tile-scoped busy: DEFERRED_TILE
+        offer(64, 64);
+        show(5); // band 3 is a leftover now; its deferral burns 1
+        this.bridge.pump(); // burns 2: past the cap
+        assertEquals(1, this.bridge.counterForTest("dropped_expired"));
+        assertEquals(0, this.bridge.counterForTest("owed"), "a leftover's expiry owes nothing");
+        assertTrue(this.reports.isEmpty());
+    }
+
+    @Test
+    void anEvictedLeftoverNeitherOwesNorReports() {
+        this.processor.currentMapLocked = true; // nothing drains
+        show(3);
+        var band = XaeroTileExtractor.extract(64, 64, NETHER_FACTS, NETHER_COLUMN,
+                List.of(XaeroTileExtractor.LayerTarget.band(3, 255, 30)), false).get(0);
+        this.bridge.acquisition.offerPrepared(NETHER, band); // a live band-3 tile (null-handle reporter)
+        show(5); // band 3 is a leftover now
+        this.bridge.maxQueue = 1;
+        var surface = XaeroTileExtractor.extract(70, 64, NETHER_FACTS, NETHER_COLUMN,
+                List.of(XaeroTileExtractor.LayerTarget.surface(30)), false).get(0);
+        this.bridge.acquisition.offerPrepared(NETHER, surface); // evicts the leftover
+        assertFalse(this.bridge.hasQueuedForTest(3, 64, 64));
+        assertEquals(1, this.bridge.counterForTest("dropped_overflow"));
+        assertTrue(this.reports.isEmpty(), "an evicted leftover never reports");
+        assertEquals(0, this.bridge.counterForTest("owed"));
+        this.processor.currentMapLocked = false;
     }
 
     @Test
