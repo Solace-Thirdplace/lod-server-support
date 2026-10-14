@@ -743,6 +743,9 @@ final class XaeroAcquisitionQueue {
         int ladderReadyDeferrals;
         /** A band-fill entry (lease-free); a live replacement clears it. Under queueLock. */
         boolean fill;
+        /** Pumps this entry's bucket was held while its layer was neither shown nor the
+         *  surface (main thread; the stale-layer expiry). */
+        int staleLayerPumps;
 
         Entry(Object dimension, XaeroTileExtractor.PreparedTile tile, int bytes, Origin origin) {
             this.dimension = dimension;

@@ -2,6 +2,7 @@ package dev.vox.lss.compat;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -323,7 +324,9 @@ class XaeroBandFillTest {
         assertEquals(3, count("fill_committed"), "every stored position of band 5 written");
         assertNotNull(caveRegion(5));
         var line = this.bridge.describe();
-        assertTrue(line.contains(", fill_layer=5, fill_progress=3/3,"), line);
+        assertTrue(line.contains("band_fill=on, store=3 columns/") && line.contains(", band_fill_last=5 3/3 done"), line);
+        assertFalse(line.contains("fill_age") || line.contains("capped_pumps") || line.contains("load_ms"),
+                "spike instrumentation is exporter-only: " + line);
         assertEquals(0, count("fill_cancelled"));
         assertTrue(this.reports.isEmpty(), "fill tiles never report");
     }
@@ -403,6 +406,238 @@ class XaeroBandFillTest {
         switchTo(5);
         runFill();
         assertEquals(4, count("fill_committed"), "only the re-served position refills");
+    }
+
+    // ---- review fold: the square, the gates, new passes, stale and bad columns ----
+
+    @Test
+    void theFillCoversTheServedSquareNotADisc() throws Exception {
+        show(3);
+        offer(64, 64, PLATFORMS);
+        offer(128, 104, PLATFORMS); // Chebyshev 64 (the server's LOD distance), Euclidean 75
+        offer(129, 64, PLATFORMS);  // Chebyshev 65: outside
+        this.bridge.pump();
+        assertEquals(3, stored());
+        assertEquals(1, count("cave_out_of_range"), "the live band write is bounded the same way");
+        switchTo(5);
+        runFill();
+        assertEquals(2, count("fill_committed"), "the square's corner fills, the column past it does not");
+        var regions = this.processor.caveRegions.get(5);
+        assertNotNull(regions.get((4L << 32) | 3L), "the corner column's band-5 region");
+        assertNull(regions.get((4L << 32) | 2L), "nothing past the square");
+        var metrics = new java.util.HashMap<String, Object>();
+        this.bridge.fill.putMetrics(metrics);
+        assertEquals(2, metrics.get("fill_target"), "the law's target is the square's stored count");
+    }
+
+    @Test
+    void xaerosOwnWritesOffHoldsTheFill() throws Exception {
+        show(3);
+        for (int x = 64; x < 67; x++) offer(x, 64, PLATFORMS);
+        this.bridge.pump();
+        try {
+            xaero.map.common.config.option.WorldMapProfiledConfigOptions.LOAD_NEW_CHUNKS.value = false;
+            xaero.map.common.config.option.WorldMapProfiledConfigOptions.UPDATE_CHUNKS.value = false;
+            this.bridge.pump(); // the ladder observes both switches off
+            assertTrue(this.bridge.settingsWritesOff);
+            assertFalse(this.bridge.fillRoom(), "no room for fill tiles either");
+            switchTo(5);
+            this.bridge.pump();
+            assertEquals(0, count("fill_started"), "the user turned the map's writes off");
+        } finally {
+            xaero.map.common.config.option.WorldMapProfiledConfigOptions.LOAD_NEW_CHUNKS.value = true;
+            xaero.map.common.config.option.WorldMapProfiledConfigOptions.UPDATE_CHUNKS.value = true;
+        }
+        this.bridge.pump(); // the ladder clears the flag
+        this.bridge.pump(); // the trigger sees band 5 again: the debounce restarts
+        this.clockMillis += this.bridge.fill.debounceMillis;
+        this.bridge.pump();
+        assertEquals(1, count("fill_started"));
+        runFill();
+        assertEquals(3, count("fill_committed"));
+    }
+
+    @Test
+    void receiveOffStopsCapturesAndFillsButKeepsTheCoverage() throws Exception {
+        boolean[] receive = {true};
+        this.bridge.acquisitionActive = () -> receive[0];
+        show(3);
+        for (int x = 64; x < 67; x++) offer(x, 64, PLATFORMS);
+        this.bridge.pump();
+        switchTo(5);
+        runFill();
+        assertEquals(3, count("fill_committed"));
+        receive[0] = false;
+        offer(67, 64, PLATFORMS);
+        assertEquals(3, stored(), "acquisition off: nothing captured");
+        switchTo(6);
+        this.bridge.pump();
+        assertEquals(1, count("fill_started"), "acquisition off: no fill");
+        receive[0] = true;
+        switchTo(6);
+        runFill();
+        assertEquals(6, count("fill_committed"));
+        switchTo(5);
+        runFill();
+        assertEquals(6, count("fill_committed"), "band 5's coverage survived Receive OFF");
+    }
+
+    @Test
+    void aXaeroWorldChangeForgetsTheCoverageAndRestartsTheDebounce() throws Exception {
+        show(3);
+        for (int x = 64; x < 67; x++) offer(x, 64, PLATFORMS);
+        this.bridge.pump();
+        switchTo(5);
+        runFill();
+        assertEquals(3, count("fill_committed"));
+        this.processor.currentWorldId = "another-world";
+        this.bridge.pump(); // the ladder sees the new world id
+        assertNull(this.bridge.fill.job, "the job named the old world");
+        this.bridge.pump();
+        assertEquals(1, count("fill_started"), "the debounce restarts");
+        this.clockMillis += this.bridge.fill.debounceMillis;
+        this.bridge.pump();
+        assertEquals(2, count("fill_started"));
+        runFill();
+        assertEquals(6, count("fill_committed"), "the old world's coverage was forgotten");
+    }
+
+    @Test
+    void aPlayerWhoMovedAQuarterRadiusGetsANewPass() throws Exception {
+        show(3);
+        offer(64, 64, PLATFORMS);
+        offer(65, 64, PLATFORMS);
+        offer(134, 64, PLATFORMS); // Chebyshev 70 from the first centre: outside its square
+        this.bridge.pump();
+        switchTo(5);
+        runFill();
+        assertEquals(2, count("fill_committed"));
+        this.player = new XaeroSession.PlayerPos(NETHER, 80 * 16 + 8, 70, 64 * 16 + 8); // 16 chunks: not yet
+        this.bridge.pump();
+        assertEquals(1, count("fill_started"));
+        this.player = new XaeroSession.PlayerPos(NETHER, 81 * 16 + 8, 70, 64 * 16 + 8); // 17 > 64/4
+        this.bridge.pump();
+        assertEquals(2, count("fill_started"));
+        assertEquals(1, count("fill_moved_passes"));
+        runFill();
+        assertEquals(3, count("fill_committed"), "the new square's column; the done ones are skipped");
+        assertEquals(2, count("fill_skipped_covered"));
+    }
+
+    @Test
+    void aBadStoredColumnIsDroppedTheJobGoesOnAndAnUnfinishedPassReArmsOnce() throws Exception {
+        show(3);
+        offer(64, 64, PLATFORMS);
+        offer(65, 64, PLATFORMS);
+        this.bridge.pump();
+        stored();
+        // A record that passes its CRC but will not decode (another format, a bad id).
+        this.store.capture("bucket", "minecraft_the_nether", FP, (66L << 32) | 64L, new byte[]{1, 2, 3, 4, 5});
+        assertEquals(3, stored());
+        switchTo(5);
+        runFill();
+        assertEquals(2, count("fill_committed"), "the job went on past the bad column");
+        assertEquals(1, count("fill_bad_columns"));
+        assertEquals(1, count("store_corrupt"));
+        assertEquals(2, stored(), "dropped from the index");
+        this.clockMillis += XaeroBandFill.REARM_AFTER_MILLIS - 1;
+        this.bridge.pump();
+        assertEquals(1, count("fill_started"));
+        this.clockMillis += 1;
+        this.bridge.pump();
+        assertEquals(1, count("fill_rearms"), "2 of 3 written: one re-arm 30 s later");
+        assertEquals(2, count("fill_started"));
+        runFill();
+        this.clockMillis += XaeroBandFill.REARM_AFTER_MILLIS;
+        this.bridge.pump();
+        assertEquals(2, count("fill_started"), "once per switch");
+    }
+
+    @Test
+    void aDroppedCaptureLeavesTheOlderStoredCopyUnfilled() throws Exception {
+        show(3);
+        offer(64, 64, PLATFORMS);
+        offer(65, 64, PLATFORMS);
+        this.bridge.pump();
+        assertEquals(2, stored());
+        this.store.suspendForClear(); // the next capture of 65 drops: the store's copy is older
+        offer(65, 64, column(y -> y == 0 || (y & 15) == 4, false));
+        this.store.resumeAfterClear();
+        switchTo(5);
+        runFill();
+        assertEquals(1, count("fill_committed"), "the stale position is skipped, never written old");
+        offer(65, 64, PLATFORMS); // reaches the store: no longer stale (and band 5 is live)
+        stored();
+        switchTo(6);
+        runFill();
+        assertEquals(3, count("fill_committed"), "both positions fill band 6");
+    }
+
+    @Test
+    void inSingleplayerNothingIsKeptBeforeThePlanIsKnown() {
+        this.bridge.singleplayer = () -> true;
+        offer(64, 64, PLATFORMS); // no plan yet: Xaero may be writing from the world save
+        assertEquals(0, stored());
+        show(3);
+        offer(64, 64, PLATFORMS);
+        assertEquals(1, stored());
+    }
+
+    @Test
+    void theStoreSettingDetachesPurgesAndRecapsTheStore() throws Exception {
+        var factoryStores = new ArrayList<XaeroColumnStore>();
+        int[] mb = {256};
+        this.bridge.fill.store = null;
+        this.bridge.storeMbSetting = () -> mb[0];
+        this.bridge.storeFactory = cap -> {
+            this.store.setCapBytes(cap);
+            factoryStores.add(this.store);
+            return this.store;
+        };
+        show(3);
+        assertTrue(this.bridge.fill.store == this.store);
+        assertEquals(256L << 20, this.store.capBytes);
+        offer(64, 64, PLATFORMS);
+        assertEquals(1, stored());
+        mb[0] = 0; // /lss reload with nether_store_mb: 0
+        this.bridge.pump();
+        assertNull(this.bridge.fill.store, "no store");
+        this.store.flush();
+        try (var files = java.nio.file.Files.walk(this.tmp)) {
+            assertEquals(0, files.filter(f -> f.getFileName().toString().contains(".xfill.")).count(),
+                    "the user's 0 gives the disk back");
+        }
+        switchTo(5);
+        assertEquals(0, count("fill_started"), "and no fill on switch");
+        assertTrue(this.bridge.describe().contains("band_fill=off"), this.bridge.describe());
+        mb[0] = 64;
+        this.bridge.pump();
+        assertTrue(this.bridge.fill.store == this.store, "the same store, re-attached");
+        assertEquals(64L << 20, this.store.capBytes);
+        assertEquals(1, factoryStores.size(), "built once (one cache tenant)");
+    }
+
+    @Test
+    void theExporterGroupCarriesTheRebuildAndSaveFigures() {
+        this.processor.getMapSaveLoad().toSave.add(new MapRegion());
+        this.processor.getMapSaveLoad().toSave.add(new MapRegion());
+        show(3);
+        this.processor.getMapSaveLoad().toSave.clear();
+        show(3);
+        var previous = XaeroSession.instance;
+        XaeroSession.instance = this.bridge;
+        try {
+            var metrics = XaeroSession.metrics();
+            assertEquals(0, metrics.get("to_save"), "Xaero's save queue, sampled every pump");
+            assertEquals(2, metrics.get("to_save_max"));
+            for (String key : List.of("buffer_updates", "dropped_updates", "pending_updates", "cave_out_of_range",
+                    "dropped_stale_layer", "fill_bad_columns", "fill_rearms", "fill_moved_passes", "store_corrupt",
+                    "load_ms_p95", "capped_pumps", "fill_age_ms")) {
+                assertTrue(metrics.containsKey(key), key);
+            }
+        } finally {
+            XaeroSession.instance = previous;
+        }
     }
 
     // ---- pacing, lease-free, outside the backpressure figure ----

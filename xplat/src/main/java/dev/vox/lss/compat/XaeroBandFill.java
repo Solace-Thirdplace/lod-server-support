@@ -57,12 +57,16 @@ final class XaeroBandFill {
         final long startedMillis;
         volatile boolean cancelled;
         volatile boolean done;
+        volatile long doneMillis;
+        /** The once-per-layer re-arm pass (positions whose fill tiles did not stick). */
+        final boolean rearm;
         /** The stored positions within the radius when the job started (nearest first). */
         volatile long[] positions = new long[0];
         volatile int remaining;
 
         Job(Object dimension, int layer, XaeroTileExtractor.LayerTarget target, FillLevel level, String bucket,
-            boolean ignoreHeightmaps, int centerX, int centerZ, int radius, long startedMillis) {
+            boolean ignoreHeightmaps, int centerX, int centerZ, int radius, long startedMillis, boolean rearm) {
+            this.rearm = rearm;
             this.dimension = dimension;
             this.layer = layer;
             this.target = target;
@@ -99,6 +103,9 @@ final class XaeroBandFill {
     static final int DEFAULT_BATCH = 64;
     /** A worker stuck behind a queue that never drains gives the job up after this. */
     static final long PACING_GIVE_UP_MILLIS = 120_000;
+    /** A finished fill re-arms once, this long after it ended, when its band still misses
+     *  positions (fill tiles evicted, expired or refused by Xaero's settings). */
+    static final long REARM_AFTER_MILLIS = 30_000;
 
     void configureFromSystemProperties() {
         this.enabled = Boolean.parseBoolean(System.getProperty("lss.xaero.bandFill", "true"));
@@ -121,6 +128,11 @@ final class XaeroBandFill {
     /** Fill tiles not offered because a live tile of that key was queued. */
     final AtomicLong skippedQueued = new AtomicLong();
     final AtomicLong captureFailures = new AtomicLong();
+    /** Stored columns that would not decode or extract (dropped from the store). */
+    final AtomicLong badColumns = new AtomicLong();
+    /** Fill passes started because the player moved, and once-per-layer re-arms. */
+    final AtomicLong movedPasses = new AtomicLong();
+    final AtomicLong rearms = new AtomicLong();
     volatile long lastFillMillis = -1;
 
     // ---- coverage: positions written to a layer THIS session (live or fill) ----
@@ -134,6 +146,8 @@ final class XaeroBandFill {
     private Object seenDimension;
     private int seenLayer = XaeroSession.SURFACE_LAYER;
     private long seenSinceMillis;
+    /** The re-arm was used for the current (dimension, layer) — once per switch. */
+    private boolean rearmUsed;
     volatile Job job;
     private ExecutorService worker;
 
@@ -171,6 +185,35 @@ final class XaeroBandFill {
         }
     }
 
+    // ---- stale positions: a live arrival whose capture was dropped ----
+
+    /** pos → the sequence number of its last DROPPED capture: the store holds an OLDER copy
+     *  than what LSS delivered, so a fill must not write it (coverage was already invalidated).
+     *  Cleared by a later capture that reaches the store. Guarded by itself. */
+    private final it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap stale = new it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap();
+    private Object staleDimension;
+    private final AtomicLong captureSeq = new AtomicLong();
+
+    private void captureOutcome(Object dimension, long pos, long seq, boolean stored) {
+        synchronized (this.stale) {
+            if (dimension != this.staleDimension) {
+                this.stale.clear();
+                this.staleDimension = dimension;
+            }
+            if (stored) {
+                if (this.stale.containsKey(pos) && this.stale.get(pos) < seq) this.stale.remove(pos);
+            } else if (!this.stale.containsKey(pos) || this.stale.get(pos) < seq) {
+                this.stale.put(pos, seq);
+            }
+        }
+    }
+
+    boolean stale(Object dimension, long pos) {
+        synchronized (this.stale) {
+            return dimension == this.staleDimension && this.stale.containsKey(pos);
+        }
+    }
+
     // ---- capture (decode thread) ----
 
     /** Keep a delivered column of a ceiling dimension (the caller has passed the write gates). */
@@ -179,6 +222,7 @@ final class XaeroBandFill {
         var store = this.store;
         if (!this.enabled || store == null || level == null || bucket == null) return;
         long pos = ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
+        long seq = this.captureSeq.incrementAndGet();
         invalidate(dimension, pos);
         byte[] raw;
         try {
@@ -186,9 +230,11 @@ final class XaeroBandFill {
         } catch (RuntimeException e) {
             this.captureFailures.incrementAndGet();
             store.captureDrops.incrementAndGet();
+            captureOutcome(dimension, pos, seq, false);
             return;
         }
-        store.capture(bucket, level.dimKey(), level.fingerprint(), pos, raw);
+        store.capture(bucket, level.dimKey(), level.fingerprint(), pos, raw,
+                stored -> captureOutcome(dimension, pos, seq, stored));
     }
 
     // ---- the trigger (main thread, every pump) ----
@@ -208,8 +254,9 @@ final class XaeroBandFill {
             this.seenDimension = null;
             return;
         }
-        if (!java.util.Objects.equals(bucket, this.coverBucket)) {
+        if (bucket != null && !bucket.equals(this.coverBucket)) {
             // Another world (or server identity): this session's coverage named the old one.
+            // (A null bucket — no LSS session for a moment — is not another world.)
             if (this.coverBucket != null) this.coverage.clear();
             this.coverBucket = bucket;
         }
@@ -224,24 +271,73 @@ final class XaeroBandFill {
             this.seenDimension = plan.dimension();
             this.seenLayer = layer;
             this.seenSinceMillis = now;
+            this.rearmUsed = false;
             return;
         }
         if (layer == XaeroSession.SURFACE_LAYER) return; // live arrivals always write the surface
         if (now - this.seenSinceMillis < this.debounceMillis) return;
-        if (current != null || bucket == null) return; // running, or done for this layer
+        if (bucket == null) return;
         PlayerPos player = this.session.playerProbe.position();
         if (player == null || player.dimension() != plan.dimension()) return;
-        int radius = this.radiusChunks;
-        int lod = this.session.serverLodDistance.getAsInt();
-        if (lod > 0) radius = Math.min(radius, lod);
+        int centerX = ((int) Math.floor(player.x())) >> 4;
+        int centerZ = ((int) Math.floor(player.z())) >> 4;
+        int radius = fillRadius();
+        boolean rearm = false;
+        if (current != null) {
+            // A new pass from where the player is now once they moved a quarter radius away
+            // (coverage skips what the last pass wrote) …
+            boolean moved = Math.max(Math.abs(centerX - current.centerX), Math.abs(centerZ - current.centerZ))
+                    > Math.max(1, current.radius / 4);
+            // … and, once per switch, a re-arm 30 s after a pass that left positions unwritten
+            // (its fill tiles were evicted, expired, or refused by Xaero's settings).
+            boolean retry = false;
+            if (!moved && current.done && !current.cancelled && !this.rearmUsed
+                    && now - current.doneMillis >= REARM_AFTER_MILLIS) {
+                this.rearmUsed = true; // judged once per switch (the progress count is O(positions))
+                retry = unfinished(current);
+            }
+            if (!moved && !retry) return;
+            if (moved) {
+                this.movedPasses.incrementAndGet();
+                cancel(current);
+            } else {
+                this.rearms.incrementAndGet();
+                rearm = true;
+                this.job = null;
+            }
+        }
         var target = layer == XaeroTileExtractor.FULL ? XaeroTileExtractor.LayerTarget.full(plan.depth())
                 : XaeroTileExtractor.LayerTarget.band(layer, level.facts().topY() - 1, plan.depth());
         var next = new Job(plan.dimension(), layer, target, level, bucket, plan.ignoreHeightmaps(),
-                ((int) Math.floor(player.x())) >> 4, ((int) Math.floor(player.z())) >> 4, radius, now);
+                centerX, centerZ, radius, now, rearm);
         this.job = next;
         this.lastJob = next;
         this.started.incrementAndGet();
         submit(next);
+    }
+
+    /** min(the server's LOD distance, the radius cap) — also the live cave-layer write bound. */
+    int fillRadius() {
+        int radius = this.radiusChunks;
+        int lod = this.session.serverLodDistance.getAsInt();
+        return lod > 0 ? Math.min(radius, lod) : radius;
+    }
+
+    private boolean unfinished(Job j) {
+        int[] progress = progress(j);
+        return progress[1] < progress[0];
+    }
+
+    /** Xaero moved to another world under a live session: this session's coverage and the
+     *  job name the old one. Main thread. */
+    void onWorldChange() {
+        cancel(this.job);
+        this.job = null;
+        this.seenDimension = null;
+        this.coverage.clear();
+        synchronized (this.stale) {
+            this.stale.clear();
+        }
     }
 
     /** Session end, acquisition off, a deny: cancel the job and forget this session. */
@@ -251,8 +347,14 @@ final class XaeroBandFill {
         this.seenDimension = null;
         this.coverage.clear();
         this.coverBucket = null;
+        synchronized (this.stale) {
+            this.stale.clear();
+        }
         var store = this.store;
-        if (store != null) store.closeActive();
+        if (store != null) {
+            store.closeActive();
+            store.resetSession();
+        }
     }
 
     void cancel(Job j) {
@@ -292,7 +394,7 @@ final class XaeroBandFill {
                 for (int k = i; k < end; k++) {
                     if (covered(j.dimension, j.layer, positions[k])) {
                         this.skippedCovered.incrementAndGet();
-                    } else {
+                    } else if (!stale(j.dimension, positions[k])) { // the stored copy is older than LSS's
                         slice.add(positions[k]);
                     }
                 }
@@ -317,6 +419,7 @@ final class XaeroBandFill {
             if (n > 0) LSSLogger.warn("Xaero map bridge: a band fill failed (" + n + " since the last report)", t);
         } finally {
             j.remaining = 0;
+            j.doneMillis = this.session.nowMillis();
             j.done = true;
         }
     }
@@ -330,9 +433,19 @@ final class XaeroBandFill {
         }
         int chunkX = (int) (pos >> 32);
         int chunkZ = (int) pos;
-        var data = XaeroColumnCodec.decode(column.raw(), j.level.facts(), j.level.factory());
-        var tile = XaeroTileExtractor.extract(chunkX, chunkZ, j.level.facts(), data, List.of(j.target),
-                j.ignoreHeightmaps).get(0);
+        XaeroTileExtractor.PreparedTile tile;
+        try {
+            var data = XaeroColumnCodec.decode(column.raw(), j.level.facts(), j.level.factory());
+            tile = XaeroTileExtractor.extract(chunkX, chunkZ, j.level.facts(), data, List.of(j.target),
+                    j.ignoreHeightmaps).get(0);
+        } catch (RuntimeException e) {
+            // A record that passed its CRC but will not decode (another format, a bad id): forget
+            // it and go on — the job never dies on one column.
+            this.badColumns.incrementAndGet();
+            var store = this.store;
+            if (store != null) store.dropCorrupt(j.bucket, j.level.dimKey(), j.level.fingerprint(), pos);
+            return true;
+        }
         long waitStart = System.nanoTime();
         while (!j.cancelled && !this.session.fillRoom()) {
             if (System.nanoTime() - waitStart > PACING_GIVE_UP_MILLIS * 1_000_000L) {
@@ -379,22 +492,21 @@ final class XaeroBandFill {
         return j.layer == XaeroTileExtractor.FULL ? "full" : Integer.toString(j.layer);
     }
 
+    /** The player/admin diag: is it on, how much is kept, and the band being filled. The
+     *  spike instrumentation (ages, durations, queues, skips) is exporter-only. */
     String describe() {
         var store = this.store;
+        if (!this.enabled || store == null) return "band_fill=off";
         var j = this.lastJob;
-        int[] progress = progress(j);
-        return "band_fill=" + (this.enabled && store != null ? "on" : "off")
-                + ", store_columns=" + (store == null ? 0 : store.columnsGauge)
-                + ", store_mb=" + (store == null ? 0 : store.bytesGauge >> 20)
-                + ", store_evictions=" + (store == null ? 0 : store.evictions.get())
-                + ", store_capture_drops=" + (store == null ? 0 : store.captureDrops.get())
-                + ", fills=started:" + this.started.get() + "/completed:" + this.completed.get()
-                + "/cancelled:" + this.cancelled.get() + "/failed:" + this.failed.get()
-                + ", fill_tiles=" + this.tilesOffered.get() + "(committed " + this.tilesCommitted.get() + ")"
-                + ", fill_layer=" + layerToken(j)
-                + ", fill_progress=" + progress[1] + "/" + progress[0]
-                + ", fill_queue=" + (j == null ? 0 : j.remaining)
-                + ", fill_last_ms=" + this.lastFillMillis;
+        String fill = "-";
+        if (j != null) {
+            int[] progress = progress(j);
+            fill = layerToken(j) + " " + progress[1] + "/" + progress[0]
+                    + (j.cancelled ? " cancelled" : j.done ? " done" : " running");
+        }
+        return "band_fill=on, store=" + store.columnsGauge + " columns/" + (store.bytesGauge >> 20) + " MiB"
+                + (store.capturesDisabled ? " (capture off: write failures)" : "")
+                + ", band_fill_last=" + fill;
     }
 
     void putMetrics(java.util.Map<String, Object> out) {
@@ -422,5 +534,8 @@ final class XaeroBandFill {
         out.put("fill_age_ms", j == null ? -1L : this.session.nowMillis() - j.startedMillis);
         out.put("fill_queue", j == null ? 0 : j.remaining);
         out.put("fill_last_ms", this.lastFillMillis);
+        out.put("fill_bad_columns", this.badColumns.get());
+        out.put("fill_moved_passes", this.movedPasses.get());
+        out.put("fill_rearms", this.rearms.get());
     }
 }
