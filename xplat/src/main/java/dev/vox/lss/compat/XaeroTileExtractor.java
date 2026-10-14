@@ -22,6 +22,7 @@ import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.level.material.PushReaction;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,8 +39,10 @@ import java.util.List;
  *       invisible-skipped blocks never raise it; a void pixel keeps world
  *       bottom, the native shape);</li>
  *   <li>translucent runs (water, {@code TransparentBlock}s) become overlay runs
- *       with per-block light-dampening opacity, one run per contiguous same-state
- *       stretch, capped at {@value #MAX_OVERLAYS} — including the native "≥5
+ *       with per-block light-dampening opacity, one run per contiguous same-BLOCK
+ *       stretch (the native builder splits on a particle-texture change and keeps the
+ *       run's first state — water of every level is one run), at most
+ *       {@value #MAX_OVERLAYS} runs, the last taking the opacity past the cap — including the native "≥5
  *       transparent blocks → extend the run to the bottom of the transparency in
  *       one step" fast path;</li>
  *   <li>the floor is the first opaque block with a nonzero vanilla map color;
@@ -57,8 +60,22 @@ import java.util.List;
  * translucent-rendered block outside that family (nether portal is the vanilla
  * case) floors the pixel here where native overlays it; and Xaero's "flowers"
  * map option is mirrored at its default (flowers visible). Sky light is never
- * read — the native writer uses it only in cave mode — so no-sky dimensions
- * (nether/End) need no special casing.
+ * read by the SURFACE scan — the native writer uses it only in cave mode — so
+ * no-sky dimensions (nether/End) need no special casing there.
+ *
+ * <p><b>Cave layers</b> (cave-layers plan §B4): {@link #extract(int, int, LevelFacts,
+ * VoxelColumnData, List, boolean)} extracts one tile per {@link LayerTarget} from ONE decode
+ * of the column — the surface through the scan above (byte-identical), every cave target
+ * through {@link #scanCavePixel}, the port of {@code loadPixel}'s cave and Full branches:
+ * the Layered window [max(minY, caveStart+1−depth), caveStart] with the roof skip ending at
+ * the first air OR fluid, Full mode's start at the WORLD_SURFACE height derived from the
+ * column (section-based when Xaero ignores heightmaps or the column is empty) with its
+ * ground rules, the sky-light rules (the 15 shortcut, the first overlay's and an
+ * overlay-free floor's max(block, sky)), and the void pixel's topHeight = lowY with the biome
+ * sampled there. A tile carries the (layer, caveStart, depth) it was extracted with: the
+ * commit writes {@code setWrittenCave(caveStart, depth)} from it — never the layer number.
+ * Approximation added by the cave path: sky light across sections the column does not carry
+ * ({@link ColumnAccess#skyAt}) — the real light engine is not reproducible from LSS data.
  */
 final class XaeroTileExtractor {
 
@@ -79,7 +96,62 @@ final class XaeroTileExtractor {
     record PreparedTile(int chunkX, int chunkZ, int worldBottomY,
                         BlockState[] floorState, short[] floorY, short[] topY,
                         ResourceKey<Biome>[] biome, byte[] light, boolean[] glowing,
-                        OverlayRun[][] overlays) {}
+                        OverlayRun[][] overlays, int layer, int caveStart, int depth) {
+        /** A surface tile at Xaero's default depth (the pre-cave-layers shape). */
+        PreparedTile(int chunkX, int chunkZ, int worldBottomY,
+                     BlockState[] floorState, short[] floorY, short[] topY,
+                     ResourceKey<Biome>[] biome, byte[] light, boolean[] glowing,
+                     OverlayRun[][] overlays) {
+            this(chunkX, chunkZ, worldBottomY, floorState, floorY, topY, biome, light, glowing,
+                    overlays, SURFACE, SURFACE, DEFAULT_CAVE_DEPTH);
+        }
+
+        /** Extracted in a cave mode — the {@code cave} argument of {@code MapBlock.write}. */
+        boolean cave() {
+            return this.caveStart != SURFACE;
+        }
+    }
+
+    /** Xaero's surface sentinel for both the layer and the caveStart ({@code MAX_VALUE}). */
+    static final int SURFACE = Integer.MAX_VALUE;
+    /** Xaero's Full-mode sentinel for both the layer and the caveStart ({@code MIN_VALUE}). */
+    static final int FULL = Integer.MIN_VALUE;
+    /** Xaero's default cave-mode depth (its config default; the commit writes the tile's own). */
+    static final int DEFAULT_CAVE_DEPTH = 30;
+
+    /**
+     * One extraction target: the Xaero layer the tile commits to and the (caveStart, depth)
+     * it is extracted with. Bands use the band TOP as caveStart (§B3: deterministic, so tiles
+     * of one band shade consistently), Full uses {@link #FULL}, the surface {@link #SURFACE}.
+     */
+    record LayerTarget(int layer, int caveStart, int depth) {
+        static LayerTarget surface(int depth) {
+            return new LayerTarget(SURFACE, SURFACE, depth);
+        }
+
+        static LayerTarget full(int depth) {
+            return new LayerTarget(FULL, FULL, depth);
+        }
+
+        /** Band {@code band}'s tile: caveStart = its top, min(16·band+15, maxY). */
+        static LayerTarget band(int band, int maxY, int depth) {
+            return new LayerTarget(band, Math.min(band * 16 + 15, maxY), depth);
+        }
+
+        boolean cave() {
+            return this.caveStart != SURFACE;
+        }
+    }
+
+    /** The column's own level facts (decode thread): heights (top EXCLUSIVE), sky light,
+     *  and the ceiling/logical height (band fill-on-switch runs in ceiling dimensions). */
+    record LevelFacts(int minY, int topY, boolean skyLight, boolean ceiling, int logicalHeight) {}
+
+    /** Xaero's private {@code MapProcessor.getCaveLayer}, reimplemented: the sentinels pass
+     *  through, anything else is {@code caveStart >> 4} (arithmetic — −5 is layer −1). */
+    static int caveLayerOf(int caveStart) {
+        return caveStart == SURFACE || caveStart == FULL ? caveStart : caveStart >> 4;
+    }
 
     private XaeroTileExtractor() {}
 
@@ -88,23 +160,94 @@ final class XaeroTileExtractor {
      * only the column's own sections/light. An all-air column yields a full tile of
      * void pixels (never null — the erase case is load-bearing).
      */
-    @SuppressWarnings("unchecked")
     static PreparedTile extract(int chunkX, int chunkZ, int worldBottomY, int worldTopY,
                                 VoxelColumnData columnData) {
-        // sectionY-indexed lookup (sparse columns are normal — air sections are culled).
-        int minSecY = worldBottomY >> 4;
-        int maxSecY = (worldTopY - 1) >> 4;
-        var byY = new VoxelColumnData.SectionData[maxSecY - minSecY + 1];
-        int highestNonAir = Integer.MIN_VALUE;
-        for (var s : columnData.sections()) {
-            if (s == null || s.section() == null) continue;
-            int idx = s.sectionY() - minSecY;
-            if (idx < 0 || idx >= byY.length) continue;
-            byY[idx] = s;
-            if (!s.section().hasOnlyAir() && s.sectionY() > highestNonAir) {
-                highestNonAir = s.sectionY();
+        return extractSurface(chunkX, chunkZ, worldBottomY, Column.of(columnData, worldBottomY, worldTopY),
+                DEFAULT_CAVE_DEPTH);
+    }
+
+    /**
+     * Extract one tile per target from ONE decode of the column (the decode thread, or the
+     * band-fill worker for a stored column). Every target yields its tile — an all-void tile
+     * is the erase case. {@code ignoreHeightmaps} is Xaero's {@code MapWorld.isIgnoreHeightmaps()}.
+     */
+    static List<PreparedTile> extract(int chunkX, int chunkZ, LevelFacts level, VoxelColumnData columnData,
+                                      List<LayerTarget> targets, boolean ignoreHeightmaps) {
+        var column = Column.of(columnData, level.minY(), level.topY());
+        var out = new ArrayList<PreparedTile>(targets.size());
+        for (var target : targets) {
+            if (!target.cave()) {
+                out.add(extractSurface(chunkX, chunkZ, level.minY(), column, target.depth()));
+                continue;
             }
+            out.add(extractCave(chunkX, chunkZ, level, column, target, ignoreHeightmaps));
         }
+        return out;
+    }
+
+    /** One decoded column: the section-indexed access plus the heights both scans start from. */
+    private static final class Column {
+        final ColumnAccess access;
+        /** Highest non-air section, or {@code Integer.MIN_VALUE} for a void column. */
+        final int highestNonAir;
+        /** Per-pixel WORLD_SURFACE height (top non-{@code isAir()} block, else minY−1) — lazily. */
+        private short[] worldSurface;
+        private final int minY;
+
+        private Column(ColumnAccess access, int highestNonAir, int minY) {
+            this.access = access;
+            this.highestNonAir = highestNonAir;
+            this.minY = minY;
+        }
+
+        static Column of(VoxelColumnData columnData, int worldBottomY, int worldTopY) {
+            // sectionY-indexed lookup (sparse columns are normal — air sections are culled).
+            int minSecY = worldBottomY >> 4;
+            int maxSecY = (worldTopY - 1) >> 4;
+            var byY = new VoxelColumnData.SectionData[maxSecY - minSecY + 1];
+            int highestNonAir = Integer.MIN_VALUE;
+            int highestSky = Integer.MIN_VALUE;
+            for (var s : columnData.sections()) {
+                if (s == null || s.section() == null) continue;
+                int idx = s.sectionY() - minSecY;
+                if (idx < 0 || idx >= byY.length) continue;
+                byY[idx] = s;
+                if (!s.section().hasOnlyAir() && s.sectionY() > highestNonAir) {
+                    highestNonAir = s.sectionY();
+                }
+                if (s.skyLight() != null && s.sectionY() > highestSky) highestSky = s.sectionY();
+            }
+            return new Column(new ColumnAccess(byY, minSecY, Math.max(highestNonAir, highestSky)),
+                    highestNonAir, worldBottomY);
+        }
+
+        /** {@code MapWriter.getSectionBasedHeight(chunk, 64)}: the top of the highest non-air
+         *  section (its scan from y=64 up, then down, finds exactly that), or 0. */
+        int sectionBasedHeight() {
+            return this.highestNonAir == Integer.MIN_VALUE ? 0 : (this.highestNonAir << 4) + 15;
+        }
+
+        /** {@code LevelChunk.getHeight(WORLD_SURFACE, x, z)} derived from the column. */
+        int worldSurface(int x, int z) {
+            if (this.worldSurface == null) {
+                var heights = new short[256];
+                int top = this.highestNonAir == Integer.MIN_VALUE ? this.minY - 1 : (this.highestNonAir << 4) + 15;
+                for (int px = 0; px < 16; px++) {
+                    for (int pz = 0; pz < 16; pz++) {
+                        int y = top;
+                        while (y >= this.minY && this.access.blockAt(px, y, pz).isAir()) y--;
+                        heights[px * 16 + pz] = (short) (y < this.minY ? this.minY - 1 : y);
+                    }
+                }
+                this.worldSurface = heights;
+            }
+            return this.worldSurface[x * 16 + z];
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static PreparedTile extractSurface(int chunkX, int chunkZ, int worldBottomY, Column decoded, int depth) {
+        int highestNonAir = decoded.highestNonAir;
 
         var floorState = new BlockState[256];
         var floorY = new short[256];
@@ -119,7 +262,7 @@ final class XaeroTileExtractor {
                 ? worldBottomY - 1
                 : (highestNonAir << 4) + 15;
 
-        var column = new ColumnAccess(byY, minSecY);
+        var column = decoded.access;
         var scan = new PixelScan();
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
@@ -141,7 +284,74 @@ final class XaeroTileExtractor {
             }
         }
         return new PreparedTile(chunkX, chunkZ, worldBottomY,
-                floorState, floorY, topY, biome, light, glowing, overlays);
+                floorState, floorY, topY, biome, light, glowing, overlays,
+                SURFACE, SURFACE, depth);
+    }
+
+    /**
+     * A cave-mode tile: {@code writeChunk}'s per-pixel window feeding the {@code loadPixel}
+     * cave branches. Layered: highY = caveStart, lowY = max(minY, caveStart+1−depth); Full:
+     * highY = the WORLD_SURFACE height (section-based when heightmaps are ignored or the column
+     * is empty), lowY = minY; either clamped below the world top.
+     */
+    @SuppressWarnings("unchecked")
+    private static PreparedTile extractCave(int chunkX, int chunkZ, LevelFacts level, Column decoded,
+                                            LayerTarget target, boolean ignoreHeightmaps) {
+        int minY = level.minY();
+        boolean fullCave = target.caveStart() == FULL;
+        int lowY = minY;
+        if (!fullCave) {
+            lowY = target.caveStart() + 1 - target.depth();
+            if (lowY < minY) lowY = minY;
+        }
+        var floorState = new BlockState[256];
+        var floorY = new short[256];
+        var topY = new short[256];
+        var biome = (ResourceKey<Biome>[]) new ResourceKey[256];
+        var light = new byte[256];
+        var glowing = new boolean[256];
+        var overlays = new OverlayRun[256][];
+        var column = decoded.access;
+        var scan = new PixelScan();
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int mappedHeight = decoded.worldSurface(x, z);
+                int highY;
+                if (!fullCave) {
+                    highY = target.caveStart();
+                } else if (ignoreHeightmaps || mappedHeight < minY) {
+                    highY = decoded.sectionBasedHeight();
+                } else {
+                    highY = mappedHeight;
+                }
+                if (highY >= level.topY()) highY = level.topY() - 1;
+                scan.reset(lowY);
+                scanCavePixel(column, x, z, highY, fullCave, mappedHeight, ignoreHeightmaps,
+                        level.skyLight(), scan);
+                int i = x * 16 + z;
+                BlockState finalState = scan.floorState == null ? AIR : scan.floorState;
+                floorState[i] = finalState;
+                floorY[i] = (short) (scan.floorState == null ? minY : scan.floorY);
+                // A void pixel keeps topHeight = lowY (the window bottom) and samples its
+                // biome there — loadPixel's topH starts at lowY, not at the world bottom.
+                topY[i] = (short) scan.topH;
+                biome[i] = column.biomeAt(x, scan.topH, z);
+                byte pixelLight = 0;
+                OverlayRun[] runs = scan.finishedRuns();
+                if (scan.floorState != null) {
+                    pixelLight = scan.floorLight;
+                    // The overlay-free floor's light rule (loadPixel pc 755-789).
+                    if (pixelLight < 15 && runs == null && scan.floorSky > pixelLight) {
+                        pixelLight = scan.floorSky;
+                    }
+                }
+                light[i] = pixelLight;
+                glowing[i] = isGlowing(finalState);
+                overlays[i] = runs;
+            }
+        }
+        return new PreparedTile(chunkX, chunkZ, minY, floorState, floorY, topY, biome, light, glowing,
+                overlays, target.layer(), target.caveStart(), target.depth());
     }
 
     private static final BlockState AIR = Blocks.AIR.defaultBlockState();
@@ -208,6 +418,90 @@ final class XaeroTileExtractor {
         }
     }
 
+    /**
+     * The cave and Full branches of {@code MapWriter.loadPixel} (cave=true), ported in its
+     * order: underair starts true only in Full mode; a non-empty fluid enters the help step
+     * (and sets underair) unless Full mode is still looking for ground; air sets underair; a
+     * solid block above the first air (the roof) is skipped; Full mode's ground — not
+     * ignited by lava, not replaceable, push reaction not DESTROY, not an overlay — ends the
+     * look-for-ground phase and starts a new roof; everything else is the surface scan's help
+     * step. The deep-run extension is shared with the surface scan verbatim.
+     */
+    private static void scanCavePixel(ColumnAccess column, int x, int z, int highY, boolean fullCave,
+                                      int mappedHeight, boolean ignoreHeightmaps, boolean skyLit,
+                                      PixelScan scan) {
+        int lowY = scan.lowY;
+        boolean underair = fullCave;
+        boolean shouldEnterGround = fullCave;
+        byte skyLight = (byte) (skyLit ? 15 : 0);
+        boolean extendedLastStep = false;
+        int h = highY;
+        while (h >= lowY) {
+            BlockState state = column.blockAt(x, h, z);
+            FluidState fluid = state.getFluidState();
+            BlockState fluidLegacyBlock = fluid.isEmpty() ? null : fluid.createLegacyBlock();
+
+            boolean extendThisStep = !extendedLastStep && scan.hasOverlays()
+                    && scan.firstTransparentY - h >= EXTEND_RUN_DEPTH;
+            extendedLastStep = extendThisStep;
+            int skipY = h;
+            if (extendThisStep) {
+                skipY = h - 1;
+                while (skipY >= lowY) {
+                    BlockState trace = column.blockAt(x, skipY, z);
+                    FluidState traceFluid = trace.getFluidState();
+                    if (!traceFluid.isEmpty()) {
+                        if (!fluidOverlayable(traceFluid)) break;
+                        if (!(trace.getBlock() instanceof AirBlock)
+                                && trace.getBlock() == traceFluid.createLegacyBlock().getBlock()) {
+                            skipY--;
+                            continue;
+                        }
+                    }
+                    if (!blockOverlayable(trace)) break;
+                    skipY--;
+                }
+            }
+
+            byte blockLight = column.lightAt(x, h + 1, z);
+            if (blockLight < 15 && skyLit) {
+                // The 15 shortcut: Layered with the window top at or above the pixel's
+                // WORLD_SURFACE height (loadPixel pc 381-434).
+                skyLight = !ignoreHeightmaps && !fullCave && highY >= mappedHeight
+                        ? 15 : column.skyAt(x, h + 1, z);
+            }
+
+            if (fluidLegacyBlock != null && !shouldEnterGround) {
+                underair = true;
+                if (scan.step(fluidLegacyBlock, fluidOverlayable(fluid), blockLight, h,
+                        extendThisStep, skipY, true, skyLight)) {
+                    scan.floor(state, h, blockLight, skyLight);
+                    return;
+                }
+            }
+            Block b = state.getBlock();
+            if (b instanceof AirBlock) {
+                underair = true;
+            } else if (!underair) {
+                // the roof: skipped until the first air or fluid
+            } else if (fluidLegacyBlock != null && b == fluidLegacyBlock.getBlock()) {
+                // the fluid's own block: the fluid branch above handled it
+            } else if (shouldEnterGround) {
+                if (!state.ignitedByLava() && !state.canBeReplaced()
+                        && state.getPistonPushReaction() != PushReaction.DESTROY
+                        && !blockOverlayable(state)) {
+                    underair = false;
+                    shouldEnterGround = false;
+                }
+            } else if (scan.step(state, blockOverlayable(state), blockLight, h,
+                    extendThisStep, skipY, true, skyLight)) {
+                scan.floor(state, h, blockLight, skyLight);
+                return;
+            }
+            h = extendThisStep ? skipY : h - 1;
+        }
+    }
+
     /** Mutable per-pixel scan state — reset and reused across the 256 pixels. */
     private static final class PixelScan {
         int lowY;
@@ -215,11 +509,12 @@ final class XaeroTileExtractor {
         BlockState floorState;
         int floorY;
         byte floorLight;
+        /** The sky light the cave scan held at the floor (its overlay-free light rule). */
+        byte floorSky;
         private List<OverlayRun> runs;
         private BlockState runState;
         private byte runLight;
         private int runOpacity;
-        private boolean capReached;
         int firstTransparentY;
 
         void reset(int lowY) {
@@ -228,10 +523,10 @@ final class XaeroTileExtractor {
             this.floorState = null;
             this.floorY = 0;
             this.floorLight = 0;
+            this.floorSky = 0;
             this.runs = null;
             this.runState = null;
             this.runOpacity = 0;
-            this.capReached = false;
             this.firstTransparentY = 0;
         }
 
@@ -246,6 +541,13 @@ final class XaeroTileExtractor {
          */
         boolean step(BlockState state, boolean overlayable, byte blockLight, int h,
                      boolean extendThisStep, int skipY) {
+            return step(state, overlayable, blockLight, h, extendThisStep, skipY, false, (byte) 0);
+        }
+
+        /** The help step with the cave-mode light input: the FIRST overlay of a cave-mode
+         *  pixel takes max(block, sky) (loadPixelHelp pc 68-104); later runs keep block light. */
+        boolean step(BlockState state, boolean overlayable, byte blockLight, int h,
+                     boolean extendThisStep, int skipY, boolean cave, byte skyLight) {
             if (isInvisible(state)) return false;
             if (overlayable) {
                 if (h > this.topH) this.topH = h;
@@ -257,14 +559,18 @@ final class XaeroTileExtractor {
                     }
                     return false;
                 }
-                if (this.runState != state && !this.capReached) {
-                    if (!this.hasOverlays()) this.firstTransparentY = h;
-                    flushRun();
-                    if (this.runs != null && this.runs.size() >= MAX_OVERLAYS) {
-                        this.capReached = true; // native builder caps at 10; extras are dropped
-                    } else {
+                // OverlayBuilder.build: a new overlay only when the block's particle texture
+                // changes (water of every LEVEL shares one: the run keeps its FIRST state), and
+                // past the 10-overlay cap the last overlay keeps taking opacity. A texture change
+                // is a BLOCK change here (the decode thread has no model manager).
+                if (this.runState == null || this.runState.getBlock() != state.getBlock()) {
+                    int open = (this.runs == null ? 0 : this.runs.size()) + (this.runState != null ? 1 : 0);
+                    if (open < MAX_OVERLAYS) {
+                        boolean first = !this.hasOverlays();
+                        if (first) this.firstTransparentY = h;
+                        flushRun();
                         this.runState = state;
-                        this.runLight = blockLight;
+                        this.runLight = cave && first && skyLight > blockLight ? skyLight : blockLight;
                         this.runOpacity = 0;
                     }
                 }
@@ -279,9 +585,14 @@ final class XaeroTileExtractor {
         }
 
         void floor(BlockState originalState, int h, byte blockLight) {
+            floor(originalState, h, blockLight, (byte) 0);
+        }
+
+        void floor(BlockState originalState, int h, byte blockLight, byte skyLight) {
             this.floorState = originalState;
             this.floorY = h;
             this.floorLight = blockLight;
+            this.floorSky = skyLight;
         }
 
         private void flushRun() {
@@ -299,8 +610,9 @@ final class XaeroTileExtractor {
         }
     }
 
-    /** Section-indexed access to one column's blocks/light/biomes; absent sections read as air. */
-    private record ColumnAccess(VoxelColumnData.SectionData[] byY, int minSecY) {
+    /** Section-indexed access to one column's blocks/light/biomes; absent sections read as air.
+     *  {@code highestLit} = the highest section with non-air blocks or a sky layer. */
+    private record ColumnAccess(VoxelColumnData.SectionData[] byY, int minSecY, int highestLit) {
 
         private LevelChunkSection sectionFor(int y) {
             int idx = (y >> 4) - this.minSecY;
@@ -320,6 +632,23 @@ final class XaeroTileExtractor {
             if (idx < 0 || idx >= this.byY.length || this.byY[idx] == null) return 0;
             DataLayer blockLight = this.byY[idx].blockLight();
             return blockLight == null ? 0 : (byte) blockLight.get(x, y & 15, z);
+        }
+
+        /**
+         * Sky light for the cave scan (sky-lit dimensions only). The section's own sky layer
+         * when the column carries one; otherwise open sky (15) above every section with
+         * blocks or sky data — vanilla's top-of-column rule — and dark (0) below: LSS culls
+         * only all-dark air sections, and serves a section's sky layer null when it holds
+         * no light. The approximation of the real light engine (cave-layers plan §B4).
+         */
+        byte skyAt(int x, int y, int z) {
+            int sectionY = y >> 4;
+            int idx = sectionY - this.minSecY;
+            if (idx >= 0 && idx < this.byY.length && this.byY[idx] != null) {
+                DataLayer skyLight = this.byY[idx].skyLight();
+                if (skyLight != null) return (byte) skyLight.get(x, y & 15, z);
+            }
+            return (byte) (sectionY > this.highestLit ? 15 : 0);
         }
 
         ResourceKey<Biome> biomeAt(int x, int y, int z) {
@@ -360,12 +689,12 @@ final class XaeroTileExtractor {
     /** Approximation of Xaero's model-alpha translucency (see class javadoc).
      *  HalfTransparentBlock is the 26.2 family root: ice, slime, honey, and (via
      *  the TransparentBlock subclass) plain + stained glass. */
-    private static boolean blockOverlayable(BlockState state) {
+    static boolean blockOverlayable(BlockState state) {
         Block b = state.getBlock();
         return b instanceof AirBlock || b instanceof HalfTransparentBlock;
     }
 
-    private static boolean fluidOverlayable(FluidState fluid) {
+    static boolean fluidOverlayable(FluidState fluid) {
         // Water by TYPE, not tag (tag lookups throw while tags are unbound): the
         // approximation of Xaero's fluid-translucency test — water overlays, lava floors.
         var type = fluid.getType();

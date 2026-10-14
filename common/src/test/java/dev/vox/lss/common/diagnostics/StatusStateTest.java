@@ -36,4 +36,22 @@ class StatusStateTest {
         assertEquals(List.of(Reason.LOCAL_RATE_CAP),snapshot(true,true,true,Discovery.NEGOTIATED,true,Availability.AVAILABLE,0,0,0,1,0).reasons());
         assertEquals(List.of(),snapshot(true,true,true,Discovery.NEGOTIATED,true,Availability.AVAILABLE,0,0,20,0,0).reasons());
     }
+    /** Map-policy review fold A5: a server-blocked map backend explains itself among the
+     *  observed conditions (the availability line alone read "turned off by this server"
+     *  with no matching condition), once, whichever backend carries it. */
+    @Test void aServerBlockedMapBackendIsAnObservedCondition() {
+        var xaero = snapshot(true,true,true,Discovery.NEGOTIATED,true,Availability.SERVER_BLOCKED,0,0,20,0,0);
+        assertEquals(List.of(Reason.MAP_INGESTION_SERVER_BLOCKED), xaero.reasons());
+        assertTrue(xaero.lines().stream().anyMatch(line -> line.contains("MAP_INGESTION_SERVER_BLOCKED")));
+        var both = new ClientStatusSnapshot(SCHEMA_VERSION, 4, 123, true, true, true, true, true, false, 20, 512,
+                128, 0, 0, 0, 0, 0, 20, 0, 0, Discovery.NEGOTIATED, Availability.SERVER_BLOCKED, null,
+                DiagnosticVersions.unknown(), null, null, Availability.SERVER_BLOCKED, 0);
+        assertEquals(List.of(Reason.MAP_INGESTION_SERVER_BLOCKED), both.reasons());
+        var journeyMapOnly = new ClientStatusSnapshot(SCHEMA_VERSION, 4, 123, true, true, true, true, true, false, 20,
+                512, 128, 0, 0, 0, 0, 0, 20, 0, 0, Discovery.NEGOTIATED, Availability.ABSENT, null,
+                DiagnosticVersions.unknown(), null, null, Availability.SERVER_BLOCKED, 0);
+        assertEquals(List.of(Reason.MAP_INGESTION_SERVER_BLOCKED), journeyMapOnly.reasons());
+        assertEquals(List.of(), snapshot(true,true,true,Discovery.NEGOTIATED,true,Availability.DISABLED,0,0,20,0,0).reasons(),
+                "the user's own local off is not a condition");
+    }
 }

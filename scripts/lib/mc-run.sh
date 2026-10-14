@@ -15,7 +15,7 @@ CLIENT_PID=""
 
 # Kill any still-running server/client processes.
 mc_cleanup() {
-    harness_cleanup
+    harness_stop_owned
     echo "[$LOG_PREFIX] Cleaning up..."
     if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
         echo "[$LOG_PREFIX] Killing server (PID $SERVER_PID)"
@@ -27,6 +27,7 @@ mc_cleanup() {
         kill "$CLIENT_PID" 2>/dev/null || true
         wait "$CLIENT_PID" 2>/dev/null || true
     fi
+    harness_reap_jobs
 }
 
 # mc_start_server <gradle-log> <gradle-task> [gradle-args...]

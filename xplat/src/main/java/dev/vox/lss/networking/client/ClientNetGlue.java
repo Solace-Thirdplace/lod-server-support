@@ -49,13 +49,31 @@ public final class ClientNetGlue {
             columnProcessor,
             version -> {
                 LoaderServices.get().sendToServer(new HandshakeC2SPayload(
-                        version, LSSConstants.CAPABILITY_VOXEL_COLUMNS
-                                | ZstdWireSupport.capabilityBit()
-                                | FarPlayerClientSupport.capabilityBit()));
+                        version, handshakeCapabilities()));
                 FarPlayerClientSupport.onHandshakeSent();
                 sendClientInfoSidecar();
             },
             ClientNetGlue::createRequestManager);
+
+    /**
+     * The ONE capability mask every handshake send declares (map-policy plan A2): the
+     * join/ladder announce above and the LAN-host self-handshake. The map-policy bit is
+     * unconditional (with no map mod, honoring the request is trivial) and survives soak
+     * and benchmark JVMs (harness clients need it — unlike the far-player bit's property
+     * zeroing); the soak lever's v19 emulation strips the bits a real v19 client never
+     * declared ({@link SoakDialectOverride#stripCapabilities}).
+     */
+    static int handshakeCapabilities() {
+        return handshakeCapabilitiesFor(ZstdWireSupport.capabilityBit(),
+                FarPlayerClientSupport.capabilityBit(), SoakDialectOverride.isV19());
+    }
+
+    /** Pure form of {@link #handshakeCapabilities} for the Tier 1 pins. */
+    static int handshakeCapabilitiesFor(int zstdBit, int farPlayersBit, boolean v19Emulation) {
+        return SoakDialectOverride.stripCapabilitiesFor(v19Emulation,
+                LSSConstants.CAPABILITY_VOXEL_COLUMNS | zstdBit | farPlayersBit
+                        | LSSConstants.CAPABILITY_MAP_POLICY);
+    }
 
     /** The lss:client_info sidecar rides beside every announce (XVER §2.2): the
      *  handshake shape is frozen, so the client's data version travels on its own
@@ -75,6 +93,13 @@ public final class ClientNetGlue {
 
     public static boolean isServerEnabled() {
         return sessionGate.isServerEnabled();
+    }
+
+    /** Whether the connected server allows LOD map ingestion (map-policy plan A4): the map
+     *  backends' write gate ({@code serverAllowsWrites}), the status availability and the
+     *  options tooltip. True with no connection and on every server without the policy. */
+    public static boolean serverAllowsMapIngestion() {
+        return sessionGate.serverAllowsMapIngestion();
     }
 
     /** C6 observability: the established session's protocol version (0 pre-config). */
@@ -178,9 +203,7 @@ public final class ClientNetGlue {
             if (!hostHandshakeHasConsumer()) return;
             try {
                 LoaderServices.get().sendToServer(new HandshakeC2SPayload(
-                        LSSConstants.PROTOCOL_VERSION, LSSConstants.CAPABILITY_VOXEL_COLUMNS
-                                | ZstdWireSupport.capabilityBit()
-                                | FarPlayerClientSupport.capabilityBit()));
+                        LSSConstants.PROTOCOL_VERSION, handshakeCapabilities()));
                 FarPlayerClientSupport.onHandshakeSent();
                 sendClientInfoSidecar();
             } catch (Exception e) {
@@ -312,7 +335,8 @@ public final class ClientNetGlue {
             reconcileClientConfig();
             var previous = sessionGate.getRequestManager();
             sessionGate.onSessionConfig(payload, LSSApi.hasVoxelConsumers(),
-                    LSSClientConfig.CONFIG.enableV16ServerCompat());
+                    LSSClientConfig.CONFIG.enableV16ServerCompat(),
+                    dev.vox.lss.compat.ModCompat.isMapOnlyIngestion());
             if (previous != null && previous != sessionGate.getRequestManager()) {
                 dev.vox.lss.compat.ModCompat.retireClientAcquisition();
             }

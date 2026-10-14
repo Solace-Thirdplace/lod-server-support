@@ -189,7 +189,9 @@ public final class ClientOptionCatalog {
                 .tooltip(Tooltip.conditional(Condition.MAP_MOD_SUPPORTED,
                         "lss.config.map_ingestion.tooltip",
                         "lss.config.map_ingestion.tooltip.not_installed")
-                        .nativeOnly("lss.config.map_ingestion.tooltip.native_only"))
+                        .nativeOnly("lss.config.map_ingestion.tooltip.native_only")
+                        // Map-policy plan A4: the connected server's request, read when shown.
+                        .serverBlocked("lss.config.map_ingestion.tooltip.server_blocked"))
                 .impact(Impact.LOW)
                 .defaultValue(true)
                 .bind(c -> c.bool("integrations.map_ingestion.enabled"), (c, v) -> c.set("integrations.map_ingestion.enabled", v))

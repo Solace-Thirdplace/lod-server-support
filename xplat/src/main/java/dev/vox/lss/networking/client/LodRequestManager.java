@@ -1452,6 +1452,12 @@ public class LodRequestManager {
                 + " — " + this.worldAxisReason + ")";
     }
 
+    /** The composed column-cache bucket of this connection (address axis + world sub-bucket),
+     *  null before the session config — the Xaero band-fill store keys by it. Main thread. */
+    public String cacheBucket() {
+        return this.serverAddress;
+    }
+
     /** Test observability: the composed bucket key currently in effect. */
     String cacheBucketForTest() {
         return this.serverAddress;

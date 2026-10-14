@@ -1,0 +1,323 @@
+{
+  "lines": {
+    "1.21.1": {
+      "base": "support/mc1.21.1",
+      "gated_head": "ad2ec0294e8ef0636cd08ef6767a19bcec19561a",
+      "jars_sha256": {
+        "lod-server-support-fabric-0.19.0+1.21.1.jar": "e14f4163ccb1de2105dbf0515de12fb223969c43004eea43651fd9397e4eee26",
+        "lod-server-support-neoforge-0.19.0+1.21.1.jar": "3b166ee77774707155291833b5e65450b7bb9f6991561520d887d31af475c4b8",
+        "lod-server-support-paper-0.19.0+1.21.1.jar": "3b0380c535fc06646f4d03092e38b52d1173b3b445a562466c8425794e5609df",
+        "lod-server-support-sponge-0.19.0+1.21.1.jar": "c2c653bb81d61f1d5e06a6651b49703bdcd29d5acc88c62015601679c39a8896",
+        "voxy-server-side-fabric-0.19.0+1.21.1.jar": "052b8b0c742e77b423ee4a30dbbb0c264d09f7c1b19d7d9efc568073711d2844",
+        "voxy-server-side-neoforge-0.19.0+1.21.1.jar": "1219070831cefae8cfe1322c8a1e6658afd57866e8380eb83c300a917d300db5",
+        "voxy-server-side-paper-0.19.0+1.21.1.jar": "2c3891201a3b8ba0ddff2ce84e65c3a7fd0448efe2a6d7f561498e5e1a9ff4ab",
+        "voxy-server-side-sponge-0.19.0+1.21.1.jar": "55ef33ca68943b51267c5e915be00f5a0117a8dd5ea7f61b0e6c3f65744ce2a4"
+      },
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1102
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 4,
+          "tests": 2141
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 23
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 573
+        },
+        "sponge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 25
+        }
+      },
+      "pin": "ad2ec0294e8ef0636cd08ef6767a19bcec19561a",
+      "pr": 354,
+      "release_branch": "release/v0.19.0-mc1.21.1",
+      "ship_neoforge": true,
+      "ship_sponge": true,
+      "tag": "v0.19.0+mc1.21.1"
+    },
+    "1.21.10": {
+      "base": "support/mc1.21.10",
+      "gated_head": "390dcba21a8388b77b3b02c53c385860dff88c98",
+      "jars_sha256": {
+        "lod-server-support-fabric-0.19.0+1.21.10.jar": "ee1911189ef4b597d6e397823ef1246366faefa214f16512e7c116b41708878d",
+        "lod-server-support-neoforge-0.19.0+1.21.10.jar": "5161a68125241592d14d7e1420d3b4947c39d137510b90e6d70f19056e1ed309",
+        "lod-server-support-paper-0.19.0+1.21.10.jar": "3c39ba98a3ce462e5db5c39d7794faecaf4b40cde03bbbb38bc43af673d554ca",
+        "lod-server-support-sponge-0.19.0+1.21.10.jar": "5ac10fc1aa397e4f8caa34c05aebb3f42b9baff850b9cb7861f1293f4f495d30",
+        "voxy-server-side-fabric-0.19.0+1.21.10.jar": "10d56adac55d8002122a6a060bed661282208541b8371ca0795a43256606da0d",
+        "voxy-server-side-neoforge-0.19.0+1.21.10.jar": "4de23f33a0465480401f451b866ee002a6a449789fe19326ae1a9ec42df84b5d",
+        "voxy-server-side-paper-0.19.0+1.21.10.jar": "3f0f521d06e715703ed4a6e96ced6d5f5ca47ee5beeaf7c919db2ed784ba5e93",
+        "voxy-server-side-sponge-0.19.0+1.21.10.jar": "9bfa6ab6a89fd39d66516891dd1570a37761a846436d08f7930f51ad7c23d728"
+      },
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1101
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 6,
+          "tests": 2136
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 20
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 573
+        },
+        "sponge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 25
+        }
+      },
+      "pin": "390dcba21a8388b77b3b02c53c385860dff88c98",
+      "pr": 353,
+      "release_branch": "release/v0.19.0-mc1.21.10",
+      "ship_neoforge": false,
+      "ship_sponge": true,
+      "tag": "v0.19.0+mc1.21.10"
+    },
+    "1.21.11": {
+      "base": "support/mc1.21.11-v0.14",
+      "gated_head": "3bce456898784176e71bc56b1e942aeba08fe05a",
+      "jars_sha256": {
+        "lod-server-support-fabric-0.19.0+1.21.11.jar": "d9a8d329a839cfa211fa7c10418416a02f002bb2afcf8f852e56c5069ff44ce1",
+        "lod-server-support-neoforge-0.19.0+1.21.11.jar": "1177180b108162568ca5493e46a49fe5ff38627e0e400e983519de59d40aa4f8",
+        "lod-server-support-paper-0.19.0+1.21.11.jar": "53d93726fbbb33af84b887a20d429718cdc5490694d7b47d5b5642ac3d5b0a8b",
+        "lod-server-support-sponge-0.19.0+1.21.11.jar": "500ab0dd35c1834ff2c4a9bb6b2c8ab6e9fb2bcdbfe5da5de858e03a9c63732f",
+        "voxy-server-side-fabric-0.19.0+1.21.11.jar": "5fc11bc67e3902caf210004fd9fe718c2c138305766ac1613e0b945309147943",
+        "voxy-server-side-neoforge-0.19.0+1.21.11.jar": "c0bfe91254e9cec15ae9d9a07c49cd746a573b85bf1512af7b861ec9f86831dc",
+        "voxy-server-side-paper-0.19.0+1.21.11.jar": "40153039701e325bad8edde02f5dc989035023f0e07ffacc018e613c6531b839",
+        "voxy-server-side-sponge-0.19.0+1.21.11.jar": "6423de0dbc1bdc8be35fea829525d1cec3d72ac4c8ecd0013308e3dc0d0c4375"
+      },
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1101
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 4,
+          "tests": 2142
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 24
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 573
+        },
+        "sponge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 25
+        }
+      },
+      "pin": "3bce456898784176e71bc56b1e942aeba08fe05a",
+      "pr": 352,
+      "release_branch": "release/v0.19.0-mc1.21.11",
+      "ship_neoforge": false,
+      "ship_sponge": true,
+      "tag": "v0.19.0+mc1.21.11"
+    },
+    "26.1": {
+      "base": "support/mc26.1-v0.14",
+      "gated_head": "750b906e4d5bcd2854e1fadbc4e88d862b2794ad",
+      "jars_sha256": {
+        "lod-server-support-fabric-0.19.0+26.1.2.jar": "2863d292bdf9ea95e8c3ae8e74ce15f54e0363e8cfb866bd83847e4c4946cbc7",
+        "lod-server-support-neoforge-0.19.0+26.1.2.jar": "fc25f923beffab759bba04468b67ba2c1601d8b9a60e4dddaa48ebce8bb3ee00",
+        "lod-server-support-paper-0.19.0+26.1.2.jar": "a9512bbe9e33bca067838b16b690ae45078277a8724a848abf36b46268593d86",
+        "lod-server-support-sponge-0.19.0+26.1.2.jar": "d02cd56fe9923fbc2b0aee25f1973c8d170d4137451b9ac3b8ec5aadf9cce383",
+        "voxy-server-side-fabric-0.19.0+26.1.2.jar": "da68e0c18c16b62a1a11f3a9288812c14270f844e62fdcb6e9bdfcb6849e8544",
+        "voxy-server-side-neoforge-0.19.0+26.1.2.jar": "f612726efafd7cfce81780d192f9410af1fd65d578b19d4023351879c8d8655e",
+        "voxy-server-side-paper-0.19.0+26.1.2.jar": "8947601d65782557fb20fa2e704f61fa535cff825def3270a3a1cb927229e59c",
+        "voxy-server-side-sponge-0.19.0+26.1.2.jar": "8d1e8ec7a6259bda4798bbca99e305dc8ded7547af5581269f49f26e4c4d20c0"
+      },
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1101
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 4,
+          "tests": 2149
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 24
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 573
+        },
+        "sponge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 25
+        }
+      },
+      "pin": "750b906e4d5bcd2854e1fadbc4e88d862b2794ad",
+      "pr": 351,
+      "release_branch": "release/v0.19.0-mc26.1",
+      "ship_neoforge": true,
+      "ship_sponge": true,
+      "tag": "v0.19.0+mc26.1"
+    },
+    "26.2": {
+      "base": "support/mc26.2",
+      "gated_head": "e80e9b7dafcb91afc5e3b59d79cdbceffa491ac5",
+      "jars_sha256": {
+        "lod-server-support-fabric-0.19.0+26.2.jar": "dac7c2e8980abbd2973a1c59c2fa1bd7eb843f9c0c15820823e3a05ccafeac4b",
+        "lod-server-support-neoforge-0.19.0+26.2.jar": "d7bc13cabd2300cc6b7494d5bb002db7dc6b83a4d6218d80ba9d79ac3a84a0bf",
+        "lod-server-support-paper-0.19.0+26.2.jar": "038a04cc1620572b9e7b11395fc988b1ea28683c4a181830fa0fcb8b4d72ff7a",
+        "lod-server-support-sponge-0.19.0+26.2.jar": "481bca9f7d44ce3518af1975124287a2465015634e90670519fecc25a331b60e",
+        "voxy-server-side-fabric-0.19.0+26.2.jar": "e55b5a1287f14abd4746d862b0944783e5c3e86fb0498234d9f5e079d4a8c8c7",
+        "voxy-server-side-neoforge-0.19.0+26.2.jar": "9238f14e9553a9e9ea373f59775ed97935bebae6e8ffd08018f0a17bf41fc4a5",
+        "voxy-server-side-paper-0.19.0+26.2.jar": "bf4dd50707b3b7e9f05e958bbfdfff718d35bc945695be62aa4fc0f705e316f6",
+        "voxy-server-side-sponge-0.19.0+26.2.jar": "38c56f7d00bfcc23ef4a658dac6a8f7a13353e18fa62f54f028200958ffdda26"
+      },
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1102
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 4,
+          "tests": 2147
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 24
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 575
+        },
+        "sponge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 25
+        }
+      },
+      "pin": "e80e9b7dafcb91afc5e3b59d79cdbceffa491ac5",
+      "pr": 350,
+      "release_branch": "release/v0.19.0-mc26.2",
+      "ship_neoforge": true,
+      "ship_sponge": true,
+      "tag": "v0.19.0+mc26.2"
+    },
+    "26.3": {
+      "base": "main",
+      "gated_head": "052692b82168548ce91d61f6b7debffec4899e66",
+      "jars_sha256": {
+        "lod-server-support-fabric-0.19.0+26.3.jar": "b6b6f458d8eef485de0517cedba9906773aead2877ea0a193a29734fde26ef02",
+        "lod-server-support-neoforge-0.19.0+26.3.jar": "9d31793052eab728ccff0987ea92fa4610d38fda3b27b25c8655270a5e3196df",
+        "lod-server-support-paper-0.19.0+26.3.jar": "ccc67e29eba3ce7c81a1c9c4a6536e4b0ed2317c0bdf5ccf554be49f57692a08",
+        "lod-server-support-sponge-0.19.0+26.3.jar": "6d798fbe46c38d737c0e444c38bed8d0e815738cebee5722695dd44ae0965b28",
+        "voxy-server-side-fabric-0.19.0+26.3.jar": "8fc7c65de8af86cdd5f8a486a40697800814b553e6a24c5edf12d86ea619269b",
+        "voxy-server-side-neoforge-0.19.0+26.3.jar": "6f67aa6d41cef7db20cf689367eeb2ef7588d27b94676f7719e4c7e155cc10e1",
+        "voxy-server-side-paper-0.19.0+26.3.jar": "d01a8fb8cbafefc808d109bc52502a4447e103c5df24d4c37d158842a3c0bf4b",
+        "voxy-server-side-sponge-0.19.0+26.3.jar": "1bd0c8cfeaa6bde1c176eac543e4120a93ae917c986e3ef86a5be22fd52d649d"
+      },
+      "junit": {
+        "common": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1102
+        },
+        "fabric": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 4,
+          "tests": 2148
+        },
+        "neoforge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 24
+        },
+        "paper": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 576
+        },
+        "sponge": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 25
+        }
+      },
+      "pin": "052692b82168548ce91d61f6b7debffec4899e66",
+      "pr": 349,
+      "release_branch": "release/v0.19.0-mc26.3",
+      "ship_neoforge": true,
+      "ship_sponge": true,
+      "tag": "v0.19.0"
+    }
+  },
+  "merged": false,
+  "published": false,
+  "schema_version": 1,
+  "sponge": true,
+  "status": "prepared",
+  "tagged": false,
+  "version": "0.19.0"
+}
