@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "99a1d2e41682550fc68237494da6c87852d5c1b3",
-    "1.21.10": "fa409b4cfcdc3cebacdcdf462fe92354138186b3",
-    "1.21.11": "23bcbf0f1bed2bc946c452055f121cd5f308229c",
-    "26.1": "48989fe96067e813a346d5b015f54a22d9cb4c04",
-    "26.2": "d54506807ebcc391ca7aa0a4b8f85f20c1ae0b34",
-    "26.3": "60ab1dc0e330471c262fe3bf58296567ceaa87d9"
+    "1.21.1": "4821b915de121a112bb41aaac0309095591b4c11",
+    "1.21.10": "8a37e5223cae27832b1127cb8c9a93e1310048d3",
+    "1.21.11": "63f64a3a2b496fb326bc45ee2f024307559f3d03",
+    "26.1": "06c95eefa2bcc8da4fc1c8d4bd3f3b0c43ed1a63",
+    "26.2": "36db54149f41bb5951d1732f1ec36278e9d79aa8",
+    "26.3": "7f45f22adf85ede4117879e0cf21e75e98690d2c"
   },
   "files": {
     ".github/line.env": {
@@ -846,14 +846,14 @@
     "common/src/test/java/dev/vox/lss/common/region/RegionSummaryServiceTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-20: identical DROP-test ordering fix on every line; retain RETRY until assembly is observable, then test DROP. Controlled fast-assembly red/green proof retained with v0.15.1 release evidence. Existing line-specific tests remain intact.",
+      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-20: identical DROP-test ordering fix on every line; retain RETRY until assembly is observable, then test DROP. Controlled fast-assembly red/green proof retained with v0.15.1 release evidence. Existing line-specific tests remain intact.",
       "reviewed_blobs": {
-        "1.21.1": "211d2209c6a40fc1f6472d03744e0b923ad716be",
-        "1.21.10": "19de63f175263b0de3a5829c0985a06e795ab48b",
-        "1.21.11": "211d2209c6a40fc1f6472d03744e0b923ad716be",
-        "26.1": "211d2209c6a40fc1f6472d03744e0b923ad716be",
-        "26.2": "211d2209c6a40fc1f6472d03744e0b923ad716be",
-        "26.3": "211d2209c6a40fc1f6472d03744e0b923ad716be"
+        "1.21.1": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
+        "1.21.10": "34e166c5067bae180f8d58a551cd86e8133ccfb3",
+        "1.21.11": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
+        "26.1": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
+        "26.2": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
+        "26.3": "cebda71e3069df2635c38eca5f17f2d60839bcd3"
       },
       "surface": "line-adaptation:common/src/test/java/dev/vox/lss/common/region/RegionSummaryServiceTest.java",
       "tests": [
@@ -2026,14 +2026,14 @@
     "fabric/src/gametest/java/dev/vox/lss/test/SerializerParityGameTests.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
-        "1.21.1": "2d1187029027ae4e9c71afb45ff174b65fb3fbe0",
-        "1.21.10": "6725ef3c1d2bf5466f8f256ba28a36fa8c3b146e",
-        "1.21.11": "d76f1f8ec059c69da0e91b82e0e4f555e0031795",
-        "26.1": "d4237fd9b8a3ef0f2613d3768740de74a9fc2a68",
-        "26.2": "95c06d6d1bba54af1288e159f9d07e0d8cd38f0f",
-        "26.3": "5a669da39bf7dbe95df3c1d7771ecf77ab1b2964"
+        "1.21.1": "56b2b459d5f4e12468264965365b85a12a1cbe6f",
+        "1.21.10": "81b8f0cb3693a65ca737af1729907097ce8e8e0d",
+        "1.21.11": "b1231f6f001d11524900059632a8422705094632",
+        "26.1": "ef05857f270d1586220a3e3baee3d38d15c2255f",
+        "26.2": "0e28d5acff87c3bf1cb64e3cff5f586c49e990f9",
+        "26.3": "ff5a144b280938be3ff0d8b5dc3ee05fb232f6f9"
       },
       "surface": "line-adaptation:fabric/src/gametest/java/dev/vox/lss/test/SerializerParityGameTests.java",
       "tests": [
@@ -2045,14 +2045,14 @@
     "fabric/src/gametest/java/dev/vox/lss/test/ServiceLifecycleGameTests.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
-        "1.21.1": "0244184972320f3bac03acee6f847ec329b41b20",
-        "1.21.10": "43f57ea0314da3a64d0be403e99945513e298383",
-        "1.21.11": "0305b9ce7eed1885ef791258c49b6eabba1f002a",
-        "26.1": "f21468e8d763fea111bd71dc16bf4bd6e30892c1",
-        "26.2": "b934ce9905c56cef089c832aa4119f55ac131159",
-        "26.3": "b934ce9905c56cef089c832aa4119f55ac131159"
+        "1.21.1": "4f708df013f8e95fb3387ade491800b8130f8018",
+        "1.21.10": "5f14e8eb9912625d1183675619d74e492a0f75ed",
+        "1.21.11": "655b1661b508c6e85c890be9ace57cba901961dc",
+        "26.1": "0a0404115af7938a18daa346bd26a66e50063bc1",
+        "26.2": "68e74bc1e547db4aaa61ec486c4bb3533fa1e6b7",
+        "26.3": "68e74bc1e547db4aaa61ec486c4bb3533fa1e6b7"
       },
       "surface": "line-adaptation:fabric/src/gametest/java/dev/vox/lss/test/ServiceLifecycleGameTests.java",
       "tests": [
@@ -3153,14 +3153,14 @@
     "fabric/src/test/java/dev/vox/lss/compat/XaeroBandFillTest.java": {
       "axes": "Minecraft identifier type (ResourceLocation on 1.21.x, Identifier on 26.x); VanillaRegistries.createLookup() through 26.2 vs createWorldLookup() on 26.3; 1.21.1 biome-registry section construction.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams.",
+      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams.",
       "reviewed_blobs": {
-        "1.21.1": "2ad3397e2f31b29ce956979d0c6598cb23e2bbdb",
-        "1.21.10": "00e8f0e217b3bf8d2c3b0b4ad62611c59edcb9ed",
-        "1.21.11": "eddb9a319dbd3678c75c79faf5371eebf6a8026b",
-        "26.1": "eddb9a319dbd3678c75c79faf5371eebf6a8026b",
-        "26.2": "eddb9a319dbd3678c75c79faf5371eebf6a8026b",
-        "26.3": "12adabe30942b6eddbad7cba7f3537bb44282775"
+        "1.21.1": "d89e3697d0c9fa176a887b6699d7207ce9400dbe",
+        "1.21.10": "2ae9e33947c6c7d11ee5b5483c487a5179919f05",
+        "1.21.11": "8896cd88eef1707377a74df306cfec57caf4ab0d",
+        "26.1": "8896cd88eef1707377a74df306cfec57caf4ab0d",
+        "26.2": "8896cd88eef1707377a74df306cfec57caf4ab0d",
+        "26.3": "5f906d4b9d8d62885c0fde29475b1223245ead67"
       },
       "surface": "xaero-band-fill",
       "tests": [
@@ -3187,14 +3187,14 @@
     "fabric/src/test/java/dev/vox/lss/compat/XaeroCaveLayersTest.java": {
       "axes": "Minecraft identifier type (ResourceLocation on 1.21.x, Identifier on 26.x); VanillaRegistries.createLookup() through 26.2 vs createWorldLookup() on 26.3; 1.21.1 biome-registry section construction.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams.",
+      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams.",
       "reviewed_blobs": {
-        "1.21.1": "528f608f0b3d587afbe0e0e3f443ef6837d661ac",
-        "1.21.10": "b509911f09f796607824aa4bc2981ca9087de8b7",
-        "1.21.11": "e3cdcd3100c3b68b9a03921f18a86f5a6b12ea68",
-        "26.1": "e3cdcd3100c3b68b9a03921f18a86f5a6b12ea68",
-        "26.2": "e3cdcd3100c3b68b9a03921f18a86f5a6b12ea68",
-        "26.3": "4a7a8a5622ddeb320e7ee9755363ff2d0be11d4d"
+        "1.21.1": "18bd3bfc7d17ad5a9e6cd6dd26e4502f10dbb1e3",
+        "1.21.10": "38214a31bb7dd47a40ac6d8e6f6d051811a53b66",
+        "1.21.11": "8f9dbd08a3bb4bcb4769b837fda2c06d6109bd55",
+        "26.1": "8f9dbd08a3bb4bcb4769b837fda2c06d6109bd55",
+        "26.2": "8f9dbd08a3bb4bcb4769b837fda2c06d6109bd55",
+        "26.3": "1e668954768b2ebfed94b716e61a43bc1c7c4a13"
       },
       "surface": "xaero-cave-layers",
       "tests": [
@@ -10924,14 +10924,14 @@
     "xplat/src/main/java/dev/vox/lss/compat/XaeroBandFill.java": {
       "axes": "1.21.1 builds sections from the biome Registry<Biome> (no PalettedContainerFactory) and reads world height with getMinBuildHeight()/getMaxBuildHeight() (exclusive top); identical on every other line.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams.",
+      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams.",
       "reviewed_blobs": {
-        "1.21.1": "51aca2f076c30415508b1724dbdcc442dfac9600",
-        "1.21.10": "c88635222b021cfbd627ccc4dfa885321a3fecae",
-        "1.21.11": "c88635222b021cfbd627ccc4dfa885321a3fecae",
-        "26.1": "c88635222b021cfbd627ccc4dfa885321a3fecae",
-        "26.2": "c88635222b021cfbd627ccc4dfa885321a3fecae",
-        "26.3": "c88635222b021cfbd627ccc4dfa885321a3fecae"
+        "1.21.1": "27268ba55022f1d98f6ccc153e36efd2faec4170",
+        "1.21.10": "5e3f442512929cdfa814ea6c3d87cc2f148badbd",
+        "1.21.11": "5e3f442512929cdfa814ea6c3d87cc2f148badbd",
+        "26.1": "5e3f442512929cdfa814ea6c3d87cc2f148badbd",
+        "26.2": "5e3f442512929cdfa814ea6c3d87cc2f148badbd",
+        "26.3": "5e3f442512929cdfa814ea6c3d87cc2f148badbd"
       },
       "surface": "xaero-band-fill",
       "tests": [
@@ -10975,14 +10975,14 @@
     "xplat/src/main/java/dev/vox/lss/compat/XaeroSession.java": {
       "axes": "World height and MC symbol flavors; queue/lifetime/lock behavior shared.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
-        "1.21.1": "3753118365d038e9a3d86c5f6c30b7997f090fcd",
-        "1.21.10": "134256f324e19d1d85b420fd86f82e69bd03832f",
-        "1.21.11": "134256f324e19d1d85b420fd86f82e69bd03832f",
-        "26.1": "134256f324e19d1d85b420fd86f82e69bd03832f",
-        "26.2": "134256f324e19d1d85b420fd86f82e69bd03832f",
-        "26.3": "134256f324e19d1d85b420fd86f82e69bd03832f"
+        "1.21.1": "23e8266e686ddf10e4da2605c9925cea0d98d285",
+        "1.21.10": "6476a38c01e0a9e481efe14e58cb503f7b88d936",
+        "1.21.11": "6476a38c01e0a9e481efe14e58cb503f7b88d936",
+        "26.1": "6476a38c01e0a9e481efe14e58cb503f7b88d936",
+        "26.2": "6476a38c01e0a9e481efe14e58cb503f7b88d936",
+        "26.3": "6476a38c01e0a9e481efe14e58cb503f7b88d936"
       },
       "surface": "xaero-world-height",
       "tests": [
@@ -11986,14 +11986,14 @@
     "xplat/src/main/java/dev/vox/lss/networking/server/RequestProcessingService.java": {
       "axes": "Preserved MC line APIs: ResourceKey identifier/location, ChunkPos fields/accessors, section bounds, registry and spawn access, ticket and background IO calls; Paper 1.21.x split world directories, payload buffer/priority APIs; Fabric chunk-event arity; plugin.yml retains each line\u2019s Folia declaration. Only axes present in this exact file apply.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-12 distance-0 program (per-dimension LOD off): the feature + 2-Opus review fold merged three-way onto each line's prior reviewed blob with the line flavor preserved (1.21.x ResourceLocation in PaperWorldLod); full per-line gates green. 2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
+      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-12 distance-0 program (per-dimension LOD off): the feature + 2-Opus review fold merged three-way onto each line's prior reviewed blob with the line flavor preserved (1.21.x ResourceLocation in PaperWorldLod); full per-line gates green. 2026-09-28 YAML runtime cross-line review at explicit refs in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md: policy capture, owner admission/receipts, session ordering and retry semantics retained across lines; residual differences are reviewed MC/platform APIs, not exempt shared logic. Source review only; build/live evidence is recorded separately.",
       "reviewed_blobs": {
-        "1.21.1": "67535e52be6fed4fa9c2b5ad8d0ed66d278eb617",
-        "1.21.10": "f4f4c596b4e35c967421a116b383e282d69d8a77",
-        "1.21.11": "cd899e7e511d6df34e761264b50f19dd472d04d7",
-        "26.1": "9a096343f278eb4168eff69b4a96977c889b52fd",
-        "26.2": "9a096343f278eb4168eff69b4a96977c889b52fd",
-        "26.3": "9a096343f278eb4168eff69b4a96977c889b52fd"
+        "1.21.1": "9425506eef13310997cc416706dfb2bb13a79cd8",
+        "1.21.10": "85b7a4b457fc040fef0a2983ea3ffc4916762778",
+        "1.21.11": "e364a94d429a710c05763a5541dac01772dbeec9",
+        "26.1": "bfae087802ba20acf4d56b7cae170f1a78285770",
+        "26.2": "bfae087802ba20acf4d56b7cae170f1a78285770",
+        "26.3": "bfae087802ba20acf4d56b7cae170f1a78285770"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/server/RequestProcessingService.java",
       "tests": [
