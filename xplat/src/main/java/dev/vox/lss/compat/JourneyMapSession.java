@@ -39,8 +39,12 @@ import net.minecraft.world.level.Level;
  * <p>Threads: the consumer ENCODES on the LSS decode thread and queues the bytes; the PUMP
  * (main client thread) observes JourneyMap's mapping identity, settles, and submits ONE batch
  * at a time to JourneyMap's own single task thread ({@code queueOneOff}, under the
- * {@code JourneymapClient} monitor {@code stopMapping} holds); the BATCH decodes, renders and
- * publishes on that thread and always ends in a terminal result the pump reconciles.
+ * {@code JourneymapClient} monitor {@code stopMapping} holds); the BATCH renders and publishes
+ * on that thread and always ends in a terminal result the pump reconciles. Only the pure
+ * {@code JMChunkSnapshot.decode} (bytes → snapshot; no JourneyMap state, see the bridge
+ * record's purity evidence) may run ahead of the batch on two LSS DECODE-AHEAD workers; the
+ * {@code SnapshotChunkMD} wrap, every {@code DataCache} touch and every render stay on
+ * JourneyMap's thread.
  *
  * <p>Doctrine (Xaero bridge parity): a column is accepted only when its DAY map rendered under
  * an unchanged identity (topography and biome are best effort, as in JourneyMap's own
@@ -53,7 +57,40 @@ import net.minecraft.world.level.Level;
 final class JourneyMapSession {
     static final int MAX_QUEUE = 8192;
     static final long MAX_QUEUE_BYTES = 48L * 1024 * 1024;
-    static final int MAX_BATCH_COLUMNS = 256;
+    /** A batch's column pick before any batch has been measured (the old fixed batch size). */
+    static final int INITIAL_BATCH_PICK = 256;
+    /** The adaptive pick's range: the box over the measured per-column cost, clamped. */
+    static final int MIN_BATCH_PICK = 16;
+    static final int MAX_BATCH_PICK = 2048;
+    /** The pick aims at this share of the batch box, so the box rarely cuts a tail (a cut tail
+     *  is requeued and its decode-ahead wasted); the rest absorbs terrain-cost variance. */
+    static final double BATCH_BOX_FILL = 0.85;
+    /** The newest batch's weight in the per-column cost average. */
+    static final double COST_EMA_ALPHA = 0.25;
+    /** A batch informs the cost average only when it processed this many columns (or the box
+     *  cut it): a handful of columns is below the millisecond clock's resolution. */
+    static final int COST_SAMPLE_MIN_COLUMNS = 32;
+    /** Distinct regions one batch may draw from. Each region a batch renders opens JourneyMap's
+     *  off-heap region images (about 1.3 MiB per map type), kept until its 30 s access expiry —
+     *  a scattered queue must not open hundreds per batch. JourneyMap's own mapping pass spans
+     *  up to 9 regions (a 32-chunk render distance). */
+    static final int MAX_BATCH_REGIONS = 8;
+    /** Decode-ahead: LSS-owned daemon workers running ONLY the pure snapshot decode. */
+    static final int DECODE_AHEAD_THREADS = 2;
+    /** Snapshots the workers may decode past the one JourneyMap's thread needs now: a box-cut
+     *  tail wastes at most this many decodes. */
+    static final int DECODE_AHEAD_WINDOW = 32;
+    /** The pool's queue bound (one batch submits at most a window at a time; a full queue is a
+     *  rejection, and a rejected column decodes inline). */
+    static final int DECODE_AHEAD_QUEUE = 256;
+    /** Idle decode-ahead workers exit after this long: no thread outlives the map work. */
+    static final long DECODE_AHEAD_KEEP_ALIVE_SECONDS = 30;
+    /** JourneyMap's thread waits at most this long for a decode a worker started (it takes
+     *  about a millisecond), then decodes the column itself. */
+    static final long DECODE_AHEAD_WAIT_MILLIS = 5_000;
+    /** Dev-only A/B kill switch, NOT a setting: {@code -Dlss.journeymap.decodeAhead=false}
+     *  decodes every column inline on JourneyMap's thread, as before 0.19.0. */
+    static final String DECODE_AHEAD_PROPERTY = "lss.journeymap.decodeAhead";
     /** A JourneyMap server sends its world id after mapping starts and JourneyMap then
      *  restarts mapping in a new directory: writes wait for the identity to settle. */
     static final long SETTLE_MILLIS = 3000;
@@ -72,15 +109,29 @@ final class JourneyMapSession {
     static final long DEFAULT_RENDER_DELAY_MILLIS = 500;
     /** A batch runs for at most this many of JourneyMap's renderDelays (its own mapping
      *  tasks may run three), then idles half of one: JourneyMap's queued tasks run first,
-     *  so its own mapping waits at most one batch. Measured on real terrain (J4): ~3 ms per
-     *  column on JourneyMap's thread, so this pace bounds the map — and, maps pacing the
-     *  download (U2), the LOD fill. */
+     *  so its own mapping waits at most one batch. The pick is sized to fill the box (it
+     *  binds; a batch of one region's columns used to end long before it), so this pace bounds
+     *  the map — and, maps pacing the download (U2), the LOD fill. */
     static final int BATCH_BOX_RENDER_DELAYS = 2;
     static final int DEATH_LATCH = 5;
-    static final int CONTEXT_CAPACITY = 512;
+    /** Recently rendered columns kept as the next batches' seam context: about the last two
+     *  batches at the largest pick (they were 2 × 256 when a batch was one region's 256), bound
+     *  first by {@link #CONTEXT_MAX_BYTES}, which is unchanged. */
+    static final int CONTEXT_CAPACITY = 2 * MAX_BATCH_PICK;
     static final long CONTEXT_MAX_BYTES = 16L * 1024 * 1024;
-    static final int REPLAY_CAPACITY = 4096;
+    /** A late world id re-requests what was rendered into the abandoned directory in the last
+     *  this-many milliseconds (plan §3.5). */
     static final long REPLAY_WINDOW_MILLIS = 30_000;
+    /** The replay ring's hard cap: the whole window at one full pick per batch cycle (the box
+     *  plus the gap) at the default renderDelay, 24 × 2048 = 49 152 columns, about 1 640
+     *  columns/s. The measured rate is 550 (26.2 restage); the cap binds only if JourneyMap's
+     *  thread averages under about 0.47 ms per column, half the fastest measured render.
+     *  Renders older than the window leave the ring first, so it holds the window at the real
+     *  rate: about 0.7 MiB at 550 columns/s, about 2 MiB at the cap. (4096 entries covered only
+     *  about 7 s at 550 columns/s: a later world id left permanent holes, O5 review.) */
+    static final int REPLAY_CAPACITY = (int) (REPLAY_WINDOW_MILLIS
+            / (DEFAULT_RENDER_DELAY_MILLIS * BATCH_BOX_RENDER_DELAYS + DEFAULT_RENDER_DELAY_MILLIS / 2))
+            * MAX_BATCH_PICK;
     /** The edge sweep's cadence and reach beyond JourneyMap's own mapping range (chunks). */
     static final long EDGE_SWEEP_MILLIS = 2000;
     static final int EDGE_BAND_CHUNKS = 3;
@@ -113,13 +164,21 @@ final class JourneyMapSession {
         Object liveChunk(Object level, int chunkX, int chunkZ);
     }
 
-    /** Encoded snapshot bytes → a {@code SnapshotChunkMD}, or null when JourneyMap refuses the
-     *  bytes. A seam: production decodes through the bindings, which need a real
+    /** Encoded snapshot bytes → JourneyMap's {@code JMChunkSnapshot}, or null when JourneyMap
+     *  refuses the bytes. PURE: it runs on a decode-ahead worker or inline on JourneyMap's
+     *  thread. A seam: production decodes through the bindings, which need a real
      *  {@code ClientLevel}; Tier 1 substitutes the stub (the real decoder has its own
      *  parity test against the real jar). */
     @FunctionalInterface
     interface SnapshotDecoder {
         Object decode(byte[] bytes, Object level) throws Throwable;
+    }
+
+    /** A decoded snapshot → its {@code SnapshotChunkMD} wrapper. JourneyMap's task thread
+     *  ONLY. A seam for the same reason as {@link SnapshotDecoder}. */
+    @FunctionalInterface
+    interface SnapshotWrapper {
+        Object wrap(Object level, Object snapshot) throws Throwable;
     }
 
     static final Host PRODUCTION_HOST = new Host() {
@@ -184,7 +243,9 @@ final class JourneyMapSession {
                     () -> LSSClientConfig.CONFIG.enableIngestBackpressure()
                             && LSSClientConfig.CONFIG.mapIngestionBackpressure(),
                     XaeroSession::reportDroppedProduction,
-                    System::currentTimeMillis);
+                    System::currentTimeMillis,
+                    // Map-policy plan A4: the server's map-ingestion request (write paths only).
+                    dev.vox.lss.networking.client.ClientNetGlue::serverAllowsMapIngestion);
             session.memory = MapMemoryGuard.PRODUCTION;
             session.connected = XaeroSession::productionConnected;
             session.maybeRegister();
@@ -259,6 +320,7 @@ final class JourneyMapSession {
             return out;
         }
         out.put("state", session.state());
+        out.put("server_blocked", !session.serverAllowsWrites.getAsBoolean()); // map-policy plan A5
         out.put("queued", session.queuedGauge);
         for (String name : new String[]{"batches", "rendered", "skipped_live", "render_failed", "decode_failures",
                 "column_failures", "abandoned", "replayed", "requeued", "dropped_overflow", "dropped_stale",
@@ -274,7 +336,14 @@ final class JourneyMapSession {
         out.put("encode_us_per_column", columns == 0 ? 0L : session.encodeNanos.get() / columns / 1000);
         out.put("render_us_per_column", rendered == 0 ? 0L : session.renderNanos.get() / rendered / 1000);
         long decoded = session.decodedColumns.get();
+        // JourneyMap's thread's time to get a decoded column (waits, inline decodes, context, the wrap).
         out.put("decode_us_per_column", decoded == 0 ? 0L : session.decodeNanos.get() / decoded / 1000);
+        out.put("decode_ahead", session.decodeAhead);
+        out.put("decoded_ahead", session.decodedAhead.get());
+        long predecoded = session.predecodedColumns.get();
+        // A decode-ahead worker's time per snapshot it decoded (batch and context columns).
+        out.put("predecode_us_per_column", predecoded == 0 ? 0L : session.predecodeNanos.get() / predecoded / 1000);
+        out.put("batch_pick", session.batchPick);
         out.put("occupancy", session.occupancy);
         return out;
     }
@@ -312,11 +381,26 @@ final class JourneyMapSession {
     final Consumer<VoxelColumnConsumer> registrar;
     final Consumer<VoxelColumnConsumer> deregistrar;
     final BooleanSupplier backpressureEnabled;
+    /** The server allows map writes on this connection (map-policy plan A4) — composed ONLY
+     *  on the write paths (offerColumn, offerEncoded, pump, reportBackpressure), never into
+     *  {@link #enabled} (registration settling, diag state). A bare constructor allows. */
+    final BooleanSupplier serverAllowsWrites;
     final XaeroSession.DropReporter dropReporter;
     final IngestBackpressureGovernor governor;
     final VoxelColumnConsumer consumer;
     MapMemoryGuard memory = MapMemoryGuard.NEVER;
     SnapshotDecoder decoder = this::decodeWithBindings;
+    SnapshotWrapper wrapper = this::wrapWithBindings;
+    /** Decode-ahead on (the {@value #DECODE_AHEAD_PROPERTY} dev kill switch, read once per
+     *  process: production builds this object once, at LSS's client init, and keeps it). */
+    boolean decodeAhead = decodeAheadProperty();
+    /** Where decode-ahead jobs run: the shared LSS pool, created on first use (a test seam). */
+    java.util.concurrent.Executor decodeAheadExecutor = JourneyMapSession::executeDecodeAhead;
+    /** JourneyMap's thread's wait for a started decode ({@value #DECODE_AHEAD_WAIT_MILLIS}; a
+     *  test seam, so the timeout fallback is pinned without a 5 s wait). */
+    long decodeAheadWaitMillis = DECODE_AHEAD_WAIT_MILLIS;
+    /** JourneyMap's snapshot class was initialized on JourneyMap's own thread (JM thread only). */
+    boolean snapshotClassReady;
     /** A connection exists (the title screen has none): a disabled backend releases its
      *  consumer at once only without one. Production reads the client's connection. */
     BooleanSupplier connected = () -> true;
@@ -358,7 +442,14 @@ final class JourneyMapSession {
     Batch inFlight;
     long nextSubmitAfterMillis;
     long renderDelayMillis = DEFAULT_RENDER_DELAY_MILLIS;
+    /** The region the last batch drew from last (it may have columns left): the next batch
+     *  continues it first. */
     long lastRegionKey = Long.MIN_VALUE;
+    /** Average wall time per batch column on JourneyMap's thread, ms (NaN until a batch is
+     *  measured). Main thread. */
+    double costPerColumnMillis = Double.NaN;
+    /** The last batch's column pick (main thread writes; diag reads). */
+    volatile int batchPick = INITIAL_BATCH_PICK;
     final ArrayDeque<Rendered> replay = new ArrayDeque<>();
     /** Recently rendered encoded columns: the next batch's slope/biome-blend neighbours.
      *  Tagged with the map they were rendered into — a batch racing an identity change
@@ -386,6 +477,11 @@ final class JourneyMapSession {
     final AtomicLong renderNanos = new AtomicLong();
     final AtomicLong decodeNanos = new AtomicLong();
     final AtomicLong decodedColumns = new AtomicLong();
+    /** Batch columns whose snapshot JourneyMap's thread took already decoded from a worker. */
+    final AtomicLong decodedAhead = new AtomicLong();
+    /** Worker-side: snapshots decoded ahead (batch and context columns) and their time. */
+    final AtomicLong predecodedColumns = new AtomicLong();
+    final AtomicLong predecodeNanos = new AtomicLong();
     final AtomicLong dropsReported = new AtomicLong();
     final AtomicLong heapHolds = new AtomicLong();
     /** Optional map types (topography, biome) JourneyMap refused for an accepted column. */
@@ -404,6 +500,15 @@ final class JourneyMapSession {
     JourneyMapSession(JourneyMapBindings h, Host host, BooleanSupplier enabled, BooleanSupplier sessionActive,
                       Consumer<VoxelColumnConsumer> registrar, Consumer<VoxelColumnConsumer> deregistrar,
                       BooleanSupplier backpressureEnabled, XaeroSession.DropReporter dropReporter, LongSupplier clock) {
+        this(h, host, enabled, sessionActive, registrar, deregistrar, backpressureEnabled, dropReporter, clock,
+                () -> true);
+    }
+
+    JourneyMapSession(JourneyMapBindings h, Host host, BooleanSupplier enabled, BooleanSupplier sessionActive,
+                      Consumer<VoxelColumnConsumer> registrar, Consumer<VoxelColumnConsumer> deregistrar,
+                      BooleanSupplier backpressureEnabled, XaeroSession.DropReporter dropReporter, LongSupplier clock,
+                      BooleanSupplier serverAllowsWrites) {
+        this.serverAllowsWrites = serverAllowsWrites;
         this.h = h;
         this.host = host;
         this.enabled = enabled;
@@ -610,7 +715,8 @@ final class JourneyMapSession {
     void offerColumn(JourneyMapLineSurface.LevelFacts facts, ResourceKey<Level> dimension,
                      int chunkX, int chunkZ, VoxelColumnData data) {
         var receipt = new Receipt();
-        if (!receipt.active() || this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()) {
+        if (!receipt.active() || this.dead || !this.enabled.getAsBoolean() || !this.sessionActive.getAsBoolean()
+                || !this.serverAllowsWrites.getAsBoolean()) { // map-policy plan A4: no write, no report
             receipt.close();
             return;
         }
@@ -647,6 +753,12 @@ final class JourneyMapSession {
             if (!entry.receipt.active()) {
                 // The session ended while this column was encoding: it must never reach the
                 // next session's (maybe another server's) map.
+                entry.receipt.close();
+                return;
+            }
+            if (!this.serverAllowsWrites.getAsBoolean()) {
+                // Map-policy plan A4: the server's deny arrived while this column encoded —
+                // the pump's clear already ran; queued now it would be written later.
                 entry.receipt.close();
                 return;
             }
@@ -711,7 +823,9 @@ final class JourneyMapSession {
     // ---- backpressure (main thread) ----
 
     int reportBackpressure() {
-        return this.governor.report(this.backpressureEnabled.getAsBoolean(), active(), this.occupancy, false, this.heapHolding);
+        // Map-policy plan A4: a server-blocked map reports no signal — it never throttles Voxy.
+        return this.governor.report(this.backpressureEnabled.getAsBoolean(),
+                active() && this.serverAllowsWrites.getAsBoolean(), this.occupancy, false, this.heapHolding);
     }
 
     boolean active() {
@@ -727,7 +841,9 @@ final class JourneyMapSession {
         this.governor.notePump();
         try {
             if (this.dead) return;
-            if (!this.enabled.getAsBoolean()) {
+            if (!this.enabled.getAsBoolean() || !this.serverAllowsWrites.getAsBoolean()) {
+                // (Map-policy plan A4: a server deny takes the local-off branch.)
+                if (!this.serverAllowsWrites.getAsBoolean()) abandonQueuedForDeny();
                 reconcileInFlight(); // a finished batch's receipts still close
                 clearQueue();
                 return;
@@ -748,6 +864,18 @@ final class JourneyMapSession {
             }
         } finally {
             drainPendingReports();
+        }
+    }
+
+    /** Map-policy plan A4: a batch still QUEUED on JourneyMap's task thread when the server's
+     *  deny lands never writes — its columns are not owed to a blocked map, so the receipts
+     *  close unreported. (A batch already STARTED is past this point; {@link #render} checks
+     *  the gate before it touches JourneyMap, so only a batch mid-write finishes.) */
+    void abandonQueuedForDeny() {
+        var batch = this.inFlight;
+        if (batch != null && batch.state.compareAndSet(Batch.QUEUED, Batch.ABANDONED)) {
+            batch.entries.forEach(e -> e.receipt.close());
+            this.inFlight = null;
         }
     }
 
@@ -966,25 +1094,27 @@ final class JourneyMapSession {
         }
     }
 
-    /** Up to {@value #MAX_BATCH_COLUMNS} columns of ONE region: the region just worked on while
-     *  it still has columns, else the region holding the oldest entry (no region starves). */
+    /**
+     * Up to {@link #pickFor the pick} columns from at most {@value #MAX_BATCH_REGIONS} regions: first
+     * the region the last batch drew from last, while it still has columns, then whole regions
+     * in the order of their OLDEST queued entry (no region starves), each region's columns in
+     * queue order. The render orders the batch (z, x) across its regions, so neighbours across
+     * a region seam shade each other.
+     */
     Batch buildBatch(Identity identity) {
+        long box = this.renderDelayMillis * BATCH_BOX_RENDER_DELAYS;
+        int pick = pickFor(box);
+        this.batchPick = pick;
         var picked = new ArrayList<Entry>();
         var foreign = new ArrayList<Entry>();
+        var inactive = new ArrayList<Entry>(0);
         synchronized (this.queueLock) {
             if (this.queue.isEmpty()) return null;
-            long region = Long.MIN_VALUE;
-            if (this.lastRegionKey != Long.MIN_VALUE) {
-                for (var e : this.queue.values()) {
-                    if (Objects.equals(e.dimension, identity.dimension()) && regionKeyOf(e.chunkX, e.chunkZ) == this.lastRegionKey) {
-                        region = this.lastRegionKey;
-                        break;
-                    }
-                }
-            }
+            // Each region's live same-dimension columns in queue order, the regions in the
+            // order of their oldest entry; dead and foreign entries leave on the way.
+            var regions = new LinkedHashMap<Long, List<Entry>>();
             var it = this.queue.values().iterator();
-            var inactive = new ArrayList<Entry>(0);
-            while (it.hasNext() && picked.size() < MAX_BATCH_COLUMNS) {
+            while (it.hasNext()) {
                 var e = it.next();
                 if (!e.receipt.active()) {
                     it.remove();
@@ -998,20 +1128,58 @@ final class JourneyMapSession {
                     foreign.add(e);
                     continue;
                 }
-                long r = regionKeyOf(e.chunkX, e.chunkZ);
-                if (region == Long.MIN_VALUE) region = r;
-                if (r != region) continue;
-                it.remove();
-                this.queuedBytes -= e.bytes.length;
-                picked.add(e);
+                regions.computeIfAbsent(regionKeyOf(e.chunkX, e.chunkZ), k -> new ArrayList<>()).add(e);
+            }
+            var order = new ArrayList<Long>(MAX_BATCH_REGIONS);
+            if (regions.containsKey(this.lastRegionKey)) order.add(this.lastRegionKey);
+            for (long region : regions.keySet()) {
+                if (order.size() >= MAX_BATCH_REGIONS) break;
+                if (region != this.lastRegionKey) order.add(region);
+            }
+            long last = this.lastRegionKey;
+            for (long region : order) {
+                if (picked.size() >= pick) break;
+                last = region;
+                for (var e : regions.get(region)) {
+                    if (picked.size() >= pick) break;
+                    this.queue.remove(e.key());
+                    this.queuedBytes -= e.bytes.length;
+                    picked.add(e);
+                }
             }
             updateOccupancyLocked();
-            this.lastRegionKey = region;
-            inactive.forEach(e -> e.receipt.close());
+            this.lastRegionKey = last;
         }
+        inactive.forEach(e -> e.receipt.close());
         this.droppedStale.addAndGet(foreign.size());
         this.pendingReports.addAll(foreign);
-        return picked.isEmpty() ? null : new Batch(picked, identity, this.renderDelayMillis * BATCH_BOX_RENDER_DELAYS);
+        if (picked.isEmpty()) return null;
+        var batch = new Batch(picked, identity, box);
+        batch.pick = pick;
+        return batch;
+    }
+
+    /** The column pick that fills {@value #BATCH_BOX_FILL} of the box at the measured cost
+     *  per column, within [{@value #MIN_BATCH_PICK}, {@value #MAX_BATCH_PICK}]; the old fixed
+     *  {@value #INITIAL_BATCH_PICK} until a batch has been measured. */
+    int pickFor(long boxMillis) {
+        double cost = this.costPerColumnMillis;
+        if (Double.isNaN(cost)) return INITIAL_BATCH_PICK;
+        double fit = cost <= 0 ? MAX_BATCH_PICK : boxMillis * BATCH_BOX_FILL / cost;
+        return (int) Math.max(MIN_BATCH_PICK, Math.min(MAX_BATCH_PICK, fit));
+    }
+
+    /** Main thread: a finished batch's wall time per processed column (JourneyMap's thread, the
+     *  box's own clock) feeds the pick's average. Abandoned, failed and refused batches carry no
+     *  usable measurement, nor does a SMALL batch the box did not cut (below the clock's
+     *  resolution) — but a batch that took its whole pick always does, so a pick at the floor
+     *  still measures its way back up. A sample is capped at the box (a clock jump). */
+    void noteBatchCost(Batch batch, Result r) {
+        if (batch.edge || r == null || r.failure != null || r.abandoned || r.notAllowed || r.processed == 0) return;
+        if (r.boxCut == 0 && r.processed < Math.min(COST_SAMPLE_MIN_COLUMNS, batch.pick)) return;
+        double sample = Math.min(batch.timeBoxMillis, Math.max(0L, r.loopMillis) / (double) r.processed);
+        double cost = this.costPerColumnMillis;
+        this.costPerColumnMillis = Double.isNaN(cost) ? sample : cost + COST_EMA_ALPHA * (sample - cost);
     }
 
     void reconcileInFlight() {
@@ -1052,6 +1220,7 @@ final class JourneyMapSession {
         if (state != Batch.DONE) return;
         this.inFlight = null;
         applyResult(batch, batch.result);
+        noteBatchCost(batch, batch.result);
         long wall = Math.max(0, batch.finishedAtMillis - batch.startedAtMillis);
         boolean idle = batch.edge && (batch.result == null || batch.result.edgeRendered == 0);
         if (!batch.edge) this.lastBatchMillis = wall;
@@ -1091,6 +1260,11 @@ final class JourneyMapSession {
             return;
         }
         long now = now();
+        // Only renders inside the window can replay: older ones leave first, so the ring holds
+        // the window's renders at the real rate and the cap only backstops it.
+        while (!this.replay.isEmpty() && now - this.replay.peekFirst().atMillis() > REPLAY_WINDOW_MILLIS) {
+            this.replay.removeFirst();
+        }
         for (var e : r.rendered) {
             e.receipt.close();
             if (this.replay.size() >= REPLAY_CAPACITY) this.replay.removeFirst();
@@ -1109,6 +1283,7 @@ final class JourneyMapSession {
         this.renderNanos.addAndGet(r.renderNanos);
         this.decodeNanos.addAndGet(r.decodeNanos);
         this.decodedColumns.addAndGet(r.decoded);
+        this.decodedAhead.addAndGet(r.decodedAhead);
         requeue(r.requeued);
         // A batch that rendered nothing while columns failed to decode or render counts
         // toward the death latch: a renderer refusing wholesale would otherwise re-serve
@@ -1200,6 +1375,12 @@ final class JourneyMapSession {
         long edgeRendered;
         long decodeNanos;
         long decoded;
+        long decodedAhead;
+        /** Columns that passed the box check (whatever their outcome), and those it cut. */
+        int processed;
+        int boxCut;
+        /** Batch start to the end of the column loop, on the box's clock. */
+        long loopMillis;
     }
 
     final class Batch {
@@ -1214,6 +1395,8 @@ final class JourneyMapSession {
         /** The session the batch was built in (main thread). */
         final long epoch = sessionEpoch;
         long submittedAtMillis; // main thread
+        /** The column pick it was built with (main thread; 0 for an edge sweep). */
+        int pick;
         volatile long startedAtMillis;
         volatile long finishedAtMillis;
         volatile Result result;
@@ -1301,6 +1484,12 @@ final class JourneyMapSession {
 
     void render(Batch batch, Result r) throws Throwable {
         Identity id = batch.identity;
+        if (!this.serverAllowsWrites.getAsBoolean()) {
+            // Map-policy plan A4: the deny landed after the batch was queued and the task
+            // thread won the race to start it — write nothing; the receipts close unreported.
+            r.notAllowed = true;
+            return;
+        }
         if (!identityStillMatches(id)) {
             r.abandoned = true;
             return;
@@ -1319,13 +1508,14 @@ final class JourneyMapSession {
         Object dataCache = this.h.dataCache.invoke();
         Object allowCached = this.h.allowCached.invoke();
         long deadline = batch.startedAtMillis + batch.timeBoxMillis;
-        // One column at a time — decode, add, render — under ONE time box: decoding real
-        // terrain costs as much as rendering it, so a decode-everything-first batch spent the
-        // whole box decoding and requeued the rest, forever (the throughput live gate). North
-        // and west first, and each column's east and south batch neighbours decoded one step
-        // ahead: their wrappers stay in JourneyMap's cache for the batch, so day slopes (north
-        // and west), topography's slope and shore checks (south and east) and biome blending
-        // (all around) see them. A look-ahead the box cuts off is released with the rest.
+        // One column at a time — add, render — under ONE time box: a decode-everything-first
+        // batch spent the whole box decoding and requeued the rest, forever (the throughput
+        // live gate). North and west first, and each column's east and south batch neighbours
+        // prepared one step ahead: their wrappers stay in JourneyMap's cache for the batch, so
+        // day slopes (north and west), topography's slope and shore checks (south and east) and
+        // biome blending (all around) see them. A look-ahead the box cuts off is released with
+        // the rest. The pure snapshot decodes run on the decode-ahead workers a window ahead of
+        // that order (DecodeAhead); a column no worker has started decodes inline here.
         var ordered = new ArrayList<>(batch.entries);
         ordered.sort(java.util.Comparator.comparingInt((Entry e) -> e.chunkZ).thenComparingInt(e -> e.chunkX));
         var batchKeys = new java.util.HashSet<Long>();
@@ -1338,17 +1528,26 @@ final class JourneyMapSession {
         var ours = new ArrayList<Object>();
         var oursKeys = new ArrayList<Long>();
         var prepared = new java.util.HashMap<Long, Object>();
-        var work = new Prepare(id, dataCache, batchKeys, present, ours, oursKeys, prepared, r);
+        DecodeAhead ahead = null;
         boolean stopped = false;
         try {
+            ahead = planDecodeAhead(id, ordered, byKey, batchKeys);
+            if (ahead != null) ahead.topUp(-1);
+            var work = new Prepare(id, dataCache, batchKeys, present, ours, oursKeys, prepared, r, ahead);
             for (var e : ordered) {
                 if (!stopped && stopRequested(client, id)) stopped = true;
-                if (stopped || !this.sessionActive.getAsBoolean() || now() > deadline) {
-                    // JourneyMap's own pacing: about one renderDelay of work per batch, then the
-                    // pump idles it. A finished session's receipts close.
-                    r.requeued.add(e);
+                if (stopped || !this.sessionActive.getAsBoolean()) {
+                    r.requeued.add(e); // a finished session's receipts close
                     continue;
                 }
+                if (now() > deadline) {
+                    // JourneyMap's own pacing: about one renderDelay of work per batch, then the
+                    // pump idles it.
+                    r.requeued.add(e);
+                    r.boxCut++;
+                    continue;
+                }
+                r.processed++;
                 long key = mcChunkKey(e.chunkX, e.chunkZ);
                 try {
                     Object md = prepare(e, work);
@@ -1390,7 +1589,10 @@ final class JourneyMapSession {
                     r.columnFailures.add(e);
                 }
             }
+            r.loopMillis = now() - batch.startedAtMillis;
         } finally {
+            // Unstarted decode-ahead work is cancelled and nothing of it outlives the batch.
+            if (ahead != null) ahead.close();
             for (int i = 0; i < ours.size(); i++) release(dataCache, allowCached, oursKeys.get(i), ours.get(i));
         }
         if (stopped) {
@@ -1431,12 +1633,16 @@ final class JourneyMapSession {
     /** East, south-west, south and south-east: the batch neighbours a column's render reads
      *  that the (z, x) order has not reached yet. */
     private static final int[][] AHEAD = {{1, 0}, {-1, 1}, {0, 1}, {1, 1}};
+    /** North, north-west and west: the context neighbours a column borrows from recent renders. */
+    private static final int[][] CONTEXT_NEIGHBOURS = {{0, -1}, {-1, -1}, {-1, 0}};
     private static final Object PREPARED_LIVE = new Object();
     private static final Object PREPARED_FAILED = new Object();
 
-    /** One batch's decode state (JourneyMap's task thread). */
+    /** One batch's decode state (JourneyMap's task thread). {@code ahead} is null without
+     *  decode-ahead. */
     private record Prepare(Identity id, Object dataCache, java.util.Set<Long> batchKeys, java.util.Set<Long> present,
-                           List<Object> ours, List<Long> oursKeys, java.util.Map<Long, Object> prepared, Result r) {}
+                           List<Object> ours, List<Long> oursKeys, java.util.Map<Long, Object> prepared, Result r,
+                           DecodeAhead ahead) {}
 
     /** Decodes and adds one batch column (with its context) once: its wrapper, or
      *  {@link #PREPARED_LIVE} when JourneyMap holds a live chunk there, or
@@ -1447,12 +1653,15 @@ final class JourneyMapSession {
         long key = mcChunkKey(e.chunkX, e.chunkZ);
         Object live = this.h.getChunkMD.invoke(w.dataCache(), key);
         if (live != null && (boolean) this.h.hasLevelChunk.invoke(live)) {
+            if (w.ahead() != null) w.ahead().drop(e.key()); // JourneyMap maps it: no decode needed
             w.prepared().put(e.key(), PREPARED_LIVE);
             return PREPARED_LIVE;
         }
+        // The time JourneyMap's thread spends getting the decoded column: context, waiting for
+        // (or doing) the decode, and the wrap (decode_us_per_column).
         long t0 = System.nanoTime();
-        addContext(e, w.id(), w.dataCache(), w.batchKeys(), w.present(), w.ours(), w.oursKeys(), w.r());
-        Object md = this.decoder.decode(e.bytes, w.id().level());
+        addContext(e, w);
+        Object md = decodeAndWrap(e.key(), e.bytes, w, true);
         w.r().decodeNanos += System.nanoTime() - t0;
         w.r().decoded++;
         if (md == null) {
@@ -1470,30 +1679,277 @@ final class JourneyMapSession {
     /** Decodes and adds the column's north, north-west and west neighbours from recent renders
      *  (context only, never rendered) unless the batch, a live chunk, or an earlier context
      *  wrapper already covers them. */
-    private void addContext(Entry e, Identity id, Object dataCache, java.util.Set<Long> batchKeys,
-                            java.util.Set<Long> present, List<Object> ours, List<Long> oursKeys, Result r) {
-        for (int[] d : new int[][]{{0, -1}, {-1, -1}, {-1, 0}}) {
+    private void addContext(Entry e, Prepare w) {
+        Identity id = w.id();
+        for (int[] d : CONTEXT_NEIGHBOURS) {
             int x = e.chunkX + d[0], z = e.chunkZ + d[1];
             long key = packed(x, z);
-            if (batchKeys.contains(key) || !present.add(key)) continue;
+            if (w.batchKeys().contains(key) || !w.present().add(key)) continue;
+            ContextColumn column;
+            synchronized (this.context) {
+                column = this.context.get(key);
+            }
+            if (column == null || !Objects.equals(column.dimension(), id.dimension())
+                    || !Objects.equals(column.worldDir(), id.worldDir())) {
+                if (w.ahead() != null) w.ahead().drop(key);
+                continue;
+            }
+            try {
+                long mcKey = mcChunkKey(x, z);
+                Object live = this.h.getChunkMD.invoke(this.h.dataCache.invoke(), mcKey);
+                if (live != null && (boolean) this.h.hasLevelChunk.invoke(live)) {
+                    if (w.ahead() != null) w.ahead().drop(key);
+                    continue;
+                }
+                Object md = decodeAndWrap(key, column.bytes(), w, false);
+                if (md == null) continue;
+                this.h.addChunkMD.invoke(w.dataCache(), md);
+                w.ours().add(md);
+                w.oursKeys().add(mcKey);
+            } catch (Throwable t) {
+                if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
+            }
+        }
+    }
+
+    /**
+     * JourneyMap's thread: the column's {@code SnapshotChunkMD}, or null when JourneyMap refused
+     * the bytes. The snapshot comes from a decode-ahead worker when one started it (waiting for
+     * it, about a millisecond at most), else — no decode-ahead, a job no worker has started (it
+     * is cancelled), a rejected job, or bytes that changed since the plan — it is decoded inline,
+     * exactly as before. A worker's decode that THREW is rethrown here: the same outcome as the
+     * same throw inline. The wrap always runs here.
+     */
+    private Object decodeAndWrap(long key, byte[] bytes, Prepare w, boolean batchColumn) throws Throwable {
+        Object level = w.id().level();
+        Object snapshot = w.ahead() == null ? NOT_AHEAD : w.ahead().take(key, bytes);
+        if (snapshot == NOT_AHEAD) {
+            snapshot = this.decoder.decode(bytes, level);
+        } else if (batchColumn) {
+            w.r().decodedAhead++;
+        }
+        return snapshot == null ? null : this.wrapper.wrap(level, snapshot);
+    }
+
+    // ---- decode-ahead (map-ingestion plan §11; the purity evidence is in the bridge record) ----
+
+    /** {@link DecodeAhead#take}'s "decode it inline" answer (a snapshot may itself be null). */
+    private static final Object NOT_AHEAD = new Object();
+
+    static boolean decodeAheadProperty() {
+        return Boolean.parseBoolean(System.getProperty(DECODE_AHEAD_PROPERTY, "true"));
+    }
+
+    private static java.util.concurrent.ThreadPoolExecutor decodeAheadPool; // guarded by the class
+    private static final AtomicInteger DECODE_AHEAD_THREAD_IDS = new AtomicInteger();
+
+    static void executeDecodeAhead(Runnable job) {
+        decodeAheadPool().execute(job);
+    }
+
+    /** The shared pool: {@value #DECODE_AHEAD_THREADS} daemon threads, created on first use;
+     *  idle threads exit after {@value #DECODE_AHEAD_KEEP_ALIVE_SECONDS} s. A full queue
+     *  rejects (the column then decodes inline). */
+    static synchronized java.util.concurrent.ThreadPoolExecutor decodeAheadPool() {
+        if (decodeAheadPool == null) {
+            var pool = new java.util.concurrent.ThreadPoolExecutor(DECODE_AHEAD_THREADS, DECODE_AHEAD_THREADS,
+                    DECODE_AHEAD_KEEP_ALIVE_SECONDS, java.util.concurrent.TimeUnit.SECONDS,
+                    new java.util.concurrent.LinkedBlockingQueue<>(DECODE_AHEAD_QUEUE), runnable -> {
+                        // Created on JourneyMap's thread: inherit none of its thread locals.
+                        var t = new Thread(null, runnable, dev.vox.lss.common.Brand.shortName() + "-JM-DecodeAhead-"
+                                + DECODE_AHEAD_THREAD_IDS.incrementAndGet(), 0, false);
+                        t.setDaemon(true);
+                        t.setContextClassLoader(JourneyMapSession.class.getClassLoader());
+                        return t;
+                    });
+            pool.allowCoreThreadTimeOut(true);
+            decodeAheadPool = pool;
+        }
+        return decodeAheadPool;
+    }
+
+    /**
+     * Plans the batch's pure decodes (JourneyMap's thread, batch start) in the order the column
+     * loop will need them — each column's context neighbours, the column, then its look-ahead
+     * neighbours; null without decode-ahead. The caller hands the first window to the workers.
+     * JourneyMap's snapshot class is initialized HERE first, on JourneyMap's own thread, as when
+     * every decode ran on it: its static initializer never runs on an LSS worker.
+     */
+    private DecodeAhead planDecodeAhead(Identity id, List<Entry> ordered, java.util.Map<Long, Entry> byKey,
+                                        java.util.Set<Long> batchKeys) {
+        if (!this.decodeAhead || ordered.isEmpty()) return null;
+        if (!this.snapshotClassReady) {
+            try {
+                Class<?> snapshot = this.h.decode.type().returnType();
+                Class.forName(snapshot.getName(), true, snapshot.getClassLoader());
+            } catch (LinkageError | ClassNotFoundException e) {
+                return null; // the inline decode surfaces it exactly as before
+            }
+            this.snapshotClassReady = true;
+        }
+        var plan = new ArrayList<AheadJob>();
+        var planned = new java.util.HashSet<Long>();
+        Object level = id.level();
+        for (var e : ordered) {
+            planColumn(e, id, level, batchKeys, planned, plan);
+            for (int[] d : AHEAD) {
+                var next = byKey.get(packed(e.chunkX + d[0], e.chunkZ + d[1]));
+                if (next != null) planColumn(next, id, level, batchKeys, planned, plan);
+            }
+        }
+        return new DecodeAhead(plan, this.decodeAheadExecutor);
+    }
+
+    private void planColumn(Entry e, Identity id, Object level, java.util.Set<Long> batchKeys,
+                            java.util.Set<Long> planned, List<AheadJob> plan) {
+        if (!planned.add(e.key())) return;
+        for (int[] d : CONTEXT_NEIGHBOURS) {
+            long key = packed(e.chunkX + d[0], e.chunkZ + d[1]);
+            if (batchKeys.contains(key) || planned.contains(key)) continue;
             ContextColumn column;
             synchronized (this.context) {
                 column = this.context.get(key);
             }
             if (column == null || !Objects.equals(column.dimension(), id.dimension())
                     || !Objects.equals(column.worldDir(), id.worldDir())) continue;
-            try {
-                long mcKey = mcChunkKey(x, z);
-                Object live = this.h.getChunkMD.invoke(this.h.dataCache.invoke(), mcKey);
-                if (live != null && (boolean) this.h.hasLevelChunk.invoke(live)) continue;
-                Object md = this.decoder.decode(column.bytes(), id.level());
-                if (md == null) continue;
-                this.h.addChunkMD.invoke(dataCache, md);
-                ours.add(md);
-                oursKeys.add(mcKey);
-            } catch (Throwable t) {
-                if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
+            planned.add(key);
+            plan.add(new AheadJob(plan.size(), key, column.bytes(), level, this.decoder));
+        }
+        plan.add(new AheadJob(plan.size(), e.key(), e.bytes, level, this.decoder));
+    }
+
+    /**
+     * One batch's decode-ahead (JourneyMap's task thread only; a local of {@link #render}, so
+     * it never outlives the batch). The workers run at most {@value #DECODE_AHEAD_WINDOW} jobs
+     * past the one JourneyMap's thread needs now; {@link #close} cancels every job no worker
+     * has started and drops them all.
+     */
+    final class DecodeAhead {
+        private final List<AheadJob> plan;
+        private final java.util.HashMap<Long, AheadJob> pending = new java.util.HashMap<>();
+        private final java.util.concurrent.Executor executor;
+        private int submitted;
+        private boolean rejected;
+
+        DecodeAhead(List<AheadJob> plan, java.util.concurrent.Executor executor) {
+            this.plan = plan;
+            this.executor = executor;
+            for (var job : plan) this.pending.put(job.key, job);
+        }
+
+        /** Hands the jobs up to a window past plan index {@code index} to the workers. */
+        void topUp(int index) {
+            int limit = Math.min(this.plan.size(), index + 1 + DECODE_AHEAD_WINDOW);
+            while (this.submitted < limit && !this.rejected) {
+                try {
+                    this.executor.execute(this.plan.get(this.submitted));
+                    this.submitted++;
+                } catch (java.util.concurrent.RejectedExecutionException e) {
+                    this.rejected = true; // this batch's remaining columns decode inline
+                }
             }
+        }
+
+        /** The snapshot decoded ahead for {@code key} (null = JourneyMap refused the bytes), or
+         *  {@link #NOT_AHEAD} when JourneyMap's thread must decode inline. A worker's throw is
+         *  rethrown. Each job is taken at most once: a retry decodes inline. */
+        Object take(long key, byte[] bytes) throws Throwable {
+            var job = this.pending.remove(key);
+            if (job == null) return NOT_AHEAD;
+            topUp(job.index);
+            if (job.source != bytes) { // a context column replaced since the plan
+                job.claim();
+                return NOT_AHEAD;
+            }
+            if (job.claim()) return NOT_AHEAD; // no worker started it: cancelled, decoded inline
+            try {
+                // A started decode takes about a millisecond; the bound is armour only.
+                if (!job.finished.await(decodeAheadWaitMillis, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    return NOT_AHEAD;
+                }
+            } catch (InterruptedException interrupted) {
+                // JourneyMap is stopping this mapping: keep the flag (the loop stops at the next
+                // column) and finish this column without waiting.
+                Thread.currentThread().interrupt();
+                return NOT_AHEAD;
+            }
+            if (job.failure != null) throw job.failure;
+            return job.snapshot;
+        }
+
+        /** A planned decode the batch no longer needs (a live chunk, no context column). */
+        void drop(long key) {
+            var job = this.pending.remove(key);
+            if (job != null) job.claim();
+        }
+
+        /** Batch end: every unstarted job is cancelled (it pins nothing in the pool's queue),
+         *  and the batch drops them all. A job a worker is running finishes alone. */
+        void close() {
+            for (var job : this.pending.values()) job.claim();
+            this.pending.clear();
+        }
+    }
+
+    /**
+     * One snapshot decode for the workers. Exactly one side wins it: a worker that STARTS it
+     * (JourneyMap's thread then waits for the result), or JourneyMap's thread CLAIMING it
+     * unstarted (a cancel: the thread decodes inline, the worker skips it). The winner drops
+     * the bytes and the level, so a job left in the pool's queue never pins the level.
+     */
+    final class AheadJob implements Runnable {
+        static final int QUEUED = 0, RUNNING = 1, DONE = 2, CLAIMED = 3;
+        final int index;
+        final long key;
+        /** The bytes planned, for an identity re-check only. */
+        final byte[] source;
+        final AtomicInteger state = new AtomicInteger(QUEUED);
+        final java.util.concurrent.CountDownLatch finished = new java.util.concurrent.CountDownLatch(1);
+        private final SnapshotDecoder snapshots;
+        private byte[] bytes;
+        private Object level;
+        private Object snapshot; // published by finished
+        private Throwable failure; // published by finished
+
+        AheadJob(int index, long key, byte[] bytes, Object level, SnapshotDecoder snapshots) {
+            this.index = index;
+            this.key = key;
+            this.source = bytes;
+            this.bytes = bytes;
+            this.level = level;
+            this.snapshots = snapshots;
+        }
+
+        @Override
+        public void run() {
+            if (!this.state.compareAndSet(QUEUED, RUNNING)) return; // claimed: cancelled
+            byte[] in = this.bytes;
+            Object at = this.level;
+            this.bytes = null;
+            this.level = null;
+            long t0 = System.nanoTime();
+            try {
+                this.snapshot = this.snapshots.decode(in, at);
+            } catch (Throwable t) {
+                this.failure = t; // rethrown on JourneyMap's thread, as an inline throw would be
+            } finally {
+                predecodeNanos.addAndGet(System.nanoTime() - t0);
+                predecodedColumns.incrementAndGet();
+                this.state.set(DONE);
+                this.finished.countDown();
+            }
+        }
+
+        /** JourneyMap's thread: true when it took the job unstarted (it then decodes inline). */
+        boolean claim() {
+            if (!this.state.compareAndSet(QUEUED, CLAIMED)) return false;
+            this.bytes = null;
+            this.level = null;
+            return true;
+        }
+
+        boolean holdsLevelForTest() {
+            return this.level != null;
         }
     }
 
@@ -1595,14 +2051,20 @@ final class JourneyMapSession {
         }
     }
 
+    /** The pure stage: JourneyMap's static {@code JMChunkSnapshot.decode} over a private heap
+     *  buffer (any thread; it returns null for bytes it refuses). */
     private Object decodeWithBindings(byte[] bytes, Object level) throws Throwable {
         var buf = new FriendlyByteBuf(Unpooled.wrappedBuffer(bytes));
         try {
-            Object snapshot = this.h.decode.invoke(buf, level);
-            return snapshot == null ? null : this.h.newSnapshotChunkMD.invoke(level, snapshot, true);
+            return this.h.decode.invoke(buf, level);
         } finally {
             buf.release();
         }
+    }
+
+    /** JourneyMap's thread only: the wrapper that holds its chunk until it leaves the cache. */
+    private Object wrapWithBindings(Object level, Object snapshot) throws Throwable {
+        return this.h.newSnapshotChunkMD.invoke(level, snapshot, true);
     }
 
     /** Removes our snapshot wrapper unless a live chunk replaced it (JourneyMap's to keep). */
@@ -1620,6 +2082,7 @@ final class JourneyMapSession {
     String state() {
         if (this.dead) return "dead";
         if (!this.enabled.getAsBoolean()) return "disabled";
+        if (!this.serverAllowsWrites.getAsBoolean()) return "blocked_by_server";
         if (this.inertReason != null) return "inert(" + this.inertReason + ")";
         String waiting = this.waitingReason;
         return waiting != null ? "waiting(" + waiting + ")" : "active";
@@ -1654,10 +2117,15 @@ final class JourneyMapSession {
                 + ", drops_reported=" + this.dropsReported.get()
                 + ", context=" + contextSize
                 + ", last_batch_ms=" + this.lastBatchMillis
+                + ", batch_pick=" + this.batchPick
                 + ", encode_us_per_column=" + (columns == 0 ? 0 : this.encodeNanos.get() / columns / 1000)
                 + ", decode_us_per_column=" + (this.decodedColumns.get() == 0 ? 0 : this.decodeNanos.get() / this.decodedColumns.get() / 1000)
+                + ", decode_ahead=" + (this.decodeAhead ? "on" : "off")
+                + ", decoded_ahead=" + this.decodedAhead.get()
+                + ", predecode_us_per_column=" + (this.predecodedColumns.get() == 0 ? 0 : this.predecodeNanos.get() / this.predecodedColumns.get() / 1000)
                 + ", render_us_per_column=" + (rendered == 0 ? 0 : this.renderNanos.get() / rendered / 1000)
-                + ", bp=" + this.governor.token(this.backpressureEnabled.getAsBoolean(), active(), this.occupancy)
+                + ", bp=" + this.governor.token(this.backpressureEnabled.getAsBoolean(),
+                        active() && this.serverAllowsWrites.getAsBoolean(), this.occupancy)
                 + ", heap=" + this.memory.token()
                 + (this.h.version != null ? ", version=" + this.h.version : "");
     }

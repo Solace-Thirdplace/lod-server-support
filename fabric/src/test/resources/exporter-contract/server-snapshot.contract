@@ -67,6 +67,7 @@ service.duplicate_skips=long
 service.gen_drained=long
 service.grace_skipped=long
 service.in_memory=long
+service.map_policy_refused=long
 service.miss_dropped=long
 service.paced_ticks=long
 service.permission_denied=long
