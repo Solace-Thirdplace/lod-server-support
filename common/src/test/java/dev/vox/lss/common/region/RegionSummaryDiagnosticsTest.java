@@ -46,4 +46,20 @@ class RegionSummaryDiagnosticsTest {
                         + " stamps=42/2",
                 diag.diagLineOrNull());
     }
+
+    /** The unsent-frame counters render only when nonzero (the healthy line above stays
+     *  byte-unchanged) and then both, in this order. */
+    @Test
+    void unsentFrameCountersAppendOnlyWhenNonzero() {
+        var diag = new RegionSummaryDiagnostics();
+        diag.recordRequest();
+        assertFalse(diag.diagLineOrNull().contains("expired="));
+        diag.recordFrameReassembled();
+        diag.recordFrameExpired();
+        diag.recordFrameExpired();
+        assertTrue(diag.diagLineOrNull().endsWith(", stamps=0/0, expired=2, reassembled=1"),
+                diag.diagLineOrNull());
+        assertEquals(2, diag.getFramesExpired());
+        assertEquals(1, diag.getFramesReassembled());
+    }
 }
