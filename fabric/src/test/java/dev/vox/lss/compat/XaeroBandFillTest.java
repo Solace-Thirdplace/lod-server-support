@@ -685,7 +685,9 @@ class XaeroBandFillTest {
     @Test
     void theRegistryFingerprintPinsTheFormatsIdsAndHeights() {
         // O6 T9 (plan §B10.3 item 5).
-        var access = new RegistryAccess.ImmutableRegistryAccess(List.of(BIOMES));
+        // (Line-agnostic on purpose: qualified RegistryAccess, and byId/getResourceKey, which every
+        // line's Registry has.)
+        var access = new net.minecraft.core.RegistryAccess.ImmutableRegistryAccess(List.of(BIOMES));
         long fp = XaeroSession.registryFingerprint(access, NETHER_FACTS);
         assertEquals(fp, XaeroSession.registryFingerprint(access, NETHER_FACTS), "deterministic");
         for (var other : List.of(new XaeroTileExtractor.LevelFacts(-64, 256, false, true, 128),
@@ -696,12 +698,14 @@ class XaeroBandFillTest {
         }
         // The same biomes in another id order: stored biome ids would mean other biomes.
         var reversed = new MappedRegistry<Biome>(Registries.BIOME, Lifecycle.stable());
-        var entries = new ArrayList<>(BIOMES.listElements().toList());
-        java.util.Collections.reverse(entries);
-        entries.forEach(ref -> reversed.register(ref.key(), ref.value(), RegistrationInfo.BUILT_IN));
+        for (int id = BIOMES.size() - 1; id >= 0; id--) {
+            var biome = BIOMES.byId(id);
+            reversed.register(BIOMES.getResourceKey(biome).orElseThrow(), biome, RegistrationInfo.BUILT_IN);
+        }
         reversed.freeze();
         org.junit.jupiter.api.Assertions.assertNotEquals(fp, XaeroSession.registryFingerprint(
-                new RegistryAccess.ImmutableRegistryAccess(List.of(reversed)), NETHER_FACTS), "the biome id order");
+                new net.minecraft.core.RegistryAccess.ImmutableRegistryAccess(List.of(reversed)), NETHER_FACTS),
+                "the biome id order");
     }
 
     @Test
