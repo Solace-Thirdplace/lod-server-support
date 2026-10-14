@@ -626,6 +626,7 @@ class XaeroCaveLayersTest {
     @Test
     void aLeftoverTileDeferralExpiryOwesNothing() {
         this.bridge.deferCap = 1;
+        this.bridge.owedProbesPerPump = 0; // judge the expiry path alone (the probe pass would drop such a debt too)
         show(3);
         offer(64, 64);
         this.bridge.pump(); // commits both, creating the band-3 tile chunk
