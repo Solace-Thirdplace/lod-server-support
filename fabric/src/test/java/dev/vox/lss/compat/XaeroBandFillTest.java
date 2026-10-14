@@ -163,7 +163,7 @@ class XaeroBandFillTest {
         b.playerProbe = () -> this.player;
         b.serverLodDistance = () -> 64;
         b.storeBucketProbe = () -> "bucket";
-        b.fillLevelProbe = () -> new XaeroBandFill.FillLevel(null, NETHER, "minecraft_the_nether", NETHER_FACTS,
+        b.fillLevelProbe = () -> new XaeroBandFill.FillLevel(NETHER, "minecraft_the_nether", NETHER_FACTS,
                 FACTORY, FP);
         this.store = new XaeroColumnStore(bucket -> this.tmp.resolve("s" + this.setups).resolve(bucket),
                 () -> this.tmp.resolve("s" + this.setups), StoreCodec.zstdOrNull(), 64L << 20);
@@ -175,6 +175,7 @@ class XaeroBandFillTest {
     @AfterEach
     void tearDown() {
         WorldMapSession.current = null;
+        XaeroSession.lastProductionFillLevel = null;
         if (this.bridge != null) this.bridge.fill.reset();
         if (this.store != null) this.store.suspendForClear();
         XaeroStubEvents.clear();
@@ -638,6 +639,52 @@ class XaeroBandFillTest {
         } finally {
             XaeroSession.instance = previous;
         }
+    }
+
+    // ---- review fold (O4-F1): no level or registries outlive the dimension or the session ----
+
+    private static void awaitCollected(java.lang.ref.WeakReference<?> ref, String what) throws InterruptedException {
+        long deadline = System.nanoTime() + 10_000_000_000L;
+        while (ref.get() != null) {
+            if (System.nanoTime() > deadline) throw new AssertionError(what);
+            System.gc();
+            Thread.sleep(10);
+        }
+    }
+
+    @Test
+    void noStrongReferenceToTheLevelOutlivesTheNetherOrTheSession() throws Exception {
+        // A stand-in for the Nether ClientLevel, run through the production fill-level cache.
+        Object[] level = {new Object()};
+        var levelRef = new java.lang.ref.WeakReference<>(level[0]);
+        XaeroBandFill.FillLevel[] fillLevel = {XaeroSession.cachedFillLevel(level[0],
+                l -> new XaeroBandFill.FillLevel(NETHER, "minecraft_the_nether", NETHER_FACTS, FACTORY, FP))};
+        assertTrue(fillLevel[0] == XaeroSession.cachedFillLevel(level[0], l -> {
+            throw new AssertionError("a second read of the same level is served from the cache");
+        }));
+        this.bridge.fillLevelProbe = () -> fillLevel[0];
+        show(3);
+        offer(64, 64, PLATFORMS);
+        this.bridge.pump();
+        switchTo(5);
+        runFill();
+        assertEquals(1, count("fill_committed"));
+        // The player leaves the Nether: the client drops that level. The last job (kept for the
+        // diag) and the production cache must not keep it alive.
+        level[0] = null;
+        awaitCollected(levelRef, "the Nether level is pinned by the last fill job or the fill-level cache");
+        assertNotNull(this.bridge.fill.lastJob, "within the session the diag still names the last fill");
+        // The session ends: neither the last job nor the cache keeps the old connection's fill
+        // level (its section factory holds that connection's registries).
+        var fillRef = new java.lang.ref.WeakReference<>(fillLevel[0]);
+        fillLevel[0] = null;
+        this.bridge.fillLevelProbe = () -> null;
+        this.bridge.onSessionEnd();
+        this.bridge.pump();
+        assertNull(this.bridge.fill.lastJob);
+        assertNull(this.bridge.fill.job);
+        assertNull(XaeroSession.lastProductionFillLevel, "the fill-level cache is session-scoped");
+        awaitCollected(fillRef, "the old session's fill level outlived the session");
     }
 
     // ---- pacing, lease-free, outside the backpressure figure ----
