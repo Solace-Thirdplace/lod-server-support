@@ -1262,6 +1262,9 @@ final class XaeroSession {
                     || !this.serverAllowsWrites.getAsBoolean()) { // map-policy plan A4: no write, no report
                 return;
             }
+            // Kept BEFORE the settings-off refusal below, on purpose (F1-NIT2): Xaero's own
+            // writing switches stop map writes, not LSS's terrain copy — the copy is what writes
+            // the shown band once writing is back on (nothing re-sends these columns).
             if (level.ceiling() && this.fill.enabled) captureForFill(dimension, chunkX, chunkZ, level, columnData, clientLevel);
             // §12.9: the one pre-extraction refusal that survives — Xaero's own
             // map-writing switches both off (the ladder clears the queue every pump;
