@@ -209,8 +209,11 @@ final class XaeroAcquisitionQueue {
      * Never under {@link #queueLock}. @return true if owed (caller must not report).
      */
     boolean shedToOwed(Object dimension, int layer, long packedChunk, Origin origin) {
-        if (!origin.live) {
-            origin.close(); // only live tiles owe (a fill tile never re-serves anything)
+        if (!origin.live || this.session.leftoverLayer(dimension, layer)) {
+            // Only live tiles owe (a fill tile never re-serves anything), and a tile of a layer
+            // that is neither shown nor the surface neither owes nor reports (fold item 12,
+            // O3-1): its re-serve would write only the shown layers.
+            origin.close();
             return true;
         }
         if (!this.session.backpressureEnabled.getAsBoolean()) return false;
@@ -365,6 +368,13 @@ final class XaeroAcquisitionQueue {
                 if (region == null) continue;
                 debt = region.size();
                 expired = now - region.firstOwedMillis > this.session.owedTtlMillis;
+            }
+            if (this.session.leftoverLayer(key.dimension(), key.layer())) {
+                // A debt of a layer Xaero no longer shows (nor the surface): never released,
+                // probed (the probe's lookup CREATES the region) or granted — its re-serve would
+                // write only the shown layers (fold item 12, O3-1). Dropped silently.
+                this.discardOwed(key, region);
+                continue;
             }
             if (key.dimension() != dimensionId) {
                 // Foreign dimension: never probed (the map's region state is the
@@ -662,7 +672,12 @@ final class XaeroAcquisitionQueue {
     }
 
     void oweExpired(Object dimension, int layer, long packedChunk, long regionKey, Origin origin) {
-        if (!origin.live || !this.session.backpressureEnabled.getAsBoolean()) { origin.close(); return; }
+        // A leftover layer's expiry is silent (fold item 12, O3-1), like the stale-layer expiry.
+        if (!origin.live || !this.session.backpressureEnabled.getAsBoolean()
+                || this.session.leftoverLayer(dimension, layer)) {
+            origin.close();
+            return;
+        }
         var key = new OwedKey(dimension, layer, regionKey);
         synchronized (this.owedLock) {
             if (!origin.active()) { origin.close(); return; }
