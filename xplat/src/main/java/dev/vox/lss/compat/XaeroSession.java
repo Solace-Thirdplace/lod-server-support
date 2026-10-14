@@ -712,7 +712,7 @@ final class XaeroSession {
     /** An integrated (singleplayer) server is running: Xaero may write from the world save.
      *  Test seam. */
     BooleanSupplier singleplayer = () -> false;
-    /** {@code integrations.map_ingestion.nether_store_mb} (MiB; 0 = no store and no fill on
+    /** {@code integrations.map_ingestion.nether_store_mib} (MiB; 0 = no store and no fill on
      *  switch), re-read every pump so /lss reload applies it. Test seam. */
     java.util.function.IntSupplier storeMbSetting = () -> 0;
     /** Builds THE column store, once per bridge (production registers it as a column-cache
@@ -1476,7 +1476,7 @@ final class XaeroSession {
     /** {@code -Dlss.xaero.bandFill.storeMB}: a dev override of the client setting. */
     private static final Integer STORE_MB_OVERRIDE = Integer.getInteger("lss.xaero.bandFill.storeMB");
 
-    /** The store cap in MiB: the dev override, else {@code integrations.map_ingestion.nether_store_mb}. */
+    /** The store cap in MiB: the dev override, else {@code integrations.map_ingestion.nether_store_mib}. */
     static int productionStoreMb() {
         return STORE_MB_OVERRIDE != null ? STORE_MB_OVERRIDE : LSSClientConfig.CONFIG.mapIngestionNetherStoreMb();
     }

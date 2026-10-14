@@ -24,7 +24,7 @@ copy any desired changes back into JSON before downgrading.
 Invalid authoritative YAML never falls back to JSON. Reload does not write files.
 
 Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`,
-`integrations.map_ingestion.nether_store_mb`) live in a
+`integrations.map_ingestion.nether_store_mib`) live in a
 sidecar file beside the selected client file (`lss-client-experimental.yaml` or
 `vss-client-experimental.yaml`), so the main client file stays readable by v0.16.0.
 The sidecar holds only nondefault values; deleting it restores the defaults. Allow DH
@@ -539,7 +539,7 @@ paper:
 | compatibility.block_fallbacks.overrides | string_map | {} |  | S | all |
 | integrations.map_ingestion.enabled | boolean | true |  | S | all |
 | integrations.map_ingestion.backpressure | boolean | true |  | H | all |
-| integrations.map_ingestion.nether_store_mb | integer | 256 | 0 sentinel; 16–65536 | H | all |
+| integrations.map_ingestion.nether_store_mib | integer | 256 | 0 sentinel; 16–65536 mib | H | all |
 | far_players.enabled | boolean | true |  | H | all |
 | far_players.distance.min_blocks | integer | 0 | 0–16384 blocks | H | all |
 | far_players.distance.max_blocks | integer | 0 | 0–16384 blocks | H | all |
@@ -624,7 +624,7 @@ integrations:
   # Maps save these tiles like explored terrain (they stay until you revisit), and a large LOD
   # distance can add GBs of map data. Map writing paces downloads so maps stay complete; turning
   # this off stops future writes after reconnect without removing terrain already saved.
-  # map_ingestion.nether_store_mb (experimental file, default 256) caps the disk kept to fill
+  # map_ingestion.nether_store_mib (experimental file, default 256) caps the disk kept to fill
   # Xaero's cave layers when you switch layer; 0 = no store and no fill on switch.
   map_ingestion:
     enabled: true # [reconnect] Write server terrain into installed map mods; off = maps show only explored terrain.

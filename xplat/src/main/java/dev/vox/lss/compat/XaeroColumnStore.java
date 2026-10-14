@@ -298,7 +298,7 @@ final class XaeroColumnStore {
 
     // ---- lifecycle ----
 
-    /** A new disk cap ({@code integrations.map_ingestion.nether_store_mb} changed). */
+    /** A new disk cap ({@code integrations.map_ingestion.nether_store_mib} changed). */
     void setCapBytes(long capBytes) {
         long cap = Math.max(1L << 20, capBytes);
         this.segmentBytes = Math.max(64L << 10, Math.min(8L << 20, cap / 8));

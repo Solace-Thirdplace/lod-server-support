@@ -599,7 +599,7 @@ class XaeroBandFillTest {
         assertEquals(256L << 20, this.store.capBytes);
         offer(64, 64, PLATFORMS);
         assertEquals(1, stored());
-        mb[0] = 0; // /lss reload with nether_store_mb: 0
+        mb[0] = 0; // /lss reload with nether_store_mib: 0
         this.bridge.pump();
         assertNull(this.bridge.fill.store, "no store");
         this.store.flush();

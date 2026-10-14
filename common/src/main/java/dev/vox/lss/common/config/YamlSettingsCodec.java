@@ -36,7 +36,7 @@ public final class YamlSettingsCodec<T> {
      *  plan §2.4). Reads still accept them in the main file
      *  (development builds wrote them there); every write moves them out. */
     public static final List<String> SIDECAR_PATHS = List.of("lod.source", "lod.dh.sync_on_load",
-            "lod.dh.real_time_updates", "lod.voxy_border_fill", "integrations.map_ingestion.nether_store_mb");
+            "lod.dh.real_time_updates", "lod.voxy_border_fill", "integrations.map_ingestion.nether_store_mib");
     /** Retired keys are tolerated on read and removed from the main file by the next write. */
     public static final List<String> RETIRED_PATHS = List.of("lod.dh.refresh_seconds", "lod.dh.profile");
 

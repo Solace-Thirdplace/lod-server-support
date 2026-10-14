@@ -49,7 +49,7 @@ public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility comp
         v.put("compatibility.block_fallbacks.overrides", s.compatibility().blockFallbacks().overrides());
         v.put("integrations.map_ingestion.enabled", s.integrations().mapIngestion().enabled());
         v.put("integrations.map_ingestion.backpressure", s.integrations().mapIngestion().backpressure());
-        v.put("integrations.map_ingestion.nether_store_mb", s.integrations().mapIngestion().netherStoreMb());
+        v.put("integrations.map_ingestion.nether_store_mib", s.integrations().mapIngestion().netherStoreMb());
         v.put("far_players.enabled", s.farPlayers().enabled());
         v.put("far_players.distance.min_blocks", s.farPlayers().distance().minBlocks());
         v.put("far_players.distance.max_blocks", s.farPlayers().distance().maxBlocks());
@@ -92,7 +92,7 @@ public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility comp
     @SuppressWarnings("unchecked")
     private static IntegrationsMapIngestion IntegrationsMapIngestion(Map<String,Object> v) {
         return new IntegrationsMapIngestion((boolean)v.get("integrations.map_ingestion.enabled"), (boolean)v.get("integrations.map_ingestion.backpressure"),
-                (int)v.get("integrations.map_ingestion.nether_store_mb"));
+                (int)v.get("integrations.map_ingestion.nether_store_mib"));
     }
     @SuppressWarnings("unchecked")
     private static Integrations Integrations(Map<String,Object> v) {

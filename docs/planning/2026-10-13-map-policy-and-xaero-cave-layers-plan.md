@@ -886,7 +886,7 @@ The fill-on-switch review's findings, as built (tests in parentheses):
     `buffer_updates`, `dropped_updates` and `to_save`.
 15. Docs: the ownership baseline drops the stale best-effort counters; B6–B8 are marked
     superseded.
-16. One client setting, `integrations.map_ingestion.nether_store_mb` (256 MiB; 0 = no
+16. One client setting, `integrations.map_ingestion.nether_store_mib` (256 MiB; 0 = no
     store, files deleted, no fill), in the experimental sidecar so the main file stays
     readable by 0.18.0; applied by `/lss reload`. The system properties stay as
     development overrides.
