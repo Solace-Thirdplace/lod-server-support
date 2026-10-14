@@ -464,6 +464,35 @@ class DiagnosticsFormatterTest {
                 "the Dirty line sits between Gate and Bandwidth: " + dirty);
         assertEquals(dLine, dirty.get(dIdx),
                 "dirtyLine must survive every subsequent with-* copy");
+
+        // Map-ingestion policy (map-policy plan A3.5): its OWN conditional line — the Gate
+        // line renders only while requireServicePermission is armed. Absent while null…
+        assertTrue(dirty.stream().noneMatch(l -> l.startsWith("MapPolicy:")),
+                "a disarmed policy (null line) must add nothing");
+        // …renders right after the Gate slot and survives every later with-* copy.
+        String mLine = MapPolicy.diagLineOrNull(true, 1);
+        var policed = DiagnosticsFormatter.formatDiagnostics(
+                d.withMapPolicyLine(mLine)
+                        .withDirtyLine(dLine)
+                        .withGateLine(gLine)
+                        .withSummaryLine(sLine)
+                        .withFarPlayersLine(fpLine)
+                        .withYieldLine("Yield: armed=true, ticks_total=1, bytes_withheld=1 B")
+                        .withXrayLine("Xray: masked_sections=1")
+                        .withMoveTraceLine("MoveTrace: rung=vanilla rows=1 drops=0 events=0")
+                        .withV16Line("v16 clients: 1")
+                        .withV18Line("Dialects: v20=1, v19=0, v18=1"));
+        int mIdx = indexOfPrefix(policed, "MapPolicy:");
+        assertTrue(indexOfPrefix(policed, "Gate:") < mIdx
+                        && mIdx < indexOfPrefix(policed, "Dirty:"),
+                "the MapPolicy line sits between Gate and Dirty: " + policed);
+        assertEquals("MapPolicy: on refused=1", policed.get(mIdx),
+                "mapPolicyLine must survive every subsequent with-* copy");
+        // Without the permission gate armed the policy line still renders on its own.
+        var alone = DiagnosticsFormatter.formatDiagnostics(d.withMapPolicyLine(mLine));
+        assertTrue(alone.stream().noneMatch(l -> l.startsWith("Gate:"))
+                        && alone.contains("MapPolicy: on refused=1"),
+                "the policy line never depends on the Gate line: " + alone);
     }
 
     @Test

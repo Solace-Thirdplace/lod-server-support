@@ -88,6 +88,42 @@ public class ServiceLifecycleGameTests {
         return helper.makeMockServerPlayerInLevel();
     }
 
+    /** Waiting ticks left before the timeout when a failing wait tears down. */
+    private static final int TEARDOWN_MARGIN_TICKS = 5;
+
+    /**
+     * {@code succeedWhen} whose teardown runs on BOTH outcomes (0.19.0 review O6): on the
+     * passing tick, or on the last waiting ticks before {@code maxTicks} — a timed-out test
+     * must not leak its service threads and mock players into the shared gametest server.
+     * After a timeout teardown the criterion never runs again: the remaining ticks re-throw
+     * the last failure, so the reported message describes the real state, not a torn-down
+     * service.
+     */
+    private static void succeedWhenThenTearDown(GameTestHelper helper, int maxTicks,
+                                                Runnable criterion, Runnable teardown) {
+        var waits = new AtomicInteger();
+        var tornDown = new java.util.concurrent.atomic.AtomicBoolean();
+        var lastFailure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>();
+        helper.succeedWhen(() -> {
+            if (tornDown.get()) {
+                var failure = lastFailure.get();
+                if (failure != null) throw failure;
+                return;
+            }
+            try {
+                criterion.run();
+            } catch (RuntimeException e) {
+                lastFailure.set(e);
+                if (waits.incrementAndGet() >= maxTicks - TEARDOWN_MARGIN_TICKS
+                        && tornDown.compareAndSet(false, true)) {
+                    teardown.run();
+                }
+                throw e;
+            }
+            if (tornDown.compareAndSet(false, true)) teardown.run();
+        });
+    }
+
     @GameTest(structure = "fabric-gametest-api-v1:empty")
     public void outboundBufferGaugeResolvesThroughTheRealMixinsAndChannel(GameTestHelper helper) {
         // The ONLY place the outbound-buffer gauge runs end-to-end: both accessor mixins
@@ -1656,7 +1692,7 @@ public class ServiceLifecycleGameTests {
                         new dev.vox.lss.common.region.RegionSummaryWire.Request(
                                 dim, cx >> 5, cz >> 5, 1)));
 
-        helper.succeedWhen(() -> {
+        succeedWhenThenTearDown(helper, 1200, () -> {
             service.tick();
             var sumDiag = service.getRegionSummaries().diagnostics();
             if (service.getDiskReader().getDiag().getHeaderHitsCount() < 1
@@ -1681,9 +1717,15 @@ public class ServiceLifecycleGameTests {
             helper.assertTrue(state.hasDiskReadDone(cx, cz),
                     "the intercepted ask resolves up_to_date (done-bit)");
             var summary = service.getRegionSummaries().diagnostics();
+            // The whole summary line at timeout (2026-10-14 fold): tiles counted = the
+            // sweeper assembled; refresh_ms_max = how long it took; expired/reassembled
+            // = a ready frame aged out before a drain (a tick-thread stall) — so a
+            // further sighting says which leg stalled without a re-run.
             helper.assertTrue(summary.getFrames() >= 1,
                     "one summary frame must assemble and send, reqs=" + summary.getRequests()
-                            + " frames=" + summary.getFrames());
+                            + " frames=" + summary.getFrames() + " [" + summary.diagLineOrNull()
+                            + "; header_hits="
+                            + service.getDiskReader().getDiag().getHeaderHitsCount() + "]");
             helper.assertTrue(summary.getBytes() > 0,
                     "the frame's bytes count on the dedicated lane");
             helper.assertTrue(summary.getTilesKnown() + summary.getTilesNeverClean()
@@ -1702,10 +1744,11 @@ public class ServiceLifecycleGameTests {
                     "the compare-backed up_to_date must stamp (frames="
                             + summary.getStampsFrames() + " entries="
                             + summary.getStampsEntries() + ")");
-            // Terminal pass: tear down like the class's async probe test does — the
-            // throwaway service must not leak its threads/pools NOR leave its
-            // constructor-published XrayMaskManager as the static manager (the
-            // documented gametest static-stomping hazard).
+        }, () -> {
+            // Tear down like the class's async probe test does — the throwaway service
+            // must not leak its threads/pools NOR leave its constructor-published
+            // XrayMaskManager as the static manager (the documented gametest
+            // static-stomping hazard) — on a timeout too.
             service.shutdown();
             server.getPlayerList().remove(mock);
         });
@@ -2021,5 +2064,489 @@ public class ServiceLifecycleGameTests {
             ServerReceiverGlue.clearPendingLoadSeeds(); // never leave static state for later tests
             service.shutdown();
         }
+    }
+    // ---- the server map-ingestion request (map-policy plan A3/A5 "server glue") ----
+
+    private static final int MAP_BIT = LSSConstants.CAPABILITY_MAP_POLICY;
+    private static final int VOXEL = LSSConstants.CAPABILITY_VOXEL_COLUMNS;
+
+    /**
+     * The map-policy rung on the SHARED glue through the PRODUCTION 4-arg entry (the real
+     * gate, the real service, the real memo): a capable CURRENT session registers and its
+     * reply carries the deny flag; the Fabric ladder-race row — a 0.19 client's raced
+     * 19 rung WITH the bit takes the QUIET refusal (the 19 echo, enabled=false, no memo,
+     * no chat line, the live registration and its CURRENT dialect untouched) and its
+     * downgrade-guard re-announce re-registers with flags; a 0.18-shaped session (no bit)
+     * re-handshaking while armed takes the REAL refusal (reply in its own dialect, the
+     * live-session unregistration composite, memo reason MAP_POLICY, ONE counted
+     * transition, the chat line ONCE per connection across its whole discovery ladder);
+     * the replay-loop pin (an armed policy with the permission gate OFF replays nobody
+     * across N sweeps); and the disarm replay that heals the refused session.
+     */
+    @GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 400)
+    public void mapPolicyRefusesInDialectQuietlyForARacedRungAndNeverReplayLoops(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var mock = placeMockServerPlayer(helper);
+        var uuid = mock.getUUID();
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        var replies = new ArrayList<SessionConfigS2CPayload>();
+        LSSServerNetworking.SessionConfigResponder recorder = replies::add;
+        var notices = new ArrayList<String>();
+        service.setMapPolicyNoticeSenderForTest((player, text) -> notices.add(text));
+        var gateState = service.getServiceGateState();
+        try {
+            config.set("privacy.request_no_map_ingestion", true);
+
+            // 1. A capable CURRENT session registers; the reply carries the deny flag.
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL | MAP_BIT), mock, service, recorder);
+            helper.assertTrue(service.getPlayers().get(uuid) != null && replies.size() == 1
+                            && replies.get(0).enabled()
+                            && replies.get(0).sessionFlags() == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION,
+                    "a 0.19 client registers and is told the request, got " + replies);
+
+            // 2. Its raced 19 rung WITH the bit: the QUIET refusal — the reply only.
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.V19_COMPAT_PROTOCOL_VERSION, VOXEL | MAP_BIT), mock, service, recorder);
+            var quiet = replies.get(1);
+            helper.assertTrue(quiet.protocolVersion() == LSSConstants.V19_COMPAT_PROTOCOL_VERSION
+                            && !quiet.enabled()
+                            && quiet.sessionFlags() == LSSConstants.SESSION_FLAGS_ABSENT,
+                    "the raced rung gets a 19 echo, enabled=false, never the flags field: " + quiet);
+            helper.assertTrue(service.getPlayers().get(uuid) != null,
+                    "the QUIET refusal never unregisters the live session");
+            // isCurrent, not dialectOf: dialectOf defaults an UNMARKED session to CURRENT, so
+            // it could not see the quiet refusal shedding the mark (review fold A8).
+            helper.assertTrue(service.getDialectTracker().isCurrent(uuid),
+                    "…nor sheds or flips its CURRENT dialect mark (it never registered as V19)");
+            helper.assertTrue(!gateState.isDenied(uuid) && gateState.mapPolicyRefusedTotal() == 0
+                            && notices.isEmpty(),
+                    "no memo, no counter, no chat line for a raced rung");
+
+            // 3. The client's downgrade guard re-announces v20: REGISTER again, flags again.
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL | MAP_BIT), mock, service, recorder);
+            helper.assertTrue(replies.get(2).enabled() && replies.get(2).sessionFlags() == 1,
+                    "the heal re-registers with its flags");
+            helper.assertTrue(service.getDialectTracker().isCurrent(uuid),
+                    "…and re-marks the CURRENT dialect");
+
+            // 4. Disarmed, an old client (no bit) registers — then the policy arms and the
+            //    SAME live session re-handshakes: the REAL refusal + unregistration composite.
+            config.set("privacy.request_no_map_ingestion", false);
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL), mock, service, recorder);
+            helper.assertTrue(replies.get(3).enabled()
+                            && replies.get(3).sessionFlags() == LSSConstants.SESSION_FLAGS_ABSENT,
+                    "a session without the bit gets the 0.18.0 frame: " + replies.get(3));
+            config.set("privacy.request_no_map_ingestion", true);
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL), mock, service, recorder);
+            helper.assertTrue(!replies.get(4).enabled()
+                            && replies.get(4).protocolVersion() == LSSConstants.PROTOCOL_VERSION,
+                    "the real refusal replies enabled=false in the CURRENT shape");
+            helper.assertTrue(service.getPlayers().get(uuid) == null,
+                    "a live re-handshake that can no longer be served is unregistered");
+            var memo = gateState.peekDenied(uuid);
+            helper.assertTrue(memo != null && memo.has(dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)
+                            && gateState.mapPolicyRefusedTotal() == 1
+                            && gateState.permissionDeniedTotal() == 0,
+                    "memo reason MAP_POLICY, one map-policy transition, no permission count");
+            helper.assertTrue(notices.size() == 1 && notices.get(0).contains("0.19.0 or newer"),
+                    "the chat line: " + notices);
+
+            // 5. The old client's discovery ladder (19, then 16) — refused in each dialect,
+            //    still one transition and one chat line for the connection.
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.V19_COMPAT_PROTOCOL_VERSION, VOXEL), mock, service, recorder);
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.V16_COMPAT_PROTOCOL_VERSION, VOXEL), mock, service, recorder);
+            helper.assertTrue(!replies.get(5).enabled()
+                            && replies.get(5).protocolVersion() == LSSConstants.V19_COMPAT_PROTOCOL_VERSION,
+                    "refused in the v19 dialect");
+            helper.assertTrue(!replies.get(6).enabled() && replies.get(6).v16Wire(),
+                    "refused in the v16 dialect (6-field enabled=false)");
+            helper.assertTrue(gateState.mapPolicyRefusedTotal() == 1 && notices.size() == 1,
+                    "re-refusals while refused never re-count or re-notify");
+
+            // 6. The replay-loop pin: policy armed, permission gate OFF, N sweeps — the
+            //    memo stays put and nothing replays (a replay would take and re-deposit the
+            //    entry: a second transition).
+            for (int i = 0; i < 5; i++) service.runServiceGateSweeps(config);
+            helper.assertTrue(gateState.isDenied(uuid) && gateState.mapPolicyRefusedTotal() == 1
+                            && service.getPlayers().get(uuid) == null,
+                    "an armed policy with the gate off replays nobody");
+
+            // 7. Disarm: the grant sweep replays the stored handshake through the full
+            //    production ladder — the session re-registers, no chat line (never from a replay).
+            config.set("privacy.request_no_map_ingestion", false);
+            service.replayDeniedHandshakes(config);
+            helper.assertTrue(service.getPlayers().get(uuid) != null && !gateState.isDenied(uuid),
+                    "the disarm heals the refused session");
+            helper.assertTrue(service.getDialectTracker().isCurrent(uuid),
+                    "…in the CURRENT dialect: the ladder's 19/16 rungs never replaced the stored "
+                            + "v20 handshake (review fold A11)");
+            helper.assertTrue(notices.size() == 1, "a registering replay sends no chat line");
+        } finally {
+            service.shutdown();
+            server.getPlayerList().remove(mock);
+        }
+        helper.succeed();
+    }
+
+    /**
+     * Review fold A6: a player permission-REVOKED first and granted while the map policy is
+     * armed lands on MAP_POLICY_REFUSED through the grant sweep's replay — a MAP_POLICY
+     * transition, so the chat line goes out (the old "never from a replay" rule meant this
+     * player never learned why). Exactly one line after the grant; still one after N sweeps
+     * (the armed policy keeps the entry remembered, not replayed, and the latch holds).
+     */
+    @GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 400)
+    public void mapPolicyRefusalOnAGrantReplayNotifiesOnce(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var mock = placeMockServerPlayer(helper);
+        var uuid = mock.getUUID();
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        var notices = new ArrayList<String>();
+        service.setMapPolicyNoticeSenderForTest((player, text) -> notices.add(text));
+        var gateState = service.getServiceGateState();
+        var denying = new java.util.concurrent.atomic.AtomicBoolean(false);
+        try {
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL), mock, service, reply -> { });
+            helper.assertTrue(service.getPlayers().get(uuid) != null, "premise: an old client registered");
+            config.set("service.require_permission", true);
+            service.setPermissionProbeForTest((p, node) -> !denying.get());
+            denying.set(true);
+            service.runServiceGateSweeps(config);
+            service.runServiceGateSweeps(config);
+            helper.assertTrue(service.getPlayers().get(uuid) == null && gateState.isDenied(uuid)
+                            && notices.isEmpty(),
+                    "premise: revoked for the permission, no map-policy line yet");
+
+            config.set("privacy.request_no_map_ingestion", true);
+            denying.set(false);
+            service.runServiceGateSweeps(config); // the grant replays — onto the armed policy
+            var memo = gateState.peekDenied(uuid);
+            helper.assertTrue(memo != null && memo.has(dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)
+                            && service.getPlayers().get(uuid) == null,
+                    "the replay is refused by the policy: " + memo);
+            helper.assertTrue(notices.size() == 1, "exactly one chat line after the grant: " + notices);
+            for (int i = 0; i < 5; i++) service.runServiceGateSweeps(config);
+            helper.assertTrue(notices.size() == 1 && gateState.mapPolicyRefusedTotal() == 1,
+                    "still one after N sweeps");
+        } finally {
+            config.set("service.require_permission", false);
+            service.shutdown();
+            server.getPlayerList().remove(mock);
+        }
+        helper.succeed();
+    }
+
+    /**
+     * The shared service's live half (map-policy plan A3.4): the arm sweep revokes ONLY a
+     * registered CURRENT session without the bit (per-player enabled=false push, the
+     * composite, memo, chat once) while a capable one keeps serving; it is idempotent;
+     * the 200-tick cadence enforces the policy for a registration that raced the arm;
+     * and the dimension-change push (every Nether trip at stock settings) carries the
+     * capable session's flags.
+     */
+    @GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 600)
+    public void mapPolicyArmSweepCadenceAndDimensionChangePush(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var endLevel = server.getLevel(Level.END);
+        helper.assertTrue(endLevel != null, "the End dimension must exist on the gametest server");
+        var old = placeMockServerPlayer(helper);
+        var capable = placeMockServerPlayer(helper);
+        var raced = placeMockServerPlayer(helper);
+        var config = new ServiceSettingsFixture();
+        config.set("lod.distance.default_chunks", 64);
+        config.set("lod.distance.by_dimension", java.util.Map.of("minecraft:the_end", 32));
+        var service = new RequestProcessingService(server, config);
+        var notices = new ArrayList<java.util.UUID>();
+        service.setMapPolicyNoticeSenderForTest((player, text) -> notices.add(player.getUUID()));
+        try {
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL), old, service, reply -> { });
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL | MAP_BIT), capable, service, reply -> { });
+            var pushes = new ArrayList<Object[]>();
+            service.setSessionConfigPusher((to, payload) -> pushes.add(new Object[]{to, payload}));
+
+            helper.assertTrue(service.runMapPolicySweep(config) == 0, "disarmed: inert");
+            config.set("privacy.request_no_map_ingestion", true);
+            service.adoptMapPolicyForTest(true); // as the arming reconcile would
+            helper.assertTrue(service.runMapPolicySweep(config) == 1, "exactly the old session");
+            helper.assertTrue(pushes.size() == 1 && pushes.get(0)[0] == old
+                            && !((SessionConfigS2CPayload) pushes.get(0)[1]).enabled()
+                            && ((SessionConfigS2CPayload) pushes.get(0)[1]).sessionFlags()
+                                    == LSSConstants.SESSION_FLAGS_ABSENT,
+                    "a per-player enabled=false push without a flags field");
+            helper.assertTrue(service.getPlayers().get(old.getUUID()) == null
+                            && service.getPlayers().get(capable.getUUID()) != null,
+                    "the old session is revoked; the capable one keeps serving");
+            helper.assertTrue(notices.equals(java.util.List.of(old.getUUID()))
+                            && service.getServiceGateState().mapPolicyRefusedTotal() == 1,
+                    "chat once, one counted transition");
+            helper.assertTrue(service.runMapPolicySweep(config) == 0 && pushes.size() == 1,
+                    "idempotent");
+
+            // The cadence: a registration that raced the arm (decided on the pre-arm config;
+            // the handshake's register path marks the CURRENT dialect first).
+            service.getDialectTracker().onHandshake(raced.getUUID(),
+                    dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT);
+            service.registerPlayer(raced, VOXEL);
+            service.adoptMapPolicyForTest(false); // review fold A9: the reload owns the transition
+            for (int i = 0; i < 200; i++) service.tick();
+            helper.assertTrue(service.getPlayers().get(raced.getUUID()) != null,
+                    "an arm the reconcile has not adopted: the cadence waits for it");
+            service.adoptMapPolicyForTest(true);
+            for (int i = 0; i < 199; i++) service.tick();
+            helper.assertTrue(service.getPlayers().get(raced.getUUID()) != null, "199 ticks: not yet");
+            service.tick();
+            helper.assertTrue(service.getPlayers().get(raced.getUUID()) == null,
+                    "the 200-tick cadence enforces the policy");
+
+            // The dimension-change push carries the capable session's flags.
+            pushes.clear();
+            capable.setServerLevel(endLevel);
+            service.tick();
+            var dim = pushes.stream().filter(e -> e[0] == capable).toList();
+            helper.assertTrue(dim.size() == 1
+                            && ((SessionConfigS2CPayload) dim.get(0)[1]).lodDistanceChunks() == 32
+                            && ((SessionConfigS2CPayload) dim.get(0)[1]).sessionFlags()
+                                    == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION,
+                    "the dimension-change push must carry the flags (absent would keep the "
+                            + "client's value, but the census requires it): " + dim.size());
+
+            // Review fold A9: a policy-only repush carries the flags WITHOUT the off-world
+            // re-register (and its roster re-send) a distance change runs.
+            config.set("lod.distance.by_dimension", java.util.Map.of("minecraft:the_end", 0));
+            var before = service.getPlayers().get(capable.getUUID());
+            pushes.clear();
+            service.repushSessionConfig(true);
+            var flagsOnly = pushes.stream().filter(e -> e[0] == capable).toList();
+            helper.assertTrue(service.getPlayers().get(capable.getUUID()) == before,
+                    "flags-only: the off-world session is not removed and re-registered");
+            helper.assertTrue(flagsOnly.size() == 1
+                            && !((SessionConfigS2CPayload) flagsOnly.get(0)[1]).enabled()
+                            && ((SessionConfigS2CPayload) flagsOnly.get(0)[1]).sessionFlags()
+                                    == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION,
+                    "…and the push still says off, with the flags");
+            service.repushSessionConfig();
+            helper.assertTrue(service.getPlayers().get(capable.getUUID()) != before,
+                    "the distance-change mode still re-registers an off-world session");
+        } finally {
+            capable.setServerLevel(level);
+            service.shutdown();
+            server.getPlayerList().remove(old);
+            server.getPlayerList().remove(capable);
+            server.getPlayerList().remove(raced);
+        }
+        helper.succeed();
+    }
+
+    /**
+     * Arm and disarm through {@code reconcileSettings} — the reload owner path (map-policy
+     * plan A3.4): the arm REVOKES the session without the bit BEFORE the re-push (a
+     * session about to lose service must not first get an enabled=true rebuild), the
+     * re-push carries flags 1 to the capable session only, and the feedback reports the
+     * revocation (never the legacy-reconnect count); the disarm re-pushes flags 0 and
+     * re-offers the revoked session at once.
+     */
+    @GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 600)
+    public void mapPolicyReloadRevokesBeforeTheRepushAndDisarmHeals(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var old = placeMockServerPlayer(helper);
+        var capable = placeMockServerPlayer(helper);
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        service.setMapPolicyNoticeSenderForTest((player, text) -> { });
+        LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                LSSConstants.PROTOCOL_VERSION, VOXEL), old, service, reply -> { });
+        LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                LSSConstants.PROTOCOL_VERSION, VOXEL | MAP_BIT), capable, service, reply -> { });
+        var pushes = new java.util.concurrent.CopyOnWriteArrayList<Object[]>();
+        service.setSessionConfigPusher((to, payload) -> pushes.add(new Object[]{to, payload}));
+        var disarmed = config.snapshot();
+        config.set("privacy.request_no_map_ingestion", true);
+        var armedSettings = config.snapshot();
+        var arm = service.reconcileSettings(disarmed, armedSettings, 1);
+        var disarm = new java.util.concurrent.atomic.AtomicReference<java.util.concurrent.CompletableFuture<Void>>();
+        succeedWhenThenTearDown(helper, 600, () -> {
+            if (!arm.isDone()) {
+                helper.assertTrue(false, "waiting for the arming reconcile");
+            }
+            helper.assertTrue(!arm.isCompletedExceptionally(), "the arming reconcile failed");
+            if (disarm.get() == null) {
+                helper.assertTrue(pushes.size() == 2, "revocation + one repush, got " + pushes.size());
+                helper.assertTrue(pushes.get(0)[0] == old
+                                && !((SessionConfigS2CPayload) pushes.get(0)[1]).enabled(),
+                        "REVOKE FIRST: the old session's enabled=false precedes the repush");
+                helper.assertTrue(pushes.get(1)[0] == capable
+                                && ((SessionConfigS2CPayload) pushes.get(1)[1]).enabled()
+                                && ((SessionConfigS2CPayload) pushes.get(1)[1]).sessionFlags() == 1,
+                        "the repush reaches only the capable session, carrying flags 1");
+                helper.assertTrue(service.settingsFeedback().mapPolicyRevoked() == 1
+                                && service.settingsFeedback().legacyReconnects() == 0,
+                        "the feedback reports the revocation, not a legacy reconnect");
+                helper.assertTrue(service.settingsFeedback().mapPolicyArmed(),
+                        "…and the policy THIS revision adopted (review fold A9)");
+                pushes.clear();
+                config.set("privacy.request_no_map_ingestion", false);
+                disarm.set(service.reconcileSettings(armedSettings, config.snapshot(), 2));
+                helper.assertTrue(false, "waiting for the disarming reconcile");
+            }
+            if (!disarm.get().isDone()) helper.assertTrue(false, "waiting for the disarming reconcile");
+            helper.assertTrue(!disarm.get().isCompletedExceptionally(), "the disarming reconcile failed");
+            helper.assertTrue(pushes.stream().anyMatch(e -> e[0] == capable
+                            && ((SessionConfigS2CPayload) e[1]).sessionFlags() == 0),
+                    "the disarm repush carries flags 0 to the capable session");
+            helper.assertTrue(service.getPlayers().get(old.getUUID()) != null,
+                    "the revoked session is re-offered at once and re-registers");
+        }, () -> {
+            service.shutdown();
+            server.getPlayerList().remove(old);
+            server.getPlayerList().remove(capable);
+        });
+    }
+
+    /**
+     * 0.19.0 review O6 P1 — the xplat twin of PaperMapPolicyTest's legacy pins: a LIVE arm
+     * never revokes a legacy-dialect session mid-session. v19, v18 and v16 sessions keep
+     * serving until rejoin (where the handshake refuses them) — no push, no memo, no chat
+     * line — while a CURRENT session without the bit in the SAME sweep is revoked, so the
+     * sweep is live, not vacuous. Pins {@code runMapPolicySweep}'s explicit-CURRENT guard
+     * (the reload's one-shot and the 200-tick cadence both run it): dropped, or loosened
+     * to {@code dialectOf}, a reload would revoke an old client with a v20 frame.
+     */
+    @GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 400)
+    public void mapPolicyArmNeverRevokesALegacySessionMidSession(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var v19 = placeMockServerPlayer(helper);
+        var v18 = placeMockServerPlayer(helper);
+        var v16 = placeMockServerPlayer(helper);
+        var current = placeMockServerPlayer(helper);
+        var legacy = java.util.List.of(v19, v18, v16);
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        var notices = new ArrayList<java.util.UUID>();
+        service.setMapPolicyNoticeSenderForTest((player, text) -> notices.add(player.getUUID()));
+        try {
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.V19_COMPAT_PROTOCOL_VERSION, VOXEL), v19, service, reply -> { });
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.V18_COMPAT_PROTOCOL_VERSION, VOXEL), v18, service, reply -> { });
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.V16_COMPAT_PROTOCOL_VERSION, VOXEL), v16, service, reply -> { });
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL), current, service, reply -> { });
+            for (var p : legacy) {
+                helper.assertTrue(service.getPlayers().get(p.getUUID()) != null
+                                && !service.getDialectTracker().isCurrent(p.getUUID()),
+                        "premise: a registered legacy-dialect session ("
+                                + service.getDialectTracker().dialectOf(p.getUUID()) + ")");
+            }
+            helper.assertTrue(service.getPlayers().get(current.getUUID()) != null
+                            && service.getDialectTracker().isCurrent(current.getUUID()),
+                    "premise: a registered CURRENT session without the bit");
+            var pushes = new ArrayList<Object[]>();
+            service.setSessionConfigPusher((to, payload) -> pushes.add(new Object[]{to, payload}));
+
+            config.set("privacy.request_no_map_ingestion", true);
+            service.adoptMapPolicyForTest(true); // as the arming reconcile would
+            helper.assertTrue(service.runMapPolicySweep(config) == 1,
+                    "the arm revokes exactly the CURRENT session without the bit");
+            helper.assertTrue(service.getPlayers().get(current.getUUID()) == null
+                            && notices.equals(java.util.List.of(current.getUUID())),
+                    "control: the CURRENT session is revoked and told once");
+            var gateState = service.getServiceGateState();
+            for (var p : legacy) {
+                var uuid = p.getUUID();
+                var dialect = service.getDialectTracker().dialectOf(uuid);
+                helper.assertTrue(service.getPlayers().get(uuid) != null,
+                        dialect + ": a legacy session keeps serving until rejoin");
+                helper.assertTrue(pushes.stream().noneMatch(e -> e[0] == p),
+                        dialect + ": no mid-session disable push (a v20 frame it cannot read)");
+                helper.assertTrue(!gateState.isDenied(uuid) && !notices.contains(uuid),
+                        dialect + ": no memo and no chat line");
+            }
+            helper.assertTrue(service.runMapPolicySweep(config) == 0 && pushes.size() == 1,
+                    "a repeated sweep (the 200-tick cadence) revokes nobody");
+        } finally {
+            service.shutdown();
+            for (var p : java.util.List.of(v19, v18, v16, current)) {
+                server.getPlayerList().remove(p);
+            }
+        }
+        helper.succeed();
+    }
+
+    /**
+     * 0.19.0 review O1: the chat line is once per CONNECTION across a respawn. Vanilla's
+     * respawn (death, End exit) builds a NEW {@code ServerPlayer} on the SAME connection,
+     * so the old player-instance latch re-sent the line on the review's sequence (Paper
+     * reuses its entity and never did): refused at handshake (line 1), respawn, disarm
+     * (the replay registers the new instance), re-arm (the sweep revokes it). Still one
+     * line — and the stale pre-respawn instance (the cadence sweep runs before the
+     * lifecycle pass swaps it) claims nothing either. A new connection still gets its own.
+     */
+    @GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 400)
+    public void mapPolicyChatLineIsOncePerConnectionAcrossARespawn(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var playerList = server.getPlayerList();
+        var mock = placeMockServerPlayer(helper);
+        var uuid = mock.getUUID();
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        var told = new ArrayList<net.minecraft.server.level.ServerPlayer>();
+        service.setMapPolicyNoticeSenderForTest((player, text) -> told.add(player));
+        try {
+            config.set("privacy.request_no_map_ingestion", true);
+            service.adoptMapPolicyForTest(true);
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL), mock, service, reply -> { });
+            helper.assertTrue(told.size() == 1 && service.getPlayers().get(uuid) == null,
+                    "premise: refused at handshake with one chat line");
+
+            var fresh = playerList.respawn(mock, true, Entity.RemovalReason.DISCARDED);
+            helper.assertTrue(fresh != mock && fresh.connection == mock.connection,
+                    "premise: respawn builds a NEW ServerPlayer on the SAME connection");
+
+            config.set("privacy.request_no_map_ingestion", false);
+            service.adoptMapPolicyForTest(false);
+            service.replayDeniedHandshakes(config);
+            var state = service.getPlayers().get(uuid);
+            helper.assertTrue(state != null && state.getPlayer() == fresh,
+                    "premise: the disarm replay registers the respawned instance");
+
+            config.set("privacy.request_no_map_ingestion", true);
+            service.adoptMapPolicyForTest(true);
+            helper.assertTrue(service.runMapPolicySweep(config) == 1
+                            && service.getPlayers().get(uuid) == null,
+                    "premise: the re-arm sweep revokes the session");
+            helper.assertTrue(told.size() == 1,
+                    "ONE line per connection across respawn + disarm + re-arm, got " + told.size());
+            service.noticeMapPolicyRefusal(mock);
+            helper.assertTrue(told.size() == 1, "the stale pre-respawn instance claims nothing");
+
+            service.getServiceGateState().onDisconnect(uuid);
+            service.noticeMapPolicyRefusal(fresh);
+            helper.assertTrue(told.size() == 2 && told.get(1) == fresh,
+                    "after the disconnect sweep a connection claims afresh");
+        } finally {
+            service.shutdown();
+            var listed = playerList.getPlayer(uuid);
+            if (listed != null) playerList.remove(listed);
+        }
+        helper.succeed();
     }
 }

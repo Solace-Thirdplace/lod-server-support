@@ -61,6 +61,22 @@ configurations {
         canBeResolved = true
         transitive = false
     }
+    // cave-layers plan §B7/§B9 — see the dependencies' comments.
+    xaeroGoldenFabric {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
+    xaeroGoldenNeoForge {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
+    xaeroGoldenFloorFabric {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
 }
 
 dependencies {
@@ -105,6 +121,16 @@ dependencies {
     // own the journeymap.* names there). Offline = the tests skip; CI=true fails instead.
     journeymapGoldenFabric "maven.modrinth:journeymap:${journeymap_golden_fabric}"
     journeymapGoldenNeoForge "maven.modrinth:journeymap:${journeymap_golden_neoforge}"
+    // The real Xaero's World Map jars (All Rights Reserved — downloaded, never redistributed)
+    // the map bridge binds by reflection: XaeroBindingSurfaceTest checks every recorded
+    // binding against both loaders' builds and the line's floor build (classfile level, nested
+    // xaerolib included), XaeroLoadPixelParityTest runs the real MapWriter.loadPixel against
+    // the extractor. PLAIN configurations loaded in a child-first class loader — never on a
+    // compile or test classpath (the Tier-1 stubs own the xaero.* names there). Offline =
+    // the tests skip; CI=true fails instead.
+    xaeroGoldenFabric "maven.modrinth:xaeros-world-map:${xaero_golden_fabric}"
+    xaeroGoldenNeoForge "maven.modrinth:xaeros-world-map:${xaero_golden_neoforge}"
+    xaeroGoldenFloorFabric "maven.modrinth:xaeros-world-map:${xaero_golden_floor_fabric}"
     // Compat validation arm: -Pbenchmark.moonrise=true puts Moonrise on the dev runtime
     // (the same Modrinth version issue #69 was reported against), so the soak harness can
     // drive the full dirty pipeline — the SerializableChunkData.copyOf hook, broadcast,
@@ -155,12 +181,24 @@ test {
     inputs.property "journeymap_golden_neoforge", project.journeymap_golden_neoforge
     inputs.files(jmFabricGolden).optional()
     inputs.files(jmNeoForgeGolden).optional()
+    def xaeroFabricGolden = configurations.xaeroGoldenFabric.incoming.artifactView { lenient = true }.files
+    def xaeroNeoForgeGolden = configurations.xaeroGoldenNeoForge.incoming.artifactView { lenient = true }.files
+    def xaeroFloorGolden = configurations.xaeroGoldenFloorFabric.incoming.artifactView { lenient = true }.files
+    inputs.property "xaero_golden_fabric", project.xaero_golden_fabric
+    inputs.property "xaero_golden_neoforge", project.xaero_golden_neoforge
+    inputs.property "xaero_golden_floor_fabric", project.xaero_golden_floor_fabric
+    inputs.files(xaeroFabricGolden).optional()
+    inputs.files(xaeroNeoForgeGolden).optional()
+    inputs.files(xaeroFloorGolden).optional()
     doFirst {
         systemProperty 'lss.sodiumLegacyGoldenJar', legacyGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
         systemProperty 'lss.sodiumModernGoldenJar', modernGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
         systemProperty 'lss.sodiumModernGoldenExpected', 'true'
         systemProperty 'lss.journeymapGoldenFabricJar', jmFabricGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
         systemProperty 'lss.journeymapGoldenNeoForgeJar', jmNeoForgeGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
+        systemProperty 'lss.xaeroGoldenFabricJar', xaeroFabricGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
+        systemProperty 'lss.xaeroGoldenNeoForgeJar', xaeroNeoForgeGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
+        systemProperty 'lss.xaeroGoldenFloorFabricJar', xaeroFloorGolden.find { it.name.endsWith('.jar') }?.absolutePath ?: ''
     }
     // GameTestEntrypointContractTest reads these at runtime (repo-walk); without declaring
     // them as inputs, adding a gametest class or editing the entrypoint list leaves the

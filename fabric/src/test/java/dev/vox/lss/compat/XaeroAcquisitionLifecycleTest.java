@@ -67,7 +67,7 @@ class XaeroAcquisitionLifecycleTest {
                     new short[256], biomes, new byte[256], new boolean[256],
                     new XaeroTileExtractor.OverlayRun[256][]));
             bridge.pump(); // old-server region (4,2) now known awaiting
-            assertTrue(bridge.awaitingRegionsForTest().contains(XaeroSession.regionKeyOf(128,64)));
+            assertTrue(bridge.awaitingRegionsForTest().contains(XaeroSession.surfaceRegion(XaeroSession.regionKeyOf(128,64))));
             classifierHook.set(() -> {
                 var errors = new AtomicReference<Throwable>();
                 var netty = new Thread(() -> {

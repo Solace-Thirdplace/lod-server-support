@@ -91,19 +91,12 @@ public final class ClientStatus {
         }
         long rateGated = active ? manager.getRateGated() : 0;
         var xaero = dev.vox.lss.compat.ModCompat.cachedXaeroStatus();
-        var availability = xaero.failed() ? ClientStatusSnapshot.Availability.FAILED
-                : "unknown".equals(xaero.resolution()) ? ClientStatusSnapshot.Availability.UNKNOWN
-                : "absent".equals(xaero.resolution()) ? ClientStatusSnapshot.Availability.ABSENT
-                : "unavailable".equals(xaero.resolution()) ? ClientStatusSnapshot.Availability.UNAVAILABLE
-                : !cfg.mapIngestionEnabled() ? ClientStatusSnapshot.Availability.DISABLED
-                : ClientStatusSnapshot.Availability.AVAILABLE;
+        boolean serverAllowsMaps = ClientNetGlue.serverAllowsMapIngestion();
+        var availability = mapAvailability(xaero.failed(), xaero.resolution(),
+                cfg.mapIngestionEnabled(), serverAllowsMaps);
         var journeyMap = dev.vox.lss.compat.ModCompat.cachedJourneyMapStatus();
-        var journeyMapAvailability = journeyMap.failed() ? ClientStatusSnapshot.Availability.FAILED
-                : "unknown".equals(journeyMap.resolution()) ? ClientStatusSnapshot.Availability.UNKNOWN
-                : "absent".equals(journeyMap.resolution()) ? ClientStatusSnapshot.Availability.ABSENT
-                : "unavailable".equals(journeyMap.resolution()) ? ClientStatusSnapshot.Availability.UNAVAILABLE
-                : !cfg.mapIngestionEnabled() ? ClientStatusSnapshot.Availability.DISABLED
-                : ClientStatusSnapshot.Availability.AVAILABLE;
+        var journeyMapAvailability = mapAvailability(journeyMap.failed(), journeyMap.resolution(),
+                cfg.mapIngestionEnabled(), serverAllowsMaps);
         if (DhClientSession.selected()) {
             // DH mode: native fields describe the (idle) native path truthfully; DH
             // acquisition lives in the dh block. Nothing is faked.
@@ -135,6 +128,21 @@ public final class ClientStatus {
         lastRateGated = rateGated;
         CACHE.publish(lifecycle, snapshot);
     }
+    /** A map backend's availability: integration facts first, then the local setting, then
+     *  the server's map-ingestion request (map-policy plan A4 — the local setting is
+     *  untouched by a server deny). */
+    static ClientStatusSnapshot.Availability mapAvailability(boolean failed, String resolution,
+                                                             boolean locallyEnabled,
+                                                             boolean serverAllows) {
+        return failed ? ClientStatusSnapshot.Availability.FAILED
+                : "unknown".equals(resolution) ? ClientStatusSnapshot.Availability.UNKNOWN
+                : "absent".equals(resolution) ? ClientStatusSnapshot.Availability.ABSENT
+                : "unavailable".equals(resolution) ? ClientStatusSnapshot.Availability.UNAVAILABLE
+                : !locallyEnabled ? ClientStatusSnapshot.Availability.DISABLED
+                : !serverAllows ? ClientStatusSnapshot.Availability.SERVER_BLOCKED
+                : ClientStatusSnapshot.Availability.AVAILABLE;
+    }
+
     private static dev.vox.lss.common.diagnostics.ClientDiagnosticSnapshot captureDetails(LodRequestManager manager) {
         var tracker = FarPlayerClientSupport.tracker();
         boolean farActive = tracker.rostersApplied() > 0 || tracker.trackedCount() > 0;

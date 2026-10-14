@@ -202,7 +202,7 @@ case "$SCENARIO" in
     warm-rejoin-summary|dirty-while-offline-summary|evicted-tscache-rejoin) ;;
     stamp-heal-prime|stamp-heal-rejoin) ;;
     hybrid-boundary) ;;
-    journeymap-map|map-throughput|xaero-memory) ;;
+    journeymap-map|map-throughput|xaero-memory|xaero-nether-bands) ;;
     paper-dirty-falling-block|paper-store-unfired-event) ;;
     *)
         echo "[soak] ERROR: Unknown scenario '$SCENARIO'"
@@ -267,6 +267,17 @@ case "$SCENARIO" in
                                 # -Psoak.frameThrottle=..., -Psoak.clientJvmArgs=...).
                                 if [[ -z "${SOAK_WORLD_FROM:-}" || " ${SOAK_CLIENT_GRADLE_ARGS:-} " != *" -Plss.xaeroRuntime=true "* ]]; then
                                     echo "[soak] ERROR: xaero-memory needs SOAK_WORLD_FROM and -Plss.xaeroRuntime=true in SOAK_CLIENT_GRADLE_ARGS"
+                                    exit 1
+                                fi ;;
+    xaero-nether-bands)         CLIENT_RUNS=1; EXPECTED_SECONDS=960
+                                # The cave-layers spike (2026-10-13, fill-on-switch): a lod-64
+                                # Nether over real terrain (SOAK_WORLD_FROM) walked across four
+                                # heights so Xaero's band changes, Xaero's World Map on the client.
+                                # The arms come from SOAK_CLIENT_GRADLE_ARGS: B-I (fill off) with
+                                # -Psoak.clientJvmArgs=-Dlss.xaero.bandFill=false, fill-on-switch
+                                # by default; -Psoak.frameThrottle=1000 for the unfocused arm.
+                                if [[ -z "${SOAK_WORLD_FROM:-}" || " ${SOAK_CLIENT_GRADLE_ARGS:-} " != *" -Plss.xaeroRuntime=true "* ]]; then
+                                    echo "[soak] ERROR: xaero-nether-bands needs SOAK_WORLD_FROM and -Plss.xaeroRuntime=true in SOAK_CLIENT_GRADLE_ARGS"
                                     exit 1
                                 fi ;;
     map-throughput)             CLIENT_RUNS=1; EXPECTED_SECONDS=960
@@ -653,6 +664,16 @@ joinedFirstServer:true
 renderDistance:8
 soundCategory_master:0.0
 OPTS
+
+# Step 6d: the cave-layers spike compares arms, so each starts from Xaero's DEFAULT settings
+# (map writing on, cave mode Layered/auto) and an EMPTY Xaero map store — a previous arm's band
+# regions on disk would turn this arm's fresh grants into loads of old files. Only the
+# disposable soak-client run directory is touched.
+if [[ "$SCENARIO" == "xaero-nether-bands" ]]; then
+    rm -rf "$CLIENT_RUN_DIR/xaero" "$CLIENT_RUN_DIR/config/xaero"
+    rm -f "$CLIENT_RUN_DIR"/config/xaeroworldmap*.txt
+    echo "[soak] Reset the soak client's Xaero map store and Xaero settings to defaults"
+fi
 
 # Step 7: Clear stale server log and stale soak-results from previous runs
 rm -f "$SERVER_RUN_DIR/logs/latest.log"

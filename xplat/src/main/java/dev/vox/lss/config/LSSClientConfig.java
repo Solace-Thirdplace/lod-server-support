@@ -188,6 +188,8 @@ public final class LSSClientConfig {
     /** Map ingestion (Xaero's World Map, JourneyMap): the neutral switch, timing reconnect. */
     public boolean mapIngestionEnabled() { return snapshot().integrations().mapIngestion().enabled(); }
     public boolean mapIngestionBackpressure() { return snapshot().integrations().mapIngestion().backpressure(); }
+    /** Xaero cave-layer fill store cap in MiB (sidecar key); 0 = no store and no fill on switch. */
+    public int mapIngestionNetherStoreMb() { return snapshot().integrations().mapIngestion().netherStoreMb(); }
     public boolean enableIngestBackpressure() { return snapshot().lod().download().ingestBackpressure(); }
     public int lodColumnsPerSecondLimit() { return snapshot().lod().download().maxColumnsPerSecond(); }
     public boolean enableAdaptiveTransferRate() { return snapshot().lod().download().adaptiveRate(); }

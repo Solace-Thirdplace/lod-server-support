@@ -45,6 +45,9 @@ final class SettingsSchemaSpecs {
         server.add(new Spec("privacy.xray.mode", "xrayObfuscation", Kind.STRING, Timing.R, Platform.ALL, false));
         server.add(new Spec("privacy.xray.max_y_blocks", "xrayMaxBlockHeight", Kind.INTEGER, Timing.R, Platform.ALL, false));
         server.add(new Spec("privacy.xray.hidden_blocks", "xrayHiddenBlocks", Kind.STRING_LIST, Timing.R, Platform.ALL, false));
+        // Map policy (map-policy plan A3.1): hot via reload. The legacy JSON name never
+        // existed (the key is YAML-born), so a JSON migration reads it absent = false.
+        server.add(new Spec("privacy.request_no_map_ingestion", "requestNoMapIngestion", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         server.add(new Spec("far_players.mode", "farPlayers", Kind.STRING, Timing.H, Platform.ALL, false));
         server.add(new Spec("far_players.update_interval_ticks", "farPlayersUpdateIntervalTicks", Kind.INTEGER, Timing.H, Platform.ALL, false));
         server.add(new Spec("far_players.distance.min_blocks", "farPlayersMinDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));
@@ -78,6 +81,9 @@ final class SettingsSchemaSpecs {
         // Xaero-only keys were; integrations.xaero_map.* is a read alias (SettingsSchema).
         client.add(new Spec("integrations.map_ingestion.enabled", "enableXaeroMapBridge", Kind.BOOLEAN, Timing.S, Platform.ALL, false));
         client.add(new Spec("integrations.map_ingestion.backpressure", "enableXaeroMapBackpressure", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
+        // Xaero cave-layer fill store (cave-layers plan §B10.3): lives in the experimental
+        // sidecar so the main file stays readable by 0.18.0 and older.
+        client.add(new Spec("integrations.map_ingestion.nether_store_mib", "xaeroNetherStoreMB", Kind.INTEGER, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.enabled", "farPlayersEnabled", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.distance.min_blocks", "farPlayersMinDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.distance.max_blocks", "farPlayersMaxDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));
