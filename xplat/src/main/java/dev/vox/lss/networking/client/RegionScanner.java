@@ -207,15 +207,17 @@ class RegionScanner extends SpiralScanner {
 
     // ---- the walk (hybrid-scan-plan.md §2.1: phase 1 near rings, phase 2 far residue) ----
 
-    /** Largest ring wholly inside the 1-buffered Euclidean exclusion (corner test:
-     *  ring r is fully rendered iff 2·(r−1)² < vd²) — phase 1 starts at r₀+1, the
-     *  first ring with an unrendered cell (final-review-verified; brute-pinned). */
+    /** Largest ring wholly inside the vanilla-view exclusion — phase 1 starts at r₀+1,
+     *  the first ring with an unrendered cell (brute-pinned). Corner test: the exclusion
+     *  is monotone in |dx| and |dz|, so ring r is wholly excluded iff its corner (r,r) is.
+     *  Asked of {@link SpiralScanner#isVanillaRendered} itself, never a closed form: the
+     *  shape is the line's own (on 1.21.2+ the corner test is 2·(r−1)² < vd²; 1.21.1
+     *  excludes less — at vd=2 its ring-2 corners are LOD cells). ≤ ~vd/√2 iterations,
+     *  once per walk. */
     static int wholeExcludedRings(int viewDistance) {
         if (viewDistance <= 0) return 0;
-        long vd2 = (long) viewDistance * viewDistance;
-        int r = (int) (viewDistance / Math.sqrt(2.0)) + 1;
-        while (r > 0 && 2L * (r - 1) * (r - 1) >= vd2) r--;
-        while (2L * r * r < vd2) r++;
+        int r = 0;
+        while (SpiralScanner.isVanillaRendered(r + 1, r + 1, 0, 0, viewDistance)) r++;
         return r;
     }
 
