@@ -325,6 +325,28 @@ class HarnessTest(unittest.TestCase):
         result = self.invoke(FAKE_MODE='build-fail')
         self.assertIn('Building mod', result.stdout)
 
+    def test_signal_before_pid_capture_still_reaps_and_releases_lock(self):
+        # Bash runs a pending trap between a background launch and its `$!` capture.
+        # The unrecorded supervisor holds the lock, so the controller's cleanup must
+        # reap it too, before exiting (the 2026-10-14 second red of the test above).
+        self.executable(self.root / 'scripts/fixture-unrecorded.sh', (
+            '#!/usr/bin/env bash\n'
+            'source "$(dirname "$0")/lib/harness-lock.sh"\n'
+            'harness_acquire || exit 1\n'
+            'owner=$BASHPID\n'
+            'LSS_HARNESS_OWNER_PID=$owner python3 "$HARNESS_LIB_DIR/owned-process.py" -- python3 -c '
+            '\'import os, pathlib, time; pathlib.Path("child-pid").write_text(str(os.getpid())); '
+            'pathlib.Path("ready").touch(); time.sleep(60)\' &\n'
+            'wait\n'))
+        process, _ = self.start('fixture-unrecorded.sh', ())
+        self.wait_file(self.root / 'ready')
+        child = int((self.root / 'child-pid').read_text())
+        process.terminate()
+        self.assertEqual(143, process.wait(timeout=10))
+        self.assertFalse(Path(f'/proc/{child}').exists(), 'the owned child outlived its controller')
+        result = self.invoke(FAKE_MODE='build-fail')
+        self.assertIn('Building mod', result.stdout)
+
     def test_sigkill_controller_still_reaps_game_before_releasing_lock(self):
         process, _ = self.start(FAKE_MODE='timeout')
         self.wait_file(self.root / 'ready')

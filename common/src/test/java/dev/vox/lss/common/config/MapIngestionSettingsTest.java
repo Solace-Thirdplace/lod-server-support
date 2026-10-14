@@ -54,6 +54,43 @@ class MapIngestionSettingsTest {
         assertFalse(template().contains("xaero_map"), "new files are written canonical");
     }
 
+    @Test void theNetherStoreKnobLivesInTheSidecarSoOlderVersionsStillReadTheMainFile() {
+        var schema = SettingsSchema.client();
+        var codec = new YamlSettingsCodec<>(schema);
+        String path = "integrations.map_ingestion.nether_store_mib";
+        assertEquals(256, schema.defaults().integrations().mapIngestion().netherStoreMb());
+        assertNull(SettingsSchema.lookup(YamlSettingsCodec.readTree(codec.defaults()), path),
+                "new files carry no key a 0.18.0 client would reject");
+        var off = codec.editSplit(codec.parse(codec.defaults()), Map.of(path, 0));
+        assertNull(SettingsSchema.lookup(YamlSettingsCodec.readTree(off.main()), path));
+        assertEquals(0, ((Number) SettingsSchema.lookup(YamlSettingsCodec.readTree(off.sidecar()), path)).intValue());
+        assertEquals(0, codec.parse(off.main(), off.sidecar()).normalized().integrations().mapIngestion().netherStoreMb(),
+                "0 = no store and no fill on switch");
+        var tiny = codec.parse(off.main(), bytes("integrations:\n  map_ingestion:\n    nether_store_mib: 5\n"));
+        assertEquals(16, tiny.normalized().integrations().mapIngestion().netherStoreMb(), "the 16 MiB floor");
+        // Review fold O4-F6: the store's index lives on the heap, so the cap tops out at 1 GiB. A
+        // file written with more (a 0.19.0 candidate allowed 65536) applies the maximum and says
+        // so; the file keeps its value (startup never rewrites a file).
+        var huge = codec.parse(off.main(), bytes("integrations:\n  map_ingestion:\n    nether_store_mib: 65536\n"));
+        assertEquals(1024, huge.normalized().integrations().mapIngestion().netherStoreMb(), "the 1024 MiB ceiling");
+        assertEquals(65536, huge.configured().integrations().mapIngestion().netherStoreMb(), "the file's value is kept");
+        assertTrue(huge.normalizations().stream().anyMatch(n -> n.path().equals(path)
+                && Integer.valueOf(65536).equals(n.requested()) && Integer.valueOf(1024).equals(n.effective())),
+                huge.normalizations().toString());
+        assertEquals(1024, schema.descriptorsByPath().get(path).maximum().intValue());
+        // An upgraded (alias-group) file: a main-file save canonicalizes the group and still
+        // keeps the knob out of the main file.
+        var saved = codec.editSplit(codec.parse(bytes(oldFile(true, true)), off.sidecar()), Map.of("lod.receive", false));
+        String main = new String(saved.main(), StandardCharsets.UTF_8);
+        assertTrue(main.contains("map_ingestion:") && !main.contains("xaero_map:"), main);
+        assertFalse(main.contains("nether_store_mib:"), main);
+        assertEquals(0, codec.parse(saved.main(), saved.sidecar()).configured().integrations().mapIngestion().netherStoreMb());
+        var back = codec.editSplit(codec.parse(saved.main(), saved.sidecar()), Map.of(path, 256));
+        assertNull(back.sidecar(), "the default needs no sidecar");
+        assertTrue(schema.aliases().keySet().stream().noneMatch(a -> a.endsWith("nether_store_mib")),
+                "the old group never had it");
+    }
+
     @Test void oldFilesReadUnderTheCanonicalPath() {
         var codec = new YamlSettingsCodec<>(SettingsSchema.client());
         var off = codec.parse(bytes(oldFile(false, true)));

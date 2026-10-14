@@ -20,6 +20,8 @@ public final class RegionSummaryDiagnostics {
     private final AtomicLong stampsFrames = new AtomicLong();
     private final AtomicLong stampsEntries = new AtomicLong();
     private final AtomicLong stampsBytes = new AtomicLong();
+    private final AtomicLong framesExpired = new AtomicLong();
+    private final AtomicLong framesReassembled = new AtomicLong();
 
     /** One C2S request accepted at ingress (pre-clamp, pre-admission). */
     public void recordRequest() { this.requests.incrementAndGet(); }
@@ -48,6 +50,16 @@ public final class RegionSummaryDiagnostics {
         this.bytes.addAndGet(frameBytes);
     }
 
+    /** One ready frame dropped unsent at {@code FRAME_RETRY_TTL_NANOS}: RETRY-refused
+     *  past the bound, or aged out unconsulted with its request superseded/moot. Not
+     *  exported; shown on the diag line only when nonzero. */
+    public void recordFrameExpired() { this.framesExpired.incrementAndGet(); }
+
+    /** One unconsulted frame that aged out while its request was still owed (a tick-
+     *  thread stall between assembly and drain) and was re-queued for a fresh assembly.
+     *  Not exported; shown on the diag line only when nonzero. */
+    public void recordFrameReassembled() { this.framesReassembled.incrementAndGet(); }
+
     /** One frame assembly's wall duration — high-water only (gauge, never exported
      *  as a monotonic counter). */
     public void recordRefreshMillis(long ms) {
@@ -59,11 +71,18 @@ public final class RegionSummaryDiagnostics {
     public String diagLineOrNull() {
         long reqs = this.requests.get();
         if (reqs == 0) return null;
-        return String.format(
+        String line = String.format(
                 "Summary: reqs=%d, frames=%d, tiles known=%d never_clean=%d no_region=%d, range_filtered=%d, bytes=%d, refresh_ms_max=%d, stamps=%d/%d",
                 reqs, this.frames.get(), this.tilesKnown.get(), this.tilesNeverClean.get(),
                 this.tilesNoRegion.get(), this.rangeFiltered.get(), this.bytes.get(),
                 this.refreshMsMax.get(), this.stampsEntries.get(), this.stampsFrames.get());
+        // Only when nonzero, so the healthy line stays byte-unchanged.
+        long expired = this.framesExpired.get();
+        long reassembled = this.framesReassembled.get();
+        if (expired != 0 || reassembled != 0) {
+            line += String.format(", expired=%d, reassembled=%d", expired, reassembled);
+        }
+        return line;
     }
 
     public long getRequests() { return this.requests.get(); }
@@ -77,6 +96,8 @@ public final class RegionSummaryDiagnostics {
     public long getStampsFrames() { return this.stampsFrames.get(); }
     public long getStampsEntries() { return this.stampsEntries.get(); }
     public long getStampsBytes() { return this.stampsBytes.get(); }
+    public long getFramesExpired() { return this.framesExpired.get(); }
+    public long getFramesReassembled() { return this.framesReassembled.get(); }
 
     /** One stamped-up_to_date frame put on the wire (sender-confirmed, the
      *  frames/bytes discipline). */

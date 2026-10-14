@@ -27,6 +27,20 @@ public final class SoakDialectOverride {
         return DIALECT == LSSConstants.V19_COMPAT_PROTOCOL_VERSION;
     }
 
+    /** The handshake capabilities this client declares: under the v19 emulation, the
+     *  far-player (4) and map-policy (8) bits a real protocol-19 client never declared are
+     *  stripped (map-policy plan A2 — lever fidelity). Identity in every production launch. */
+    public static int stripCapabilities(int capabilities) {
+        return stripCapabilitiesFor(isV19(), capabilities);
+    }
+
+    /** Pure form for the Tier 1 pin. */
+    public static int stripCapabilitiesFor(boolean v19Emulation, int capabilities) {
+        if (!v19Emulation) return capabilities;
+        return capabilities & ~(LSSConstants.CAPABILITY_FAR_PLAYERS
+                | LSSConstants.CAPABILITY_MAP_POLICY);
+    }
+
     /** The protocol version this client announces and requires echoed. */
     public static int announceVersion() {
         return isV19() ? LSSConstants.V19_COMPAT_PROTOCOL_VERSION : LSSConstants.PROTOCOL_VERSION;
