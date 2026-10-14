@@ -108,3 +108,14 @@ The SpongeVanilla plugin (`sponge/`, experimental + best-effort) is the first se
 | 1.21.1 | `1.21.1-12.0.3` | yes | `12.0.0` | 0.2.2 | `lambda$full$2` | `Commands.LEVEL_GAMEMASTERS` |
 
 The FULL lambda is selected by descriptor, `(ChunkAccess, WorldGenContext, GenerationChunkHolder)ChunkAccess`, so the per-line synthetic name never appears in source; `SpongeMixinTargetContractTest` asserts exactly one match that constructs the `LevelChunk`. The `generated` flag is fabric-api's own derivation (`!(proto instanceof ImposterProtoChunk)`) on every line. Refresh chores: a timestamped API snapshot can expire upstream (the build fails loudly at resolution; bump `sponge_api_version`), and an RC SpongeVanilla pin is replaced by the line's first recommended build once Sponge publishes one (update `spongevanilla_version` + `spongevanilla_sha1` together; the boot smoke re-proves it).
+
+### Vanilla send pad and the LOD exclusion (2026-10-14)
+
+The client leaves to vanilla exactly the chunks vanilla delivers together with their whole 8-neighbourhood (`SpiralScanner.isVanillaRendered`; Xaero's native `MapWriter.writeChunk` maps a client chunk only when all 8 neighbours are loaded). It asks the line's own `ChunkTrackingView.isWithinDistance(…, includeOuter=true)` — the send test vanilla `ChunkMap` and Paper/Moonrise's `wantChunkLoaded` both use — at the outward diagonal neighbour, never a copied formula. The send pad is the per-line difference:
+
+| Line | `isWithinDistance(…, true)` | Exclusion (`R` = effective render distance) |
+| --- | --- | --- |
+| 1.21.1 (Mojang + NeoForge 21.1.248) | `i=max(0,abs(dx)-1)`, `j=max(0,abs(dz)-1)`; `max(0,max(i,j)-1)² + min(i,j)² < R²` (dominant axis padded only) | `max(0,max(abs(dx),abs(dz))-1)² + min(abs(dx),abs(dz))² < R²` — `isInViewDistance` minus the circle-edge seam cells, e.g. (±3,±4)/(±4,±3) at R=4 |
+| 1.21.8, 1.21.10, 1.21.11, 26.1, 26.2, 26.3 | `max(0,abs(dx)-2)² + max(0,abs(dz)-2)² < R²` (both axes padded) | exactly `isInViewDistance`: `max(0,abs(dx)-1)² + max(0,abs(dz)-1)² < R²` |
+
+`isInViewDistance` itself is identical on every line. Pin: `VanillaViewExclusionTest` (oracle equality against the line's vanilla, plus a literal per-line shape branch on `minecraft_version`). Before this fix 1.21.1 excluded the whole `isInViewDistance` disc, leaving the seam cells without map data or LOD — the eight black Xaero tiles of the 2026-10-14 C-1.21.1 run. A cross-version Via connection can still disagree with the client's own pad (the client cannot see the server's).
