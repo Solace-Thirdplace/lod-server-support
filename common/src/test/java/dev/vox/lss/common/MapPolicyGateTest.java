@@ -15,8 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * (the service gate feeds the same {@code configEnabled} input as the kill switch).
  * The rung sits after DISABLED and before REGISTER, refuses everything but a
  * CURRENT-dialect session declaring {@code CAPABILITY_MAP_POLICY}, replies (never
- * silence) and never registers — and the disarmed ladder is byte-identical to the
- * pre-policy 8-arg form.
+ * silence) and never registers — and disarmed, the bit changes no decision.
  */
 class MapPolicyGateTest {
 
@@ -93,17 +92,27 @@ class MapPolicyGateTest {
         assertFalse(via.sendSessionConfig());
     }
 
+    /** Disarmed, the policy is inert across the whole input domain: the rung never fires
+     *  and the map-policy bit changes no decision (0.19.0 review O6: this replaced a
+     *  comparison of the 8-arg overload with the 9-arg form it merely delegates to, which
+     *  could not fail). The pre-policy outcomes themselves are pinned by the oracle in
+     *  {@link #theFullLadderTable}. */
     @Test
-    void theDisarmedLadderIsTheEightArgLadder() {
+    void theDisarmedLadderIgnoresTheMapPolicyBit() {
         for (int version : new int[]{14, 16, 17, 18, 19, 20, 21}) {
             for (int caps = 0; caps < 16; caps++) {
                 for (boolean enabled : new boolean[]{false, true}) {
                     for (boolean via : new boolean[]{false, true}) {
-                        var legacy = HandshakeGate.evaluate(version, caps, enabled, true, true,
-                                true, true, via);
-                        var widest = HandshakeGate.evaluate(version, caps, enabled, true, true,
-                                true, true, via, false);
-                        assertEquals(legacy, widest, "v" + version + " caps=" + caps);
+                        for (boolean service : new boolean[]{false, true}) {
+                            String row = "v" + version + " caps=" + caps + " enabled=" + enabled
+                                    + " via=" + via + " service=" + service;
+                            var with = HandshakeGate.evaluate(version, caps | BIT, enabled,
+                                    service, true, true, true, via, false);
+                            var without = HandshakeGate.evaluate(version, caps & ~BIT, enabled,
+                                    service, true, true, true, via, false);
+                            assertEquals(without, with, row);
+                            assertTrue(with.outcome() != Outcome.MAP_POLICY_REFUSED, row);
+                        }
                     }
                 }
             }
