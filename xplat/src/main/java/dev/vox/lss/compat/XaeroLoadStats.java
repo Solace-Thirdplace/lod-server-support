@@ -7,13 +7,12 @@ import java.util.LinkedHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Region-load instrumentation for the cave-layers spike (plan §B0): per path (reliable,
- * best-effort), the grant → loadState-2 latency as a bounded histogram, and regions that
- * VANISHED after a grant — Xaero removed (or replaced) the region object before the first
- * commit landed in it, the {@code countChunks()==0} removal the plan warns about. Main thread
- * only (every observation site runs in the pump ladder). Bounded: at most {@link #MAX_PENDING}
- * outstanding grants are followed (oldest dropped untracked) and a grant is forgotten after
- * {@link #FOLLOW_MILLIS}.
+ * Region-load instrumentation (cave-layers plan §B0, kept for the fill-on-switch spike): the
+ * grant → loadState-2 latency of the bridge's region loads as a bounded histogram, and regions
+ * that VANISHED after a grant — Xaero removed (or replaced) the region object before the first
+ * commit landed in it. Main thread only (every observation site runs in the pump ladder).
+ * Bounded: at most {@link #MAX_PENDING} outstanding grants are followed (oldest dropped
+ * untracked) and a grant is forgotten after {@link #FOLLOW_MILLIS}.
  */
 final class XaeroLoadStats {
     static final int MAX_PENDING = 512;
@@ -21,22 +20,20 @@ final class XaeroLoadStats {
     /** Histogram bucket upper bounds, ms; the last bucket is open-ended. */
     static final long[] BUCKETS_MS = {50, 100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, Long.MAX_VALUE};
 
-    /** One followed grant: the region object granted, when, by which path, and whether its
-     *  load has been observed. */
+    /** One followed grant: the region object granted, when, and whether its load has been
+     *  observed. */
     private static final class Pending {
         final Object region;
         final long grantedAtMillis;
-        final boolean bestEffort;
         boolean loaded;
 
-        Pending(Object region, long grantedAtMillis, boolean bestEffort) {
+        Pending(Object region, long grantedAtMillis) {
             this.region = region;
             this.grantedAtMillis = grantedAtMillis;
-            this.bestEffort = bestEffort;
         }
     }
 
-    /** A bounded latency histogram (one per path). */
+    /** A bounded latency histogram. */
     static final class Histogram {
         final long[] counts = new long[BUCKETS_MS.length];
         long total;
@@ -71,13 +68,11 @@ final class XaeroLoadStats {
     }
 
     private final LinkedHashMap<RegionKey, Pending> pending = new LinkedHashMap<>();
-    final Histogram reliable = new Histogram();
-    final Histogram bestEffort = new Histogram();
-    final AtomicLong vanishedReliable = new AtomicLong();
-    final AtomicLong vanishedBestEffort = new AtomicLong();
+    final Histogram loads = new Histogram();
+    final AtomicLong vanished = new AtomicLong();
 
     /** A load was requested for {@code region} (a re-request of a followed grant keeps its clock). */
-    void onGrant(RegionKey key, Object region, boolean bestEffort, long nowMillis) {
+    void onGrant(RegionKey key, Object region, long nowMillis) {
         var existing = this.pending.get(key);
         if (existing != null && existing.region == region) return;
         if (existing != null) this.pending.remove(key);
@@ -86,7 +81,7 @@ final class XaeroLoadStats {
             it.next();
             it.remove();
         }
-        this.pending.put(key, new Pending(region, nowMillis, bestEffort));
+        this.pending.put(key, new Pending(region, nowMillis));
     }
 
     /** A probe read {@code region}'s load state under its monitor. */
@@ -100,7 +95,7 @@ final class XaeroLoadStats {
         }
         if (!p.loaded && loadState == 2) {
             p.loaded = true;
-            (p.bestEffort ? this.bestEffort : this.reliable).add(nowMillis - p.grantedAtMillis);
+            this.loads.add(nowMillis - p.grantedAtMillis);
         } else if (nowMillis - p.grantedAtMillis > FOLLOW_MILLIS) {
             this.pending.remove(key);
         }
@@ -119,7 +114,7 @@ final class XaeroLoadStats {
     }
 
     private void vanished(Pending p) {
-        (p.bestEffort ? this.vanishedBestEffort : this.vanishedReliable).incrementAndGet();
+        this.vanished.incrementAndGet();
     }
 
     int followed() {
