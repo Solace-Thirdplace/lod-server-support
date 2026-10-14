@@ -1,9 +1,10 @@
 # 0.19.0 map ingestion: server map policy (#316) and Xaero cave layers (#313)
 
-Status: PLANNED v3, 2026-10-13. Plan review (4 Opus + 1 Fable) is folded
-throughout; §E maps each finding to the place that resolves it. Target release:
-0.19.0, which waits until both parts are done, B-II included (user decision
-2026-10-13, §D).
+Status: IMPLEMENTED in the 0.19.0 candidates (2026-10-14). Plan review (4 Opus + 1
+Fable) is folded throughout; §E maps each finding to the place that resolves it.
+**B-II was superseded:** it failed its spike, and fill-on-switch (§B10) replaced
+it by user decision on 2026-10-13. Read §B2's B-II material and §B0 as the history
+behind §B10, not as the shipped design.
 
 - **Part A** (#316): a server option that asks clients not to write LOD terrain
   into map mods.
@@ -437,6 +438,8 @@ layer shows (`XaeroSession:1346-1352`). So nothing is written in the Nether.
 (JourneyMap plan §3.4).
 
 ### B2. Design and phasing
+
+*B-II below is superseded by §B10 (fill-on-switch); B-I shipped as designed.*
 
 Both phases rest on one fact: LSS delivers a column once, so a band that isn't
 written when the column arrives stays empty.
