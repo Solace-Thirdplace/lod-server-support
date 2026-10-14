@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "eedccc45b0f2c2794f79cb5983df0914253d724a",
-    "1.21.10": "66556768d73a4816b9ed3b499e88af73ac4ecadf",
-    "1.21.11": "e3731deab0bbd4e683bc372555b3bc3ba128d7c6",
-    "26.1": "1b53d8cd1e05b0d6219619bf205e3d21b8360f83",
-    "26.2": "5c2e8eeeb7a1194772d2ddab516bcf5b65ad8518",
-    "26.3": "ca017293d3c5392ae499cb27fee681712b5c2e62"
+    "1.21.1": "99a1d2e41682550fc68237494da6c87852d5c1b3",
+    "1.21.10": "fa409b4cfcdc3cebacdcdf462fe92354138186b3",
+    "1.21.11": "23bcbf0f1bed2bc946c452055f121cd5f308229c",
+    "26.1": "48989fe96067e813a346d5b015f54a22d9cb4c04",
+    "26.2": "d54506807ebcc391ca7aa0a4b8f85f20c1ae0b34",
+    "26.3": "60ab1dc0e330471c262fe3bf58296567ceaa87d9"
   },
   "files": {
     ".github/line.env": {
@@ -3808,6 +3808,9 @@
       ]
     },
     "fabric/src/test/java/dev/vox/lss/networking/client/TwoAxisWiringContractTest.java": {
+      "kind": "identical"
+    },
+    "fabric/src/test/java/dev/vox/lss/networking/client/VanillaViewExclusionTest.java": {
       "kind": "identical"
     },
     "fabric/src/test/java/dev/vox/lss/networking/client/VoxelColumnReceiverTest.java": {
