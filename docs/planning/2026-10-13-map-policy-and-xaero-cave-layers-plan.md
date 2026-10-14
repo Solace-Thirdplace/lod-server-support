@@ -661,7 +661,7 @@ are off.
 - Surface behavior is unchanged. Multiplayer is unaffected, because
   `caveStartOutdated` is always false there.
 
-### B6. Best-effort band pipeline (B-II)
+### B6. Best-effort band pipeline (B-II) — SUPERSEDED by B10 (spike failed, §B10.1)
 
 **Isolation from the reliable path.** It has its own queue, with its own count
 and byte caps.
@@ -780,6 +780,60 @@ and without Xaero's Minimap. Check:
 
 ---
 
+### B10. Fill-on-switch (replaces B-II; user decision 2026-10-13)
+
+#### B10.1 Why B-II was dropped: the B0 spike
+
+The xaero-nether-bands soak walked a harness client through Nether bands 2, 3, 4 and 6
+for 15 minutes on two copies of the 26.3 test world. Results are under
+`soak-results/xaero-nether-bands-*` on the 26.3 worktree. "Baseline" is B-I only.
+
+| Run | Arrival | Outcome |
+|---|---|---|
+| B-II round 1 | Trickle (~20 columns/s, server generating) | Starved the reliable queue (1–2k tiles for ~9 min). `grant_max` 23. Loss 10.9%. Heap 1.9×. |
+| B-II round 2, after decoupling | Trickle | Reliable path OK; Voxy 0.94×. Region load p95 2× (6.4 s vs 3.2 s). Heap 1.8×. Loss 30%. 1909 of 1977 grants fruitless (`defer_not_resting` 9389). |
+| B-II, pre-generated world | Burst (18.2k columns in ~100 s) | Queue full in 15 s. 84k band tiles refused; the 4092 queued expired. **7 tiles written.** |
+
+Root cause: Xaero saves and re-caches regions of layers the player isn't viewing every
+600 ms, so they are almost never resting. Writes into them fight that cycle. Fast
+arrival overflows any bounded queue. Every run wrote all 8 bands' region files (round 1:
+21–25 regions per band, ~32 MB at radius 64), but at a cost the criteria reject.
+
+The pre-generated runs also showed B-I's real limit. After the burst, the walk visited
+bands 4, 6 and 3 with no new arrivals, because LSS sends a column once. Those bands got
+nothing from LSS.
+
+#### B10.2 Design
+
+**Write only the layer Xaero shows,** which is the path that works in every run. Fill a
+layer from a client-side copy of the columns when Xaero switches to it.
+
+- **Store.** A bounded, disk-backed client store of received columns, for ceiling
+  dimensions only.
+  - Keyed like the client column cache: server identity, aliases and world
+    sub-buckets, then dimension.
+  - It holds what the cave/Full extraction needs, compressed.
+  - It is crash-safe, does its IO off the main and render threads, and is LRU-capped
+    (default 256 MiB).
+  - It is cleared by `/lss clearcache` and `/lss reset`; a re-serve overwrites an entry.
+  - No capture happens while the server denies map ingestion, while local map
+    ingestion is off, in world-save mode, or without the cave bindings.
+- **Trigger.** Xaero's current layer in a ceiling dimension changes (a Layered band or
+  Full) and stays stable for a short debounce. A fill job then reads stored positions
+  within min(LOD distance, cap), nearest first, skipping positions already written to
+  that layer this session.
+  - Coverage is session-scoped, so it heals across sessions and Xaero map resets.
+  - Tiles are extracted off-thread and offered to the reliable queue for the shown
+    layer as lease-free tiles that never report, owe or re-serve.
+  - The job is paced below live arrivals.
+  - It is cancelled by a switch, a dimension or world change, a disconnect, or a deny.
+- **Overworld and End.** Unchanged (B-I): no store. Terrain that arrives underground
+  goes into the band you're in; `/lss clearcache` backfills.
+- **Spike law.** After each band switch in the walk, the band receives at least 90% of
+  the stored positions within radius within 90 s, and there are no Xaero exceptions.
+  Reliable load p95 and heap are compared by hand against the B-I arm. Run both spike
+  worlds (trickle and pre-generated).
+
 ## C. Shared: validation, docs, release, ports
 
 **Live gates on main**, on the local rig with harness clients under Xvfb :99.
@@ -835,6 +889,8 @@ Part B: B0 (for B-II) and the B9 live gate.
 3. **Release sequencing:** the 0.19.0 release waits until everything is done:
    Part A, B-I and B-II. If the B0 spike fails, the user decides the next step
    from its numbers.
+4. **After the spike (B10.1):** a pre-generated rerun was requested, then B-II
+   was replaced by fill-on-switch (B10). 0.19.0 waits for it.
 
 ## E. Review fold (2026-10-13: 4 Opus + 1 Fable)
 

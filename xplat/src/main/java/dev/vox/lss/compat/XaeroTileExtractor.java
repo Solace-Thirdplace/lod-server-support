@@ -94,15 +94,14 @@ final class XaeroTileExtractor {
     record PreparedTile(int chunkX, int chunkZ, int worldBottomY,
                         BlockState[] floorState, short[] floorY, short[] topY,
                         ResourceKey<Biome>[] biome, byte[] light, boolean[] glowing,
-                        OverlayRun[][] overlays, int layer, int caveStart, int depth,
-                        TileClass tileClass) {
+                        OverlayRun[][] overlays, int layer, int caveStart, int depth) {
         /** A surface tile at Xaero's default depth (the pre-cave-layers shape). */
         PreparedTile(int chunkX, int chunkZ, int worldBottomY,
                      BlockState[] floorState, short[] floorY, short[] topY,
                      ResourceKey<Biome>[] biome, byte[] light, boolean[] glowing,
                      OverlayRun[][] overlays) {
             this(chunkX, chunkZ, worldBottomY, floorState, floorY, topY, biome, light, glowing,
-                    overlays, SURFACE, SURFACE, DEFAULT_CAVE_DEPTH, TileClass.RELIABLE);
+                    overlays, SURFACE, SURFACE, DEFAULT_CAVE_DEPTH);
         }
 
         /** Extracted in a cave mode — the {@code cave} argument of {@code MapBlock.write}. */
@@ -119,30 +118,22 @@ final class XaeroTileExtractor {
     static final int DEFAULT_CAVE_DEPTH = 30;
 
     /**
-     * A map-layer class (cave-layers plan §B2 — a client map concept, never a wire one).
-     * RELIABLE tiles keep every guarantee of the bridge (backpressure, owed debt, drop
-     * reports, one ingest lease each); BEST_EFFORT tiles are B-II's bands outside the layer
-     * Xaero shows, which never owe or report. Fixed at extraction.
-     */
-    enum TileClass { RELIABLE, BEST_EFFORT }
-
-    /**
      * One extraction target: the Xaero layer the tile commits to and the (caveStart, depth)
      * it is extracted with. Bands use the band TOP as caveStart (§B3: deterministic, so tiles
      * of one band shade consistently), Full uses {@link #FULL}, the surface {@link #SURFACE}.
      */
-    record LayerTarget(int layer, int caveStart, int depth, TileClass tileClass) {
+    record LayerTarget(int layer, int caveStart, int depth) {
         static LayerTarget surface(int depth) {
-            return new LayerTarget(SURFACE, SURFACE, depth, TileClass.RELIABLE);
+            return new LayerTarget(SURFACE, SURFACE, depth);
         }
 
         static LayerTarget full(int depth) {
-            return new LayerTarget(FULL, FULL, depth, TileClass.RELIABLE);
+            return new LayerTarget(FULL, FULL, depth);
         }
 
         /** Band {@code band}'s tile: caveStart = its top, min(16·band+15, maxY). */
-        static LayerTarget band(int band, int maxY, int depth, TileClass tileClass) {
-            return new LayerTarget(band, Math.min(band * 16 + 15, maxY), depth, tileClass);
+        static LayerTarget band(int band, int maxY, int depth) {
+            return new LayerTarget(band, Math.min(band * 16 + 15, maxY), depth);
         }
 
         boolean cave() {
@@ -151,7 +142,7 @@ final class XaeroTileExtractor {
     }
 
     /** The column's own level facts (decode thread): heights (top EXCLUSIVE), sky light,
-     *  and the ceiling/logical height B-II's all-band set derives from. */
+     *  and the ceiling/logical height (band fill-on-switch runs in ceiling dimensions). */
     record LevelFacts(int minY, int topY, boolean skyLight, boolean ceiling, int logicalHeight) {}
 
     /** Xaero's private {@code MapProcessor.getCaveLayer}, reimplemented: the sentinels pass
@@ -174,10 +165,9 @@ final class XaeroTileExtractor {
     }
 
     /**
-     * Extract one tile per target from ONE decode of the column (decode thread). Reliable
-     * tiles are always returned — an all-void reliable tile is the erase case; an all-void
-     * BEST_EFFORT band tile (a band buried in netherrack) is skipped (§B4: no region, no disk
-     * for nothing). {@code ignoreHeightmaps} is Xaero's {@code MapWorld.isIgnoreHeightmaps()}.
+     * Extract one tile per target from ONE decode of the column (the decode thread, or the
+     * band-fill worker for a stored column). Every target yields its tile — an all-void tile
+     * is the erase case. {@code ignoreHeightmaps} is Xaero's {@code MapWorld.isIgnoreHeightmaps()}.
      */
     static List<PreparedTile> extract(int chunkX, int chunkZ, LevelFacts level, VoxelColumnData columnData,
                                       List<LayerTarget> targets, boolean ignoreHeightmaps) {
@@ -188,8 +178,7 @@ final class XaeroTileExtractor {
                 out.add(extractSurface(chunkX, chunkZ, level.minY(), column, target.depth()));
                 continue;
             }
-            var tile = extractCave(chunkX, chunkZ, level, column, target, ignoreHeightmaps);
-            if (tile != null) out.add(tile);
+            out.add(extractCave(chunkX, chunkZ, level, column, target, ignoreHeightmaps));
         }
         return out;
     }
@@ -294,7 +283,7 @@ final class XaeroTileExtractor {
         }
         return new PreparedTile(chunkX, chunkZ, worldBottomY,
                 floorState, floorY, topY, biome, light, glowing, overlays,
-                SURFACE, SURFACE, depth, TileClass.RELIABLE);
+                SURFACE, SURFACE, depth);
     }
 
     /**
@@ -322,7 +311,6 @@ final class XaeroTileExtractor {
         var overlays = new OverlayRun[256][];
         var column = decoded.access;
         var scan = new PixelScan();
-        boolean anyFloor = false;
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 int mappedHeight = decoded.worldSurface(x, z);
@@ -349,7 +337,6 @@ final class XaeroTileExtractor {
                 byte pixelLight = 0;
                 OverlayRun[] runs = scan.finishedRuns();
                 if (scan.floorState != null) {
-                    anyFloor = true;
                     pixelLight = scan.floorLight;
                     // The overlay-free floor's light rule (loadPixel pc 755-789).
                     if (pixelLight < 15 && runs == null && scan.floorSky > pixelLight) {
@@ -359,12 +346,10 @@ final class XaeroTileExtractor {
                 light[i] = pixelLight;
                 glowing[i] = isGlowing(finalState);
                 overlays[i] = runs;
-                if (runs != null) anyFloor = true;
             }
         }
-        if (!anyFloor && target.tileClass() == TileClass.BEST_EFFORT) return null;
         return new PreparedTile(chunkX, chunkZ, minY, floorState, floorY, topY, biome, light, glowing,
-                overlays, target.layer(), target.caveStart(), target.depth(), target.tileClass());
+                overlays, target.layer(), target.caveStart(), target.depth());
     }
 
     private static final BlockState AIR = Blocks.AIR.defaultBlockState();

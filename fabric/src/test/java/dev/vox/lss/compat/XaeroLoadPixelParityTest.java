@@ -444,7 +444,7 @@ class XaeroLoadPixelParityTest {
     }
 
     private static XaeroTileExtractor.LayerTarget band(int band, XaeroTileExtractor.LevelFacts level) {
-        return XaeroTileExtractor.LayerTarget.band(band, level.topY() - 1, 30, XaeroTileExtractor.TileClass.RELIABLE);
+        return XaeroTileExtractor.LayerTarget.band(band, level.topY() - 1, 30);
     }
 
     // ---- roofs ----
@@ -603,7 +603,7 @@ class XaeroLoadPixelParityTest {
                 : y < 10 ? air() : y < 64 ? s(Blocks.STONE) : air();
         // An exact native caveStart (-5, the band -1 window [-34, -5]).
         assertParity(new Fixture("caveStart -5", OVERWORLD, column(OVERWORLD, deep, null, null, Biomes.PLAINS),
-                new XaeroTileExtractor.LayerTarget(-1, -5, 30, XaeroTileExtractor.TileClass.RELIABLE), false));
+                new XaeroTileExtractor.LayerTarget(-1, -5, 30), false));
         // The top band of each shape: caveStart clamps to maxY.
         assertEquals(255, band(15, NETHER).caveStart());
         assertEquals(319, band(19, OVERWORLD).caveStart());
@@ -628,16 +628,13 @@ class XaeroLoadPixelParityTest {
     }
 
     @Test
-    void aBestEffortBandBuriedInRockIsSkippedButAReliableOneIsNot() {
+    void aBandBuriedInRockErases() {
         Blocks3 solid = (x, y, z) -> y < 128 ? s(Blocks.NETHERRACK) : air();
         var column = column(NETHER, solid, null, null, Biomes.NETHER_WASTES);
-        var reliable = band(4, NETHER);
-        var bestEffort = XaeroTileExtractor.LayerTarget.band(4, 255, 30, XaeroTileExtractor.TileClass.BEST_EFFORT);
-        var tiles = XaeroTileExtractor.extract(0, 0, NETHER, column, List.of(reliable, bestEffort), false);
-        assertEquals(1, tiles.size(), "the all-void best-effort tile is skipped");
-        assertEquals(XaeroTileExtractor.TileClass.RELIABLE, tiles.get(0).tileClass());
+        var tiles = XaeroTileExtractor.extract(0, 0, NETHER, column, List.of(band(4, NETHER)), false);
+        assertEquals(1, tiles.size(), "every target yields its tile");
         for (int i = 0; i < 256; i++) {
-            assertEquals(Blocks.AIR.defaultBlockState(), tiles.get(0).floorState()[i], "the reliable void erases");
+            assertEquals(Blocks.AIR.defaultBlockState(), tiles.get(0).floorState()[i], "the void erases");
             assertEquals(50, tiles.get(0).topY()[i], "void topHeight = lowY (79 + 1 - 30)");
         }
     }
