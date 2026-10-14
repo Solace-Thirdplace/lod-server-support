@@ -33,9 +33,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The JourneyMap map-ingestion session (map-ingestion plan §3.4-§3.8) against the
- * real-package stubs: identity settle, one-region batches on JourneyMap's task thread,
- * the receipt doctrine (accepted only when the day map rendered under an unchanged identity;
+ * The JourneyMap map-ingestion session (map-ingestion plan §3.4-§3.8, §11) against the
+ * real-package stubs: identity settle, box-sized multi-region batches on JourneyMap's task
+ * thread with the pure decode run ahead on workers, the receipt doctrine (accepted only when the day map rendered under an unchanged identity;
  * everything else reported or requeued, never silently lost), the edge sweep, the
  * inert states that never hold the stream, the late-world-id replay, the watchdog, the
  * death latch, and the backpressure report.
@@ -71,6 +71,18 @@ class JourneyMapSessionTest {
     /** The client's own loaded chunks (the edge sweep's "already drawn" key), by packed position. */
     private final java.util.Map<Long, Object> clientChunks = new java.util.HashMap<>();
     private final List<VoxelColumnConsumer> registered = new ArrayList<>();
+    /** The decode-ahead "workers" under test control: jobs wait here and run only when a test
+     *  runs them — by default never, so every column is claimed unstarted and decodes inline
+     *  exactly as without decode-ahead. */
+    private final List<Runnable> aheadQueue = new ArrayList<>();
+    /** Jobs submitted to the decode-ahead executor (whatever happened to them). */
+    private int aheadSubmitted;
+    /** The executor rejects every job (a full or shut-down pool). */
+    private boolean aheadRejects;
+    /** Each job runs at once, as a worker that is always ahead (on the test thread). */
+    private boolean aheadDirect;
+    /** True while a direct job runs: "on a worker". */
+    private boolean inWorker;
     private JourneymapClient jm;
     private JourneyMapSession session;
 
@@ -102,6 +114,11 @@ class JourneyMapSessionTest {
         this.reports.clear();
         this.clientChunks.clear();
         this.registered.clear();
+        this.aheadQueue.clear();
+        this.aheadSubmitted = 0;
+        this.aheadRejects = false;
+        this.aheadDirect = false;
+        this.inWorker = false;
         this.host = new JourneyMapSession.Host() {
             @Override public Object minecraft() { return null; }
             @Override public Object level() {
@@ -130,7 +147,22 @@ class JourneyMapSessionTest {
         this.session.decoder = (bytes, l) -> {
             if (this.failDecode) return null;
             var buf = ByteBuffer.wrap(bytes);
-            return new SnapshotChunkMD(null, new JMChunkSnapshot(buf.getInt(), buf.getInt()), true);
+            return new JMChunkSnapshot(buf.getInt(), buf.getInt());
+        };
+        this.session.wrapper = (l, snapshot) -> new SnapshotChunkMD(null, (JMChunkSnapshot) snapshot, true);
+        this.session.decodeAheadExecutor = job -> {
+            if (this.aheadRejects) throw new java.util.concurrent.RejectedExecutionException("test pool full");
+            this.aheadSubmitted++;
+            if (!this.aheadDirect) {
+                this.aheadQueue.add(job);
+                return;
+            }
+            this.inWorker = true;
+            try {
+                job.run();
+            } finally {
+                this.inWorker = false;
+            }
         };
         this.session.maybeRegister();
     }
@@ -193,7 +225,7 @@ class JourneyMapSessionTest {
     // ---- the happy path ----
 
     @Test
-    void aSettledIdentityRendersOneRegionBatchAndAcceptsIt() {
+    void aSettledIdentityRendersABatchAndAcceptsIt() {
         offer(0, 0);
         offer(1, 0);
         offer(0, 1);
@@ -202,26 +234,28 @@ class JourneyMapSessionTest {
         assertEquals(0, this.jm.queued.size(), "nothing is written before the identity settles");
         this.clock += JourneyMapSession.SETTLE_MILLIS + 1;
         assertEquals(1, cycle());
-        assertEquals(9, renders().size(), "day + topo + biome for each of region (0,0)'s three columns");
-        assertTrue(renders().stream().allMatch(r -> r.region().regionX == 0 && r.region().regionZ == 0));
+        assertEquals(12, renders().size(), "day + topo + biome for each column of both regions");
+        assertEquals(java.util.Set.of(0, 1), renders().stream().map(r -> r.region().regionX)
+                .collect(java.util.stream.Collectors.toSet()), "one batch draws from both regions");
         assertEquals(FileHandler.worldDir, renders().getFirst().region().worldDir);
-        assertEquals(3, counter("rendered"));
+        assertEquals(4, counter("rendered"));
         assertEquals(1, RegionImageCache.INSTANCE.updates);
-        assertEquals(3, DataCache.INSTANCE.added.size());
+        assertEquals(4, DataCache.INSTANCE.added.size());
         assertTrue(DataCache.INSTANCE.cache.isEmpty(), "every snapshot wrapper leaves JourneyMap's cache");
         assertTrue(this.reports.isEmpty());
-        assertEquals(1, this.session.queuedGauge);
-        assertEquals(3, this.session.replay.size());
+        assertEquals(0, this.session.queuedGauge);
+        assertEquals(4, this.session.replay.size());
         assertTrue(renders().stream().allMatch(r -> ((SnapshotChunkMD) r.chunk()).forceRetain),
                 "the wrapper retains its chunk strongly for the whole render");
-        assertEquals(3, renders().stream().map(ChunkRenderController.Render::chunk).distinct()
+        assertEquals(4, renders().stream().map(ChunkRenderController.Render::chunk).distinct()
                 .mapToInt(md -> md.getBlockData().clears).sum(), "block data is cleared once per column");
 
+        offer(2, 2);
         this.session.pump();
-        assertEquals(0, this.jm.queued.size(), "the duty gate idles at least renderDelay after a batch");
+        assertEquals(0, this.jm.queued.size(), "the duty gate idles half a renderDelay after a batch");
         this.clock += 500;
         assertEquals(1, cycle());
-        assertEquals(4, counter("rendered"));
+        assertEquals(5, counter("rendered"));
         assertEquals(0, this.session.queuedGauge);
     }
 
@@ -722,9 +756,9 @@ class JourneyMapSessionTest {
         offer(0, 0);
         settle();
         var wrappers = new ArrayList<SnapshotChunkMD>();
-        var plain = this.session.decoder;
-        this.session.decoder = (bytes, level) -> {
-            var md = (SnapshotChunkMD) plain.decode(bytes, level);
+        var plain = this.session.wrapper;
+        this.session.wrapper = (level, snapshot) -> {
+            var md = (SnapshotChunkMD) plain.wrap(level, snapshot);
             wrappers.add(md);
             return md;
         };
@@ -1003,7 +1037,9 @@ class JourneyMapSessionTest {
         String line = this.session.describe();
         assertTrue(line.startsWith("JourneyMap: state=active, queued=0, batches=1, rendered=1"), line);
         for (String field : List.of("skipped_live=", "render_failed=", "decode_failures=", "abandoned=",
-                "replayed=", "requeued=", "slow_batches=", "context=1", "last_batch_ms=", "bp=", "heap=n/a")) {
+                "replayed=", "requeued=", "slow_batches=", "context=1", "last_batch_ms=", "batch_pick=256",
+                "decode_us_per_column=", "decode_ahead=on", "decoded_ahead=0", "predecode_us_per_column=",
+                "render_us_per_column=", "bp=", "heap=n/a")) {
             assertTrue(line.contains(field), field + " in " + line);
         }
         assertFalse(line.contains("jm-test"), "no paths in the diag line");
@@ -1386,5 +1422,414 @@ class JourneyMapSessionTest {
         assertNull(this.session.inFlight);
         assertTrue(this.reports.isEmpty(), "receipts close unreported");
         assertEquals(0, counter("rendered"));
+    }
+
+    // ---- box-sized multi-region batches (0.19.0 throughput round) ----
+
+    private void dayOnly() {
+        this.jm.properties.mapTopography.value = false;
+        this.jm.properties.mapBiome.value = false;
+    }
+
+    /** The columns rendered so far, as packed positions. */
+    private java.util.Set<Long> renderedPositions() {
+        var out = new java.util.HashSet<Long>();
+        for (var r : renders()) out.add(JourneyMapSession.packed(r.chunk().chunkX, r.chunk().chunkZ));
+        return out;
+    }
+
+    private java.util.Set<Long> queuedPositions() {
+        synchronized (this.session.queueLock) {
+            return new java.util.HashSet<>(this.session.queue.keySet());
+        }
+    }
+
+    @Test
+    void aBatchDrawsWholeRegionsOldestFirstUpToTheRegionCap() {
+        dayOnly();
+        int regions = JourneyMapSession.MAX_BATCH_REGIONS + 4;
+        for (int i = 0; i < regions; i++) {
+            offer(32 * i, 0); // one column in each of regions (0,0) .. (11,0), oldest first
+            offer(32 * i + 1, 0);
+        }
+        settle();
+        cycle();
+        assertEquals(2 * JourneyMapSession.MAX_BATCH_REGIONS, counter("rendered"), "the region cap binds, not the pick");
+        var drawn = renders().stream().map(r -> r.region().regionX).collect(java.util.stream.Collectors.toSet());
+        assertEquals(java.util.stream.IntStream.range(0, JourneyMapSession.MAX_BATCH_REGIONS).boxed()
+                .collect(java.util.stream.Collectors.toSet()), drawn, "the regions holding the oldest entries");
+        this.clock += 500;
+        cycle();
+        assertEquals(2 * regions, counter("rendered"), "the rest follow in the next batch — no region starves");
+        assertEquals(0, this.session.queuedGauge);
+    }
+
+    @Test
+    void theRegionDrawnLastContinuesBeforeAnOlderRegion() {
+        dayOnly();
+        this.session.costPerColumnMillis = 1_000; // a pick of MIN_BATCH_PICK
+        int pick = JourneyMapSession.MIN_BATCH_PICK;
+        // Region (0,0): pick + 8 columns, oldest. Batch 1 takes `pick` of them and stops there.
+        var first = new ArrayList<long[]>();
+        for (int z = 0; z < 2; z++) for (int x = 0; x < 32 && first.size() < pick + 8; x++) first.add(new long[]{x, z});
+        for (var c : first) offer((int) c[0], (int) c[1]);
+        settle();
+        cycle();
+        assertEquals(pick, counter("rendered"));
+        assertEquals(pick, this.session.batchPick, "premise: the pick binds");
+        // Region (2,0): 30 columns, queued now — then region (0,0)'s eight leftovers are
+        // delivered again, so (2,0)'s oldest entry is OLDER than any of (0,0)'s.
+        for (int x = 64; x < 94; x++) offer(x, 0);
+        var leftovers = new ArrayList<Long>();
+        for (var c : first.subList(pick, first.size())) {
+            offer((int) c[0], (int) c[1]);
+            leftovers.add(JourneyMapSession.packed((int) c[0], (int) c[1]));
+        }
+        renders().clear();
+        this.clock += 500;
+        cycle();
+        assertTrue(renderedPositions().containsAll(leftovers), "the region worked last continues first");
+        assertEquals(pick, renders().size());
+        assertEquals(30 - (pick - leftovers.size()), this.session.queuedGauge, "the older region fills the rest");
+        assertTrue(queuedPositions().stream().allMatch(k -> (int) (k >> 32) >= 64));
+    }
+
+    @Test
+    void thePickAdaptsToTheMeasuredCostSoTheBoxRarelyCutsATail() {
+        dayOnly();
+        this.jm.properties.renderDelay.value = 100; // a 200 ms box
+        this.jm.renderController.result = (type, md) -> {
+            this.clock += 2; // 2 ms per column on JourneyMap's thread
+            return true;
+        };
+        for (int z = 0; z < 30; z++) for (int x = 0; x < 30; x++) offer(x, z);
+        settle();
+        cycle();
+        long cutFirst = counter("requeued");
+        assertEquals(JourneyMapSession.INITIAL_BATCH_PICK, this.session.batchPick, "unmeasured: the old fixed pick");
+        assertEquals(101, counter("rendered"), "premise: columns start at +0 .. +200 ms of the 200 ms box");
+        assertEquals(JourneyMapSession.INITIAL_BATCH_PICK - 101, cutFirst, "premise: the unmeasured pick overran it");
+        assertEquals(2.0, this.session.costPerColumnMillis, 0.05);
+        for (int i = 0; i < 6; i++) {
+            this.clock += 100;
+            cycle();
+        }
+        int expected = (int) (200 * JourneyMapSession.BATCH_BOX_FILL / 2.0);
+        assertTrue(expected > JourneyMapSession.MIN_BATCH_PICK, "premise: inside the clamp");
+        assertEquals(expected, this.session.batchPick, "box × fill / measured cost");
+        assertEquals(cutFirst, counter("requeued"), "measured picks fit the box: nothing more is cut");
+        assertEquals(101 + 6L * expected, counter("rendered"));
+        assertEquals(2.0, this.session.costPerColumnMillis, 0.05, "full batches keep measuring");
+    }
+
+    @Test
+    void thePickStaysInsideItsClampAndSmallBatchesDoNotMoveIt() {
+        assertEquals(JourneyMapSession.INITIAL_BATCH_PICK, this.session.pickFor(1000));
+        this.session.costPerColumnMillis = 0;
+        assertEquals(JourneyMapSession.MAX_BATCH_PICK, this.session.pickFor(1000));
+        this.session.costPerColumnMillis = 10_000;
+        assertEquals(JourneyMapSession.MIN_BATCH_PICK, this.session.pickFor(1000));
+        this.session.costPerColumnMillis = Double.NaN;
+        this.jm.renderController.result = (type, md) -> {
+            this.clock += 7;
+            return true;
+        };
+        offer(0, 0);
+        offer(1, 0);
+        settle();
+        cycle();
+        assertTrue(Double.isNaN(this.session.costPerColumnMillis),
+                "two uncut columns are below the clock's resolution: no sample");
+    }
+
+    @Test
+    void aPickAtTheFloorMeasuresItsWayBackUp() {
+        dayOnly();
+        this.session.costPerColumnMillis = 900; // one slow spell: the pick sits at the floor
+        this.jm.renderController.result = (type, md) -> {
+            this.clock += 1;
+            return true;
+        };
+        for (int z = 0; z < 20; z++) for (int x = 0; x < 20; x++) offer(x, z);
+        settle();
+        cycle();
+        assertEquals(JourneyMapSession.MIN_BATCH_PICK, this.session.batchPick);
+        assertTrue(this.session.costPerColumnMillis < 900, "a batch that took its whole pick is a sample");
+        for (int i = 0; i < 12; i++) {
+            this.clock += 500;
+            cycle();
+        }
+        assertTrue(this.session.batchPick > JourneyMapSession.MIN_BATCH_PICK, "recovered: " + this.session.batchPick);
+        assertEquals(0, counter("requeued"));
+    }
+
+    @Test
+    void aClockJumpCostsAtMostOneBoxPerColumn() {
+        dayOnly();
+        boolean[] jumped = {false};
+        this.jm.renderController.result = (type, md) -> {
+            if (!jumped[0]) this.clock += 3_600_000; // the wall clock steps an hour mid-batch
+            jumped[0] = true;
+            return true;
+        };
+        offer(0, 0);
+        offer(1, 0);
+        settle();
+        cycle();
+        assertEquals(1, counter("requeued"));
+        assertEquals(1000.0, this.session.costPerColumnMillis, 0.001, "capped at the 1000 ms box");
+    }
+
+    // ---- decode-ahead ----
+
+    @Test
+    void decodeAheadHandsJourneyMapsThreadWorkerDecodedSnapshots() {
+        dayOnly();
+        this.aheadDirect = true;
+        var onWorker = new ArrayList<Boolean>();
+        var plain = this.session.decoder;
+        this.session.decoder = (bytes, level) -> {
+            onWorker.add(this.inWorker);
+            return plain.decode(bytes, level);
+        };
+        var wrappedOnWorker = new ArrayList<Boolean>();
+        var plainWrap = this.session.wrapper;
+        this.session.wrapper = (level, snapshot) -> {
+            wrappedOnWorker.add(this.inWorker);
+            return plainWrap.wrap(level, snapshot);
+        };
+        for (int z = 0; z < 3; z++) for (int x = 0; x < 3; x++) offer(x, z);
+        var seen = new java.util.HashMap<Long, java.util.Set<Long>>();
+        this.jm.renderController.result = (type, md) -> {
+            seen.put(md.getLongCoord(), new java.util.HashSet<>(DataCache.INSTANCE.cache.keySet()));
+            return true;
+        };
+        settle();
+        cycle();
+        assertEquals(9, counter("rendered"));
+        assertEquals(List.of(true, true, true, true, true, true, true, true, true), onWorker,
+                "every pure decode ran on a worker, once");
+        assertEquals(9, wrappedOnWorker.size());
+        assertFalse(wrappedOnWorker.contains(true), "the SnapshotChunkMD wrap stays on JourneyMap's thread");
+        assertEquals(9, this.session.decodedAhead.get());
+        assertEquals(9, this.session.predecodedColumns.get());
+        assertEquals(9, this.session.decodedColumns.get(), "decode_us_per_column still counts every column");
+        var middle = seen.get(JourneyMapSession.mcChunkKey(1, 1));
+        for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++) {
+            assertTrue(middle.contains(JourneyMapSession.mcChunkKey(1 + dx, 1 + dz)), "the neighbour shading is unchanged");
+        }
+        assertTrue(DataCache.INSTANCE.cache.isEmpty());
+    }
+
+    @Test
+    void aContextNeighbourIsDecodedAheadToo() {
+        dayOnly();
+        offer(0, 0);
+        settle();
+        cycle();
+        this.aheadDirect = true;
+        var workerFrames = new ArrayList<Integer>();
+        var plain = this.session.decoder;
+        this.session.decoder = (bytes, level) -> {
+            if (this.inWorker) workerFrames.add(ByteBuffer.wrap(bytes).getInt());
+            return plain.decode(bytes, level);
+        };
+        DataCache.INSTANCE.added.clear();
+        this.clock += 500;
+        offer(1, 0); // its west neighbour (0,0) is context
+        cycle();
+        assertEquals(List.of(0, 1), workerFrames, "the context column first, then the batch column");
+        assertTrue(DataCache.INSTANCE.added.contains(JourneyMapSession.mcChunkKey(0, 0)));
+        assertEquals(1, this.session.decodedAhead.get(), "decoded_ahead counts batch columns only");
+    }
+
+    @Test
+    void theWindowKeepsTheWorkersJustAheadAndTheBatchEndCancelsTheRest() {
+        dayOnly();
+        for (int z = 0; z < 10; z++) for (int x = 0; x < 10; x++) offer(x, z);
+        this.jm.renderController.result = (type, md) -> {
+            this.clock += 5_000; // the first render spends the whole box
+            return true;
+        };
+        int[] decodes = {0};
+        var plain = this.session.decoder;
+        this.session.decoder = (bytes, level) -> {
+            decodes[0]++;
+            return plain.decode(bytes, level);
+        };
+        settle();
+        cycle();
+        assertEquals(1, counter("rendered"));
+        assertEquals(99, counter("requeued"));
+        // (0,0) and its east/south look-ahead were needed: plan indices 0-3, a window past each.
+        assertEquals(4 + JourneyMapSession.DECODE_AHEAD_WINDOW, this.aheadSubmitted,
+                "a box-cut tail is never handed to the workers");
+        assertEquals(4, decodes[0], "no worker started: the four columns needed decoded inline");
+        for (var job : this.aheadQueue) {
+            var j = (JourneyMapSession.AheadJob) job;
+            assertEquals(JourneyMapSession.AheadJob.CLAIMED, j.state.get(), "every unstarted job is cancelled");
+            assertFalse(j.holdsLevelForTest(), "a cancelled job left in the pool's queue pins no level");
+        }
+        this.aheadQueue.forEach(Runnable::run); // the workers get to them late
+        assertEquals(4, decodes[0], "a cancelled job never decodes");
+        assertEquals(0, this.session.predecodedColumns.get());
+    }
+
+    @Test
+    void anUnstartedJobIsClaimedAndDecodedInline() {
+        offer(0, 0);
+        offer(1, 0);
+        settle();
+        cycle();
+        assertEquals(2, counter("rendered"));
+        assertEquals(0, this.session.decodedAhead.get());
+        assertEquals(2, this.aheadSubmitted);
+        assertTrue(this.aheadQueue.stream().allMatch(j -> ((JourneyMapSession.AheadJob) j).state.get()
+                == JourneyMapSession.AheadJob.CLAIMED));
+    }
+
+    @Test
+    void aRejectedJobFallsBackToTheInlineDecode() {
+        this.aheadRejects = true;
+        offer(0, 0);
+        offer(1, 0);
+        offer(0, 1);
+        settle();
+        cycle();
+        assertEquals(3, counter("rendered"));
+        assertEquals(0, this.session.decodedAhead.get());
+        assertEquals(0, counter("decode_failures"));
+        assertTrue(this.reports.isEmpty());
+    }
+
+    /** One fixed scenario — (1,0) refused, (2,0) throwing — run with and without decode-ahead. */
+    private List<Long> failureOutcome(boolean ahead) {
+        dayOnly();
+        this.aheadDirect = ahead;
+        this.session.decodeAhead = ahead;
+        var plain = this.session.decoder;
+        this.session.decoder = (bytes, level) -> {
+            int x = ByteBuffer.wrap(bytes).getInt();
+            if (x == 1) return null; // JourneyMap refuses the bytes
+            if (x == 2) throw new IllegalStateException("decoder bug");
+            return plain.decode(bytes, level);
+        };
+        offer(0, 0);
+        offer(1, 0);
+        offer(2, 0);
+        settle();
+        cycle();
+        return List.of(counter("rendered"), counter("decode_failures"), counter("column_failures"),
+                (long) this.reports.size(), this.session.decodedAhead.get());
+    }
+
+    @Test
+    void aWorkerDecodeFailureMeansWhatTheInlineOneMeant() {
+        var inline = failureOutcome(false);
+        assertEquals(List.of(1L, 1L, 1L, 1L, 0L), inline,
+                "refused: a decode failure, closed unreported; thrown: a column failure, reported");
+        setUpQuietly();
+        var ahead = failureOutcome(true);
+        assertEquals(inline.subList(0, 4), ahead.subList(0, 4), "decode-ahead changes no outcome");
+        assertEquals(2L, ahead.get(4), "the refused column's null came from a worker");
+    }
+
+    private void setUpQuietly() {
+        try {
+            setUp();
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    @Test
+    void noDecodeAheadWorkOrReferenceOutlivesTheBatchOrTheSession() {
+        dayOnly();
+        for (int x = 0; x < 6; x++) offer(x, 0);
+        this.jm.renderController.result = (type, md) -> {
+            this.sessionActive = false; // the LSS session ends mid-batch
+            return true;
+        };
+        settle();
+        cycle();
+        assertEquals(1, counter("rendered"));
+        assertFalse(this.aheadQueue.isEmpty());
+        for (var job : this.aheadQueue) {
+            assertFalse(((JourneyMapSession.AheadJob) job).holdsLevelForTest(), "nothing pins the old level");
+        }
+        for (var f : JourneyMapSession.class.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+            assertFalse(f.getType() == JourneyMapSession.DecodeAhead.class || f.getType() == JourneyMapSession.AheadJob.class,
+                    "decode-ahead state lives only in its batch: " + f.getName());
+        }
+        assertTrue(DataCache.INSTANCE.cache.isEmpty());
+    }
+
+    @Test
+    void theKillSwitchDecodesEveryColumnInline() {
+        String old = System.getProperty(JourneyMapSession.DECODE_AHEAD_PROPERTY);
+        try {
+            System.setProperty(JourneyMapSession.DECODE_AHEAD_PROPERTY, "false");
+            newSession(this.session.h);
+            assertFalse(this.session.decodeAhead);
+            this.aheadDirect = true;
+            offer(0, 0);
+            offer(1, 0);
+            settle();
+            cycle();
+            assertEquals(2, counter("rendered"));
+            assertEquals(0, this.aheadSubmitted, "nothing reaches the workers");
+            assertTrue(this.session.describe().contains("decode_ahead=off"), this.session.describe());
+            JourneyMapSession.instance = this.session;
+            assertEquals(false, JourneyMapSession.metrics().get("decode_ahead"));
+        } finally {
+            if (old == null) System.clearProperty(JourneyMapSession.DECODE_AHEAD_PROPERTY);
+            else System.setProperty(JourneyMapSession.DECODE_AHEAD_PROPERTY, old);
+        }
+        assertTrue(JourneyMapSession.decodeAheadProperty(), "on by default");
+    }
+
+    @Test
+    void theRealPoolDecodesOnNamedDaemonWorkersAndWrapsOnJourneyMapsThread() {
+        dayOnly();
+        this.session.decodeAheadExecutor = JourneyMapSession::executeDecodeAhead;
+        var decodeThreads = java.util.concurrent.ConcurrentHashMap.<Thread>newKeySet();
+        var plain = this.session.decoder;
+        this.session.decoder = (bytes, level) -> {
+            decodeThreads.add(Thread.currentThread());
+            return plain.decode(bytes, level);
+        };
+        var wrapThreads = new java.util.HashSet<Thread>();
+        var plainWrap = this.session.wrapper;
+        this.session.wrapper = (level, snapshot) -> {
+            wrapThreads.add(Thread.currentThread());
+            return plainWrap.wrap(level, snapshot);
+        };
+        this.jm.renderController.result = (type, md) -> {
+            try {
+                Thread.sleep(2); // rendering is the slow half: the workers get ahead
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return true;
+        };
+        for (int z = 0; z < 2; z++) for (int x = 0; x < 32; x++) offer(x, z);
+        settle();
+        cycle();
+        assertEquals(64, counter("rendered"));
+        assertEquals(java.util.Set.of(Thread.currentThread()), wrapThreads, "every wrap on JourneyMap's thread");
+        assertTrue(this.session.decodedAhead.get() > 0, "the workers decoded ahead: " + this.session.decodedAhead.get());
+        for (var t : decodeThreads) {
+            if (t == Thread.currentThread()) continue; // a column claimed before a worker started it
+            assertTrue(t.isDaemon(), t.getName());
+            assertTrue(t.getName().matches("[A-Z]+-JM-DecodeAhead-\\d+"), t.getName());
+        }
+        assertTrue(JourneyMapSession.decodeAheadPool().allowsCoreThreadTimeOut(), "idle workers exit");
+        assertTrue(this.session.describe().contains("decode_ahead=on"));
+        JourneyMapSession.instance = this.session;
+        var metrics = JourneyMapSession.metrics();
+        assertEquals(this.session.decodedAhead.get(), metrics.get("decoded_ahead"));
+        assertTrue((long) metrics.get("predecode_us_per_column") >= 0);
+        assertEquals(this.session.batchPick, metrics.get("batch_pick"));
     }
 }
