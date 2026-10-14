@@ -803,9 +803,13 @@ final class XaeroSession {
         final long generation = acquisition.acquisitionGeneration.get();
         final LSSApi.IngestFailureHandle handle = LSSApi.captureIngestFailureHandle();
         final java.util.concurrent.atomic.AtomicBoolean reported = new java.util.concurrent.atomic.AtomicBoolean();
+        /** A band-fill job's token is revoked when the job is cancelled (a delivered column's
+         *  receipt never is). */
+        volatile boolean revoked;
 
         boolean active() {
-            return !acquisition.retiringAcquisition && this.generation == acquisition.acquisitionGeneration.get()
+            return !this.revoked && !acquisition.retiringAcquisition
+                    && this.generation == acquisition.acquisitionGeneration.get()
                     && (this.handle == null || this.handle.isActive());
         }
     }
@@ -1308,7 +1312,8 @@ final class XaeroSession {
                 origins = List.of();
                 return;
             }
-            boolean ignoreHeightmaps = this.layerPlan != null && this.layerPlan.ignoreHeightmaps();
+            var plan = this.layerPlan; // one read: session end nulls it from the main thread
+            boolean ignoreHeightmaps = plan != null && plan.ignoreHeightmaps();
             var tiles = XaeroTileExtractor.extract(chunkX, chunkZ, level, columnData, targets, ignoreHeightmaps);
             for (int i = 0; i < targets.size(); i++) offerPrepared(dimension, tiles.get(i), origins.get(i));
             origins = List.of(); // every lease is the queue's (or released) now
@@ -1395,9 +1400,16 @@ final class XaeroSession {
                 && this.acquisition.queuedGauge < this.fill.queueHigh;
     }
 
-    /** One band-fill tile into the reliable queue, lease-free (any thread). */
+    /** One band-fill tile into the reliable queue, lease-free (any thread). Its generation token
+     *  is the job's receipt (O3 N2): the queue lock re-checks it, so a job cancelled between the
+     *  worker's own check and the offer lands nothing. */
+    boolean offerFill(Object dimension, XaeroTileExtractor.PreparedTile tile, Receipt jobReceipt) {
+        return this.acquisition.offerFill(dimension, tile, new Origin(jobReceipt, false));
+    }
+
+    /** Test seam: a fill tile under a fresh token. */
     boolean offerFill(Object dimension, XaeroTileExtractor.PreparedTile tile) {
-        return this.acquisition.offerFill(dimension, tile, new Origin(new Receipt(), false));
+        return offerFill(dimension, tile, new Receipt());
     }
 
     /** The production fill-level cache entry: the level is held WEAKLY — it is only the cache's
@@ -1764,8 +1776,17 @@ final class XaeroSession {
         this.rebuilds.pumpCount++;
         this.lastPumpMillis = nowMillis(); // §12 watchdog: the pump machinery is alive
         if (this.enabled.getAsBoolean()) publishLayerPlan();
-        applyStoreSetting();
-        tickFill();
+        try {
+            applyStoreSetting();
+            tickFill();
+        } catch (Throwable t) {
+            // Contained like the ladder (F1-NIT3): the store setting and the fill trigger start
+            // threads, register a cache tenant and hash registries — a failure there is a bridge
+            // failure (the death latch), never a client-tick crash.
+            if (t instanceof Error err && !(t instanceof AssertionError)) throw err;
+            noteFailure(t);
+            if (this.dead) return;
+        }
         // §17.1 (review fold): the frame marker is consumed HERE, once per pump — and
         // the interval allowance / frame-scarcity meters re-arm.
         this.rebuilds.frameActiveThisPump = this.rebuilds.frameFlushRan;
@@ -1947,9 +1968,12 @@ final class XaeroSession {
                 // reconfiguration residual): the queued tiles are the OLD world's.
                 // §12.1(c): reported — the stamps must be forgotten or a return to
                 // that world never re-declares them.
+                // The fill job goes FIRST (O3 N2): its token is revoked before the clear, so no
+                // stored column of the old world can be offered after the queue is emptied.
+                this.fill.onWorldChange(); // its coverage and job named the old world
                 this.droppedStale.addAndGet(clearQueueCollectingReports());
                 this.acquisition.clearOwedCollectingReports(); // WI-3: the old world's debts are reported like its tiles
-                this.fill.onWorldChange(); // its coverage and job named the old world
+                this.loadStats.clearPending(); // O3 N3: never follow the old world's region objects
             }
             this.lastWorldId = worldId;
             Object dimensionId;
@@ -2363,6 +2387,7 @@ final class XaeroSession {
         if (this.openRegionsDimension != dimensionId) {
             this.openRegions.clear();
             this.openRegionsDimension = dimensionId;
+            this.loadStats.clearPending(); // O3 N3: the grants name the old dimension's regions
         }
         if (this.openRegions.isEmpty()) {
             this.openRegionsGauge = 0;

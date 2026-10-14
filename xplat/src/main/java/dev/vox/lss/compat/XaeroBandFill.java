@@ -66,9 +66,15 @@ final class XaeroBandFill {
         /** The stored positions within the radius when the job started (nearest first). */
         volatile long[] positions = new long[0];
         volatile int remaining;
+        /** The job's generation token (O3 N2): every fill tile it offers carries it, so the queue
+         *  lock refuses a tile once the job is cancelled (a switch, a world change) or acquisition
+         *  retired, and the drain drops the job's queued tiles. Lease-free: no handle on the main
+         *  thread, and fill origins never report. */
+        final XaeroSession.Receipt receipt;
 
         Job(Object dimension, int layer, XaeroTileExtractor.LayerTarget target, FillLevel level, String bucket,
             boolean ignoreHeightmaps, int centerX, int centerZ, int radius, long startedMillis, boolean rearm) {
+            this.receipt = session.new Receipt();
             this.rearm = rearm;
             this.dimension = dimension;
             this.layer = layer;
@@ -364,11 +370,25 @@ final class XaeroBandFill {
 
     void cancel(Job j) {
         if (j == null) return;
+        j.receipt.revoked = true; // its tiles are refused at the queue and dropped at the drain
         if (!j.done && !j.cancelled) {
             j.cancelled = true;
             this.cancelled.incrementAndGet();
         }
-        if (this.job == j) this.job = null;
+        // Compare-and-set (O4-F9): the worker's pacing give-up cancels its own job while the main
+        // thread may be installing the next one — a check-then-set could null that new job and
+        // orphan it (still offering, unreachable by tick()).
+        JOB.compareAndSet(this, j, null);
+    }
+
+    private static final java.lang.invoke.VarHandle JOB;
+
+    static {
+        try {
+            JOB = java.lang.invoke.MethodHandles.lookup().findVarHandle(XaeroBandFill.class, "job", Job.class);
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
     }
 
     private void submit(Job j) {
@@ -464,7 +484,7 @@ final class XaeroBandFill {
             this.skippedCovered.incrementAndGet(); // a live arrival wrote it meanwhile
             return true;
         }
-        if (this.session.offerFill(j.dimension, tile)) {
+        if (this.session.offerFill(j.dimension, tile, j.receipt)) {
             this.tilesOffered.incrementAndGet();
         } else {
             this.skippedQueued.incrementAndGet();
