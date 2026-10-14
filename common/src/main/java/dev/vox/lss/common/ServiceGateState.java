@@ -69,9 +69,10 @@ public final class ServiceGateState {
 
     private final Map<UUID, DeniedHandshake> deniedHandshakes = new ConcurrentHashMap<>();
     private final Set<UUID> denialLogged = ConcurrentHashMap.newKeySet();
-    /** uuid → the connection token (the platform's player instance) that claimed the
-     *  map-policy chat line — review fold A7: a token, not a bare uuid, so a rejoin whose
-     *  old connection's state has not drained yet still gets its own line. */
+    /** uuid → the connection token that claimed the map-policy chat line (xplat: the
+     *  packet listener, which survives respawn; Paper: the player instance, which
+     *  CraftBukkit reuses on respawn) — review fold A7: a token, not a bare uuid, so a
+     *  rejoin whose old connection's state has not drained yet still gets its own line. */
     private final Map<UUID, Object> mapPolicyNoticed = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> revocationStreaks = new ConcurrentHashMap<>();
     private final AtomicLong permissionDenied = new AtomicLong();
@@ -134,8 +135,9 @@ public final class ServiceGateState {
 
     /** The map policy's once-per-CONNECTION chat-line claim (map-policy plan A3.3): the
      *  first call for a connection returns true, every later one false until disconnect.
-     *  {@code connection} identifies the connection (the platform's player instance): a
-     *  claim by a DIFFERENT token claims afresh (review fold A7 — a rejoin that beat its
+     *  {@code connection} identifies the connection and must stay the same object for
+     *  the connection's life, across respawns (xplat passes the packet listener, Paper the
+     *  player instance it reuses): a claim by a DIFFERENT token claims afresh (review fold A7 — a rejoin that beat its
      *  old connection's cleanup still gets its own line). Deliberately NOT cleared by
      *  {@link #onRegistered} (that re-arms the denial-log latch, which would re-send the
      *  line on every arm/disarm cycle). */
