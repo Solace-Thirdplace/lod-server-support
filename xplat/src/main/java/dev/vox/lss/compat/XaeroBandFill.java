@@ -198,7 +198,9 @@ final class XaeroBandFill {
 
     /** pos → the sequence number of its last DROPPED capture: the store holds an OLDER copy
      *  than what LSS delivered, so a fill must not write it (coverage was already invalidated).
-     *  Cleared by a later capture that reaches the store. Guarded by itself. */
+     *  Cleared by a later capture that reaches the store. Guarded by itself. The store also
+     *  forgets that copy for good (a tombstone, O4-F3); this guard covers the session until the
+     *  forget lands, and a forget its bound dropped. */
     private final it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap stale = new it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap();
     private Object staleDimension;
     private final AtomicLong captureSeq = new AtomicLong();
@@ -240,6 +242,7 @@ final class XaeroBandFill {
             this.captureFailures.incrementAndGet();
             store.captureDrops.incrementAndGet();
             captureOutcome(dimension, pos, seq, false);
+            store.forget(bucket, level.dimKey(), level.fingerprint(), pos); // the stored copy is older (O4-F3)
             return;
         }
         store.capture(bucket, level.dimKey(), level.fingerprint(), pos, raw,

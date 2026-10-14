@@ -46,16 +46,28 @@ import java.util.zip.CRC32;
  * {@code [packed pos][codec][rawLen][payload]}; the payload is the column's sections in the
  * client decode format (zstd when the native is there, else raw). A torn tail stops the scan;
  * a CRC failure on read drops that record. The latest record of a position wins (re-serves
- * overwrite). A fingerprint mismatch (another mod set, another biome registry, another
- * dimension height) discards the store.
+ * overwrite). A TOMBSTONE (codec 2, rawLen 0, no payload) forgets a position for good: written
+ * when a capture is dropped (the stored copy is then older than what LSS delivered) and when a
+ * record will not read or decode, so a later session never re-indexes it (O4-F3). A fingerprint
+ * mismatch (another mod set, another biome registry, another dimension height, another format
+ * version) discards the store on a WRITE; a READ answers empty and never deletes anything
+ * (O4-F8).
+ *
+ * <p><b>Segments.</b> A session's first write appends to the newest segment when its tail is
+ * clean and it has room; a torn tail is never appended after (a new segment starts). New
+ * segments take the number after every file the scan saw and are created exclusively, never
+ * truncating one. Read handles open lazily and at most {@link #MAX_OPEN_READERS} stay open
+ * (least recently used closes first), plus the segment being written (O4-F4).
  *
  * <p><b>Cap.</b> One total cap over every store under the cache root, LRU: other stores go
  * whole (oldest first), then the active store's oldest segment; a record read by a fill from
  * the older half of the segments is copied forward, so eviction is least-recently-USED at
- * segment granularity.
+ * segment granularity. The active store's index lives on the heap: ~100 bytes per stored
+ * column, ~2.5% of its disk bytes.
  *
  * <p><b>Threads.</b> All file and index work runs on one daemon IO thread. Captures queue
- * with a bound (count and bytes) and DROP past it — the decode thread never blocks.
+ * with a bound (count and bytes) and DROP past it — the decode thread never blocks. Forgets
+ * queue outside that bound, with their own.
  */
 final class XaeroColumnStore {
     static final int SEGMENT_MAGIC = 0x4C584653; // "LXFS"
@@ -65,9 +77,16 @@ final class XaeroColumnStore {
     static final int RECORD_HEADER_BYTES = 12;
     static final byte CODEC_RAW = 0;
     static final byte CODEC_ZSTD = 1;
+    /** A forgotten position: body {@code [pos][CODEC_TOMBSTONE][rawLen 0]}, no payload. */
+    static final byte CODEC_TOMBSTONE = 2;
+    static final int TOMBSTONE_BODY_BYTES = 13;
     static final long DEFAULT_CAP_BYTES = 256L << 20;
     static final int MAX_PENDING_CAPTURES = 1024;
     static final long MAX_PENDING_BYTES = 32L << 20;
+    /** Forgets queued for the IO thread, and forgets held while a clear suspends the store. */
+    static final int MAX_PENDING_FORGETS = 4096;
+    /** Read handles kept open per store; the segment being written keeps its own. */
+    static final int MAX_OPEN_READERS = 8;
     static final int MAX_CONSECUTIVE_FAILURES = 8;
     /** A bound on one cap pass (each round frees bytes, or marks a store it could not free). */
     static final int MAX_EVICTION_ROUNDS = 256;
@@ -82,14 +101,21 @@ final class XaeroColumnStore {
     private static final class Segment {
         final int seq;
         final Path path;
+        /** Null while idle: read handles open lazily (the segment being written keeps one). */
         FileChannel channel;
         long size;
+        /** Where the open's scan stopped: {@code size} for a clean tail (a session's first write
+         *  may append), less for a torn one; -1 for a segment created this session. */
+        long scannedEnd = -1;
 
         Segment(int seq, Path path) {
             this.seq = seq;
             this.path = path;
         }
     }
+
+    /** A queued forget (see {@link #forget}). */
+    private record Forget(String bucket, String dimKey, long fingerprint, long pos) {}
 
     /** The open store (IO thread only). */
     private final class Active {
@@ -99,6 +125,12 @@ final class XaeroColumnStore {
         final Path dir;
         final TreeMap<Integer, Segment> segments = new TreeMap<>();
         final LinkedHashMap<Long, Loc> index = new LinkedHashMap<>();
+        /** Open read handles, least recently used first (never the segment being written). */
+        final LinkedHashMap<Integer, Segment> readers = new LinkedHashMap<>(16, 0.75f, true);
+        /** Segments a READ open could not parse: left alone, deleted by the first write. */
+        final List<Path> unparsed = new ArrayList<>();
+        /** The highest segment number in the directory, files the scan skipped included. */
+        int maxSeq = -1;
         Segment current;
         long diskBytes;
 
@@ -129,13 +161,22 @@ final class XaeroColumnStore {
     final AtomicLong evictions = new AtomicLong();
     final AtomicLong corrupt = new AtomicLong();
     final AtomicLong copiedForward = new AtomicLong();
+    /** Tombstones written (positions forgotten for good). */
+    final AtomicLong forgotten = new AtomicLong();
     final AtomicInteger pendingCaptures = new AtomicInteger();
+    final AtomicInteger pendingForgets = new AtomicInteger();
+    /** Forgets that met a suspended store (IO thread): replayed, in order, by the next IO task. */
+    private final java.util.ArrayDeque<Forget> heldForgets = new java.util.ArrayDeque<>();
     /** Consecutive failed appends (IO thread); past {@link #MAX_CONSECUTIVE_FAILURES} the
      *  store stops capturing for the session (a full or read-only disk) with one warning. */
     private int consecutiveFailures;
     volatile boolean capturesDisabled;
     /** Test seam: the next N segment writes fail (a full disk, a locked file). */
     volatile int failWritesForTest;
+    /** Test seam: the next N appends fail (after any segment write). */
+    volatile int failAppendsForTest;
+    /** Test seam over {@link #MAX_OPEN_READERS} (at least 1). */
+    volatile int maxOpenReaders = MAX_OPEN_READERS;
     final AtomicLong pendingBytes = new AtomicLong();
     volatile int columnsGauge;
     volatile long bytesGauge;
@@ -166,17 +207,24 @@ final class XaeroColumnStore {
         return capture(bucket, dimKey, fingerprint, pos, raw, null);
     }
 
-    /** {@code outcome} hears once whether the column reached the store. */
+    /** {@code outcome} hears once whether the column reached the store. A dropped capture also
+     *  forgets the position's older stored copy ({@link #forget}). */
     boolean capture(String bucket, String dimKey, long fingerprint, long pos, byte[] raw, CaptureOutcome outcome) {
         if (this.suspended || this.capturesDisabled || raw.length > LSSConstants.MAX_SECTIONS_SIZE) {
-            dropped(outcome);
+            droppedAtTheDoor(bucket, dimKey, fingerprint, pos, outcome);
             return false;
         }
-        if (this.pendingCaptures.incrementAndGet() > MAX_PENDING_CAPTURES
-                || this.pendingBytes.addAndGet(raw.length) > MAX_PENDING_BYTES) {
+        // Each bound rolls back only what it added (O4-F2: the byte add short-circuited behind a
+        // tripped count bound was still subtracted, so every count drop eroded the byte bound).
+        if (this.pendingCaptures.incrementAndGet() > MAX_PENDING_CAPTURES) {
             this.pendingCaptures.decrementAndGet();
+            droppedAtTheDoor(bucket, dimKey, fingerprint, pos, outcome);
+            return false;
+        }
+        if (this.pendingBytes.addAndGet(raw.length) > MAX_PENDING_BYTES) {
             this.pendingBytes.addAndGet(-raw.length);
-            dropped(outcome);
+            this.pendingCaptures.decrementAndGet();
+            droppedAtTheDoor(bucket, dimKey, fingerprint, pos, outcome);
             return false;
         }
         try {
@@ -184,6 +232,7 @@ final class XaeroColumnStore {
                 boolean stored = false;
                 try {
                     if (this.suspended || this.capturesDisabled) return;
+                    replayHeldForgets();
                     var store = open(bucket, dimKey, fingerprint, true);
                     if (store == null) return;
                     append(store, pos, raw);
@@ -203,7 +252,9 @@ final class XaeroColumnStore {
                     if (stored) {
                         if (outcome != null) outcome.done(true);
                     } else {
-                        dropped(outcome);
+                        this.captureDrops.incrementAndGet();
+                        if (outcome != null) outcome.done(false);
+                        forgetOnIo(new Forget(bucket, dimKey, fingerprint, pos));
                     }
                 }
             });
@@ -211,14 +262,65 @@ final class XaeroColumnStore {
         } catch (java.util.concurrent.RejectedExecutionException e) {
             this.pendingCaptures.decrementAndGet();
             this.pendingBytes.addAndGet(-raw.length);
-            dropped(outcome);
+            this.captureDrops.incrementAndGet();
+            if (outcome != null) outcome.done(false);
             return false;
         }
     }
 
-    private void dropped(CaptureOutcome outcome) {
+    private void droppedAtTheDoor(String bucket, String dimKey, long fingerprint, long pos, CaptureOutcome outcome) {
         this.captureDrops.incrementAndGet();
         if (outcome != null) outcome.done(false);
+        forget(bucket, dimKey, fingerprint, pos);
+    }
+
+    /**
+     * Forget {@code pos} for good (O4-F3): the stored copy is older than what LSS delivered (its
+     * capture was dropped) or it will not decode. A tombstone record is appended, so a later
+     * session never re-indexes the old record and fills it into another band. Queued outside the
+     * capture bound, with its own; held while a clear suspends the store and replayed, in order,
+     * by the next IO task. A store that refuses writes (captures disabled) forgets it in memory
+     * only — a later session may see the old copy, the residual of a failing disk. Any thread.
+     */
+    void forget(String bucket, String dimKey, long fingerprint, long pos) {
+        if (bucket == null || dimKey == null) return;
+        if (this.pendingForgets.incrementAndGet() > MAX_PENDING_FORGETS) {
+            this.pendingForgets.decrementAndGet();
+            return;
+        }
+        var forget = new Forget(bucket, dimKey, fingerprint, pos);
+        try {
+            this.io.execute(() -> {
+                this.pendingForgets.decrementAndGet();
+                forgetOnIo(forget);
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            this.pendingForgets.decrementAndGet();
+        }
+    }
+
+    /** IO thread: forget now, or hold it while a clear suspends the store. */
+    private void forgetOnIo(Forget forget) {
+        if (this.suspended) {
+            if (this.heldForgets.size() < MAX_PENDING_FORGETS) this.heldForgets.add(forget);
+            return;
+        }
+        replayHeldForgets();
+        forgetNow(forget);
+    }
+
+    /** IO thread, first thing in every task that may touch a store: forgets held across a
+     *  clear go before any later capture or read. */
+    private void replayHeldForgets() {
+        while (!this.suspended && !this.heldForgets.isEmpty()) {
+            forgetNow(this.heldForgets.poll());
+        }
+    }
+
+    private void forgetNow(Forget f) {
+        var store = this.active != null && this.active.is(f.bucket(), f.dimKey(), f.fingerprint()) ? this.active
+                : open(f.bucket(), f.dimKey(), f.fingerprint(), false);
+        if (store != null && store.index.containsKey(f.pos())) tombstone(store, f.pos());
     }
 
     /** Session end: a disabled store tries again next session. */
@@ -238,6 +340,7 @@ final class XaeroColumnStore {
     CompletableFuture<long[]> positionsNear(String bucket, String dimKey, long fingerprint,
                                             int centerX, int centerZ, int radius) {
         return CompletableFuture.supplyAsync(() -> {
+            replayHeldForgets();
             var store = this.suspended ? null : open(bucket, dimKey, fingerprint, false);
             if (store == null) return new long[0];
             var near = new ArrayList<long[]>();
@@ -259,6 +362,7 @@ final class XaeroColumnStore {
     CompletableFuture<List<Column>> read(String bucket, String dimKey, long fingerprint, long[] positions) {
         return CompletableFuture.supplyAsync(() -> {
             var out = new ArrayList<Column>(positions.length);
+            replayHeldForgets();
             var store = this.suspended ? null : open(bucket, dimKey, fingerprint, false);
             if (store == null) return out;
             for (long pos : positions) {
@@ -268,8 +372,8 @@ final class XaeroColumnStore {
                 if (record == null) continue;
                 byte[] raw = payload(record);
                 if (raw == null) {
-                    store.index.remove(pos);
                     this.corrupt.incrementAndGet();
+                    tombstone(store, pos); // counted once: no later session re-decodes it
                     continue;
                 }
                 out.add(new Column(pos, raw));
@@ -280,20 +384,11 @@ final class XaeroColumnStore {
         }, this.io);
     }
 
-    /** A stored column that would not decode or extract: forget it (counted as corrupt). */
+    /** A stored column that would not decode or extract: forget it for good (counted as
+     *  corrupt once — a tombstone keeps later sessions from re-decoding and re-counting it). */
     void dropCorrupt(String bucket, String dimKey, long fingerprint, long pos) {
         this.corrupt.incrementAndGet();
-        try {
-            this.io.execute(() -> {
-                var store = this.active;
-                if (store != null && store.is(bucket, dimKey, fingerprint)) {
-                    store.index.remove(pos);
-                    gauges(store);
-                }
-            });
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
-            // shut down
-        }
+        forget(bucket, dimKey, fingerprint, pos);
     }
 
     // ---- lifecycle ----
@@ -331,6 +426,7 @@ final class XaeroColumnStore {
                     warn("purge the cache root", e);
                 }
                 this.othersBytes = 0;
+                this.heldForgets.clear(); // nothing left to forget
             });
         } catch (java.util.concurrent.RejectedExecutionException ignored) {
             // shut down
@@ -357,9 +453,10 @@ final class XaeroColumnStore {
         this.suspended = false;
     }
 
-    /** Wait for every queued task (tests, harness shutdown). */
+    /** Wait for every queued task (tests, harness shutdown); held forgets go too unless a
+     *  clear still suspends the store. */
     void flush() {
-        awaitIo(() -> {});
+        awaitIo(this::replayHeldForgets);
     }
 
     private void awaitIo(Runnable task) {
@@ -401,7 +498,9 @@ final class XaeroColumnStore {
         return store;
     }
 
-    /** @return false when a read-only scan met another fingerprint (nothing was changed). */
+    /** @return false when a read-only scan met another fingerprint or another format version
+     *  (nothing was changed). A READ never deletes a file (O4-F8); a write discards what it cannot
+     *  use. Segments are scanned and closed: read handles reopen lazily (O4-F4). */
     private boolean scan(Active store, boolean discardMismatch) throws IOException {
         if (!Files.isDirectory(store.dir)) return true;
         var found = new TreeMap<Integer, Path>();
@@ -413,10 +512,11 @@ final class XaeroColumnStore {
                 try {
                     found.put(Integer.parseInt(m.group(2)), file);
                 } catch (NumberFormatException e) {
-                    Files.deleteIfExists(file);
+                    if (discardMismatch) Files.deleteIfExists(file);
                 }
             }
         }
+        if (!found.isEmpty()) store.maxSeq = found.lastKey(); // never reuse a number (rotate)
         boolean mismatch = false;
         for (var e : found.entrySet()) {
             var seg = new Segment(e.getKey(), e.getValue());
@@ -433,18 +533,19 @@ final class XaeroColumnStore {
                 continue;
             }
             var header = ByteBuffer.allocate(HEADER_BYTES);
-            boolean ok = seg.size >= HEADER_BYTES && readFully(seg.channel, header, 0)
-                    && header.getInt(0) == SEGMENT_MAGIC && header.getInt(4) == VERSION;
-            if (ok && header.getLong(8) != store.fingerprint) {
+            boolean ours = seg.size >= HEADER_BYTES && readFully(seg.channel, header, 0)
+                    && header.getInt(0) == SEGMENT_MAGIC;
+            boolean ok = ours && header.getInt(4) == VERSION;
+            if (ours && (!ok || header.getLong(8) != store.fingerprint)) {
                 if (!discardMismatch) {
                     closeQuietly(seg);
-                    return false;
+                    return false; // another build's or another registry's store: a read leaves it
                 }
-                // Another mod set / registry / height: every segment of this store is stale.
+                // Another mod set / registry / height / format: every segment of this store is stale.
                 mismatch = true;
                 LSSLogger.info("Xaero column store for " + store.dimKey
                         + " was written with other registries — discarding it");
-                seg.channel.close();
+                closeQuietly(seg);
                 for (var s : store.segments.values()) closeAndDelete(s);
                 store.segments.clear();
                 store.index.clear();
@@ -453,11 +554,17 @@ final class XaeroColumnStore {
                 continue;
             }
             if (!ok) {
-                seg.channel.close();
-                Files.deleteIfExists(seg.path);
+                // A short or garbled header: a write deletes it, a read leaves it alone.
+                closeQuietly(seg);
+                if (discardMismatch) {
+                    Files.deleteIfExists(seg.path);
+                } else {
+                    store.unparsed.add(seg.path);
+                }
                 continue;
             }
             scanRecords(store, seg);
+            closeQuietly(seg);
             store.segments.put(seg.seq, seg);
             store.diskBytes += seg.size;
         }
@@ -475,8 +582,8 @@ final class XaeroColumnStore {
 
     private void scanRecords(Active store, Segment seg) throws IOException {
         long offset = HEADER_BYTES;
-        var head = ByteBuffer.allocate(RECORD_HEADER_BYTES + 8);
-        while (offset + RECORD_HEADER_BYTES + 8 <= seg.size) {
+        var head = ByteBuffer.allocate(RECORD_HEADER_BYTES + 9); // through the codec byte
+        while (offset + RECORD_HEADER_BYTES + 9 <= seg.size) {
             head.clear();
             if (!readFully(seg.channel, head, offset)) break;
             int magic = head.getInt(0);
@@ -487,9 +594,12 @@ final class XaeroColumnStore {
             }
             long pos = head.getLong(RECORD_HEADER_BYTES);
             store.index.remove(pos); // re-insert: scan order is recency order
-            store.index.put(pos, new Loc(seg.seq, offset, RECORD_HEADER_BYTES + bodyLen));
+            boolean tombstone = bodyLen == TOMBSTONE_BODY_BYTES
+                    && head.get(RECORD_HEADER_BYTES + 8) == CODEC_TOMBSTONE;
+            if (!tombstone) store.index.put(pos, new Loc(seg.seq, offset, RECORD_HEADER_BYTES + bodyLen));
             offset += RECORD_HEADER_BYTES + bodyLen;
         }
+        seg.scannedEnd = offset; // == size: a clean tail a later write may append to
     }
 
     private void append(Active store, long pos, byte[] raw) throws IOException {
@@ -504,38 +614,115 @@ final class XaeroColumnStore {
                 payload = raw; // degrade to raw for this record
             }
         }
-        int bodyLen = 8 + 1 + 4 + payload.length;
-        var buf = ByteBuffer.allocate(RECORD_HEADER_BYTES + bodyLen);
-        buf.putInt(RECORD_MAGIC).putInt(bodyLen).putInt(0);
-        buf.putLong(pos).put(codecId).putInt(raw.length).put(payload);
-        var crc = new CRC32();
-        crc.update(buf.array(), RECORD_HEADER_BYTES, bodyLen);
-        buf.putInt(8, (int) crc.getValue());
-        buf.flip();
-        writeRecord(store, pos, buf);
+        if (this.failAppendsForTest > 0) {
+            this.failAppendsForTest--;
+            throw new IOException("injected append failure");
+        }
+        writeRecord(store, pos, record(pos, codecId, raw.length, payload), true);
         this.captured.incrementAndGet();
     }
 
-    private void writeRecord(Active store, long pos, ByteBuffer record) throws IOException {
+    private static ByteBuffer record(long pos, byte codecId, int rawLen, byte[] payload) {
+        int bodyLen = 8 + 1 + 4 + payload.length;
+        var buf = ByteBuffer.allocate(RECORD_HEADER_BYTES + bodyLen);
+        buf.putInt(RECORD_MAGIC).putInt(bodyLen).putInt(0);
+        buf.putLong(pos).put(codecId).putInt(rawLen).put(payload);
+        var crc = new CRC32();
+        crc.update(buf.array(), RECORD_HEADER_BYTES, bodyLen);
+        buf.putInt(8, (int) crc.getValue());
+        return buf.flip();
+    }
+
+    /** Forget {@code pos}: out of the index at once, and a tombstone on disk unless the store
+     *  refuses writes (best effort — a failed write is warned, never fatal). IO thread. */
+    private void tombstone(Active store, long pos) {
+        store.index.remove(pos);
+        if (!this.capturesDisabled) {
+            try {
+                writeRecord(store, pos, record(pos, CODEC_TOMBSTONE, 0, new byte[0]), false);
+                this.forgotten.incrementAndGet();
+            } catch (IOException | RuntimeException e) {
+                warn("forget a column", e);
+            }
+        }
+        gauges(store);
+    }
+
+    /** {@code indexed} false = a tombstone: the position leaves the index. */
+    private void writeRecord(Active store, long pos, ByteBuffer record, boolean indexed) throws IOException {
         int length = record.remaining();
+        deleteUnparsed(store);
         var seg = store.current;
-        if (seg == null || seg.size + length > this.segmentBytes) seg = rotate(store);
+        if (seg == null) {
+            seg = resumeOrRotate(store, length);
+        } else if (seg.size + length > this.segmentBytes) {
+            seg = rotate(store);
+        }
         long offset = seg.size;
         while (record.hasRemaining()) seg.channel.write(record, offset + (length - record.remaining()));
         seg.size += length;
         store.diskBytes += length;
         store.index.remove(pos);
-        store.index.put(pos, new Loc(seg.seq, offset, length));
+        if (indexed) store.index.put(pos, new Loc(seg.seq, offset, length));
         enforceCap(store);
         gauges(store);
     }
 
+    /** A write discards the segments a read-only open left alone (their header was unusable). */
+    private void deleteUnparsed(Active store) {
+        if (store.unparsed.isEmpty()) return;
+        for (Path path : store.unparsed) {
+            try {
+                Files.deleteIfExists(path);
+            } catch (IOException e) {
+                warn("delete an unreadable segment", e);
+            }
+        }
+        store.unparsed.clear();
+    }
+
+    /** The session's first write appends to the newest segment when its tail is clean, it has
+     *  room and nothing changed it since the scan (O4-F4: a segment per session, each holding a
+     *  handle, grew without bound under the cap); a torn tail is never appended after. */
+    private Segment resumeOrRotate(Active store, int length) throws IOException {
+        var last = store.segments.isEmpty() ? null : store.segments.lastEntry().getValue();
+        if (last != null && last.scannedEnd == last.size && last.size + length <= this.segmentBytes) {
+            closeReader(store, last);
+            FileChannel channel = null;
+            try {
+                channel = FileChannel.open(last.path, StandardOpenOption.READ, StandardOpenOption.WRITE);
+                if (channel.size() == last.size) {
+                    last.channel = channel;
+                    store.current = last;
+                    return last;
+                }
+            } catch (IOException e) {
+                warn("reopen a segment", e);
+            }
+            if (channel != null) channel.close();
+        }
+        return rotate(store);
+    }
+
     private Segment rotate(Active store) throws IOException {
-        int seq = store.segments.isEmpty() ? 0 : store.segments.lastKey() + 1;
+        var previous = store.current;
+        int seq = Math.max(store.maxSeq, store.segments.isEmpty() ? -1 : store.segments.lastKey()) + 1;
         Files.createDirectories(store.dir);
-        var seg = new Segment(seq, store.dir.resolve(store.dimKey + ".xfill." + seq));
-        seg.channel = FileChannel.open(seg.path, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.READ, StandardOpenOption.WRITE);
+        Segment seg;
+        for (int attempt = 0; ; attempt++) {
+            var candidate = new Segment(seq, store.dir.resolve(store.dimKey + ".xfill." + seq));
+            try {
+                // Exclusive: a rotation never truncates a file, even one the scan could not open.
+                candidate.channel = FileChannel.open(candidate.path, StandardOpenOption.CREATE_NEW,
+                        StandardOpenOption.READ, StandardOpenOption.WRITE);
+                seg = candidate;
+                break;
+            } catch (java.nio.file.FileAlreadyExistsException taken) {
+                if (attempt >= 16) throw taken;
+                seq++;
+            }
+        }
+        store.maxSeq = seq;
         try {
             if (this.failWritesForTest > 0) {
                 this.failWritesForTest--;
@@ -554,7 +741,41 @@ final class XaeroColumnStore {
         store.diskBytes += HEADER_BYTES;
         store.segments.put(seq, seg);
         store.current = seg;
+        if (previous != null && previous.channel != null) {
+            // The full segment keeps its handle as a reader (fills read recent data first).
+            store.readers.put(previous.seq, previous);
+            trimReaders(store);
+        }
         return seg;
+    }
+
+    /** A read handle for {@code seg}, opened lazily; at most {@link #maxOpenReaders} stay open
+     *  (least recently used closes first). The segment being written uses its own. */
+    private FileChannel readChannel(Active store, Segment seg) throws IOException {
+        if (seg == store.current) return seg.channel;
+        if (seg.channel != null) {
+            store.readers.get(seg.seq); // touch: most recently used
+            return seg.channel;
+        }
+        seg.channel = FileChannel.open(seg.path, StandardOpenOption.READ);
+        store.readers.put(seg.seq, seg);
+        trimReaders(store);
+        return seg.channel;
+    }
+
+    private void trimReaders(Active store) {
+        int cap = Math.max(1, this.maxOpenReaders);
+        var it = store.readers.values().iterator();
+        while (store.readers.size() > cap && it.hasNext()) {
+            var eldest = it.next();
+            it.remove();
+            if (eldest != store.current) closeQuietly(eldest);
+        }
+    }
+
+    private static void closeReader(Active store, Segment seg) {
+        store.readers.remove(seg.seq);
+        closeQuietly(seg);
     }
 
     /** Over the total cap: other stores go first (whole, least recently written first), then
@@ -593,6 +814,7 @@ final class XaeroColumnStore {
         }
         this.evictions.addAndGet(dropped);
         store.segments.remove(seg.seq);
+        store.readers.remove(seg.seq);
         store.diskBytes -= seg.size;
         closeAndDelete(seg);
     }
@@ -684,28 +906,31 @@ final class XaeroColumnStore {
         return freed;
     }
 
+    /** The record at {@code loc}, CRC-checked; null when it is gone or corrupt (a corrupt one is
+     *  forgotten for good: counted once, never re-read by a later session). */
     private byte[] readRecord(Active store, long pos, Loc loc) {
         var seg = store.segments.get(loc.segment());
-        if (seg == null || seg.channel == null) {
+        if (seg == null) {
             store.index.remove(pos);
             return null;
         }
         try {
+            var channel = readChannel(store, seg);
             var buf = ByteBuffer.allocate(loc.length());
-            if (!readFully(seg.channel, buf, loc.offset())) throw new IOException("short read");
+            if (!readFully(channel, buf, loc.offset())) throw new IOException("short read");
             byte[] record = buf.array();
             var crc = new CRC32();
             crc.update(record, RECORD_HEADER_BYTES, record.length - RECORD_HEADER_BYTES);
             if (buf.getInt(0) != RECORD_MAGIC || buf.getInt(8) != (int) crc.getValue()
                     || buf.getLong(RECORD_HEADER_BYTES) != pos) {
-                store.index.remove(pos);
                 this.corrupt.incrementAndGet();
+                tombstone(store, pos);
                 return null;
             }
             return record;
         } catch (IOException e) {
-            store.index.remove(pos);
             this.corrupt.incrementAndGet();
+            tombstone(store, pos);
             return null;
         }
     }
@@ -737,7 +962,7 @@ final class XaeroColumnStore {
         int newest = store.segments.lastKey();
         if (loc.segment() > oldest + (newest - oldest) / 2) return;
         try {
-            writeRecord(store, pos, ByteBuffer.wrap(record));
+            writeRecord(store, pos, ByteBuffer.wrap(record), true);
             this.copiedForward.incrementAndGet();
         } catch (IOException e) {
             warn("copy forward", e);
@@ -756,6 +981,7 @@ final class XaeroColumnStore {
             }
             seg.channel = null;
         }
+        store.readers.clear();
         this.columnsGauge = 0;
         this.bytesGauge = 0;
     }
@@ -804,6 +1030,30 @@ final class XaeroColumnStore {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** Test seam: how many of the active store's segments hold an open file handle. */
+    int openChannelsForTest() {
+        try {
+            return CompletableFuture.supplyAsync(() -> {
+                int open = 0;
+                if (this.active != null) for (var s : this.active.segments.values()) if (s.channel != null) open++;
+                return open;
+            }, this.io).get(5, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Test seam: park the IO thread until {@code release} opens (a slow or stalled disk). */
+    void stallIoForTest(java.util.concurrent.CountDownLatch release) {
+        this.io.execute(() -> {
+            try {
+                release.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
     }
 
     /** Test seam: the active store's segment files (IO thread snapshot). */
