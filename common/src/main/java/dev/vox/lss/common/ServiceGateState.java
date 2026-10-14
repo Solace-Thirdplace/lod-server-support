@@ -69,7 +69,10 @@ public final class ServiceGateState {
 
     private final Map<UUID, DeniedHandshake> deniedHandshakes = new ConcurrentHashMap<>();
     private final Set<UUID> denialLogged = ConcurrentHashMap.newKeySet();
-    private final Set<UUID> mapPolicyNoticed = ConcurrentHashMap.newKeySet();
+    /** uuid → the connection token (the platform's player instance) that claimed the
+     *  map-policy chat line — review fold A7: a token, not a bare uuid, so a rejoin whose
+     *  old connection's state has not drained yet still gets its own line. */
+    private final Map<UUID, Object> mapPolicyNoticed = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> revocationStreaks = new ConcurrentHashMap<>();
     private final AtomicLong permissionDenied = new AtomicLong();
     private final AtomicLong mapPolicyRefused = new AtomicLong();
@@ -91,9 +94,12 @@ public final class ServiceGateState {
 
     /**
      * Deposits (or merges into) the memo entry for {@code reason}: the version and
-     * capabilities are overwritten (the latest handshake is the one worth replaying), the
-     * reason mask is OR-ed, and the reason's counter counts a transition iff the entry did
-     * not already hold that reason.
+     * capabilities are overwritten by the latest handshake — EXCEPT that a later LOWER
+     * discovery rung never replaces a stored higher one (review fold A11: an old client's
+     * ladder answers a v20 refusal with 19 and 16 rungs; replaying the 16 rung after a
+     * disarm would serve a v20-capable client in the v16 dialect). The reason mask is
+     * OR-ed, and the reason's counter counts a transition iff the entry did not already
+     * hold that reason.
      *
      * @return whether this is a TRANSITION for {@code reason} (the call sites log their
      *         once-per-transition INFO line exactly then)
@@ -104,6 +110,9 @@ public final class ServiceGateState {
         this.deniedHandshakes.compute(uuid, (k, old) -> {
             previous[0] = old;
             int reasons = (old == null ? 0 : old.reasons()) | reason;
+            if (old != null && rungOrder(protocolVersion) < rungOrder(old.protocolVersion())) {
+                return new DeniedHandshake(old.protocolVersion(), old.capabilities(), playerName, reasons);
+            }
             return new DeniedHandshake(protocolVersion, capabilities, playerName, reasons);
         });
         boolean transition = previous[0] == null || !previous[0].has(reason);
@@ -114,12 +123,30 @@ public final class ServiceGateState {
         return transition;
     }
 
+    /** The discovery ladder's order: 20 above 19 above 18 above 16; anything else bottoms out. */
+    private static int rungOrder(int protocolVersion) {
+        if (protocolVersion == LSSConstants.PROTOCOL_VERSION) return 4;
+        if (protocolVersion == LSSConstants.V19_COMPAT_PROTOCOL_VERSION) return 3;
+        if (protocolVersion == LSSConstants.V18_COMPAT_PROTOCOL_VERSION) return 2;
+        if (protocolVersion == LSSConstants.V16_COMPAT_PROTOCOL_VERSION) return 1;
+        return 0;
+    }
+
     /** The map policy's once-per-CONNECTION chat-line claim (map-policy plan A3.3): the
      *  first call for a connection returns true, every later one false until disconnect.
-     *  Deliberately NOT cleared by {@link #onRegistered} (that re-arms the denial-log
-     *  latch, which would re-send the line on every arm/disarm cycle). */
-    public boolean claimMapPolicyNotice(UUID uuid) {
-        return this.mapPolicyNoticed.add(uuid);
+     *  {@code connection} identifies the connection (the platform's player instance): a
+     *  claim by a DIFFERENT token claims afresh (review fold A7 — a rejoin that beat its
+     *  old connection's cleanup still gets its own line). Deliberately NOT cleared by
+     *  {@link #onRegistered} (that re-arms the denial-log latch, which would re-send the
+     *  line on every arm/disarm cycle). */
+    public boolean claimMapPolicyNotice(UUID uuid, Object connection) {
+        java.util.Objects.requireNonNull(connection, "connection");
+        return this.mapPolicyNoticed.put(uuid, connection) != connection;
+    }
+
+    /** Whether any connection holds the chat-line claim for {@code uuid} (tests/diag). */
+    public boolean hasMapPolicyNotice(UUID uuid) {
+        return this.mapPolicyNoticed.containsKey(uuid);
     }
 
     /** A successful HANDSHAKE registration: the episode is over — memo entry gone

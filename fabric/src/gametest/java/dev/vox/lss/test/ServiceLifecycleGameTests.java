@@ -2069,9 +2069,10 @@ public class ServiceLifecycleGameTests {
                     "the raced rung gets a 19 echo, enabled=false, never the flags field: " + quiet);
             helper.assertTrue(service.getPlayers().get(uuid) != null,
                     "the QUIET refusal never unregisters the live session");
-            helper.assertTrue(service.getDialectTracker().dialectOf(uuid)
-                            == dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT,
-                    "…nor flips its egress dialect (it never registered as V19)");
+            // isCurrent, not dialectOf: dialectOf defaults an UNMARKED session to CURRENT, so
+            // it could not see the quiet refusal shedding the mark (review fold A8).
+            helper.assertTrue(service.getDialectTracker().isCurrent(uuid),
+                    "…nor sheds or flips its CURRENT dialect mark (it never registered as V19)");
             helper.assertTrue(!gateState.isDenied(uuid) && gateState.mapPolicyRefusedTotal() == 0
                             && notices.isEmpty(),
                     "no memo, no counter, no chat line for a raced rung");
@@ -2136,8 +2137,62 @@ public class ServiceLifecycleGameTests {
             service.replayDeniedHandshakes(config);
             helper.assertTrue(service.getPlayers().get(uuid) != null && !gateState.isDenied(uuid),
                     "the disarm heals the refused session");
-            helper.assertTrue(notices.size() == 1, "a replay never sends the chat line");
+            helper.assertTrue(service.getDialectTracker().isCurrent(uuid),
+                    "…in the CURRENT dialect: the ladder's 19/16 rungs never replaced the stored "
+                            + "v20 handshake (review fold A11)");
+            helper.assertTrue(notices.size() == 1, "a registering replay sends no chat line");
         } finally {
+            service.shutdown();
+            server.getPlayerList().remove(mock);
+        }
+        helper.succeed();
+    }
+
+    /**
+     * Review fold A6: a player permission-REVOKED first and granted while the map policy is
+     * armed lands on MAP_POLICY_REFUSED through the grant sweep's replay — a MAP_POLICY
+     * transition, so the chat line goes out (the old "never from a replay" rule meant this
+     * player never learned why). Exactly one line after the grant; still one after N sweeps
+     * (the armed policy keeps the entry remembered, not replayed, and the latch holds).
+     */
+    @GameTest(structure = "fabric-gametest-api-v1:empty", maxTicks = 400)
+    public void mapPolicyRefusalOnAGrantReplayNotifiesOnce(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var mock = placeMockServerPlayer(helper);
+        var uuid = mock.getUUID();
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        var notices = new ArrayList<String>();
+        service.setMapPolicyNoticeSenderForTest((player, text) -> notices.add(text));
+        var gateState = service.getServiceGateState();
+        var denying = new java.util.concurrent.atomic.AtomicBoolean(false);
+        try {
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL), mock, service, reply -> { });
+            helper.assertTrue(service.getPlayers().get(uuid) != null, "premise: an old client registered");
+            config.set("service.require_permission", true);
+            service.setPermissionProbeForTest((p, node) -> !denying.get());
+            denying.set(true);
+            service.runServiceGateSweeps(config);
+            service.runServiceGateSweeps(config);
+            helper.assertTrue(service.getPlayers().get(uuid) == null && gateState.isDenied(uuid)
+                            && notices.isEmpty(),
+                    "premise: revoked for the permission, no map-policy line yet");
+
+            config.set("privacy.request_no_map_ingestion", true);
+            denying.set(false);
+            service.runServiceGateSweeps(config); // the grant replays — onto the armed policy
+            var memo = gateState.peekDenied(uuid);
+            helper.assertTrue(memo != null && memo.has(dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)
+                            && service.getPlayers().get(uuid) == null,
+                    "the replay is refused by the policy: " + memo);
+            helper.assertTrue(notices.size() == 1, "exactly one chat line after the grant: " + notices);
+            for (int i = 0; i < 5; i++) service.runServiceGateSweeps(config);
+            helper.assertTrue(notices.size() == 1 && gateState.mapPolicyRefusedTotal() == 1,
+                    "still one after N sweeps");
+        } finally {
+            config.set("service.require_permission", false);
             service.shutdown();
             server.getPlayerList().remove(mock);
         }
@@ -2177,6 +2232,7 @@ public class ServiceLifecycleGameTests {
 
             helper.assertTrue(service.runMapPolicySweep(config) == 0, "disarmed: inert");
             config.set("privacy.request_no_map_ingestion", true);
+            service.adoptMapPolicyForTest(true); // as the arming reconcile would
             helper.assertTrue(service.runMapPolicySweep(config) == 1, "exactly the old session");
             helper.assertTrue(pushes.size() == 1 && pushes.get(0)[0] == old
                             && !((SessionConfigS2CPayload) pushes.get(0)[1]).enabled()
@@ -2192,8 +2248,16 @@ public class ServiceLifecycleGameTests {
             helper.assertTrue(service.runMapPolicySweep(config) == 0 && pushes.size() == 1,
                     "idempotent");
 
-            // The cadence: a registration that raced the arm (decided on the pre-arm config).
+            // The cadence: a registration that raced the arm (decided on the pre-arm config;
+            // the handshake's register path marks the CURRENT dialect first).
+            service.getDialectTracker().onHandshake(raced.getUUID(),
+                    dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT);
             service.registerPlayer(raced, VOXEL);
+            service.adoptMapPolicyForTest(false); // review fold A9: the reload owns the transition
+            for (int i = 0; i < 200; i++) service.tick();
+            helper.assertTrue(service.getPlayers().get(raced.getUUID()) != null,
+                    "an arm the reconcile has not adopted: the cadence waits for it");
+            service.adoptMapPolicyForTest(true);
             for (int i = 0; i < 199; i++) service.tick();
             helper.assertTrue(service.getPlayers().get(raced.getUUID()) != null, "199 ticks: not yet");
             service.tick();
@@ -2211,6 +2275,24 @@ public class ServiceLifecycleGameTests {
                                     == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION,
                     "the dimension-change push must carry the flags (absent would keep the "
                             + "client's value, but the census requires it): " + dim.size());
+
+            // Review fold A9: a policy-only repush carries the flags WITHOUT the off-world
+            // re-register (and its roster re-send) a distance change runs.
+            config.set("lod.distance.by_dimension", java.util.Map.of("minecraft:the_end", 0));
+            var before = service.getPlayers().get(capable.getUUID());
+            pushes.clear();
+            service.repushSessionConfig(true);
+            var flagsOnly = pushes.stream().filter(e -> e[0] == capable).toList();
+            helper.assertTrue(service.getPlayers().get(capable.getUUID()) == before,
+                    "flags-only: the off-world session is not removed and re-registered");
+            helper.assertTrue(flagsOnly.size() == 1
+                            && !((SessionConfigS2CPayload) flagsOnly.get(0)[1]).enabled()
+                            && ((SessionConfigS2CPayload) flagsOnly.get(0)[1]).sessionFlags()
+                                    == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION,
+                    "…and the push still says off, with the flags");
+            service.repushSessionConfig();
+            helper.assertTrue(service.getPlayers().get(capable.getUUID()) != before,
+                    "the distance-change mode still re-registers an off-world session");
         } finally {
             capable.setServerLevel(level);
             service.shutdown();
@@ -2266,6 +2348,8 @@ public class ServiceLifecycleGameTests {
                 helper.assertTrue(service.settingsFeedback().mapPolicyRevoked() == 1
                                 && service.settingsFeedback().legacyReconnects() == 0,
                         "the feedback reports the revocation, not a legacy reconnect");
+                helper.assertTrue(service.settingsFeedback().mapPolicyArmed(),
+                        "…and the policy THIS revision adopted (review fold A9)");
                 pushes.clear();
                 config.set("privacy.request_no_map_ingestion", false);
                 disarm.set(service.reconcileSettings(armedSettings, config.snapshot(), 2));

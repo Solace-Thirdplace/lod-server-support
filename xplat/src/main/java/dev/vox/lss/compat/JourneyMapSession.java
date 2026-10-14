@@ -261,6 +261,7 @@ final class JourneyMapSession {
             return out;
         }
         out.put("state", session.state());
+        out.put("server_blocked", !session.serverAllowsWrites.getAsBoolean()); // map-policy plan A5
         out.put("queued", session.queuedGauge);
         for (String name : new String[]{"batches", "rendered", "skipped_live", "render_failed", "decode_failures",
                 "column_failures", "abandoned", "replayed", "requeued", "dropped_overflow", "dropped_stale",
@@ -753,6 +754,7 @@ final class JourneyMapSession {
             if (this.dead) return;
             if (!this.enabled.getAsBoolean() || !this.serverAllowsWrites.getAsBoolean()) {
                 // (Map-policy plan A4: a server deny takes the local-off branch.)
+                if (!this.serverAllowsWrites.getAsBoolean()) abandonQueuedForDeny();
                 reconcileInFlight(); // a finished batch's receipts still close
                 clearQueue();
                 return;
@@ -773,6 +775,18 @@ final class JourneyMapSession {
             }
         } finally {
             drainPendingReports();
+        }
+    }
+
+    /** Map-policy plan A4: a batch still QUEUED on JourneyMap's task thread when the server's
+     *  deny lands never writes — its columns are not owed to a blocked map, so the receipts
+     *  close unreported. (A batch already STARTED is past this point; {@link #render} checks
+     *  the gate before it touches JourneyMap, so only a batch mid-write finishes.) */
+    void abandonQueuedForDeny() {
+        var batch = this.inFlight;
+        if (batch != null && batch.state.compareAndSet(Batch.QUEUED, Batch.ABANDONED)) {
+            batch.entries.forEach(e -> e.receipt.close());
+            this.inFlight = null;
         }
     }
 
@@ -1326,6 +1340,12 @@ final class JourneyMapSession {
 
     void render(Batch batch, Result r) throws Throwable {
         Identity id = batch.identity;
+        if (!this.serverAllowsWrites.getAsBoolean()) {
+            // Map-policy plan A4: the deny landed after the batch was queued and the task
+            // thread won the race to start it — write nothing; the receipts close unreported.
+            r.notAllowed = true;
+            return;
+        }
         if (!identityStillMatches(id)) {
             r.abandoned = true;
             return;
