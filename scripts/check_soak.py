@@ -1979,10 +1979,12 @@ XAERO_FILL_MIN_JOBS = 3                 # the walk's three band switches each ha
 def check_xaero_nether_bands(ctx):
     """Both arms: the window stays within its cap and the walk moved Xaero across at least three
     Layered bands (else the run proved nothing about bands). Fill arm (fill_on): every fill job
-    that ran its 90 s with at least XAERO_FILL_MIN_TARGET stored positions in its radius got
+    that ran its 90 s with at least XAERO_FILL_MIN_TARGET stored positions in its square (the
+    Chebyshev radius LSS serves, min(LOD distance, 128) chunks around the job's centre) got
     >= 90% of them written to its band within those 90 s (fill_covered / fill_target — the
     positions written to that layer this session, live or filled), and at least three jobs were
-    judged. A job superseded by the next switch before 90 s is not judged."""
+    judged. A job superseded before 90 s (the next switch, a moved-player pass, a re-arm — each
+    a new fill_started) is not judged."""
     for run, snaps in sorted(ctx.runs.items()):
         rows = [s for s in snaps if isinstance(s.get("xaero"), dict) and "fill_on" in s["xaero"]]
         if not rows:

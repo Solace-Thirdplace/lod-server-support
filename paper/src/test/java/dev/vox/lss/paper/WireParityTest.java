@@ -492,11 +492,11 @@ class WireParityTest {
         assertArrayEquals(expected, PaperPayloadHandler.rewriteColumnToV18(currentFrame));
     }
     // ---- map-policy session flags (map-policy plan A2/A5): Paper's hand encoder ----
-    // The expected hex was captured from the PRE-CHANGE encoder (2026-10-13; main's data
-    // version 5023 = 9f27) — the Fabric twin SessionConfigFlagsWireTest pins the codec
-    // against the same bytes with 5023 passed explicitly, so the two encoders cannot drift
-    // apart. LINE FLAVOR (1.21.10): this encoder reads the line's own data version, so the
-    // tail is re-captured as 4556 = cc23.
+    // The expected hex was captured from the PRE-CHANGE encoder (2026-10-13). Paper's
+    // encoder writes the RUNTIME data version (4556 = cc23 on this line), while the Fabric
+    // twin SessionConfigFlagsWireTest pins the codec with an explicit one (4554 = ca23):
+    // the v20 frames share the LAYOUT (fields, then the flags after the data version), not
+    // the bytes; the 19/18/16 echoes carry no data version and are byte-identical.
 
     private static final int OLD_CAPS = LSSConstants.CAPABILITY_VOXEL_COLUMNS
             | LSSConstants.CAPABILITY_ZSTD_COLUMNS | LSSConstants.CAPABILITY_FAR_PLAYERS;

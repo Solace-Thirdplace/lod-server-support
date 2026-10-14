@@ -85,13 +85,23 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
     }
 
     /** @param mapPolicyNotice the map policy's chat line, pump-marshaled (the service
-     *                        claims its once-per-connection latch there); null on a
-     *                        grant-sweep replay — the line is never sent from one
-     *                        (map-policy plan A3.3) */
+     *                        claims its once-per-connection latch there), or null */
     static PlayerServiceGate serviceGateFor(Player bukkitPlayer, java.util.UUID uuid,
                                             String playerName, ServiceGateState state,
                                             Runnable deniedWhileRegistered,
                                             Runnable mapPolicyNotice) {
+        return serviceGateFor(bukkitPlayer, uuid, playerName, state, deniedWhileRegistered,
+                mapPolicyNotice, false);
+    }
+
+    /** @param replay the grant sweep's re-offer: the chat line goes out only when the
+     *                refusal is a MAP_POLICY transition (review fold A6 — a player
+     *                permission-denied first and granted while the policy is armed has
+     *                never seen it; the per-connection latch prevents repeats) */
+    static PlayerServiceGate serviceGateFor(Player bukkitPlayer, java.util.UUID uuid,
+                                            String playerName, ServiceGateState state,
+                                            Runnable deniedWhileRegistered,
+                                            Runnable mapPolicyNotice, boolean replay) {
         return new PlayerServiceGate() {
             @Override
             public boolean hasPermission(String node) {
@@ -128,7 +138,7 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                 // session re-handshaking while the policy is armed.
                 boolean transition = state.rememberDenied(uuid, playerName, protocolVersion,
                         capabilities, ServiceGateState.REASON_MAP_POLICY);
-                if (mapPolicyNotice != null) mapPolicyNotice.run();
+                if (mapPolicyNotice != null && (!replay || transition)) mapPolicyNotice.run();
                 if (deniedWhileRegistered != null) deniedWhileRegistered.run();
                 return transition;
             }
@@ -416,11 +426,15 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
      */
     @FunctionalInterface
     interface SessionConfigSender {
-        /** @param capabilities the handshake's capabilities — the production sender reads
-         *                     the map policy at SEND time and appends the flags field only
-         *                     for a v20 session that declared the bit (map-policy plan A2) */
+        /** @param capabilities    the handshake's capabilities — the production sender reads
+         *                        the map policy at SEND time and appends the flags field only
+         *                        for a v20 session that declared the bit (map-policy plan A2)
+         *  @param keepDialectMark a QUIET map-policy refusal (a legacy rung WITH the bit — a
+         *                        0.19 client's raced discovery rung): the reply must not shed
+         *                        the live session's dialect mark (review fold A8) */
         void send(HandshakeGate.WireDialect dialect, boolean enabled, int lodDistanceChunks,
-                  int syncCap, int genCap, boolean generationEnabled, int capabilities);
+                  int syncCap, int genCap, boolean generationEnabled, int capabilities,
+                  boolean keepDialectMark);
     }
 
     /**
@@ -448,7 +462,8 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
         handleHandshake(bukkitPlayer, nmsPlayer, data, false);
     }
 
-    /** @param replay the grant sweep's re-offer: a map-policy refusal sends no chat line */
+    /** @param replay the grant sweep's re-offer: a map-policy refusal sends the chat line
+     *                only on a MAP_POLICY transition (review fold A6) */
     private void handleHandshake(Player bukkitPlayer, ServerPlayer nmsPlayer, byte[] data,
                                  boolean replay) {
         var service = this.requestService;
@@ -473,12 +488,15 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                         service == null ? null
                                 : () -> service.enqueueServiceGateUnregister(nmsPlayer.getUUID()),
                         // Map-policy plan A3.3: the chat line goes out on the pump (where
-                        // the revocation push already sends from); never from a replay.
-                        service == null || replay ? null
+                        // the revocation push already sends from); from a replay only on a
+                        // MAP_POLICY transition. The service skips a player the player list
+                        // no longer holds (quit or replaced before the pump drained, A7).
+                        service == null ? null
                                 : () -> service.enqueueRuntimeTask(
-                                        () -> service.noticeMapPolicyRefusal(nmsPlayer))),
+                                        () -> service.noticeMapPolicyRefusal(nmsPlayer)),
+                        replay),
                 (dialect, enabled, lodDistanceChunks, syncCap, genCap, generationEnabled,
-                 capabilities) -> {
+                 capabilities, keepDialectMark) -> {
                     if (service != null) generationEnabled = service.generationEnabledForSession();
                     // A cross-dialect re-handshake sheds the stale compat identities it is
                     // NOT — otherwise columns keep shipping the old dialect's shape and
@@ -491,9 +509,12 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                             service.getV16CompatManager().onNonV16Handshake(nmsPlayer.getUUID());
                         }
                         // Reply-only outcomes shed a stale CROSS-dialect membership; a
-                        // REGISTER's mark happens on the pump via dialectFlipFor.
-                        service.getDialectTracker().onNonRegisterHandshake(
-                                nmsPlayer.getUUID(), dialect);
+                        // REGISTER's mark happens on the pump via dialectFlipFor. A QUIET
+                        // map-policy refusal keeps the live mark (review fold A8).
+                        if (!keepDialectMark) {
+                            service.getDialectTracker().onNonRegisterHandshake(
+                                    nmsPlayer.getUUID(), dialect);
+                        }
                     }
                     if (dialect == HandshakeGate.WireDialect.V16) {
                         PaperPayloadHandler.sendSessionConfigV16(bukkitPlayer, enabled,
@@ -530,7 +551,9 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                     service.enqueueRegister(nmsPlayer, capabilities,
                             dialectFlipFor(dialect, service.getV16CompatManager(),
                                     service.getDialectTracker(), nmsPlayer.getUUID()),
-                            replyAfterRegister);
+                            replyAfterRegister,
+                            // Review fold A10: the drain re-checks the map policy.
+                            dialect);
                 });
     }
 
@@ -721,7 +744,13 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
             // world change between the handshake and registration cannot strand the client.
             int worldLod = PaperWorldLod.distance(config, nmsPlayer);
             int lodDistance = legacyDialect ? config.legacyAdvertisedDistance(worldLod) : worldLod;
-            boolean enabledHere = decision.effectiveEnabled()
+            // Review fold A10: a REGISTER decided on the pre-arm config whose Register drains
+            // after an arm is refused there — this reply then says so (re-read at SEND time).
+            boolean refusedAtSend = decision.registerPlayer() && config.requestNoMapIngestion()
+                    && !HandshakeGate.honorsMapPolicy(decision.dialect(), handshake.capabilities());
+            boolean mapPolicyRefused = refusedAtSend
+                    || decision.outcome() == HandshakeGate.Outcome.MAP_POLICY_REFUSED;
+            boolean enabledHere = decision.effectiveEnabled() && !refusedAtSend
                     && (legacyDialect || dev.vox.lss.common.config.ServerConfigBase.servesWorld(worldLod));
             configSender.send(decision.dialect(),
                     enabledHere,
@@ -733,7 +762,9 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                     config.enableChunkGeneration(),
                     // The session's capabilities: the sender appends the map-policy flags
                     // only for a v20 session that declared the bit (map-policy plan A2).
-                    handshake.capabilities());
+                    handshake.capabilities(),
+                    // A QUIET refusal (the bit present) keeps the live dialect mark (A8).
+                    mapPolicyRefused && (handshake.capabilities() & LSSConstants.CAPABILITY_MAP_POLICY) != 0);
         };
 
         if (decision.outcome() == HandshakeGate.Outcome.NO_CONSUMER) {

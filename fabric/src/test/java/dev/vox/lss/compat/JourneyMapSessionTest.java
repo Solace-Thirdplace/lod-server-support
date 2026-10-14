@@ -1348,4 +1348,43 @@ class JourneyMapSessionTest {
         this.clock += JourneyMapSession.SETTLE_MILLIS + 1;
         assertEquals(1, cycle(), "an allow resumes writing for terrain arriving from now on");
     }
+
+    @Test
+    void aBatchStillQueuedWhenTheDenyLandsNeverWrites() {
+        offer(0, 0);
+        offer(1, 0);
+        settle();
+        this.session.pump();
+        assertEquals(1, this.jm.queued.size(), "one batch handed to JourneyMap's task thread");
+        assertNotNull(this.session.inFlight);
+        this.serverAllows = false;
+        this.session.pump(); // the deny branch abandons the still-QUEUED batch
+        assertNull(this.session.inFlight, "the slot is reclaimed at once");
+        this.jm.runQueued();
+        assertEquals(0, renders().size(), "the abandoned runnable loses its start CAS: nothing written");
+        assertTrue(this.reports.isEmpty(), "a blocked map is owed nothing: receipts close unreported");
+        assertEquals(0, counter("abandoned"), "not an identity abandon");
+        JourneyMapSession.instance = this.session; // the exporter group (tearDown resets it)
+        var metrics = JourneyMapSession.metrics();
+        assertEquals("blocked_by_server", metrics.get("state"));
+        assertEquals(true, metrics.get("server_blocked"), "the exporter group names the server's block");
+        this.serverAllows = true;
+        assertEquals(false, JourneyMapSession.metrics().get("server_blocked"));
+    }
+
+    @Test
+    void aBatchTheTaskThreadStartsAfterTheDenyWritesNothing() {
+        offer(0, 0);
+        offer(1, 0);
+        settle();
+        this.session.pump();
+        assertEquals(1, this.jm.queued.size());
+        this.serverAllows = false; // the deny lands; the task thread wins the race to start
+        this.jm.runQueued();
+        assertEquals(0, renders().size(), "render() checks the gate before touching JourneyMap");
+        this.session.pump();
+        assertNull(this.session.inFlight);
+        assertTrue(this.reports.isEmpty(), "receipts close unreported");
+        assertEquals(0, counter("rendered"));
+    }
 }

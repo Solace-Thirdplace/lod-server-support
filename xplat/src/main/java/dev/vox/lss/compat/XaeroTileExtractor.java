@@ -39,8 +39,10 @@ import java.util.List;
  *       invisible-skipped blocks never raise it; a void pixel keeps world
  *       bottom, the native shape);</li>
  *   <li>translucent runs (water, {@code TransparentBlock}s) become overlay runs
- *       with per-block light-dampening opacity, one run per contiguous same-state
- *       stretch, capped at {@value #MAX_OVERLAYS} — including the native "≥5
+ *       with per-block light-dampening opacity, one run per contiguous same-BLOCK
+ *       stretch (the native builder splits on a particle-texture change and keeps the
+ *       run's first state — water of every level is one run), at most
+ *       {@value #MAX_OVERLAYS} runs, the last taking the opacity past the cap — including the native "≥5
  *       transparent blocks → extend the run to the bottom of the transparency in
  *       one step" fast path;</li>
  *   <li>the floor is the first opaque block with a nonzero vanilla map color;
@@ -514,7 +516,6 @@ final class XaeroTileExtractor {
         private BlockState runState;
         private byte runLight;
         private int runOpacity;
-        private boolean capReached;
         int firstTransparentY;
 
         void reset(int lowY) {
@@ -527,7 +528,6 @@ final class XaeroTileExtractor {
             this.runs = null;
             this.runState = null;
             this.runOpacity = 0;
-            this.capReached = false;
             this.firstTransparentY = 0;
         }
 
@@ -560,13 +560,16 @@ final class XaeroTileExtractor {
                     }
                     return false;
                 }
-                if (this.runState != state && !this.capReached) {
-                    boolean first = !this.hasOverlays();
-                    if (first) this.firstTransparentY = h;
-                    flushRun();
-                    if (this.runs != null && this.runs.size() >= MAX_OVERLAYS) {
-                        this.capReached = true; // native builder caps at 10; extras are dropped
-                    } else {
+                // OverlayBuilder.build: a new overlay only when the block's particle texture
+                // changes (water of every LEVEL shares one: the run keeps its FIRST state), and
+                // past the 10-overlay cap the last overlay keeps taking opacity. A texture change
+                // is a BLOCK change here (the decode thread has no model manager).
+                if (this.runState == null || this.runState.getBlock() != state.getBlock()) {
+                    int open = (this.runs == null ? 0 : this.runs.size()) + (this.runState != null ? 1 : 0);
+                    if (open < MAX_OVERLAYS) {
+                        boolean first = !this.hasOverlays();
+                        if (first) this.firstTransparentY = h;
+                        flushRun();
                         this.runState = state;
                         this.runLight = cave && first && skyLight > blockLight ? skyLight : blockLight;
                         this.runOpacity = 0;

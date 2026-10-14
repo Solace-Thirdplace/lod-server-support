@@ -288,9 +288,10 @@ class ClientOptionCatalogTest {
         var maps = ClientOptionCatalog.find(ClientOptionCatalog.ID_MAP_INGESTION).orElseThrow().tooltip();
         var blocked = new MenuContext(true, true, true, true, true);
         assertEquals("lss.config.map_ingestion.tooltip.server_blocked", maps.resolve(blocked));
-        assertEquals("lss.config.map_ingestion.tooltip.server_blocked",
+        assertEquals("lss.config.map_ingestion.tooltip.not_installed",
                 maps.resolve(new MenuContext(true, false, true, true, true)),
-                "a blocking server outranks the not-installed hint");
+                "the status ladder's order (review fold A5): with no map mod installed the "
+                        + "status reads ABSENT, so the tooltip says not installed too");
         assertEquals("lss.config.map_ingestion.tooltip.native_only",
                 maps.resolve(new MenuContext(true, true, true, false, true)), "DH mode wins");
         assertEquals("lss.config.map_ingestion.tooltip",

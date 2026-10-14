@@ -663,6 +663,10 @@ are off.
 
 ### B6. Best-effort band pipeline (B-II) — SUPERSEDED by B10 (spike failed, §B10.1)
 
+> Historical: nothing in this section was kept. Its one surviving idea, the
+> `min(128, LOD distance)` bound, now bounds live cave-layer writes and the fill
+> (§B10.3).
+
 **Isolation from the reliable path.** It has its own queue, with its own count
 and byte caps.
 - It sits outside the occupancy figure and the backpressure report.
@@ -731,8 +735,12 @@ on disk, so add the 1.42.0 floor jar as a golden.
 
 ### B8. Observability
 
+> The `best_effort_*` tokens below were B-II's and never shipped; the as-built diag and
+> exporter split is in §B10.3.
+
 - The XaeroMap diag gains
-  `layer=<current> mode=<surface|layered|full> best_effort_written=<n> best_effort_dropped=<n>`.
+  `layer=<current> mode=<surface|layered|full> best_effort_written=<n> best_effort_dropped=<n>`
+  (superseded: `best_effort_*` dropped with B-II).
 - `cave_layer_waits` goes away. Update the client-snapshot exporter contract to
   match.
 - `XaeroSession` and the `IngestBackpressureGovernor` differential test feed
@@ -768,7 +776,8 @@ oracle).
 - world-save off;
 - missing-binding fallback;
 - dimension-mismatch extraction;
-- for B-II: isolation, drop-oldest, the batch-commit window, and the bound.
+- for B-II: isolation, drop-oldest, the batch-commit window, and the bound
+  (superseded with B-II; the fill's tests are listed in §B10.3).
 
 **Live Nether gate.** A harness client walks across bands and roof heights, with
 and without Xaero's Minimap. Check:
@@ -833,6 +842,54 @@ layer from a client-side copy of the columns when Xaero switches to it.
   the stored positions within radius within 90 s, and there are no Xaero exceptions.
   Reliable load p95 and heap are compared by hand against the B-I arm. Run both spike
   worlds (trickle and pre-generated).
+
+#### B10.3 Review fold (2026-10-13)
+
+The fill-on-switch review's findings, as built (tests in parentheses):
+
+1. The fill covers the Chebyshev square LSS serves, not a disc; nearest (Euclidean) first.
+   `fill_target` is the square's stored count (`XaeroColumnStoreTest`, `XaeroBandFillTest`).
+2. The store cap counts bytes actually freed, skips a store whose files will not delete,
+   and bounds a pass (an undeletable other bucket).
+3. Fills also stop while both of Xaero's own map-writing switches are off and while
+   acquisition is off (coverage kept); Xaero's world id changing cancels the job, clears
+   coverage and restarts the debounce.
+4. A player who moves more than a quarter radius gets a new pass; a pass that left
+   positions unwritten re-arms once, 30 s later.
+5. The registry fingerprint covers the store/codec formats, the data version and every
+   block's key and state count; a stored column that will not decode is dropped and the
+   job goes on (`fill_bad_columns`, `store_corrupt`).
+6. A failed segment header closes and deletes its file; 8 failed writes in a row stop
+   capturing for the session, with one warning (a write-failure seam).
+7. The active bucket is matched by its directory's file key (case-insensitive
+   filesystems, links).
+8. A capture the store drops marks its position stale for the session; fills skip it
+   until a later capture is stored.
+9. Reads never discard a store written under another fingerprint (only a write does);
+   singleplayer captures wait for the layer plan; the cache-clear test runs on a
+   temporary cache root.
+10. Overlay runs split on a block (texture) change and keep their first state, and keep
+    accumulating past the 10-overlay cap, as Xaero's `OverlayBuilder` does (surface and
+    cave). New parity fixtures: falling water over a source pool, alternating
+    glass/ice, a Layered band with ignored heightmaps, a Nether lava sea; overlay
+    `glowing` is compared. The binding-surface test asserts no optional group misses the
+    stubs, that by-name bindings are unique, and that the NeoForge and floor builds run
+    the oracle's writer instructions.
+11. Live cave-layer writes (band and Full) are bounded to min(LOD distance, 128) chunks in
+    every dimension; the surface stays unbounded (`cave_out_of_range`).
+12. Queued tiles of a non-current, non-surface layer expire silently after 600 held pumps
+    (`dropped_stale_layer`).
+13. The dimension-mismatch band follows Xaero's `getCaving` arithmetic; the native-reach
+    skip documents the map-screen and 4-chunk transitional reach.
+14. `/lss diag` keeps what a player or admin needs (`band_fill=on|off`, the store size, the
+    last fill); the spike instrumentation is exporter-only, which regains
+    `buffer_updates`, `dropped_updates` and `to_save`.
+15. Docs: the ownership baseline drops the stale best-effort counters; B6–B8 are marked
+    superseded.
+16. One client setting, `integrations.map_ingestion.nether_store_mib` (256 MiB; 0 = no
+    store, files deleted, no fill), in the experimental sidecar so the main file stays
+    readable by 0.18.0; applied by `/lss reload`. The system properties stay as
+    development overrides.
 
 ## C. Shared: validation, docs, release, ports
 
