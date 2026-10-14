@@ -36,9 +36,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * ingestion off, world-save mode or missing cave bindings.
  */
 final class XaeroBandFill {
-    /** The client level a fill reads its facts from: the dimension, the store's file key, the
-     *  heights, the section factory, and the registry fingerprint the store is keyed by. */
-    record FillLevel(Object levelRef, Object dimension, String dimKey, XaeroTileExtractor.LevelFacts facts,
+    /** The facts a fill reads from its client level: the dimension, the store's file key, the
+     *  heights, the section factory, and the registry fingerprint the store is keyed by. It holds
+     *  no reference to the level itself (O4-F1: the last job keeps its fill level for the diag,
+     *  and a level pinned there outlived leaving the Nether, a disconnect and a server switch). */
+    record FillLevel(Object dimension, String dimKey, XaeroTileExtractor.LevelFacts facts,
                      Registry<Biome> factory, long fingerprint) {}
 
     /** Coverage key: one Xaero layer of one dimension. ResourceKeys are interned. */
@@ -334,6 +336,7 @@ final class XaeroBandFill {
     void onWorldChange() {
         cancel(this.job);
         this.job = null;
+        this.lastJob = null; // its fill level names the old world
         this.seenDimension = null;
         this.coverage.clear();
         synchronized (this.stale) {
@@ -345,6 +348,7 @@ final class XaeroBandFill {
     void reset() {
         cancel(this.job);
         this.job = null;
+        this.lastJob = null; // nothing of the session (its fill level, registries) outlives it
         this.seenDimension = null;
         this.coverage.clear();
         this.coverBucket = null;
