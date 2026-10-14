@@ -694,6 +694,9 @@ final class XaeroSession {
     final AtomicLong skippedSettings = new AtomicLong();
     /** What Xaero shows, published at the top of every pump (§B3); null until read. */
     volatile LayerPlan layerPlan;
+    /** Xaero's world id ({@code getCurrentWorldId}), published with the plan; null until read
+     *  (and at session end). The fill store is keyed by it (O4-F5). */
+    volatile String xaeroWorldId;
     /** The local player — test seam (unknown by default; production reads the client). */
     PlayerProbe playerProbe = () -> null;
     /** The client's effective render distance — test seam (production reads the options). */
@@ -973,6 +976,7 @@ final class XaeroSession {
         this.rebuilds.rebuildNanosMax = 0; // session-scoped worst recolor; the total stays lifetime
         this.lastWorldId = null;
         this.layerPlan = null; // the next session re-reads what Xaero shows
+        this.xaeroWorldId = null;
         this.fill.reset(); // coverage is session-scoped; the store closes (its files stay)
         lastProductionFillLevel = null; // the old connection's level facts and registries
         this.loadStats.clearPending();
@@ -1348,7 +1352,7 @@ final class XaeroSession {
         if (player == null || player.dimension() != dimension) return;
         var fillLevel = clientLevel != null ? productionFillLevel(clientLevel) : this.fillLevelProbe.get();
         if (fillLevel == null || fillLevel.dimension() != dimension) return;
-        this.fill.capture(fillLevel, this.storeBucket, dimension, chunkX, chunkZ, columnData);
+        this.fill.capture(fillLevel, this.storeBucket, this.xaeroWorldId, dimension, chunkX, chunkZ, columnData);
     }
 
     /** The store setting, every pump (main thread): a new value re-caps the store; 0 detaches
@@ -1389,7 +1393,7 @@ final class XaeroSession {
         this.storeBucket = this.storeBucketProbe.get();
         this.fill.tick(this.layerPlan, this.fillLevelProbe.get(),
                 writesOpen() && this.h.caveGate != null && !this.settingsWritesOff
-                        && this.acquisitionActive.getAsBoolean(), this.storeBucket);
+                        && this.acquisitionActive.getAsBoolean(), this.storeBucket, this.xaeroWorldId);
     }
 
     /** Writes are open: alive, enabled, in a session, and allowed by the server. */
@@ -1877,6 +1881,9 @@ final class XaeroSession {
             if (session == null || !(boolean) this.h.sessionIsUsable.invoke(session)) return;
             Object mp = this.h.getMapProcessor.invoke(session);
             if (mp == null) return;
+            // Xaero's world: the fill store's key (O4-F5); read ahead of the dimension so a world
+            // change is seen no later than the ladder's own world-id check.
+            this.xaeroWorldId = (String) this.h.getCurrentWorldId.invoke(mp);
             Object mapWorld = this.h.getMapWorld.invoke(mp);
             if (mapWorld == null) return;
             Object dimensionId = this.h.getCurrentDimensionId.invoke(mapWorld);
@@ -1969,9 +1976,9 @@ final class XaeroSession {
                 // reconfiguration residual): the queued tiles are the OLD world's.
                 // §12.1(c): reported — the stamps must be forgotten or a return to
                 // that world never re-declares them.
-                // The fill job goes FIRST (O3 N2): its token is revoked before the clear, so no
-                // stored column of the old world can be offered after the queue is emptied.
-                this.fill.onWorldChange(); // its coverage and job named the old world
+                // The fill follows Xaero's world itself (tick, at the top of this pump, from the
+                // published world id — O4-F5): its job is already cancelled and its token
+                // revoked (O3 N2), so no stored column of the old world lands after this clear.
                 this.droppedStale.addAndGet(clearQueueCollectingReports());
                 this.acquisition.clearOwedCollectingReports(); // WI-3: the old world's debts are reported like its tiles
                 this.loadStats.clearPending(); // O3 N3: never follow the old world's region objects
