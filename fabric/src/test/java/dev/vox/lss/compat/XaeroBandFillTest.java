@@ -641,6 +641,24 @@ class XaeroBandFillTest {
         }
     }
 
+    @Test
+    void columnsArrivingBeforeXaerosPlanNamesTheNetherAreFilledIntoTheShownBand() throws Exception {
+        // Review fold O3-2: the entry burst lands before the pump re-reads Xaero. Only the surface
+        // is written live (no guessed band); the store keeps the columns, and once the plan names
+        // the Nether the fill writes the band Xaero shows.
+        this.processor.mapWorld.currentDimensionId = OVERWORLD; // Xaero has not followed the player yet
+        show(Integer.MAX_VALUE);
+        for (int x = 64; x < 67; x++) offer(x, 64, PLATFORMS);
+        assertEquals(3, stored(), "kept for the fill");
+        assertEquals(3, this.bridge.queuedForTest(), "the surface only");
+        this.processor.mapWorld.currentDimensionId = NETHER; // Xaero follows: band 4 below the roof
+        switchTo(4);
+        runFill();
+        assertEquals(3, count("fill_committed"), "fill-on-switch writes the shown band from the store");
+        assertNotNull(caveRegion(4));
+        assertEquals(6, count("written"), "three surface tiles live, three band tiles filled");
+    }
+
     // ---- review fold (O4-F1): no level or registries outlive the dimension or the session ----
 
     private static void awaitCollected(java.lang.ref.WeakReference<?> ref, String what) throws InterruptedException {
