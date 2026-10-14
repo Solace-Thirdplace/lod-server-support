@@ -96,14 +96,27 @@ public class RequestProcessingService {
      * the refusal already happened. Server thread.
      */
     public void noticeMapPolicyRefusal(ServerPlayer player) {
-        // The player instance is the connection token (review fold A7).
-        if (!this.serviceGateState.claimMapPolicyNotice(player.getUUID(), player)) return;
+        if (!this.serviceGateState.claimMapPolicyNotice(player.getUUID(),
+                mapPolicyConnectionToken(player))) return;
         try {
             this.mapPolicyNoticeSender.accept(player, dev.vox.lss.common.MapPolicy.refusalNotice());
         } catch (Exception e) {
             LSSLogger.warn("Map-policy notice to " + player.getName().getString()
                     + " failed: " + e);
         }
+    }
+    /** The chat-line latch's per-CONNECTION token (review fold A7; 0.19.0 review O1):
+     *  the packet listener, not the {@code ServerPlayer}. Vanilla's respawn (death, End
+     *  exit) builds a NEW {@code ServerPlayer} and moves the SAME listener onto it, so a
+     *  player-instance token re-sent the line on the same connection (and kept the dead
+     *  instance in the latch until disconnect); the sweep can also still hold the
+     *  pre-respawn instance until the lifecycle pass swaps it. A rejoin gets a new
+     *  listener, so it still claims afresh. The player instance is only the fallback
+     *  for a listener-less player (none in production). Paper keeps its player token:
+     *  CraftBukkit reuses the entity on respawn. */
+    static Object mapPolicyConnectionToken(ServerPlayer player) {
+        var listener = player.connection;
+        return listener != null ? listener : player;
     }
     private final MinecraftServer server;
     private final ChunkDiskReader diskReader;
