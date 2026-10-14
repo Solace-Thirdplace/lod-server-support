@@ -88,15 +88,40 @@ public final class RegionSummaryService {
         SendOutcome send(UUID player, byte[] frame);
     }
 
-    /** How long a RETRY-refused frame is retained before it is dropped as stale —
-     *  generous next to the ~seconds an unwritable join burst lasts, tiny next to
-     *  the stamps' freshness margin, and the belt against a sender that answers
-     *  RETRY forever for a player the vanish path somehow misses. */
+    /** The longest a ready frame may wait, from its ASSEMBLY, before it is too old to
+     *  send — generous next to the ~seconds an unwritable join burst lasts, tiny next
+     *  to the stamps' freshness margin. What happens at the bound depends on whether
+     *  the sender was ever consulted:
+     *  <ul>
+     *    <li>RETRY-refused (the sender answered at least once): dropped — the belt
+     *        against a sender that answers RETRY forever for a player the vanish path
+     *        somehow misses.</li>
+     *    <li>Never consulted (the TICK thread stalled past the bound between the
+     *        sweeper's add and the next drain — a world save or a lag spike at the
+     *        join/portal moment): the request is still owed, so its job is RE-ASSEMBLED
+     *        with fresh stamps unless something newer superseded it. Dropping it lost
+     *        the client's only request for the visit (2026-10-12/14 gate sightings:
+     *        {@code reqs=1 frames=0} after a 30-100 s server-thread freeze).</li>
+     *  </ul> */
     static final long FRAME_RETRY_TTL_NANOS = 10_000_000_000L;
 
     private record Pending(RegionSummaryWire.Request request, long expiresAtNanos) {}
     private record SweepJob(String dimension, int centerTileX, int centerTileZ, int tileRadius) {}
-    private record ReadyFrame(byte[] frame, long expiresAtNanos) {}
+    /** {@code job} is the sweep that produced the frame (re-assembled when the frame
+     *  ages out unconsulted); {@code consulted} is set on the tick thread the first
+     *  time the sender answers RETRY. */
+    private static final class ReadyFrame {
+        final byte[] frame;
+        final SweepJob job;
+        final long expiresAtNanos;
+        boolean consulted;
+
+        ReadyFrame(byte[] frame, SweepJob job, long expiresAtNanos) {
+            this.frame = frame;
+            this.job = job;
+            this.expiresAtNanos = expiresAtNanos;
+        }
+    }
 
     private final TileStampSource source;
     private final RegionSummaryDiagnostics diag = new RegionSummaryDiagnostics();
@@ -105,6 +130,10 @@ public final class RegionSummaryService {
     private final java.util.function.IntSupplier lodDistanceChunks;
     private final ConcurrentHashMap<UUID, Pending> pending = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, SweepJob> jobs = new ConcurrentHashMap<>();
+    /** The newest job ADMITTED per player (tick thread writes) — identity-compared when an
+     *  unconsulted frame ages out: only the newest admission's frame is re-assembled, so
+     *  a superseded one can never be re-sent after (or race) a fresher request's frame. */
+    private final ConcurrentHashMap<UUID, SweepJob> latestAdmitted = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, Long> lastSweepNanos = new ConcurrentHashMap<>();
     /** Stamps eligibility (plan §9.4): players that sent a summary request this session. */
     private final java.util.Set<UUID> requestedThisSession =
@@ -190,6 +219,7 @@ public final class RegionSummaryService {
     public void removePlayer(UUID player) {
         this.pending.remove(player);
         this.jobs.remove(player);
+        this.latestAdmitted.remove(player);
         this.lastSweepNanos.remove(player);
         this.requestedThisSession.remove(player);
         this.ready.remove(player); // retained frames die with the connection
@@ -243,14 +273,12 @@ public final class RegionSummaryService {
                 this.diag.recordRangeFiltered();
             }
             this.lastSweepNanos.put(player, now);
-            this.jobs.put(player, new SweepJob(p.request().dimension(), cx, cz, radius));
+            var job = new SweepJob(p.request().dimension(), cx, cz, radius);
+            this.latestAdmitted.put(player, job);
+            this.jobs.put(player, job);
             admitted = true;
         }
-        if (admitted) {
-            synchronized (this.sweeperWake) {
-                this.sweeperWake.notifyAll();
-            }
-        }
+        if (admitted) wakeSweeper();
         // Anchor-less eligibility sweep (final panel — the Folia quit race): on Folia
         // a region-thread offerRequest can land AFTER the tick thread's removePlayer,
         // resurrecting requestedThisSession with no other sweep — the mark (and any
@@ -264,21 +292,28 @@ public final class RegionSummaryService {
                     && !this.jobs.containsKey(marked)) {
                 this.requestedThisSession.remove(marked);
                 this.lastSweepNanos.remove(marked);
+                this.latestAdmitted.remove(marked);
                 this.ready.remove(marked);
             }
         }
+        boolean requeued = false;
         for (var entry : this.ready.entrySet()) {
             UUID player = entry.getKey();
             var queue = entry.getValue();
             ReadyFrame frame;
             while ((frame = queue.peek()) != null) {
-                if (now - frame.expiresAtNanos() >= 0) { // retried past the TTL — stale
+                if (now - frame.expiresAtNanos >= 0) { // too old to send (FRAME_RETRY_TTL_NANOS)
                     queue.poll();
+                    if (!frame.consulted && reassembleIfOwed(player, frame, queue, anchors)) {
+                        requeued = true;
+                    } else {
+                        this.diag.recordFrameExpired();
+                    }
                     continue;
                 }
                 SendOutcome outcome;
                 try {
-                    outcome = sender.send(player, frame.frame());
+                    outcome = sender.send(player, frame.frame);
                 } catch (Throwable t) {
                     // A torn-down connection can throw between the sender's own
                     // player-null check and the send — treat as the vanished belt
@@ -287,18 +322,57 @@ public final class RegionSummaryService {
                 }
                 if (outcome == SendOutcome.SENT) {
                     queue.poll();
-                    this.diag.recordFrameSent(frame.frame().length);
+                    this.diag.recordFrameSent(frame.frame.length);
                 } else if (outcome == SendOutcome.RETRY) {
                     // Transient refusal (unwritable channel): the frame stays at the
                     // HEAD of this player's queue — assembly order preserved (the
                     // client-side stale-then-fresh invariant) — and only THIS
                     // player's drain stops; other players' channels are independent.
+                    frame.consulted = true;
                     break;
                 } else {
                     queue.poll(); // DROP: the player vanished — discard.
                 }
             }
         }
+        if (requeued) wakeSweeper();
+    }
+
+    private void wakeSweeper() {
+        synchronized (this.sweeperWake) {
+            this.sweeperWake.notifyAll();
+        }
+    }
+
+    /**
+     * An unconsulted frame aged out (FRAME_RETRY_TTL_NANOS: the tick thread stalled
+     * between assembly and this drain). The client asked exactly once for this visit and
+     * never re-asks, so the request is still OWED: re-queue the frame's job for a fresh
+     * assembly — same window, current stamps, so nothing older than the bound is ever
+     * sent — unless the exchange is superseded or moot:
+     * <ul>
+     *   <li>a newer request was admitted since (identity check on
+     *       {@link #latestAdmitted} — its frame is queued, assembling, or pending), or
+     *       one is pending (latest-wins: it will be admitted on its own);</li>
+     *   <li>another frame already follows this one in the player's queue;</li>
+     *   <li>the player is no longer in the job's dimension (no anchor, or a different
+     *       one — the client re-requests at its next dimension entry).</li>
+     * </ul>
+     * Bounded: at most one re-assembly per stall of the tick thread per player.
+     * Tick thread.
+     *
+     * @return whether the job was re-queued
+     */
+    private boolean reassembleIfOwed(UUID player, ReadyFrame frame,
+                                     ConcurrentLinkedQueue<ReadyFrame> queue,
+                                     Function<UUID, PlayerAnchor> anchors) {
+        if (this.latestAdmitted.get(player) != frame.job) return false;
+        if (this.pending.containsKey(player) || !queue.isEmpty()) return false;
+        PlayerAnchor anchor = anchors.apply(player);
+        if (anchor == null || !anchor.dimension().equals(frame.job.dimension())) return false;
+        if (this.jobs.putIfAbsent(player, frame.job) != null) return false;
+        this.diag.recordFrameReassembled();
+        return true;
     }
 
     private void sweeperLoop() {
@@ -371,7 +445,8 @@ public final class RegionSummaryService {
         this.diag.recordTiles(known, neverClean, noRegion);
         this.diag.recordRefreshMillis((System.nanoTime() - t0) / 1_000_000);
         this.ready.computeIfAbsent(player, k -> new ConcurrentLinkedQueue<>())
-                .add(new ReadyFrame(frame, this.nanoClock.getAsLong() + FRAME_RETRY_TTL_NANOS));
+                .add(new ReadyFrame(frame, job,
+                        this.nanoClock.getAsLong() + FRAME_RETRY_TTL_NANOS));
         // Post-add liveness re-check (panel fold 2026-08-22): a removePlayer landing
         // between the pump's jobs hand-off and the add above resurrects the ready
         // queue for a departed UUID — the vanished-send belt would drop the frame,

@@ -360,14 +360,19 @@ public class SerializerParityGameTests {
                     // C2ME can remove a loaded holder before its asynchronous save is visible.
                     // Establish the saved-FULL premise before either LSS read, without retrying
                     // a failed LSS result. The native readiness phase is bounded in wall time.
-                    nativeReadyDeadline.set(System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10));
                     step.set(10);
                     helper.assertTrue(false, "awaiting native saved-FULL readiness");
                 }
                 case 10 -> {
-                    helper.assertTrue(System.nanoTime() < nativeReadyDeadline.get(),
-                            "native saved-FULL readiness deadline exceeded for " + cx + "," + cz
-                                    + ": " + nativeReadyStatus.get());
+                    // The 10 s budget starts at the FIRST readiness tick and is checked only
+                    // after this tick's poll (2026-10-14 fold): set at the save, a game-test
+                    // server-thread stall between two ticks spent it before the read was ever
+                    // issued ("deadline exceeded ...: not yet read" right after a 101 s freeze),
+                    // and a read that completed during a stall must still count.
+                    if (nativeReadyDeadline.get() == 0L) {
+                        nativeReadyDeadline.set(System.nanoTime()
+                                + java.util.concurrent.TimeUnit.SECONDS.toNanos(10));
+                    }
                     if (nativeSavedRead.get() == null) {
                         var map = ((dev.vox.lss.mixin.AccessorServerChunkCache) chunkSource).getChunkMap();
                         nativeSavedRead.set(map.read(chunkPos.pos()));
@@ -393,6 +398,9 @@ public class SerializerParityGameTests {
                         }
                         nativeSavedRead.set(null);
                     }
+                    helper.assertTrue(System.nanoTime() < nativeReadyDeadline.get(),
+                            "native saved-FULL readiness deadline exceeded for " + cx + "," + cz
+                                    + ": " + nativeReadyStatus.get());
                     // Unthrottled GameTest ticks otherwise exhaust the budget while real I/O
                     // is still pending. This wait applies only to the native save premise.
                     try { Thread.sleep(50); }
