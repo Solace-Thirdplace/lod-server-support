@@ -54,10 +54,10 @@ final class XaeroRebuildScheduler {
      * tick, at most a pressure-capped few recolors per call (base
      * {@link #frameMaxRebuilds}; scarce-frame bumps; allowance-bounded). Mirrors the
      * pump ladder's gate envelope exactly down to the dimension equality (a rebuild
-     * must never run under weaker gates than the pump's flush did); the settings and
-     * cave-layer gates sit BELOW the flush in the pump ladder (rebuilds are owed
-     * debt to already-committed tile chunks, not new writes) and are skipped here
-     * for the same reason. Never drains commits, never grants loads, never visits
+     * must never run under weaker gates than the pump's flush did); the settings
+     * gate sits BELOW the flush in the pump ladder (rebuilds are owed debt to
+     * already-committed tile chunks, not new writes) and is skipped here for the
+     * same reason. Never drains commits, never grants loads, never visits
      * regions (tick-side — the 1 s park guard needs only pump cadence), and defers
      * the world-change queue drop to the pump (it returns instead). Shares the
      * pump's containment + death latch.
@@ -162,9 +162,10 @@ final class XaeroRebuildScheduler {
     boolean hasRebuildCapacity(Object dimensionId, XaeroTileExtractor.PreparedTile tile,
                                        List<SlopeNeighbor> neighbors) {
         var keys = new java.util.HashSet<PendingKey>();
-        keys.add(this.session.pendingKey(dimensionId, tile.chunkX() >> 2, tile.chunkZ() >> 2));
+        keys.add(XaeroSession.pendingKey(dimensionId, tile.layer(), tile.chunkX() >> 2, tile.chunkZ() >> 2));
         for (var neighbor : neighbors) {
-            keys.add(this.session.pendingKey(dimensionId, neighbor.chunkX() >> 2, neighbor.chunkZ() >> 2));
+            // Slope neighbours are region-local, hence in the tile's own layer.
+            keys.add(XaeroSession.pendingKey(dimensionId, tile.layer(), neighbor.chunkX() >> 2, neighbor.chunkZ() >> 2));
         }
         keys.removeAll(this.pendingUpdates.keySet());
         return this.pendingUpdates.size() + keys.size() <= this.session.pendingUpdatesHardCap;
@@ -172,10 +173,10 @@ final class XaeroRebuildScheduler {
 
     // ---- the rebuild phase (plan §15) ----
 
-    void notePendingUpdate(Object mp, Object dimensionId, Object region, Object tileChunk,
+    void notePendingUpdate(Object mp, Object dimensionId, int layer, Object region, Object tileChunk,
                                    int localTcX, int localTcZ, int tileChunkX, int tileChunkZ)
             throws Throwable {
-        var key = this.session.pendingKey(dimensionId, tileChunkX, tileChunkZ);
+        var key = XaeroSession.pendingKey(dimensionId, layer, tileChunkX, tileChunkZ);
         var existing = this.pendingUpdates.remove(key); // re-insert at the tail = last touch
         if (existing != null && existing.tileChunk == tileChunk) {
             existing.lastTouchPump = this.pumpCount;
@@ -404,8 +405,9 @@ final class XaeroRebuildScheduler {
 
     /** Owed-rebuild key: the DIMENSION is part of it (sweep B m2 — the End/Nether
      *  reuse the Overworld's tile-chunk coords around the origin; a coords-only key
-     *  silently evicted the other dimension's entry). ResourceKeys are interned. */
-    record PendingKey(Object dimension, long tileChunk) {}
+     *  silently evicted the other dimension's entry), and so is the LAYER (§B5 — a
+     *  column's surface and band tile chunks share coords). ResourceKeys are interned. */
+    record PendingKey(Object dimension, int layer, long tileChunk) {}
 
     /** A committed tile chunk owed its texture rebuild (plan §15). Bound to the
      *  Xaero session that produced it (processor identity + world id — review B:

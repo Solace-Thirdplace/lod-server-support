@@ -390,6 +390,136 @@ class RegionSummaryServiceTest {
             assertEquals(0, rig.service.readyCountForTest(), "the expired frame is gone");
             assertEquals(0, rig.service.diagnostics().getFrames(),
                     "an expired frame is never sent");
+            assertEquals(1, rig.service.diagnostics().getFramesExpired());
+            assertEquals(0, rig.service.diagnostics().getFramesReassembled(),
+                    "a RETRY-refused frame is the belt's case: dropped, never re-assembled"
+                            + " (a sender answering RETRY forever must not loop the sweeper)");
+            Thread.sleep(50); // a wrongly re-queued job would assemble within this
+            rig.pump(rig.anchorsAt(player, DIM, 0, 0));
+            assertNull(rig.sent.poll(), "nothing is re-sent after the belt dropped the frame");
+        } finally {
+            rig.service.shutdown();
+        }
+    }
+
+    /** A stamp source whose assembly waits for {@link #release}, so the admitting pump
+     *  can never drain the frame in the same call (pump admits AND drains): the frame
+     *  is provably UNCONSULTED when the clock later jumps. Stamps read {@link #stamp}. */
+    private static final class GatedSource implements RegionSummaryService.TileStampSource {
+        final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        final AtomicLong stamp = new AtomicLong(NOW);
+        final java.util.concurrent.atomic.AtomicInteger assemblies =
+                new java.util.concurrent.atomic.AtomicInteger();
+
+        @Override
+        public long tileStampSeconds(String dimension, int tileX, int tileZ) {
+            try {
+                if (!this.release.await(30, java.util.concurrent.TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("gate never released");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            this.assemblies.incrementAndGet();
+            return this.stamp.get();
+        }
+    }
+
+    /** Admits under a gated source and waits until the frame sits in the ready queue,
+     *  never drained (the tick-thread-stall premise). */
+    private static void admitAndAssembleUndrained(Rig rig, GatedSource source, UUID player,
+                                                  RegionSummaryWire.Request request)
+            throws InterruptedException {
+        rig.service.offerRequest(player, request);
+        rig.pump(rig.anchorsAt(player, request.dimension(), 0, 0)); // admit; nothing to drain
+        assertEquals(0, rig.service.readyCountForTest(), "premise: assembly still gated");
+        source.release.countDown();
+        awaitAssembly(rig);
+        assertNull(rig.sent.poll(), "premise: the frame was never offered to the sender");
+    }
+
+    /** The 2026-10-12/14 gate sightings ({@code reqs=1 frames=0} for a whole minute of
+     *  normal ticks after a 30-100 s game-test server-thread freeze): the sweeper
+     *  assembled the frame, then the tick thread stalled past FRAME_RETRY_TTL_NANOS
+     *  before its next drain, which used to drop the never-offered frame as "retried past
+     *  the TTL". The client asks once per dimension entry and never again, so the
+     *  exchange was lost for the visit. Now the still-owed request is RE-ASSEMBLED with
+     *  current stamps (nothing older than the bound is ever sent) and delivered. */
+    @Test
+    void aFrameThatAgesOutUnconsultedDuringATickStallIsReassembledNotLost() throws Exception {
+        var source = new GatedSource();
+        var rig = new Rig(source);
+        try {
+            var player = UUID.randomUUID();
+            var anchors = rig.anchorsAt(player, DIM, 0, 0);
+            admitAndAssembleUndrained(rig, source, player, new RegionSummaryWire.Request(DIM, 0, 0, 0));
+            assertEquals(1, source.assemblies.get());
+            source.stamp.set(NOW + 100); // content changed during the stall
+            rig.clock.addAndGet(RegionSummaryService.FRAME_RETRY_TTL_NANOS + 1); // the stall
+            rig.pump(anchors); // first drain after the stall: too old to send
+            assertEquals(1, rig.service.diagnostics().getFramesReassembled(),
+                    "the owed request is re-queued, not dropped");
+            assertEquals(0, rig.service.diagnostics().getFramesExpired());
+            var sent = rig.pumpUntilFrame(anchors);
+            assertEquals(player, sent.player());
+            assertEquals(2, source.assemblies.get(), "a FRESH assembly, not the aged bytes");
+            assertEquals(NOW + 100 + RegionStampTable.FRESH_CLAIM_MARGIN_SECONDS,
+                    RegionSummaryWire.decodeSummary(sent.frame()).stampSeconds()[0],
+                    "the delivered frame carries the stamps read at re-assembly");
+            assertEquals(1, rig.service.diagnostics().getFrames());
+            rig.pump(anchors);
+            assertNull(rig.sent.poll(), "exactly one frame for the one request");
+            assertTrue(rig.service.diagnostics().diagLineOrNull().endsWith(", expired=0, reassembled=1"),
+                    rig.service.diagnostics().diagLineOrNull());
+        } finally {
+            rig.service.shutdown();
+        }
+    }
+
+    /** Re-assembly is only for the NEWEST admission: a request admitted during the stall
+     *  supersedes the aged frame (latest-wins), which is dropped — never re-sent after,
+     *  or racing, the fresher request's frame. */
+    @Test
+    void anAgedOutFrameSupersededByANewerRequestIsDroppedNotReassembled() throws Exception {
+        var source = new GatedSource();
+        var rig = new Rig(source);
+        try {
+            var player = UUID.randomUUID();
+            var anchors = rig.anchorsAt(player, DIM, 0, 0);
+            admitAndAssembleUndrained(rig, source, player, new RegionSummaryWire.Request(DIM, 0, 0, 1));
+            rig.clock.addAndGet(RegionSummaryService.FRAME_RETRY_TTL_NANOS + 1); // > the cooldown too
+            rig.service.offerRequest(player, new RegionSummaryWire.Request(DIM, 0, 0, 2));
+            var sent = rig.pumpUntilFrame(anchors); // admits R2, drops the aged R1 frame
+            assertEquals(2, RegionSummaryWire.decodeSummary(sent.frame()).tileRadius(),
+                    "only the newer request's frame is delivered");
+            assertEquals(1, rig.service.diagnostics().getFramesExpired());
+            assertEquals(0, rig.service.diagnostics().getFramesReassembled());
+            Thread.sleep(50);
+            rig.pump(anchors);
+            assertNull(rig.sent.poll(), "the superseded window is never re-sent");
+        } finally {
+            rig.service.shutdown();
+        }
+    }
+
+    /** A player who left the job's dimension during the stall (or has no anchor) gets no
+     *  re-assembly: the client re-requests at its next dimension entry. */
+    @Test
+    void anAgedOutFrameForAnotherDimensionIsDroppedNotReassembled() throws Exception {
+        var source = new GatedSource();
+        var rig = new Rig(source);
+        try {
+            var player = UUID.randomUUID();
+            admitAndAssembleUndrained(rig, source, player, new RegionSummaryWire.Request(DIM, 0, 0, 0));
+            rig.clock.addAndGet(RegionSummaryService.FRAME_RETRY_TTL_NANOS + 1);
+            var nether = rig.anchorsAt(player, "minecraft:the_nether", 0, 0);
+            rig.pump(nether);
+            assertEquals(1, rig.service.diagnostics().getFramesExpired());
+            assertEquals(0, rig.service.diagnostics().getFramesReassembled());
+            Thread.sleep(50);
+            rig.pump(nether);
+            assertNull(rig.sent.poll(), "no frame for a dimension the player left");
+            assertEquals(0, rig.service.readyCountForTest());
         } finally {
             rig.service.shutdown();
         }

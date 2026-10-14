@@ -30,7 +30,8 @@ def render(data: dict | None = None) -> str:
               "Migration is one-way: v0.15.x reads the retained JSON and ignores YAML edits;",
               "copy any desired changes back into JSON before downgrading.",
               "Invalid authoritative YAML never falls back to JSON. Reload does not write files.", "",
-              "Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`) live in a",
+              "Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`,",
+              "`integrations.map_ingestion.nether_store_mib`) live in a",
               "sidecar file beside the selected client file (`lss-client-experimental.yaml` or",
               "`vss-client-experimental.yaml`), so the main client file stays readable by v0.16.0.",
               "The sidecar holds only nondefault values; deleting it restores the defaults. Allow DH",
@@ -45,7 +46,10 @@ def render(data: dict | None = None) -> str:
               "rewrites it. New files enable map ingestion; migration from JSON keeps an absent",
               "`enableXaeroMapBridge` off. **Downgrade exception:** LSS 0.17 and older reject the new",
               "group, so a file created or saved by a newer build loads there only after renaming",
-              "`map_ingestion:` back to `xaero_map:` under `integrations:` (or deleting the file).", ""]
+              "`map_ingestion:` back to `xaero_map:` under `integrations:` (or deleting the file).", "",
+              "`privacy.request_no_map_ingestion` (0.19.0) is applied by a reload. **Server downgrade",
+              "exception:** LSS 0.18 and older reject unknown keys, so a server file created by a newer",
+              "build loads there only after deleting that line (or the file).", ""]
     for key, title in [("server", "Fabric / NeoForge / Sponge server"), ("paper", "Paper / Folia server"), ("client", "Client")]:
         schema = data[key]
         output += ["## " + title, "", "| YAML path | Type | Default | Range / units | Timing | Applicability |", "| --- | --- | --- | --- | --- | --- |"]

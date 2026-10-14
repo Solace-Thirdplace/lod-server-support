@@ -37,10 +37,27 @@ public final class PaperPayloadHandler {
     // ---- S2C Encoding ----
 
     /** Four fields since the server-owned-generation fold into v17: both per-player
-     *  concurrency caps left the wire (server-internal admission limiters only). */
-    public static byte[] encodeSessionConfig(int protocolVersion, boolean enabled,
+     *  concurrency caps left the wire (server-internal admission limiters only).
+     *  Package-private (review fold A12): the capability-less frame is for tests only —
+     *  every production send passes the session's capabilities. */
+    static byte[] encodeSessionConfig(int protocolVersion, boolean enabled,
                                              int lodDistanceChunks,
                                              boolean generationEnabled) {
+        // No session capabilities = no flags field: the pre-map-policy frame, byte for byte.
+        return encodeSessionConfig(protocolVersion, enabled, lodDistanceChunks,
+                generationEnabled, 0, false);
+    }
+
+    /** The production shape (map-policy plan A2): the session's capabilities decide whether
+     *  the trailing {@code sessionFlags} VarInt exists — the hand-mirror of the Fabric
+     *  codec's {@code forSession} + encoder guard (version 20 and the session declared
+     *  {@code CAPABILITY_MAP_POLICY}); the 19/18 echoes never carry it. */
+    public static byte[] encodeSessionConfig(int protocolVersion, boolean enabled,
+                                             int lodDistanceChunks,
+                                             boolean generationEnabled,
+                                             int sessionCapabilities,
+                                             boolean denyMapIngestion) {
+        int flags = sessionFlagsFor(sessionCapabilities, denyMapIngestion);
         return encodeToBytes(buf -> {
             buf.writeVarInt(protocolVersion);
             buf.writeBoolean(enabled);
@@ -52,8 +69,23 @@ public final class PaperPayloadHandler {
                 // echoes must stay 4-field or their strict clients hard-kick.
                 buf.writeVarInt(net.minecraft.SharedConstants.getCurrentVersion()
                         .dataVersion().version());
+                if (flags >= 0) {
+                    // Map-policy plan A2: only to a session that declared the capability —
+                    // every 0.10.0–0.18.0 v20 client hard-kicks on a trailing byte.
+                    buf.writeVarInt(flags);
+                }
             }
         });
+    }
+
+    /** The flags value for a session — the twin of the Fabric codec's
+     *  {@code SessionConfigS2CPayload.sessionFlagsFor} (absent = -1 unless the session
+     *  declared {@code CAPABILITY_MAP_POLICY}). */
+    static int sessionFlagsFor(int sessionCapabilities, boolean denyMapIngestion) {
+        if ((sessionCapabilities & LSSConstants.CAPABILITY_MAP_POLICY) == 0) {
+            return LSSConstants.SESSION_FLAGS_ABSENT;
+        }
+        return denyMapIngestion ? LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION : 0;
     }
 
     /** The lss:client_info sidecar's payload: one VarInt data version; trailing bytes
@@ -62,12 +94,17 @@ public final class PaperPayloadHandler {
         return withReadBuffer(data, FriendlyByteBuf::readVarInt);
     }
 
+    /** Every production send passes the SESSION's capabilities and the policy read at
+     *  send time (map-policy plan A2's site census). */
     public static void sendSessionConfig(Player player,
                                           int protocolVersion, boolean enabled,
                                           int lodDistanceChunks,
-                                          boolean generationEnabled) {
+                                          boolean generationEnabled,
+                                          int sessionCapabilities,
+                                          boolean denyMapIngestion) {
         sendRawNmsPayload(player, ID_SESSION_CONFIG, encodeSessionConfig(
-                protocolVersion, enabled, lodDistanceChunks, generationEnabled));
+                protocolVersion, enabled, lodDistanceChunks, generationEnabled,
+                sessionCapabilities, denyMapIngestion));
     }
 
     /** v16 compat reply: the OLD 6-field layout echoing protocol version 16 — the v0.6.2

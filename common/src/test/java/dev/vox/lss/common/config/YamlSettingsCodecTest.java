@@ -52,7 +52,7 @@ class YamlSettingsCodecTest {
         }
         var client=SettingsSchema.client();var cc=new YamlSettingsCodec<>(client);
         assertEquals(client.defaults(),cc.parse(cc.defaults()).normalized());
-        assertEquals(33,client.descriptors().size());
+        assertEquals(34,client.descriptors().size());
         assertTrue(client.descriptors().stream().allMatch(d->d.platform()==SettingsSchema.Platform.ALL));
     }
     @Test void retiredDhTimerAndProtocolSelectorLoadWithoutBecomingAnActiveSettingOrWeakeningUnknownKeyChecks() {

@@ -268,6 +268,8 @@ public final class RigFabricMetrics {
         // per-re-handshake or per-sweep re-counts — zero on every default install.
         var gate = src.serviceGateState();
         serviceMap.put("permission_denied", gate != null ? gate.permissionDeniedTotal() : 0L);
+        // Map-policy plan A3.5: refusal transitions (handshake + arm-sweep revocation).
+        serviceMap.put("map_policy_refused", gate != null ? gate.mapPolicyRefusedTotal() : 0L);
         result.put("service", serviceMap);
 
         var diskMap = new LinkedHashMap<String, Object>();

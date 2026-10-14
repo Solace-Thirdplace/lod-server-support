@@ -271,11 +271,39 @@ class ClientOptionCatalogTest {
         assertEquals("lss.config.map_ingestion.tooltip.native_only", xaero.tooltip().resolve(new MenuContext(true, true, true, false)));
         assertEquals("lss.config.map_ingestion.tooltip.native_only", xaero.tooltip().resolve(new MenuContext(false, false, true, false)));
         assertEquals("lss.config.join_slow_start.tooltip", slow.tooltip().resolve(new MenuContext(true, true, true, false)));
-        assertEquals(3, xaero.tooltip().keys().size());
+        assertEquals(4, xaero.tooltip().keys().size(), "on, not installed, native-only, server-blocked");
         var fp = ClientOptionCatalog.find(ClientOptionCatalog.ID_FAR_PLAYERS_ENABLED).orElseThrow();
         assertEquals("lss.config.far_players_enabled.tooltip", fp.tooltip().resolve(new MenuContext(true, false, true)));
         assertEquals(2, slow.tooltip().keys().size());
         assertEquals(1, ClientOptionCatalog.find(ClientOptionCatalog.ID_RECEIVE_SERVER_LODS).orElseThrow().tooltip().keys().size());
+    }
+
+    /** Map-policy plan A4: "Turned off by this server" is the map toggle's THIRD
+     *  display-time condition — the connected server's request, read when the tooltip
+     *  shows (every renderer resolves through {@code resolveAtDisplay} or a page-open
+     *  {@code MenuContext.current()}); DH mode still wins (no native session to block),
+     *  and the local setting is untouched. */
+    @Test
+    void theMapToggleSaysTurnedOffByThisServerWhileTheServerDenies() {
+        var maps = ClientOptionCatalog.find(ClientOptionCatalog.ID_MAP_INGESTION).orElseThrow().tooltip();
+        var blocked = new MenuContext(true, true, true, true, true);
+        assertEquals("lss.config.map_ingestion.tooltip.server_blocked", maps.resolve(blocked));
+        assertEquals("lss.config.map_ingestion.tooltip.not_installed",
+                maps.resolve(new MenuContext(true, false, true, true, true)),
+                "the status ladder's order (review fold A5): with no map mod installed the "
+                        + "status reads ABSENT, so the tooltip says not installed too");
+        assertEquals("lss.config.map_ingestion.tooltip.native_only",
+                maps.resolve(new MenuContext(true, true, true, false, true)), "DH mode wins");
+        assertEquals("lss.config.map_ingestion.tooltip",
+                maps.resolve(new MenuContext(true, true, true, true, false)));
+        assertTrue(maps.resolvesAtDisplay());
+        assertEquals("lss.config.map_ingestion.tooltip.server_blocked",
+                maps.resolveAtDisplay(new MenuContext(true, true, true, true, false), () -> blocked),
+                "a modern page registered before the join reads the live server fact");
+        var slow = ClientOptionCatalog.find(ClientOptionCatalog.ID_JOIN_SLOW_START).orElseThrow().tooltip();
+        assertEquals("lss.config.join_slow_start.tooltip", slow.resolve(blocked),
+                "only the map toggle carries the server condition");
+        assertFalse(MenuContext.all().mapIngestionServerBlocked());
     }
 
     @Test
@@ -285,6 +313,7 @@ class ClientOptionCatalogTest {
         MenuContext ctx = MenuContext.current();
         assertNotNull(ctx);
         assertFalse(ctx.mapModSupported());
+        assertFalse(ctx.mapIngestionServerBlocked(), "no connection never claims a server block");
     }
 
     private static List<OptionSpec> allOptions() {

@@ -114,7 +114,8 @@ class LSSPaperPluginGlueTest {
 
         @Override
         public void send(HandshakeGate.WireDialect dialect, boolean enabled, int lodDistanceChunks,
-                         int syncCap, int genCap, boolean generationEnabled) {
+                         int syncCap, int genCap, boolean generationEnabled, int capabilities,
+                         boolean keepDialectMark) {
             replies.add(new Reply(dialect, enabled, lodDistanceChunks, syncCap, genCap,
                     generationEnabled));
         }

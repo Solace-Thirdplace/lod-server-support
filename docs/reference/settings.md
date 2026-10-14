@@ -23,7 +23,8 @@ Migration is one-way: v0.15.x reads the retained JSON and ignores YAML edits;
 copy any desired changes back into JSON before downgrading.
 Invalid authoritative YAML never falls back to JSON. Reload does not write files.
 
-Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`) live in a
+Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`,
+`integrations.map_ingestion.nether_store_mib`) live in a
 sidecar file beside the selected client file (`lss-client-experimental.yaml` or
 `vss-client-experimental.yaml`), so the main client file stays readable by v0.16.0.
 The sidecar holds only nondefault values; deleting it restores the defaults. Allow DH
@@ -40,6 +41,10 @@ rewrites it. New files enable map ingestion; migration from JSON keeps an absent
 `enableXaeroMapBridge` off. **Downgrade exception:** LSS 0.17 and older reject the new
 group, so a file created or saved by a newer build loads there only after renaming
 `map_ingestion:` back to `xaero_map:` under `integrations:` (or deleting the file).
+
+`privacy.request_no_map_ingestion` (0.19.0) is applied by a reload. **Server downgrade
+exception:** LSS 0.18 and older reject unknown keys, so a server file created by a newer
+build loads there only after deleting that line (or the file).
 
 ## Fabric / NeoForge / Sponge server
 
@@ -83,6 +88,7 @@ group, so a file created or saved by a newer build loads there only after renami
 | privacy.xray.mode | string | "auto" |  | R | all |
 | privacy.xray.max_y_blocks | integer | 64 | -2048–2048 blocks | R | all |
 | privacy.xray.hidden_blocks | string_list | ["minecraft:copper_ore","minecraft:deepslate_copper_ore","minecraft:raw_copper_block","minecraft:gold_ore","minecraft:deepslate_gold_ore","minecraft:iron_ore","minecraft:deepslate_iron_ore","minecraft:raw_iron_block","minecraft:coal_ore","minecraft:deepslate_coal_ore","minecraft:lapis_ore","minecraft:deepslate_lapis_ore","minecraft:mossy_cobblestone","minecraft:obsidian","minecraft:chest","minecraft:diamond_ore","minecraft:deepslate_diamond_ore","minecraft:redstone_ore","minecraft:deepslate_redstone_ore","minecraft:clay","minecraft:emerald_ore","minecraft:deepslate_emerald_ore","minecraft:ender_chest"] | blocks | R | all |
+| privacy.request_no_map_ingestion | boolean | false |  | H | all |
 | far_players.mode | string | "on" |  | H | all |
 | far_players.update_interval_ticks | integer | 10 | 2–100 ticks | H | all |
 | far_players.distance.min_blocks | integer | 0 | 0–16384 blocks | H | all |
@@ -211,9 +217,10 @@ compatibility:
     v19: true # [restart] Accept protocol-19 clients.
   via_mismatch_guard: true # [restart] Guard incompatible translated-protocol sessions.
 
-# Prevents distant terrain data from revealing blocks hidden by anti-xray policy.
-# Auto follows supported detected policy; forcing off can expose hidden terrain.
-# The block list and height below are fallbacks, not overrides for an adopted engine policy.
+# Privacy controls for distant terrain. The x-ray settings prevent LOD data from
+# revealing blocks hidden by anti-xray policy: auto follows supported detected policy,
+# forcing off can expose hidden terrain, and the block list and height are fallbacks,
+# not overrides for an adopted engine policy. The map-ingestion request applies on reload.
 privacy:
   xray:
     mode: "auto" # [restart] "auto", "on" or "off"; auto follows detected anti-xray policy.
@@ -242,6 +249,13 @@ privacy:
       - "minecraft:emerald_ore"
       - "minecraft:deepslate_emerald_ore"
       - "minecraft:ender_chest"
+  # Asks players' clients not to copy distant terrain into Xaero's World Map or
+  # JourneyMap. Only clients on 0.19.0 or newer can honor this, so while it is on,
+  # older clients get no distant terrain (and no far players) until they update.
+  # Clients still receive and render the terrain, so a modified client can ignore
+  # the request. Maps players already saved, and areas they explore normally,
+  # are not affected.
+  request_no_map_ingestion: false # Ask clients not to add distant terrain to their maps.
 
 # Sends lightweight distant-player snapshots beyond normal entity tracking range.
 # This does not keep distant entities ticking. Larger ranges and more frequent
@@ -300,6 +314,7 @@ far_players:
 | privacy.xray.mode | string | "auto" |  | R | all |
 | privacy.xray.max_y_blocks | integer | 64 | -2048–2048 blocks | R | all |
 | privacy.xray.hidden_blocks | string_list | ["minecraft:copper_ore","minecraft:deepslate_copper_ore","minecraft:raw_copper_block","minecraft:gold_ore","minecraft:deepslate_gold_ore","minecraft:iron_ore","minecraft:deepslate_iron_ore","minecraft:raw_iron_block","minecraft:coal_ore","minecraft:deepslate_coal_ore","minecraft:lapis_ore","minecraft:deepslate_lapis_ore","minecraft:mossy_cobblestone","minecraft:obsidian","minecraft:chest","minecraft:diamond_ore","minecraft:deepslate_diamond_ore","minecraft:redstone_ore","minecraft:deepslate_redstone_ore","minecraft:clay","minecraft:emerald_ore","minecraft:deepslate_emerald_ore","minecraft:ender_chest"] | blocks | R | all |
+| privacy.request_no_map_ingestion | boolean | false |  | H | all |
 | far_players.mode | string | "on" |  | H | all |
 | far_players.update_interval_ticks | integer | 10 | 2–100 ticks | H | all |
 | far_players.distance.min_blocks | integer | 0 | 0–16384 blocks | H | all |
@@ -421,9 +436,10 @@ compatibility:
     v19: true # [restart] Accept protocol-19 clients.
   via_mismatch_guard: true # [restart] Guard incompatible translated-protocol sessions.
 
-# Prevents distant terrain data from revealing blocks hidden by anti-xray policy.
-# Auto follows supported detected policy; forcing off can expose hidden terrain.
-# The block list and height below are fallbacks, not overrides for an adopted engine policy.
+# Privacy controls for distant terrain. The x-ray settings prevent LOD data from
+# revealing blocks hidden by anti-xray policy: auto follows supported detected policy,
+# forcing off can expose hidden terrain, and the block list and height are fallbacks,
+# not overrides for an adopted engine policy. The map-ingestion request applies on reload.
 privacy:
   xray:
     mode: "auto" # [restart] "auto", "on" or "off"; auto follows detected anti-xray policy.
@@ -452,6 +468,13 @@ privacy:
       - "minecraft:emerald_ore"
       - "minecraft:deepslate_emerald_ore"
       - "minecraft:ender_chest"
+  # Asks players' clients not to copy distant terrain into Xaero's World Map or
+  # JourneyMap. Only clients on 0.19.0 or newer can honor this, so while it is on,
+  # older clients get no distant terrain (and no far players) until they update.
+  # Clients still receive and render the terrain, so a modified client can ignore
+  # the request. Maps players already saved, and areas they explore normally,
+  # are not affected.
+  request_no_map_ingestion: false # Ask clients not to add distant terrain to their maps.
 
 # Sends lightweight distant-player snapshots beyond normal entity tracking range.
 # This does not keep distant entities ticking. Larger ranges and more frequent
@@ -516,6 +539,7 @@ paper:
 | compatibility.block_fallbacks.overrides | string_map | {} |  | S | all |
 | integrations.map_ingestion.enabled | boolean | true |  | S | all |
 | integrations.map_ingestion.backpressure | boolean | true |  | H | all |
+| integrations.map_ingestion.nether_store_mib | integer | 256 | 0 sentinel; 16–1024 mib | H | all |
 | far_players.enabled | boolean | true |  | H | all |
 | far_players.distance.min_blocks | integer | 0 | 0–16384 blocks | H | all |
 | far_players.distance.max_blocks | integer | 0 | 0–16384 blocks | H | all |
@@ -600,6 +624,8 @@ integrations:
   # Maps save these tiles like explored terrain (they stay until you revisit), and a large LOD
   # distance can add GBs of map data. Map writing paces downloads so maps stay complete; turning
   # this off stops future writes after reconnect without removing terrain already saved.
+  # map_ingestion.nether_store_mib (experimental file, default 256) caps the disk kept to fill
+  # Xaero's cave layers when you switch layer; 0 = no store and no fill on switch.
   map_ingestion:
     enabled: true # [reconnect] Write server terrain into installed map mods; off = maps show only explored terrain.
     backpressure: true # Pace downloads to map writes; requires ingest_backpressure.

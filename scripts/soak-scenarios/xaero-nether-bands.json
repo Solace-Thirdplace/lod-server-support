@@ -1,0 +1,100 @@
+{
+  "snapshotIntervalSeconds": 5,
+  "joinTimeoutSeconds": 240,
+  "steps": [
+    {
+      "anchor": 1,
+      "at": 2,
+      "cmd": "gamerule randomTickSpeed 0"
+    },
+    {
+      "anchor": 1,
+      "at": 2,
+      "cmd": "gamerule doMobSpawning false"
+    },
+    {
+      "anchor": 1,
+      "at": 2,
+      "cmd": "gamerule mobGriefing false"
+    },
+    {
+      "anchor": 1,
+      "at": 3,
+      "cmd": "gamerule doFireTick false"
+    },
+    {
+      "anchor": 1,
+      "at": 3,
+      "cmd": "gamerule doDaylightCycle false"
+    },
+    {
+      "anchor": 1,
+      "at": 5,
+      "cmd": "execute in minecraft:the_nether run tp @a 768.5 40 768.5"
+    },
+    {
+      "anchor": 1,
+      "at": 8,
+      "cmd": "execute in minecraft:the_nether run fill 765 39 765 771 39 771 minecraft:glass"
+    },
+    {
+      "anchor": 1,
+      "at": 8,
+      "cmd": "execute in minecraft:the_nether run fill 765 40 765 771 45 771 minecraft:air"
+    },
+    {
+      "anchor": 1,
+      "at": 9,
+      "cmd": "execute in minecraft:the_nether run tp @a 768.5 40 768.5"
+    },
+    {
+      "anchor": 1,
+      "at": 238,
+      "cmd": "execute in minecraft:the_nether run fill 765 69 765 771 69 771 minecraft:glass"
+    },
+    {
+      "anchor": 1,
+      "at": 238,
+      "cmd": "execute in minecraft:the_nether run fill 765 70 765 771 75 771 minecraft:air"
+    },
+    {
+      "anchor": 1,
+      "at": 240,
+      "cmd": "execute in minecraft:the_nether run tp @a 768.5 70 768.5"
+    },
+    {
+      "anchor": 1,
+      "at": 418,
+      "cmd": "execute in minecraft:the_nether run fill 765 99 765 771 99 771 minecraft:glass"
+    },
+    {
+      "anchor": 1,
+      "at": 418,
+      "cmd": "execute in minecraft:the_nether run fill 765 100 765 771 105 771 minecraft:air"
+    },
+    {
+      "anchor": 1,
+      "at": 420,
+      "cmd": "execute in minecraft:the_nether run tp @a 768.5 100 768.5"
+    },
+    {
+      "anchor": 1,
+      "at": 598,
+      "cmd": "execute in minecraft:the_nether run fill 765 54 765 771 54 771 minecraft:glass"
+    },
+    {
+      "anchor": 1,
+      "at": 598,
+      "cmd": "execute in minecraft:the_nether run fill 765 55 765 771 60 771 minecraft:air"
+    },
+    {
+      "anchor": 1,
+      "at": 600,
+      "cmd": "execute in minecraft:the_nether run tp @a 768.5 55 768.5"
+    }
+  ],
+  "end": {
+    "anchor": 1,
+    "at": 900
+  }
+}

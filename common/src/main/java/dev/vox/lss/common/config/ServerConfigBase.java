@@ -64,6 +64,10 @@ public class ServerConfigBase {
     public final String xrayObfuscation() { return snapshot().privacy().xray().mode(); }
     public final List<String> xrayHiddenBlocks() { return snapshot().privacy().xray().hiddenBlocks(); }
     public final int xrayMaxBlockHeight() { return snapshot().privacy().xray().maxYBlocks(); }
+    /** {@code privacy.request_no_map_ingestion} (map-policy plan A3.1): ask clients not to
+     *  write LOD terrain into map mods; only CURRENT sessions declaring the capability are
+     *  served while it is on. */
+    public final boolean requestNoMapIngestion() { return snapshot().privacy().requestNoMapIngestion(); }
     public final int farPlayersUpdateIntervalTicks() { return snapshot().farPlayers().updateIntervalTicks(); }
     public final int farPlayersMaxDistanceBlocks() { return snapshot().farPlayers().distance().maxBlocks(); }
     public final int farPlayersMinDistanceBlocks() { return snapshot().farPlayers().distance().minBlocks(); }

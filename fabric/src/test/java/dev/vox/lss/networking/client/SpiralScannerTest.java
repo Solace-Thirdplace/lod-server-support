@@ -26,6 +26,10 @@ class SpiralScannerTest {
 
     private static final int CX = 0;
     private static final int CZ = 0;
+    /** The vd-2/lod-4 fixture's declarable annulus from a cold map: rings 3..4 (56) plus the
+     *  line's vd-2 corner seam (the four ring-2 corners on 1.21.1 — in vanilla's view, but
+     *  their outward diagonal is never sent — none on 1.21.2+; VanillaViewExclusionTest). */
+    private static final int ANNULUS_VD2_LOD4 = 8 * 3 + 8 * 4 + VanillaViewExclusionTest.seamCells(2).size();
 
     private static SpiralScanner scanner(int lodDistance) {
         var s = new SpiralScanner();
@@ -120,6 +124,26 @@ class SpiralScannerTest {
         }
     }
 
+    /**
+     * Seed the line's corner-seam cells at view {@code vd} as received + validated
+     * ({@link VanillaViewExclusionTest#seamCells}: in vanilla's view but LOD-requested because
+     * vanilla never sends their outward diagonal neighbour — 1.21.1 only, empty on 1.21.2+).
+     * The fixtures below that treat the radius-vd view as wholly vanilla's (vd=2 ⇒ rings 0..2)
+     * seed them so the premise holds on every line; the seam itself is pinned there.
+     */
+    private static void seedSeam(ColumnStateMap columns, int vd) {
+        for (long packed : VanillaViewExclusionTest.seamCells(vd)) {
+            columns.onReceived(packed, 1000L);
+            columns.onUpToDate(packed);
+        }
+    }
+
+    private static ColumnStateMap seamSeeded(int vd) {
+        var columns = new ColumnStateMap();
+        seedSeam(columns, vd);
+        return columns;
+    }
+
     private static long ringPos(int r, int i) {
         int[] c = new int[2];
         SpiralScanner.ringIndexToCoord(r, i, CX, CZ, c);
@@ -181,6 +205,13 @@ class SpiralScannerTest {
     //     loop does NOT return — DirtyContentFilter (also 683f67f) independently suppresses the
     //     metadata-only re-saves, so a served corner never re-loops (see DirtyContentFilterTest
     //     #metadataOnlyResaveOfAServedCornerIsSuppressed_noReloadLoop).
+    //  5. 1.21.1 corner seam (2026-10-14): the exclusion is "vanilla delivers the chunk AND its
+    //     whole 8-neighbourhood" (Xaero's writer maps a chunk only then), asked of the line's own
+    //     send test. On 1.21.2+ that IS step 4's formula; 1.21.1's send test pads only the
+    //     dominant axis, so a few in-view circle-edge cells ((±3,±4)/(±4,±3) at vd 4, the ring-2
+    //     corners at vd 2) lack their outward diagonal and are LOD-requested there. Those seam
+    //     cells (VanillaViewExclusionTest.seamCells, pinned per line) are the only deviation the
+    //     tests below admit; the axis edges stay excluded on every line.
     //
     // The four tests below pin all four lessons: small-vd subsumption, corners requested (step-2
     // regression), the exact formula incl. edges-excluded (step-1 / over-request regression).
@@ -193,18 +224,21 @@ class SpiralScannerTest {
         // annulus beyond it, never an in-view chunk. Client side of the reload guard: in-view chunks
         // (which vanilla re-saves) are never LOD-requested, so they cannot drive a re-request loop.
         // (Server side — suppressing their metadata-only re-saves — is in DirtyContentFilterTest.)
+        // (1.21.1: the four ring-2 corners are seam cells — in view, but their outward diagonal
+        // (±3,±3) is never sent — so they are requested too; empty seam elsewhere.)
         var s = scanner(4);
         var queue = new Sink();
+        var seam = VanillaViewExclusionTest.seamCells(2);
         int queued = fireScan(s, 2, new ColumnStateMap(), queue);
 
         assertTrue(queued > 0);
         for (long packed : queue.positions(queued)) {
             int cheb = Math.max(Math.abs(PositionUtil.unpackX(packed) - CX),
                     Math.abs(PositionUtil.unpackZ(packed) - CZ));
-            assertTrue(cheb > 2 && cheb <= 4,
+            assertTrue((cheb > 2 && cheb <= 4) || seam.contains(packed),
                     "an in-view chunk must never be requested; cheb=" + cheb + " violates exclusion(2)/lod(4)");
         }
-        assertEquals(8 * 3 + 8 * 4, queued); // full annulus: rings 3 and 4
+        assertEquals(8 * 3 + 8 * 4 + seam.size(), queued); // full annulus: rings 3 and 4 (+ seam)
     }
 
     @Test
@@ -228,8 +262,10 @@ class SpiralScannerTest {
         }
         assertFalse(drained.contains(PositionUtil.packPosition(CX + 4, CZ)),
                 "axis edge (4,0) is within vanilla's rounded view and must NOT be requested");
-        assertFalse(drained.contains(PositionUtil.packPosition(CX + 4, CZ + 3)),
-                "(4,3) is within vanilla's rounded view (9+4=13 < 16) and must NOT be requested");
+        long edge43 = PositionUtil.packPosition(CX + 4, CZ + 3);
+        assertEquals(VanillaViewExclusionTest.seamCells(4).contains(edge43), drained.contains(edge43),
+                "(4,3) is within vanilla's rounded view (9+4=13 < 16): requested ONLY as a 1.21.1"
+                        + " seam cell (its outward diagonal (5,4) is never sent there)");
     }
 
     @Test
@@ -246,12 +282,14 @@ class SpiralScannerTest {
         int queued = fireScan(s, vd, new ColumnStateMap(), queue);
         var requested = new java.util.HashSet<>(queue.positions(queued));
         long vd2 = (long) vd * vd;
+        var seam = VanillaViewExclusionTest.seamCells(vd); // 1.21.1 only (16 cells at vd 8)
 
         int mismatches = 0;
         for (int dx = -lod; dx <= lod; dx++) {
             for (int dz = -lod; dz <= lod; dz++) {
                 int adx = Math.max(0, Math.abs(dx) - 1), adz = Math.max(0, Math.abs(dz) - 1);
-                boolean inView = (long) adx * adx + (long) adz * adz < vd2;
+                boolean inView = (long) adx * adx + (long) adz * adz < vd2
+                        && !seam.contains(PositionUtil.packPosition(dx, dz));
                 boolean req = requested.contains(PositionUtil.packPosition(CX + dx, CZ + dz));
                 // out-of-view ⇒ requested, in-view ⇒ excluded; the player's own (0,0) is in-view and
                 // never emitted by the ring walk (both false), which is a match (inView != req).
@@ -308,6 +346,7 @@ class SpiralScannerTest {
                 columns.onUpToDate(packed);
             }
         }
+        seedSeam(columns, 2); // the line's vd-2 corner seam (1.21.1 only)
 
         var s = scanner(5);
         var queue = new Sink();
@@ -330,6 +369,7 @@ class SpiralScannerTest {
                 columns.onUpToDate(packed);
             }
         }
+        seedSeam(columns, 2); // the line's vd-2 corner seam (1.21.1 only)
         var s = scanner(4);
         var queue = new Sink();
         assertEquals(0, fireScan(s, 2, columns, queue));
@@ -411,6 +451,7 @@ class SpiralScannerTest {
                 columns.onUpToDate(packed);
             }
         }
+        seedSeam(columns, 2); // the line's vd-2 corner seam (1.21.1 only)
         var s = scanner(4);
         var queue = new Sink();
         assertEquals(0, fireScan(s, 2, columns, queue));
@@ -455,6 +496,7 @@ class SpiralScannerTest {
                 columns.onUpToDate(packed);
             }
         }
+        seedSeam(columns, 2); // the line's vd-2 corner seam (1.21.1 only)
         var s = scanner(4);
         var queue = new Sink();
         assertEquals(0, fireScan(s, 2, columns, queue));
@@ -577,12 +619,12 @@ class SpiralScannerTest {
         // A fresh scanner is primed: the very FIRST cadence call must fire (join burst),
         // not the 20th — the fireScan helper used elsewhere cannot tell those apart.
         int first = s.maybeScan(CX, CZ, 2, 0, 1000, 0L, Long.MAX_VALUE, -1, 1000, () -> 0, new ColumnStateMap(), queue.pos, queue.ts);
-        assertEquals(8 * 3 + 8 * 4, first, "first maybeScan on a fresh scanner must fire and queue the annulus");
+        assertEquals(ANNULUS_VD2_LOD4, first, "first maybeScan on a fresh scanner must fire and queue the annulus");
 
         // reset() (new session / flushCache) re-primes: again a single call fires.
         s.reset();
         int afterReset = s.maybeScan(CX, CZ, 2, 0, 1000, 0L, Long.MAX_VALUE, -1, 1000, () -> 0, new ColumnStateMap(), queue.pos, queue.ts);
-        assertEquals(8 * 3 + 8 * 4, afterReset, "first maybeScan after reset() must fire immediately");
+        assertEquals(ANNULUS_VD2_LOD4, afterReset, "first maybeScan after reset() must fire immediately");
     }
 
     // ---- zero-budget remainder preservation (CL-005) — DELETED with the drip-feed ----
@@ -603,12 +645,14 @@ class SpiralScannerTest {
         // WHOLE lod disc — including its corners — so nothing is requested and it confirms to lod+1.
         // (NB at vd == lod the disc leaves the lod square's corners OUTSIDE the view; those are the
         // corner-fix annulus, pinned by renderSquareCornersBeyondVanillasRoundedViewAreRequested.
-        // Here vd=5 > lod=4 so the corner (4,4) at buffered 3^2+3^2=18 < 5^2=25 is in view.)
+        // Here vd=5 > lod=4 so the corner (4,4) at buffered 3^2+3^2=18 < 5^2=25 is in view.
+        // On 1.21.1 that corner is a seam cell — its outward diagonal (5,5) is never sent at
+        // vd 5 — so the fixture pre-answers the line's seam; empty elsewhere.)
         var s = scanner(4);
         var queue = new Sink();
-        assertEquals(0, fireScan(s, 5, new ColumnStateMap(), queue), "vanilla's rounded view covers the whole disc");
+        assertEquals(0, fireScan(s, 5, seamSeeded(5), queue), "vanilla's rounded view covers the whole disc");
         assertEquals(5, s.getConfirmedRing(), "exclusion-skipped disc confirms to lodDistance+1");
-        assertEquals(0, fireScan(s, 5, new ColumnStateMap(), queue), "no spin: stays settled");
+        assertEquals(0, fireScan(s, 5, seamSeeded(5), queue), "no spin: stays settled");
         assertEquals(5, s.getConfirmedRing());
 
         // vd > lod: confirmation still caps at lod+1, never tracks the overshooting exclusion.
@@ -623,6 +667,7 @@ class SpiralScannerTest {
     void movementRecenterDecrementsPrefixReopensCrescentKeepsCadenceAndMarks() {
         var columns = new ColumnStateMap();
         seedSatisfied(columns, 3, 4);
+        seedSeam(columns, 2); // the line's vd-2 corner seam (1.21.1 only)
         var s = scanner(4);
         var queue = new Sink();
         assertEquals(0, fireScan(s, 2, columns, queue));
@@ -666,6 +711,7 @@ class SpiralScannerTest {
             columns.onNotGenerated(PositionUtil.packPosition(c[0], c[1]));
         }
         seedSatisfied(columns, 4, 4);
+        seedSeam(columns, 2); // the line's vd-2 corner seam (1.21.1 only)
         var s = scanner(4);
         var queue = new Sink();
         assertEquals(0, fireScan(s, 2, columns, queue),
@@ -686,7 +732,7 @@ class SpiralScannerTest {
         assertFalse(columns.hasRetries(), "map clear drops retry marks with the old dimension");
         assertFalse(queue.hasNext(), "the old dimension's want-set is dropped");
         int n = fireScan(s, 2, columns, queue);
-        assertEquals(8 * 3 + 8 * 4, n, "the full annulus re-declares as unknown");
+        assertEquals(ANNULUS_VD2_LOD4, n, "the full annulus re-declares as unknown");
         assertEquals(n, s.getLastQueued(), "scan stats recomputed for the fresh scan, never stale");
         for (int i = 0; i < n; i++) {
             assertEquals(-1L, queue.ts[i], "cleared map re-requests with ts=-1, not stale stamps");
@@ -697,6 +743,7 @@ class SpiralScannerTest {
     void disconnectRejoinFullResetPrimesImmediateScan() {
         var columns = new ColumnStateMap();
         seedSatisfied(columns, 3, 4);
+        seedSeam(columns, 2); // the line's vd-2 corner seam (1.21.1 only)
         var s = scanner(4);
         var queue = new Sink();
         assertEquals(0, fireScan(s, 2, columns, queue));
@@ -711,7 +758,7 @@ class SpiralScannerTest {
         assertEquals(0, s.getConfirmedRing(), "reset() zeroes ring confirmation");
         assertFalse(columns.hasRetries(), "session state cleared with the map");
         int first = s.maybeScan(CX, CZ, 2, 0, 1000, 0L, Long.MAX_VALUE, -1, 1000, () -> 0, columns, queue.pos, queue.ts);
-        assertEquals(8 * 3 + 8 * 4, first,
+        assertEquals(ANNULUS_VD2_LOD4, first,
                 "reset() primes the cadence: the rejoin scan fires on the FIRST call");
     }
 
@@ -724,6 +771,7 @@ class SpiralScannerTest {
             dev.vox.lss.config.ClientConfigTestSupport.set("lod.distance_chunks", 0); // server distance (8) in effect
             var columns = new ColumnStateMap();
             seedSatisfied(columns, 3, 8);
+            seedSeam(columns, 2); // the line's vd-2 corner seam (1.21.1 only)
             var s = scanner(8);
             var queue = new Sink();
             assertEquals(0, fireScan(s, 2, columns, queue));
@@ -830,9 +878,12 @@ class SpiralScannerTest {
     @Test
     void dirtyUnderVanillaExclusionParksUntilTheExclusionMovesOff() {
         var columns = new ColumnStateMap();
-        long covered = ringPos(2, 0); // inside the viewDistance-2 exclusion square
+        // (-2,-1): inside the viewDistance-2 exclusion on every line, uncovered by a +1 move.
+        // Not the ring-2 CORNER ringPos(2, 0): on 1.21.1 that is a seam cell (never excluded).
+        long covered = ringPos(2, 15);
         columns.onReceived(covered, 4321L);
         seedSatisfied(columns, 3, 4);
+        seedSeam(columns, 2); // the line's vd-2 corner seam (1.21.1 only)
         var s = scanner(4);
         var queue = new Sink();
         assertEquals(0, fireScan(s, 2, columns, queue));
@@ -949,6 +1000,7 @@ class SpiralScannerTest {
     @Test
     void anyChaosInterleavingLeavesNoPositionPermanentlyOrphaned() {
         final int vd = 2, lod = 6;
+        var seam = VanillaViewExclusionTest.seamCells(vd); // 1.21.1: the four ring-2 corners
         for (long seed : new long[] {1L, 7L, 42L}) {
             var rng = new Random(seed);
             var columns = new ColumnStateMap();
@@ -977,7 +1029,7 @@ class SpiralScannerTest {
                     long pos = queue.pos[i];
                     int cheb = Math.max(Math.abs(PositionUtil.unpackX(pos) - CX),
                             Math.abs(PositionUtil.unpackZ(pos) - CZ));
-                    assertTrue(cheb > vd && cheb <= lod,
+                    assertTrue((cheb > vd || seam.contains(pos)) && cheb <= lod,
                             "seed " + seed + ": scan emitted out-of-range Chebyshev " + cheb);
                     // A booked late answer is already coming; the re-declare is a duplicate the
                     // server absorbs (duplicate_skip). Everything else draws a fresh disposition.
@@ -1007,7 +1059,8 @@ class SpiralScannerTest {
                 for (int j = 0; j < n; j++) {
                     columns.onReceived(queue.pos[j], 5_000L + i);
                 }
-                converged = n == 0 && s.getConfirmedRing() == lod + 1 && allSatisfied(columns, vd + 1, lod);
+                converged = n == 0 && s.getConfirmedRing() == lod + 1 && allSatisfied(columns, vd + 1, lod)
+                        && seam.stream().allMatch(p -> columns.classify(p) == ColumnStateMap.SATISFIED);
             }
             assertTrue(converged, "seed " + seed + ": chaos interleaving permanently orphaned a position"
                     + " (confirmedRing=" + s.getConfirmedRing() + ")");
@@ -1152,7 +1205,7 @@ class SpiralScannerTest {
             this.s.setOutstandingSupplier(() -> this.outstanding);
         }
 
-        /** First periodic fire (declares the lod-4/vd-2 annulus, 56) + arm with its count. */
+        /** First periodic fire (declares the lod-4/vd-2 annulus, ANNULUS_VD2_LOD4) + arm with its count. */
         int primeAndArm() {
             int declared = fireScan(this.s, 2, this.columns, this.q);
             this.s.noteDeclared(declared);
@@ -1310,6 +1363,7 @@ class SpiralScannerTest {
         var rig = new AdaptiveRig();
         rig.primeAndArm();
         seedSatisfied(rig.columns, 3, 4); // the whole declarable annulus answered
+        seedSeam(rig.columns, 2); // the line's vd-2 corner seam (1.21.1 only)
         rig.outstanding = 0;
         assertEquals(SpiralScanner.FAST_RESCAN_MIN_INTERVAL_TICKS, rig.ticksToFire(),
                 "the fast fire itself still happens...");

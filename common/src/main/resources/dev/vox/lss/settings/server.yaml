@@ -115,9 +115,10 @@ compatibility:
     v19: true # [restart] Accept protocol-19 clients.
   via_mismatch_guard: true # [restart] Guard incompatible translated-protocol sessions.
 
-# Prevents distant terrain data from revealing blocks hidden by anti-xray policy.
-# Auto follows supported detected policy; forcing off can expose hidden terrain.
-# The block list and height below are fallbacks, not overrides for an adopted engine policy.
+# Privacy controls for distant terrain. The x-ray settings prevent LOD data from
+# revealing blocks hidden by anti-xray policy: auto follows supported detected policy,
+# forcing off can expose hidden terrain, and the block list and height are fallbacks,
+# not overrides for an adopted engine policy. The map-ingestion request applies on reload.
 privacy:
   xray:
     mode: "auto" # [restart] "auto", "on" or "off"; auto follows detected anti-xray policy.
@@ -146,6 +147,13 @@ privacy:
       - "minecraft:emerald_ore"
       - "minecraft:deepslate_emerald_ore"
       - "minecraft:ender_chest"
+  # Asks players' clients not to copy distant terrain into Xaero's World Map or
+  # JourneyMap. Only clients on 0.19.0 or newer can honor this, so while it is on,
+  # older clients get no distant terrain (and no far players) until they update.
+  # Clients still receive and render the terrain, so a modified client can ignore
+  # the request. Maps players already saved, and areas they explore normally,
+  # are not affected.
+  request_no_map_ingestion: false # Ask clients not to add distant terrain to their maps.
 
 # Sends lightweight distant-player snapshots beyond normal entity tracking range.
 # This does not keep distant entities ticking. Larger ranges and more frequent

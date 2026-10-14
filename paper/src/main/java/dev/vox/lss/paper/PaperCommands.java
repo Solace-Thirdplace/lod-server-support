@@ -125,6 +125,8 @@ public class PaperCommands implements CommandExecutor, TabCompleter {
                     report.removeIf(line -> line.startsWith("Existing legacy clients may"));
                     if (feedback.legacyReconnects() > 0)
                         report.add(feedback.legacyReconnects() + " legacy client(s) need to reconnect for the new distance or generation policy.");
+                    dev.vox.lss.common.config.ReloadFeedback.applyMapPolicyOutcome(report,
+                            feedback.mapPolicyArmed(), feedback.mapPolicyRevoked());
                     report.addAll(feedback.draining());
                 }
             }
@@ -258,10 +260,17 @@ public class PaperCommands implements CommandExecutor, TabCompleter {
                 .withYieldLine(DiagnosticsFormatter.yieldDiagLineOrNull(
                         config.lodYieldsToVanillaTransport(), service.getTickDiag()))
                 .withXrayLine(xrayDiagLine())
+                // denied= counts PERMISSION memo entries only; map-policy refusals have
+                // their own MapPolicy: line (map-policy plan A3.5).
                 .withGateLine(!config.requireServicePermission() ? null
                         : "Gate: requireServicePermission=on denied="
-                                + service.getServiceGateState().deniedCount()
-                                + " provider=bukkit");
+                                + service.getServiceGateState().deniedCount(
+                                        dev.vox.lss.common.ServiceGateState.REASON_PERMISSION)
+                                + " provider=bukkit")
+                .withMapPolicyLine(!config.requestNoMapIngestion() ? null
+                        : dev.vox.lss.common.MapPolicy.diagLineOrNull(true,
+                                service.getServiceGateState().deniedCount(
+                                        dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)));
 
         for (var line : DiagnosticsFormatter.formatDiagnostics(data)) {
             sender.sendMessage(line);
