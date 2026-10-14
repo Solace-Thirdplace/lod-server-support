@@ -657,6 +657,62 @@ class XaeroCaveLayersTest {
         this.processor.currentMapLocked = false;
     }
 
+    // ---- review fold O6 T1/T6/T7: fill tiles vs live tiles, the window probe ----
+
+    @Test
+    void aFillTileNeverReplacesAQueuedTile() {
+        this.processor.currentMapLocked = true; // the live tiles wait (for their region load, say)
+        show(5);
+        var live = new Handle();
+        offerWith(live, 64, 64); // surface + band 5, one lease each
+        long bytes = this.bridge.queuedBytesForTest();
+        var stored = XaeroTileExtractor.extract(64, 64, NETHER_FACTS, NETHER_COLUMN,
+                List.of(XaeroTileExtractor.LayerTarget.band(5, 255, 30)), false).get(0);
+        assertFalse(this.bridge.offerFill(NETHER, stored), "an older stored copy never takes a live tile's place");
+        assertEquals(2, this.bridge.queuedForTest());
+        assertEquals(bytes, this.bridge.queuedBytesForTest(), "no double count (it would throttle Voxy)");
+        assertEquals(0, live.released, "the live tile's lease is untouched");
+        assertEquals(0, this.bridge.counterForTest("fill_queued"));
+        this.processor.currentMapLocked = false;
+        this.bridge.pump();
+        assertEquals(2, live.released, "each lease settles at its own commit");
+        assertEquals(2, this.bridge.counterForTest("written"));
+    }
+
+    @Test
+    void fillEntriesAreEvictedBeforeAnyLiveTile() {
+        this.processor.currentMapLocked = true; // nothing drains
+        show(5);
+        this.bridge.maxQueue = 3;
+        offer(64, 64); // live: surface + band 5
+        var fill = XaeroTileExtractor.extract(70, 64, NETHER_FACTS, NETHER_COLUMN,
+                List.of(XaeroTileExtractor.LayerTarget.band(5, 255, 30)), false).get(0);
+        assertTrue(this.bridge.offerFill(NETHER, fill)); // the queue is full now
+        var surface = XaeroTileExtractor.extract(65, 64, NETHER_FACTS, NETHER_COLUMN,
+                List.of(XaeroTileExtractor.LayerTarget.surface(30)), false).get(0);
+        this.bridge.acquisition.offerPrepared(NETHER, surface); // a live tile needs one slot
+        assertEquals(0, this.bridge.counterForTest("fill_queued"), "the fill entry made room");
+        assertTrue(this.bridge.hasQueuedForTest(SURFACE, 64, 64), "not the oldest live tile");
+        assertTrue(this.bridge.hasQueuedForTest(5, 64, 64));
+        assertTrue(this.bridge.hasQueuedForTest(SURFACE, 65, 64));
+        assertEquals(0, this.bridge.counterForTest("dropped_overflow"), "no live tile was dropped");
+        assertTrue(this.reports.isEmpty());
+        this.processor.currentMapLocked = false;
+    }
+
+    @Test
+    void theWindowProbesEachRegionInItsOwnLayer() {
+        this.bridge.openRegionCap = 2;
+        show(3);
+        offer(64, 64); // surface + band 3 commit: both (layer, region)s join the window
+        this.bridge.pump();
+        assertEquals(2, this.bridge.openRegions.size());
+        caveRegion(3, 2, 2).loadState = 3; // Xaero released the band region; the surface one stays loaded
+        this.bridge.pump();
+        assertEquals(Set.of(XaeroSession.surfaceRegion(XaeroSession.regionKeyOf(64, 64))),
+                this.bridge.openRegions.keySet(), "the band region's slot is freed: it was probed in its own layer");
+    }
+
     @Test
     void thePublishRespectsXaerosCrashShield() {
         xaero.map.WorldMap.crashHandler.crashedBy = new IllegalStateException("xaero worker died");
