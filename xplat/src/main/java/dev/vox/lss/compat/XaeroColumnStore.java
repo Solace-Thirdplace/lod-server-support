@@ -455,18 +455,31 @@ final class XaeroColumnStore {
     }
 
     /** Wait for every queued task (tests, harness shutdown); held forgets go too unless a
-     *  clear still suspends the store. */
+     *  clear still suspends the store. A wait that times out or fails THROWS (0.19.0
+     *  review O6): a caller that asserts on the store afterwards must not run against a
+     *  half-drained queue and fail with a misleading message. */
     void flush() {
-        awaitIo(this::replayHeldForgets);
+        if (!awaitIo(this::replayHeldForgets)) {
+            throw new IllegalStateException("Xaero column store: the IO queue did not drain"
+                    + " within " + IO_WAIT_SECONDS + " s");
+        }
     }
 
-    private void awaitIo(Runnable task) {
+    private static final long IO_WAIT_SECONDS = 5;
+
+    /** Runs {@code task} on the IO thread and waits for it, bounded. Returns whether it
+     *  completed; a timeout or failure is logged — {@link #suspendForClear} proceeds
+     *  best-effort on that, {@link #flush} throws. */
+    private boolean awaitIo(Runnable task) {
         try {
-            this.io.submit(task).get(5, TimeUnit.SECONDS);
+            this.io.submit(task).get(IO_WAIT_SECONDS, TimeUnit.SECONDS);
+            return true;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return false;
         } catch (Exception e) {
             LSSLogger.warn("Xaero column store: IO wait failed or timed out", e);
+            return false;
         }
     }
 
