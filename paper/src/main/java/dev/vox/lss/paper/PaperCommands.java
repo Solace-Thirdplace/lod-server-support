@@ -126,7 +126,7 @@ public class PaperCommands implements CommandExecutor, TabCompleter {
                     if (feedback.legacyReconnects() > 0)
                         report.add(feedback.legacyReconnects() + " legacy client(s) need to reconnect for the new distance or generation policy.");
                     dev.vox.lss.common.config.ReloadFeedback.applyMapPolicyOutcome(report,
-                            config.requestNoMapIngestion(), feedback.mapPolicyRevoked());
+                            feedback.mapPolicyArmed(), feedback.mapPolicyRevoked());
                     report.addAll(feedback.draining());
                 }
             }

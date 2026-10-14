@@ -27,14 +27,33 @@ class ServiceGateStateTest {
         assertTrue(state.isDenied(uuid));
         assertEquals(1, state.permissionDeniedTotal(), "absent->present is the transition");
 
-        state.rememberDenied(uuid, "Steve", 16, 1);
+        state.rememberDenied(uuid, "Steve", 20, 1);
         assertEquals(1, state.permissionDeniedTotal(),
                 "a re-handshake while already denied is NOT re-counted (pinned: §2.5)");
-        assertEquals(new ServiceGateState.DeniedHandshake(16, 1, "Steve"),
+        assertEquals(new ServiceGateState.DeniedHandshake(20, 1, "Steve"),
                 state.takeDenied(uuid),
-                "the LATEST handshake is the one worth replaying (capability staleness "
-                        + "is accepted; any real re-handshake overwrites)");
+                "at the same rung the LATEST handshake is the one worth replaying "
+                        + "(capability staleness is accepted; any real re-handshake overwrites)");
         assertNull(state.takeDenied(uuid), "take is a removal — the sweep replays once");
+    }
+
+    /** Review fold A11 (supersedes the old "latest wins" pin for lower rungs): an old
+     *  client's discovery ladder answers a v20 denial with 19 and 16 rungs on the same
+     *  connection — the replay must use the highest rung it announced, or a disarm/grant
+     *  would serve a v20-capable client in the v16 dialect. */
+    @Test
+    void aLaterLowerLadderRungNeverReplacesAStoredHigherOne() {
+        state.rememberDenied(uuid, "Steve", 20, 5, ServiceGateState.REASON_MAP_POLICY);
+        state.rememberDenied(uuid, "Steve", 19, 1, ServiceGateState.REASON_MAP_POLICY);
+        state.rememberDenied(uuid, "Steve", 16, 1, ServiceGateState.REASON_PERMISSION);
+        assertEquals(new ServiceGateState.DeniedHandshake(20, 5, "Steve",
+                        ServiceGateState.REASON_MAP_POLICY | ServiceGateState.REASON_PERMISSION),
+                state.peekDenied(uuid), "the CURRENT handshake (and its capabilities) is kept; reasons still merge");
+        state.onDisconnect(uuid);
+        state.rememberDenied(uuid, "Steve", 16, 1);
+        state.rememberDenied(uuid, "Steve", 19, 3);
+        assertEquals(new ServiceGateState.DeniedHandshake(19, 3, "Steve"), state.peekDenied(uuid),
+                "a HIGHER later rung replaces a lower one");
     }
 
     @Test
@@ -158,16 +177,29 @@ class ServiceGateStateTest {
 
     @Test
     void thePolicyNoticeLatchIsPerConnectionAndSurvivesRegistration() {
-        assertTrue(state.claimMapPolicyNotice(uuid), "the first refusal of a connection notifies");
-        assertFalse(state.claimMapPolicyNotice(uuid), "never twice on one connection");
+        Object connection = new Object();
+        assertTrue(state.claimMapPolicyNotice(uuid, connection), "the first refusal of a connection notifies");
+        assertFalse(state.claimMapPolicyNotice(uuid, connection), "never twice on one connection");
         state.onRegistered(uuid);
-        assertFalse(state.claimMapPolicyNotice(uuid),
+        assertFalse(state.claimMapPolicyNotice(uuid, connection),
                 "a registration (an arm/disarm cycle) must not re-arm the chat line — that is "
                         + "exactly why it cannot share the denial-log latch");
         state.onDisconnect(uuid);
-        assertTrue(state.claimMapPolicyNotice(uuid), "a new connection gets its line again");
+        assertFalse(state.hasMapPolicyNotice(uuid), "the disconnect drops the claim");
+        assertTrue(state.claimMapPolicyNotice(uuid, connection), "a new connection gets its line again");
         state.clear();
-        assertTrue(state.claimMapPolicyNotice(uuid), "server stop clears it too");
+        assertTrue(state.claimMapPolicyNotice(uuid, connection), "server stop clears it too");
+    }
+
+    /** Review fold A7: the claim is tied to the CONNECTION token — a rejoin whose old
+     *  connection's cleanup has not drained yet (Paper's mailboxed quit) claims afresh. */
+    @Test
+    void aNewConnectionTokenClaimsAfreshBeforeTheOldOneIsCleared() {
+        Object oldConnection = new Object();
+        Object rejoin = new Object();
+        assertTrue(state.claimMapPolicyNotice(uuid, oldConnection));
+        assertTrue(state.claimMapPolicyNotice(uuid, rejoin), "the rejoin gets its own line");
+        assertFalse(state.claimMapPolicyNotice(uuid, rejoin), "once");
     }
 
     @Test
