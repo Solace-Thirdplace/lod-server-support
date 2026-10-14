@@ -459,6 +459,35 @@ class XaeroBandFillTest {
     }
 
     @Test
+    void columnsArrivingWhileXaerosOwnWritesAreOffFillTheShownBandWhenTheyReturn() throws Exception {
+        // Review fold F1-NIT2 (decided: keep capturing). Xaero's own "Load New Chunks" / "Update
+        // Chunks" switches stop map WRITES; the store is LSS's terrain copy, not the map (the
+        // server's deny and local map ingestion off do stop it). Nothing re-sends those columns,
+        // so the copy is what writes the shown band once the user turns writing back on.
+        show(3);
+        offer(80, 64, PLATFORMS);
+        this.bridge.pump(); // written live (its owed rebuild keeps the ladder running every pump)
+        try {
+            xaero.map.common.config.option.WorldMapProfiledConfigOptions.LOAD_NEW_CHUNKS.value = false;
+            xaero.map.common.config.option.WorldMapProfiledConfigOptions.UPDATE_CHUNKS.value = false;
+            this.bridge.pump(); // the ladder observes both switches off
+            assertTrue(this.bridge.settingsWritesOff);
+            for (int x = 64; x < 67; x++) offer(x, 64, PLATFORMS);
+            assertEquals(4, stored(), "kept");
+            assertEquals(3, count("skipped_settings"), "not written live: the user turned the map's writes off");
+        } finally {
+            xaero.map.common.config.option.WorldMapProfiledConfigOptions.LOAD_NEW_CHUNKS.value = true;
+            xaero.map.common.config.option.WorldMapProfiledConfigOptions.UPDATE_CHUNKS.value = true;
+        }
+        this.bridge.pump(); // the ladder clears the flag
+        this.bridge.pump(); // the trigger sees band 3 again: the debounce restarts
+        this.clockMillis += this.bridge.fill.debounceMillis;
+        this.bridge.pump();
+        runFill();
+        assertEquals(3, count("fill_committed"), "the shown band is written from the copy");
+    }
+
+    @Test
     void receiveOffStopsCapturesAndFillsButKeepsTheCoverage() throws Exception {
         boolean[] receive = {true};
         this.bridge.acquisitionActive = () -> receive[0];
@@ -626,11 +655,53 @@ class XaeroBandFillTest {
     @Test
     void inSingleplayerNothingIsKeptBeforeThePlanIsKnown() {
         this.bridge.singleplayer = () -> true;
-        offer(64, 64, PLATFORMS); // no plan yet: Xaero may be writing from the world save
+        // O6 T4: a pump first, so the bucket and Xaero's world are known and only the missing
+        // Nether plan can refuse the capture (an offer before any pump has no bucket at all).
+        this.processor.mapWorld.currentDimensionId = OVERWORLD;
+        show(Integer.MAX_VALUE);
+        assertNotNull(this.bridge.storeBucket);
+        offer(64, 64, PLATFORMS); // no plan for the Nether yet: Xaero may be writing it from the world save
         assertEquals(0, stored());
+        this.processor.mapWorld.currentDimensionId = NETHER;
         show(3);
         offer(64, 64, PLATFORMS);
         assertEquals(1, stored());
+    }
+
+    @Test
+    void onlyACeilingDimensionsColumnsAreKept() {
+        // O6 T3: the player, the plan and the fill level all name the Overworld, so only "no
+        // ceiling" refuses the capture (an Overworld copy would evict this server's Nether one).
+        this.processor.mapWorld.currentDimensionId = OVERWORLD;
+        this.player = new XaeroSession.PlayerPos(OVERWORLD, 64 * 16 + 8, 70, 64 * 16 + 8);
+        this.bridge.fillLevelProbe = () -> new XaeroBandFill.FillLevel(OVERWORLD, "minecraft_overworld",
+                OVERWORLD_FACTS, FACTORY, FP);
+        show(3);
+        this.bridge.offerColumn(OVERWORLD, 64, 64, OVERWORLD_FACTS, PLATFORMS);
+        assertTrue(this.bridge.queuedForTest() > 0, "it is written live");
+        assertEquals(0, stored(), "no ceiling: nothing kept");
+    }
+
+    @Test
+    void theRegistryFingerprintPinsTheFormatsIdsAndHeights() {
+        // O6 T9 (plan §B10.3 item 5).
+        var access = new RegistryAccess.ImmutableRegistryAccess(List.of(BIOMES));
+        long fp = XaeroSession.registryFingerprint(access, NETHER_FACTS);
+        assertEquals(fp, XaeroSession.registryFingerprint(access, NETHER_FACTS), "deterministic");
+        for (var other : List.of(new XaeroTileExtractor.LevelFacts(-64, 256, false, true, 128),
+                new XaeroTileExtractor.LevelFacts(0, 320, false, true, 128),
+                new XaeroTileExtractor.LevelFacts(0, 256, false, true, 256))) {
+            org.junit.jupiter.api.Assertions.assertNotEquals(fp, XaeroSession.registryFingerprint(access, other),
+                    "another dimension height: " + other);
+        }
+        // The same biomes in another id order: stored biome ids would mean other biomes.
+        var reversed = new MappedRegistry<Biome>(Registries.BIOME, Lifecycle.stable());
+        var entries = new ArrayList<>(BIOMES.listElements().toList());
+        java.util.Collections.reverse(entries);
+        entries.forEach(ref -> reversed.register(ref.key(), ref.value(), RegistrationInfo.BUILT_IN));
+        reversed.freeze();
+        org.junit.jupiter.api.Assertions.assertNotEquals(fp, XaeroSession.registryFingerprint(
+                new RegistryAccess.ImmutableRegistryAccess(List.of(reversed)), NETHER_FACTS), "the biome id order");
     }
 
     @Test
