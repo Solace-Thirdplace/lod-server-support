@@ -66,9 +66,7 @@ final class XaeroTileWriter {
             Object region = this.session.h.getLeafMapRegion.invoke(mp, tile.layer(),
                     tileChunkX >> 3, tileChunkZ >> 3, true);
             var regionKey = new XaeroSession.RegionKey(tile.layer(), XaeroSession.regionKeyOf(chunkX, chunkZ));
-            // B-II coupling diag: why commits wait, per tile class.
-            var why = tile.tileClass() == XaeroTileExtractor.TileClass.BEST_EFFORT
-                    ? this.session.bestEffortDefers : this.session.reliableDefers;
+            var why = this.session.defers;
             if (region == null) { // detection-completeness race
                 why.other.incrementAndGet();
                 return Outcome.DEFERRED;
@@ -146,7 +144,7 @@ final class XaeroTileWriter {
                     if (neighbors == null) {
                         why.tileBusy.incrementAndGet();
                     } else {
-                        why.capacity.incrementAndGet(); // the class's owed-rebuild cap
+                        why.capacity.incrementAndGet();
                     }
                     if (createdTileChunk) {
                         synchronized (region) {
@@ -234,9 +232,8 @@ final class XaeroTileWriter {
         // isResting() check, i.e. possibly after the region was queued for
         // cache-saving on prepared textures — the saver then throws ("Trying to
         // save cache for a region with cache not prepared", 3 crashes/hour live).
-        boolean bestEffort = tile.tileClass() == XaeroTileExtractor.TileClass.BEST_EFFORT;
         this.session.rebuilds.notePendingUpdate(mp, dimensionId, tile.layer(), region, tileChunk, localTcX, localTcZ,
-                tile.chunkX() >> 2, tile.chunkZ() >> 2, bestEffort);
+                tile.chunkX() >> 2, tile.chunkZ() >> 2);
         for (var neighbor : neighbors) {
             // Native slope dependencies: south row, east column excluding its
             // first pixel, and the southeast corner (MapWriter.writeChunk).
@@ -250,7 +247,7 @@ final class XaeroTileWriter {
             this.session.h.tileChunkSetChanged.invoke(neighbor.tileChunk(), true);
             this.session.rebuilds.notePendingUpdate(mp, dimensionId, tile.layer(), region, neighbor.tileChunk(),
                     (neighbor.chunkX() >> 2) & 7, (neighbor.chunkZ() >> 2) & 7,
-                    neighbor.chunkX() >> 2, neighbor.chunkZ() >> 2, bestEffort);
+                    neighbor.chunkX() >> 2, neighbor.chunkZ() >> 2);
         }
     }
 
