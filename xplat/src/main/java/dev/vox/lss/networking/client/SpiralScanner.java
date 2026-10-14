@@ -5,6 +5,7 @@ import dev.vox.lss.common.PositionUtil;
 import dev.vox.lss.compat.ModCompat;
 import dev.vox.lss.config.LSSClientConfig;
 import dev.vox.lss.networking.payloads.SessionConfigS2CPayload;
+import net.minecraft.server.level.ChunkTrackingView;
 
 import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
@@ -816,15 +817,17 @@ class SpiralScanner {
 
                 long packed = PositionUtil.packPosition(cx, cz);
 
-                // Exclude chunks vanilla RENDERS, replicating its own view-distance test
-                // (ChunkTrackingView.isInViewDistance: a 1-chunk-buffered Euclidean radius). The
-                // render SQUARE's corners fall OUTSIDE this rounded view — e.g. at viewDistance 12
-                // the corner (12,12) is buffered-distance 11^2+11^2=242 vs 12^2=144 — so vanilla
-                // never renders them, and the old Chebyshev exclusion (max(|dx|,|dz|) <= vd) left
-                // them blank until the player moved. They now fall through to LOD. Like an in-flight
-                // skip, an excluded (in-view) chunk does NOT break ring confirmation. Loop-safe:
-                // DirtyContentFilter suppresses metadata-only (inhabitedTime) re-saves of a served
-                // corner, so re-serving one cannot revive the old re-request loop.
+                // Exclude chunks vanilla fully covers: delivered with their whole 8-neighbourhood,
+                // asked of this line's own send test (see isVanillaRendered — on 1.21.2+ exactly
+                // ChunkTrackingView.isInViewDistance, a 1-chunk-buffered Euclidean radius; on
+                // 1.21.1 a few in-view circle-edge cells less). The render SQUARE's corners fall
+                // OUTSIDE this rounded view — e.g. at viewDistance 12 the corner (12,12) is
+                // buffered-distance 11^2+11^2=242 vs 12^2=144 — so vanilla never renders them, and
+                // the old Chebyshev exclusion (max(|dx|,|dz|) <= vd) left them blank until the
+                // player moved. They now fall through to LOD. Like an in-flight skip, an excluded
+                // (in-view) chunk does NOT break ring confirmation. Loop-safe: DirtyContentFilter
+                // suppresses metadata-only (inhabitedTime) re-saves of a served corner, so
+                // re-serving one cannot revive the old re-request loop.
                 if (isVanillaRendered(cx, cz, playerCx, playerCz, exclusionRadius)) continue;
 
                 // No in-flight suppression: re-declaration is load-bearing. The server may
@@ -887,14 +890,28 @@ class SpiralScanner {
     }
 
     /**
-     * Vanilla's own view-distance test (ChunkTrackingView.isInViewDistance): a 1-chunk-
-     * buffered Euclidean radius. Shared by the ring walk's exclusion skip and
-     * {@link ColumnStateMap#hasActionableRetries} so the two tests cannot drift.
+     * The vanilla-view exclusion: vanilla delivers this chunk AND its whole 8-neighbourhood,
+     * so vanilla and every chunk consumer cover it without LOD — Xaero's native
+     * {@code MapWriter.writeChunk} writes a client chunk only when all 8 neighbours are
+     * loaded, and the mesher needs the 4 cardinal ones. Shared by the ring walk's exclusion
+     * skip, {@link RegionScanner}'s walk and r₀ and {@link ColumnStateMap#hasActionableRetries}
+     * so the tests cannot drift.
+     *
+     * <p>Asked of THIS line's vanilla, never re-derived: the server sends
+     * {@code ChunkTrackingView.isWithinDistance(…, includeOuter=true)}, which is monotone in
+     * |dx| and |dz|, so the neighbourhood is delivered iff its outward diagonal neighbour
+     * (|dx|+1, |dz|+1) is. On 1.21.2+ the outer pad is 1 chunk on BOTH axes and this reduces
+     * exactly to {@code ChunkTrackingView.isInViewDistance} ({@code max(0,|dx|-1)² +
+     * max(0,|dz|-1)² < R²}). 1.21.1 pads only the DOMINANT axis, so the outward diagonal of
+     * a few in-view cells on the circle edge — (±3,±4)/(±4,±3) at R=4 — is never sent:
+     * excluding them as in-view (the pre-fix exclusion) left them with neither vanilla map
+     * data nor LOD, the 1.21.1 corner seam. On 1.21.1 the exclusion is therefore
+     * {@code max(0,max(|dx|,|dz|)-1)² + min(|dx|,|dz|)² < R²}, a subset of the in-view disc;
+     * VanillaViewExclusionTest pins both shapes against the line's own vanilla.
      */
     static boolean isVanillaRendered(int cx, int cz, int playerCx, int playerCz, int exclusionRadius) {
-        int adx = Math.max(0, Math.abs(cx - playerCx) - 1);
-        int adz = Math.max(0, Math.abs(cz - playerCz) - 1);
-        return (long) adx * adx + (long) adz * adz < (long) exclusionRadius * exclusionRadius;
+        return ChunkTrackingView.isWithinDistance(0, 0, exclusionRadius,
+                Math.abs(cx - playerCx) + 1, Math.abs(cz - playerCz) + 1, true);
     }
 
     /**
