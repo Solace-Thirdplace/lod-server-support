@@ -89,6 +89,10 @@ class XaeroLoadPixelParityTest {
     private static MappedRegistry<Biome> BIOMES;
     private static URLClassLoader loader;
     private static Object writer;
+    /** The writer's MapProcessor: only {@code getMapWriter()} is answered, so the overlay
+     *  builder's {@code isGlowing} runs (with no processor it throws, is caught, and every
+     *  overlay reads not-glowing — the overlay {@code glowing} flag would go unchecked). */
+    private static Object processor;
     private static Method loadPixel;
     private static Class<?> blockClass;
     private static Object unknownBiome;
@@ -134,6 +138,13 @@ class XaeroLoadPixelParityTest {
                 .stubOnly()
                 .useConstructor(overlayManager, shapeCache, biomeGetter)
                 .defaultAnswer(overrideShouldOverlay));
+        Class<?> processorClass = loader.loadClass("xaero.map.MapProcessor");
+        processor = Mockito.mock(processorClass, withSettings().stubOnly().defaultAnswer(invocation ->
+                invocation.getMethod().getName().equals("getMapWriter") ? writer
+                        : Mockito.RETURNS_DEFAULTS.answer(invocation)));
+        Field processorField = writerClass.getDeclaredField("mapProcessor");
+        processorField.setAccessible(true);
+        processorField.set(writer, processor);
         loadPixel = writerClass.getMethod("loadPixel", Level.class, Registry.class, blockClass, blockClass,
                 LevelChunk.class, int.class, int.class, int.class, int.class, boolean.class, boolean.class,
                 int.class, boolean.class, boolean.class, Registry.class, boolean.class, int.class,
@@ -143,7 +154,9 @@ class XaeroLoadPixelParityTest {
     @AfterAll
     static void close() throws Exception {
         if (writer != null) Mockito.framework().clearInlineMock(writer);
+        if (processor != null) Mockito.framework().clearInlineMock(processor);
         writer = null;
+        processor = null;
         if (loader != null) loader.close();
     }
 
@@ -380,6 +393,9 @@ class XaeroLoadPixelParityTest {
             var run = runs[k];
             if (call(o, "getState") != run.state()) out.add(at + "overlay" + k + " state " + call(o, "getState") + " vs " + run.state());
             if ((byte) field(o, "light") != run.light()) out.add(at + "overlay" + k + " light " + field(o, "light") + " vs " + run.light());
+            if ((boolean) field(o, "glowing") != run.glowing()) {
+                out.add(at + "overlay" + k + " glowing " + field(o, "glowing") + " vs " + run.glowing());
+            }
             // The commit's increaseOpacity clamps to 15 exactly like the per-block native adds.
             if ((int) call(o, "getOpacity") != Math.min(15, run.opacity())) {
                 out.add(at + "overlay" + k + " opacity " + call(o, "getOpacity") + " vs " + run.opacity());
@@ -625,6 +641,87 @@ class XaeroLoadPixelParityTest {
                 column(OVERWORLD, (x, y, z) -> y < 58 + (x & 1) ? s(Blocks.SAND) : y <= 62 ? s(Blocks.WATER) : air(),
                         (x, y, z) -> y == 63 && z == 0 ? 9 : 0, null, Biomes.OCEAN),
                 XaeroTileExtractor.LayerTarget.surface(30), false)));
+    }
+
+    // ---- overlay runs (OverlayBuilder.build: a new overlay per particle texture) ----
+
+    @Test
+    void fallingWaterOverASourcePoolIsOneOverlayKeepingItsFirstState() throws Exception {
+        // Three falling-water blocks (LEVEL 8) over a two-deep source pool on sand: every water
+        // state shares one texture, so Xaero writes ONE overlay that keeps the falling state.
+        BlockState falling = Blocks.WATER.defaultBlockState().setValue(net.minecraft.world.level.block.LiquidBlock.LEVEL, 8);
+        Blocks3 blocks = (x, y, z) -> {
+            if (y == -64) return s(Blocks.BEDROCK);
+            if (y < 40) return s(Blocks.STONE);
+            if (y <= 55) return s(Blocks.SAND);
+            if (y <= 57) return s(Blocks.WATER);
+            if (y <= 60 && x < 8) return falling;
+            return air();
+        };
+        Light3 sky = (x, y, z) -> y >= 56 ? 15 : 0;
+        withModelManager(() -> {
+            for (var target : List.of(XaeroTileExtractor.LayerTarget.surface(30), band(3, OVERWORLD))) {
+                var tile = assertParity(new Fixture("falling water over a pool " + target, OVERWORLD,
+                        column(OVERWORLD, blocks, null, sky, Biomes.PLAINS), target, false));
+                assertEquals(128, count(tile, i -> tile.overlays()[i] != null && tile.overlays()[i].length == 1
+                        && tile.overlays()[i][0].state() == falling), "one overlay, the falling state first");
+            }
+        });
+    }
+
+    @Test
+    void alternatingGlassAndIceRunsMatchTheBuilderAndTheExtendRule() throws Exception {
+        // Twelve alternating stained-glass/ice blocks over stone, contiguous for x < 8 and with
+        // air between them for x >= 8: a new overlay per texture change until the native "≥ 5
+        // below the first transparent block" rule takes over and the last overlay absorbs the
+        // rest (with that rule the 10-overlay cap cannot be reached through loadPixel).
+        Blocks3 blocks = (x, y, z) -> {
+            if (y == -64) return s(Blocks.BEDROCK);
+            if (y < 50) return s(Blocks.STONE);
+            int k = 73 - y;
+            if (x < 8) {
+                if (k < 0 || k >= 12) return air();
+                return s((k & 1) == 0 ? Blocks.RED_STAINED_GLASS : Blocks.ICE);
+            }
+            if (k < 0 || k >= 24 || (k & 1) == 1) return air();
+            return s((k & 2) == 0 ? Blocks.RED_STAINED_GLASS : Blocks.ICE);
+        };
+        withModelManager(() -> {
+            var tile = assertParity(new Fixture("alternating glass/ice", OVERWORLD,
+                    column(OVERWORLD, blocks, (x, y, z) -> y == 74 && z < 4 ? 11 : 0,
+                            (x, y, z) -> y >= 74 ? 15 : 0, Biomes.PLAINS),
+                    XaeroTileExtractor.LayerTarget.surface(30), false));
+            assertTrue(count(tile, i -> tile.overlays()[i] != null && tile.overlays()[i].length >= 3) == 256,
+                    "several overlays per pixel");
+        });
+    }
+
+    @Test
+    void aLayeredBandWithIgnoredHeightmapsReadsTheSkyLayer() throws Exception {
+        // The sky shortcut is off when heightmaps are ignored: the window reads real sky light.
+        assertParity(new Fixture("band, ignored heightmaps", OVERWORLD, column(OVERWORLD,
+                (x, y, z) -> y <= (x == 15 ? 90 : 60 + (z & 7)) ? s(Blocks.GRASS_BLOCK) : air(),
+                (x, y, z) -> y == 61 + (z & 7) && x < 4 ? 7 : 0,
+                (x, y, z) -> y > 60 + (z & 7) ? 15 - (x & 7) : 0, Biomes.PLAINS), band(4, OVERWORLD), true));
+    }
+
+    @Test
+    void aNetherLavaSeaFloorsAGlowingLitBand() throws Exception {
+        // band 2 (caveStart 47) starts in the roof, skips to the cave and floors on a lava sea
+        // lit by its own block light: the floor is lava, glowing, light 15.
+        Blocks3 blocks = (x, y, z) -> {
+            if (y == 0 || y == 127) return s(Blocks.BEDROCK);
+            if (y > 127) return air();
+            if (y <= 20) return s(Blocks.NETHERRACK);
+            if (y <= 31) return s(Blocks.LAVA);
+            if (y <= 44 - (x & 1)) return air();
+            return s(Blocks.NETHERRACK);
+        };
+        Light3 light = (x, y, z) -> y >= 21 && y <= 31 ? 15 : y > 31 && y <= 44 ? Math.max(0, 15 - (y - 31)) : 0;
+        var tile = assertParity(new Fixture("nether lava sea", NETHER,
+                column(NETHER, blocks, light, null, Biomes.NETHER_WASTES), band(2, NETHER), false));
+        assertEquals(256, count(tile, i -> tile.floorState()[i].getBlock() == Blocks.LAVA && tile.glowing()[i]
+                && tile.light()[i] == 14), "lava floors, glowing, lit from the block above");
     }
 
     @Test

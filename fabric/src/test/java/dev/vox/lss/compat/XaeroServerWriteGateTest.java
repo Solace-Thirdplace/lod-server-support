@@ -168,7 +168,29 @@ class XaeroServerWriteGateTest {
         assertEquals(-1, this.bridge.reportBackpressure(), "a blocked map reports no signal");
         String line = this.bridge.describe();
         assertTrue(line.startsWith("XaeroMap: state=blocked_by_server"), line);
-        assertTrue(line.contains("bp=-1(inactive)"), "the token never contradicts the report: " + line);
+        assertTrue(line.contains("bp=-1(blocked_by_server)"),
+                "the token never contradicts the report, and names the server's block: " + line);
+        XaeroSession.instance = this.bridge; // the exporter group (tearDown resets it)
+        assertEquals(true, XaeroSession.metrics().get("server_blocked"));
+        this.serverAllows = true;
+        assertEquals(false, XaeroSession.metrics().get("server_blocked"));
+    }
+
+    @Test
+    void anOfferThatRacesTheDenyIsDroppedUnderTheQueueLock() {
+        // Extraction passed the consumer-side gate before the deny landed: the queue's own
+        // under-lock re-check drops it (the pump's clear already ran — queued now, it
+        // would be written once the gate reopened for unrelated terrain).
+        this.serverAllows = false;
+        this.bridge.offerPrepared(OVERWORLD, tile(7, 7));
+        assertEquals(0, this.bridge.queuedForTest(), "a reliable tile is not queued into a blocked map");
+        assertTrue(!this.bridge.offerFill(OVERWORLD, tile(8, 8)), "nor a fill tile");
+        assertEquals(0, this.bridge.queuedForTest());
+        assertTrue(this.reports.isEmpty(), "the drops are unreported");
+        this.serverAllows = true;
+        this.bridge.pump();
+        assertEquals(0, this.bridge.counterForTest("written"), "nothing surfaces after the allow");
+        assertTrue(this.bridge.offerFill(OVERWORLD, tile(8, 8)), "the gate reopens for fill too");
     }
 
     @Test

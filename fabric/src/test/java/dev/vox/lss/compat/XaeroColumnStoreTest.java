@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import dev.vox.lss.common.store.StoreCodec;
 import dev.vox.lss.networking.client.ColumnCacheStore;
@@ -109,11 +110,20 @@ class XaeroColumnStoreTest {
         assertArrayEquals(column(3, 3000), read(second, "b", "nether", FP, pos(0, 0)).get(0).raw());
         second.suspendForClear();
         var third = store(64L << 20);
-        assertEquals(0, near(third, "b", "nether", FP + 1, 5).length, "other registries: discarded");
-        third.flush();
+        // A READ under other registries finds nothing and deletes nothing: a stale reader
+        // (an old fingerprint) must never throw away the current store (review item 9).
+        assertEquals(0, near(third, "b", "nether", FP + 1, 5).length, "other registries: nothing to fill from");
+        assertEquals(2, near(third, "b", "nether", FP, 5).length, "the store survived the foreign read");
+        third.suspendForClear();
+        // Only a WRITE under other registries discards the old store.
+        var fourth = store(64L << 20);
+        assertTrue(fourth.capture("b", "nether", FP + 1, pos(7, 0), column(9, 3000)));
+        fourth.flush();
         try (Stream<Path> files = Files.list(this.root.resolve("b"))) {
-            assertEquals(0, files.filter(p -> p.getFileName().toString().startsWith("nether.xfill.")).count());
+            assertEquals(1, files.filter(p -> p.getFileName().toString().startsWith("nether.xfill.")).count(),
+                    "the old segments went, the new one stays");
         }
+        assertArrayEquals(new long[]{pos(7, 0)}, near(fourth, "b", "nether", FP + 1, 10));
     }
 
     @Test
@@ -222,8 +232,156 @@ class XaeroColumnStoreTest {
     }
 
     @Test
+    void positionsNearIsTheServedSquareNotADisc() throws Exception {
+        var store = store(64L << 20);
+        store.capture("b", "nether", FP, pos(10, 10), column(1, 500)); // Euclidean 14.1, Chebyshev 10
+        store.capture("b", "nether", FP, pos(-10, 10), column(2, 500));
+        store.capture("b", "nether", FP, pos(11, 0), column(3, 500));  // outside the square
+        store.capture("b", "nether", FP, pos(3, 0), column(4, 500));
+        store.flush();
+        assertArrayEquals(new long[]{pos(3, 0), pos(10, 10), pos(-10, 10)}, near(store, "b", "nether", FP, 10),
+                "the square's corners are in, nearest (Euclidean) first");
+    }
+
+    @Test
+    void anUndeletableOtherStoreCannotSpinTheCap() throws Exception {
+        assumeTrue(java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
+        var store = store(1L << 20);
+        for (int i = 0; i < 12; i++) store.capture("a", "nether", FP, pos(i, 0), column(i, 30_000));
+        store.flush();
+        Path a = this.root.resolve("a");
+        int stuckFiles = segmentFiles("a").size();
+        assertTrue(stuckFiles > 1);
+        var perms = Files.getPosixFilePermissions(a);
+        Files.setPosixFilePermissions(a, java.nio.file.attribute.PosixFilePermissions.fromString("r-xr-xr-x"));
+        try {
+            boolean writable;
+            try {
+                Files.delete(Files.createFile(a.resolve("probe")));
+                writable = true;
+            } catch (IOException e) {
+                writable = false;
+            }
+            assumeTrue(!writable, "directory permissions are not enforced (running as root)");
+            for (int i = 0; i < 40; i++) store.capture("b", "nether", FP, pos(i, 0), column(100 + i, 30_000));
+            // A spinning IO thread would time this read out.
+            var left = Arrays.stream(near(store, "b", "nether", FP, 1000)).boxed().toList();
+            assertTrue(left.contains(pos(39, 0)), "the newest column was stored");
+            assertTrue(left.size() < 40, "the active store made room itself");
+            assertTrue(store.bytesGauge <= store.capBytes, store.bytesGauge + " > cap");
+            assertEquals(stuckFiles, segmentFiles("a").size(), "the stuck store is left alone");
+        } finally {
+            Files.setPosixFilePermissions(a, perms);
+        }
+    }
+
+    @Test
+    void aFailedSegmentLeaksNothingAndRepeatedFailuresStopCapturingForTheSession() throws Exception {
+        var store = store(64L << 20);
+        store.failWritesForTest = 1;
+        assertTrue(store.capture("b", "nether", FP, pos(0, 0), column(1, 1000)));
+        store.flush();
+        assertEquals(1, store.captureDrops.get());
+        assertEquals(List.of(), segmentFiles("b"), "the headerless segment was closed and deleted");
+        assertTrue(store.capture("b", "nether", FP, pos(1, 0), column(2, 1000)));
+        store.flush();
+        assertArrayEquals(new long[]{pos(1, 0)}, near(store, "b", "nether", FP, 10), "the next write recovers");
+
+        var failing = store(64L << 20);
+        failing.failWritesForTest = 1000;
+        for (int i = 0; i < XaeroColumnStore.MAX_CONSECUTIVE_FAILURES; i++) {
+            failing.capture("c", "nether", FP, pos(i, 0), column(i, 1000));
+        }
+        failing.flush();
+        assertTrue(failing.capturesDisabled, "a full disk stops the captures");
+        assertFalse(failing.capture("c", "nether", FP, pos(50, 0), column(50, 1000)), "dropped at the door");
+        assertEquals(List.of(), segmentFiles("c"));
+        failing.failWritesForTest = 0;
+        failing.resetSession(); // the next session tries again
+        assertTrue(failing.capture("c", "nether", FP, pos(51, 0), column(51, 1000)));
+        failing.flush();
+        assertArrayEquals(new long[]{pos(51, 0)}, near(failing, "c", "nether", FP, 100));
+    }
+
+    @Test
+    void theActiveBucketUnderAnotherSpellingIsNotAnotherStore() throws Exception {
+        Path real = Files.createDirectories(this.root.resolve("b"));
+        try {
+            Files.createSymbolicLink(this.root.resolve("b-alias"), real);
+        } catch (UnsupportedOperationException | IOException e) {
+            assumeTrue(false, "no symbolic links here");
+        }
+        var store = store(1L << 20);
+        for (int i = 0; i < 25; i++) store.capture("b-alias", "nether", FP, pos(i, 0), column(i, 30_000));
+        store.flush();
+        assertEquals(0, store.othersBytesForTest(), "the same directory is the active bucket");
+        assertEquals(25, near(store, "b-alias", "nether", FP, 1000).length,
+                "the store never evicted itself as another server's store");
+    }
+
+    @Test
+    void aColumnThatWouldNotDecodeIsDroppedFromTheIndex() throws Exception {
+        var store = store(64L << 20);
+        store.capture("b", "nether", FP, pos(0, 0), column(1, 500));
+        store.capture("b", "nether", FP, pos(1, 0), column(2, 500));
+        store.flush();
+        store.dropCorrupt("b", "nether", FP, pos(0, 0));
+        assertArrayEquals(new long[]{pos(1, 0)}, near(store, "b", "nether", FP, 10));
+        assertEquals(1, store.corrupt.get());
+    }
+
+    @Test
+    void aLoweredCapTrimsOnTheNextCaptureAndAPurgeDeletesEveryStore() throws Exception {
+        var store = store(64L << 20);
+        for (int i = 0; i < 50; i++) store.capture("a", "nether", FP, pos(i, 0), column(i, 30_000));
+        store.flush();
+        assertTrue(store.bytesGauge > 1L << 20);
+        store.setCapBytes(1L << 20);
+        store.capture("a", "nether", FP, pos(99, 0), column(99, 30_000));
+        store.flush();
+        assertTrue(store.bytesGauge <= 1L << 20, store.bytesGauge + " > the lowered cap");
+        assertTrue(Arrays.stream(near(store, "a", "nether", FP, 1000)).anyMatch(p -> p == pos(99, 0)));
+        store.capture("b", "overworld", FP, pos(0, 0), column(1, 500));
+        store.flush();
+        Files.writeString(this.root.resolve("b").resolve("cache.bin"), "not ours");
+        store.purgeAll();
+        store.flush();
+        assertEquals(List.of(), segmentFiles("a"));
+        assertEquals(List.of(), segmentFiles("b"));
+        assertTrue(Files.exists(this.root.resolve("b").resolve("cache.bin")), "only store files go");
+        assertEquals(0, store.columnsGauge);
+    }
+
+    private List<Path> segmentFiles(String bucket) throws IOException {
+        Path dir = this.root.resolve(bucket);
+        if (!Files.isDirectory(dir)) return List.of();
+        try (Stream<Path> files = Files.list(dir)) {
+            return files.filter(p -> p.getFileName().toString().contains(".xfill.")).toList();
+        }
+    }
+
+    @Test
     void theColumnCachesClearsDeleteTheStore() throws Exception {
+        // A temporary cache root only: this test clears buckets, so it must never see the real one.
+        Object previousRoot = cacheRootForTest(this.root.resolve("cache-root"));
+        try {
+            clearsDeleteTheStore();
+        } finally {
+            cacheRootForTest(previousRoot);
+        }
+    }
+
+    private static Object cacheRootForTest(Object root) throws ReflectiveOperationException {
+        var field = ColumnCacheStore.class.getDeclaredField("cacheDir");
+        field.setAccessible(true);
+        Object previous = field.get(null);
+        field.set(null, root);
+        return previous;
+    }
+
+    private void clearsDeleteTheStore() throws Exception {
         String bucket = "test-xfill-" + Long.toHexString(System.nanoTime());
+        assertTrue(ColumnCacheStore.cacheRootPath().startsWith(this.root), "the temporary root is in use");
         var store = new XaeroColumnStore(ColumnCacheStore::bucketDir, ColumnCacheStore::cacheRootPath,
                 StoreCodec.zstdOrNull(), 64L << 20);
         this.opened.add(store);

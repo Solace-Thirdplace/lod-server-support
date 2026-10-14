@@ -50,7 +50,7 @@ public class LSSServerCommands {
                         if (feedback.legacyReconnects() > 0)
                             lines.add(feedback.legacyReconnects() + " legacy client(s) need to reconnect for the new distance or generation policy.");
                         dev.vox.lss.common.config.ReloadFeedback.applyMapPolicyOutcome(lines,
-                                config.requestNoMapIngestion(), feedback.mapPolicyRevoked());
+                                feedback.mapPolicyArmed(), feedback.mapPolicyRevoked());
                         lines.addAll(feedback.draining());
                     }
                 }

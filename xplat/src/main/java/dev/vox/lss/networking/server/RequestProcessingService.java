@@ -81,15 +81,23 @@ public class RequestProcessingService {
                         net.minecraft.network.chat.Component.literal(text));
     }
 
+    /** Test seam: the policy the sessions were last told, as the reconcile would adopt it
+     *  (the gametests flip the config without a reload; the 200-tick cadence sweep runs
+     *  only once the arm is adopted — review fold A9). */
+    public void adoptMapPolicyForTest(boolean armed) {
+        this.adoptedMapPolicy = armed;
+    }
+
     /**
      * Sends the map policy's once-per-CONNECTION chat line to a refused player (map-policy
-     * plan A3.3) — from the handshake refusal and the arm sweep only, never from a
-     * grant-sweep replay. Its own latch on the gate state (swept at disconnect). A send
-     * failure is contained: the line is a courtesy, the refusal already happened.
-     * Server thread.
+     * plan A3.3) — from the handshake refusal, the arm sweep, and a grant-sweep replay
+     * whose refusal is a MAP_POLICY transition (review fold A6). Its own latch on the gate
+     * state (swept at disconnect). A send failure is contained: the line is a courtesy,
+     * the refusal already happened. Server thread.
      */
     public void noticeMapPolicyRefusal(ServerPlayer player) {
-        if (!this.serviceGateState.claimMapPolicyNotice(player.getUUID())) return;
+        // The player instance is the connection token (review fold A7).
+        if (!this.serviceGateState.claimMapPolicyNotice(player.getUUID(), player)) return;
         try {
             this.mapPolicyNoticeSender.accept(player, dev.vox.lss.common.MapPolicy.refusalNotice());
         } catch (Exception e) {
@@ -662,15 +670,19 @@ public class RequestProcessingService {
     private volatile long settingsRevision;
     private volatile int settingsLegacyReconnects;
     private volatile int settingsMapPolicyRevoked = -1;
+    private volatile boolean settingsMapPolicyArmed;
     /** @param mapPolicyRevoked sessions the map-policy arm sweep revoked at this revision,
      *                          or -1 when the policy did not change (map-policy plan A3.1:
      *                          the reload feedback's own line, never the legacy-reconnect
-     *                          text) */
+     *                          text)
+     *  @param mapPolicyArmed   the policy THIS revision adopted (review fold A9: the reply
+     *                          never reads the live config, which a later reload may have
+     *                          changed by the time it is written) */
     public record SettingsFeedback(long revision, int legacyReconnects, java.util.List<String> draining,
-                                   int mapPolicyRevoked) {
+                                   int mapPolicyRevoked, boolean mapPolicyArmed) {
         public SettingsFeedback { draining = java.util.List.copyOf(draining); }
         public SettingsFeedback(long revision, int legacyReconnects, java.util.List<String> draining) {
-            this(revision, legacyReconnects, draining, -1);
+            this(revision, legacyReconnects, draining, -1, false);
         }
     }
     private volatile SettingsFeedback settingsFeedback = new SettingsFeedback(0, 0, java.util.List.of());
@@ -769,12 +781,14 @@ public class RequestProcessingService {
             boolean mapPolicy = next.privacy().requestNoMapIngestion();
             boolean mapPolicyChanged = adoptedMapPolicy != mapPolicy;
             // Map-policy plan A3.4: REVOKE FIRST — a session about to lose service must
-            // not first get an enabled=true manager rebuild from the re-push below.
-            if (mapPolicyChanged) settingsMapPolicyRevoked = runMapPolicySweep(serviceConfig);
+            // not first get an enabled=true manager rebuild from the re-push below. -1 on
+            // an unchanged policy: a later reload must not repeat this revision's count.
+            settingsMapPolicyRevoked = mapPolicyChanged ? runMapPolicySweep(serviceConfig) : -1;
+            settingsMapPolicyArmed = mapPolicy;
             if (generationChanged || !advertisedLod.equals(next.lod()))
                 settingsLegacyReconnects = repushSessionConfig()[1];
             else if (mapPolicyChanged)
-                repushSessionConfig(); // the flags change alone; legacy sessions are not told
+                repushSessionConfig(true); // the flags change alone; legacy sessions are not told
             refreshedGeneration = next.generation().enabled();
             advertisedLod = next.lod();
             generationRefreshPending = false;
@@ -799,7 +813,7 @@ public class RequestProcessingService {
                 .thenCompose(ignored -> submitSettingsControl(() -> {
                     if (revision != settingsRevision) throw new java.util.concurrent.CancellationException("Superseded settings revision");
                     settingsFeedback = new SettingsFeedback(revision, settingsLegacyReconnects, settingsDrainingStatus(),
-                            settingsMapPolicyRevoked);
+                            settingsMapPolicyRevoked, settingsMapPolicyArmed);
                     return (Void) null;
                 }));
         settingsReceipts.add(result);
@@ -827,8 +841,10 @@ public class RequestProcessingService {
             this.permissionRecheckCounter = 0;
             // Map-policy plan A3.4: the idempotent enforcement (armed ∧ registered ∧
             // CURRENT ∧ ¬bit → revoke) — closes a handshake decided on the pre-arm
-            // config that registered after the reload's one-shot sweep.
-            runMapPolicySweep(config);
+            // config that registered after the reload's one-shot sweep. Only once the
+            // reconcile ADOPTED the arm (review fold A9): the reload owns the transition,
+            // so its sweep — and its feedback's revoked count — always runs first.
+            if (this.adoptedMapPolicy) runMapPolicySweep(config);
             runServiceGateSweeps(config);
         }
         var generationReady = tickGenerationService();
@@ -1059,6 +1075,14 @@ public class RequestProcessingService {
      * @return {pushed, legacySkipped}
      */
     public int[] repushSessionConfig() {
+        return repushSessionConfig(false);
+    }
+
+    /** @param flagsOnly a map-policy-only change (review fold A9): the sessions' distance
+     *                   and generation did not move, so an off world's session is NOT
+     *                   re-registered and its far-player roster NOT re-sent — the push
+     *                   only carries the new flags */
+    public int[] repushSessionConfig(boolean flagsOnly) {
         var config = serviceConfig;
         int pushed = 0;
         int legacy = 0;
@@ -1070,7 +1094,7 @@ public class RequestProcessingService {
             }
             var player = state.getPlayer();
             int dist = lodDistanceFor(player);
-            if (dist <= 0) {
+            if (dist <= 0 && !flagsOnly) {
                 // The reload turned this player's world off: abandon its in-flight work the
                 // way a dimension change does (remove + fresh register — retires admitted
                 // reads/generations and resets the served-set, so a world later turned back
@@ -1325,8 +1349,9 @@ public class RequestProcessingService {
         int revoked = 0;
         for (var state : List.copyOf(this.players.values())) {
             UUID uuid = state.getPlayerUUID();
-            if (this.dialects.dialectOf(uuid)
-                    != dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT) {
+            // An EXPLICIT CURRENT mark (review fold A9): dialectOf defaults an unmarked
+            // session to CURRENT, so it cannot tell a shed mark from a real one.
+            if (!this.dialects.isCurrent(uuid)) {
                 continue; // legacy sessions keep serving until rejoin (recorded)
             }
             int capabilities = state.getCapabilities();
