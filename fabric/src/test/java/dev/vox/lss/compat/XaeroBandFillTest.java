@@ -687,6 +687,75 @@ class XaeroBandFillTest {
         awaitCollected(fillRef, "the old session's fill level outlived the session");
     }
 
+    // ---- review fold (O3 N2/N3, F1-NIT3): tokens, followed grants, containment ----
+
+    @Test
+    void aCancelledJobLandsNoTile() throws Exception {
+        show(3);
+        for (int x = 64; x < 68; x++) offer(x, 64, PLATFORMS);
+        this.bridge.pump();
+        this.bridge.fill.queueHigh = 2;
+        this.processor.currentMapLocked = true; // nothing drains: the job's tiles stay queued
+        switchTo(5);
+        awaitOffered(2);
+        var job = this.bridge.fill.job;
+        assertNotNull(job);
+        var tile = XaeroTileExtractor.extract(70, 64, NETHER_FACTS, PLATFORMS, List.of(job.target), false).get(0);
+        show(Integer.MAX_VALUE); // Xaero shows the surface: the job is cancelled
+        assertNull(this.bridge.fill.job);
+        assertFalse(this.bridge.offerFill(NETHER, tile, job.receipt),
+                "the queue lock re-checks the job's token: an offer racing the cancel lands nothing");
+        assertEquals(2, count("fill_queued"));
+        this.processor.currentMapLocked = false;
+        this.bridge.pump();
+        assertEquals(0, count("fill_queued"), "the cancelled job's queued tiles drop at the drain");
+        assertEquals(0, count("fill_committed"), "and are never written");
+        assertTrue(this.reports.isEmpty());
+    }
+
+    @Test
+    void aWorldOrDimensionChangeForgetsTheFollowedGrants() {
+        this.processor.createdRegionLoadState = 0; // regions await their load: the pump grants them
+        show(3);
+        offer(64, 64, PLATFORMS);
+        this.bridge.pump();
+        assertTrue(this.bridge.loadStats.followed() > 0, "the grants are followed");
+        this.processor.currentWorldId = "another-world";
+        this.bridge.pump();
+        assertEquals(0, this.bridge.loadStats.followed(), "never follow the old world's region objects");
+        offer(96, 64, PLATFORMS); // a fresh region of the new world
+        this.bridge.pump();
+        assertTrue(this.bridge.loadStats.followed() > 0);
+        this.processor.mapWorld.currentDimensionId = OVERWORLD;
+        this.bridge.pump();
+        assertEquals(0, this.bridge.loadStats.followed(), "nor the old dimension's");
+    }
+
+    @Test
+    void aThrowingStoreSettingOrFillTriggerIsContainedLikeTheLadder() {
+        this.bridge.storeFactory = cap -> this.store;
+        this.bridge.storeMbSetting = () -> {
+            throw new IllegalStateException("settings read failed");
+        };
+        this.bridge.pump(); // never into the client tick
+        assertEquals(1, count("commit_failures"));
+        for (int i = 1; i < XaeroSession.THROW_LATCH; i++) this.bridge.pump();
+        assertTrue(this.bridge.deadForTest(), "a pump top that keeps failing latches the bridge like the ladder");
+        var firstStore = this.store;
+        var other = newBridge(this.bridge.h); // (installs its own store as this.store)
+        try {
+            other.storeFactory = cap -> this.store;
+            other.storeMbSetting = () -> {
+                throw new LinkageError("drifted");
+            };
+            org.junit.jupiter.api.Assertions.assertThrows(LinkageError.class, other::pump,
+                    "an Error other than an assertion is never swallowed (the ladder's rule)");
+        } finally {
+            other.fill.reset();
+            firstStore.suspendForClear();
+        }
+    }
+
     // ---- pacing, lease-free, outside the backpressure figure ----
 
     @Test
