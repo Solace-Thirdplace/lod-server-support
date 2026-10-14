@@ -119,8 +119,19 @@ final class JourneyMapSession {
      *  first by {@link #CONTEXT_MAX_BYTES}, which is unchanged. */
     static final int CONTEXT_CAPACITY = 2 * MAX_BATCH_PICK;
     static final long CONTEXT_MAX_BYTES = 16L * 1024 * 1024;
-    static final int REPLAY_CAPACITY = 4096;
+    /** A late world id re-requests what was rendered into the abandoned directory in the last
+     *  this-many milliseconds (plan §3.5). */
     static final long REPLAY_WINDOW_MILLIS = 30_000;
+    /** The replay ring's hard cap: the whole window at one full pick per batch cycle (the box
+     *  plus the gap) at the default renderDelay, 24 × 2048 = 49 152 columns, about 1 640
+     *  columns/s. The measured rate is 550 (26.2 restage); the cap binds only if JourneyMap's
+     *  thread averages under about 0.47 ms per column, half the fastest measured render.
+     *  Renders older than the window leave the ring first, so it holds the window at the real
+     *  rate: about 0.7 MiB at 550 columns/s, about 2 MiB at the cap. (4096 entries covered only
+     *  about 7 s at 550 columns/s: a later world id left permanent holes, O5 review.) */
+    static final int REPLAY_CAPACITY = (int) (REPLAY_WINDOW_MILLIS
+            / (DEFAULT_RENDER_DELAY_MILLIS * BATCH_BOX_RENDER_DELAYS + DEFAULT_RENDER_DELAY_MILLIS / 2))
+            * MAX_BATCH_PICK;
     /** The edge sweep's cadence and reach beyond JourneyMap's own mapping range (chunks). */
     static final long EDGE_SWEEP_MILLIS = 2000;
     static final int EDGE_BAND_CHUNKS = 3;
@@ -380,10 +391,14 @@ final class JourneyMapSession {
     MapMemoryGuard memory = MapMemoryGuard.NEVER;
     SnapshotDecoder decoder = this::decodeWithBindings;
     SnapshotWrapper wrapper = this::wrapWithBindings;
-    /** Decode-ahead on (the {@value #DECODE_AHEAD_PROPERTY} dev kill switch, read per session). */
+    /** Decode-ahead on (the {@value #DECODE_AHEAD_PROPERTY} dev kill switch, read once per
+     *  process: production builds this object once, at LSS's client init, and keeps it). */
     boolean decodeAhead = decodeAheadProperty();
     /** Where decode-ahead jobs run: the shared LSS pool, created on first use (a test seam). */
     java.util.concurrent.Executor decodeAheadExecutor = JourneyMapSession::executeDecodeAhead;
+    /** JourneyMap's thread's wait for a started decode ({@value #DECODE_AHEAD_WAIT_MILLIS}; a
+     *  test seam, so the timeout fallback is pinned without a 5 s wait). */
+    long decodeAheadWaitMillis = DECODE_AHEAD_WAIT_MILLIS;
     /** JourneyMap's snapshot class was initialized on JourneyMap's own thread (JM thread only). */
     boolean snapshotClassReady;
     /** A connection exists (the title screen has none): a disabled backend releases its
@@ -1245,6 +1260,11 @@ final class JourneyMapSession {
             return;
         }
         long now = now();
+        // Only renders inside the window can replay: older ones leave first, so the ring holds
+        // the window's renders at the real rate and the cap only backstops it.
+        while (!this.replay.isEmpty() && now - this.replay.peekFirst().atMillis() > REPLAY_WINDOW_MILLIS) {
+            this.replay.removeFirst();
+        }
         for (var e : r.rendered) {
             e.receipt.close();
             if (this.replay.size() >= REPLAY_CAPACITY) this.replay.removeFirst();
@@ -1844,7 +1864,7 @@ final class JourneyMapSession {
             if (job.claim()) return NOT_AHEAD; // no worker started it: cancelled, decoded inline
             try {
                 // A started decode takes about a millisecond; the bound is armour only.
-                if (!job.finished.await(DECODE_AHEAD_WAIT_MILLIS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                if (!job.finished.await(decodeAheadWaitMillis, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                     return NOT_AHEAD;
                 }
             } catch (InterruptedException interrupted) {
