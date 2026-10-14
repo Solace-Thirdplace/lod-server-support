@@ -1676,9 +1676,15 @@ public class ServiceLifecycleGameTests {
             Gt.assertTrue(helper, state.hasDiskReadDone(cx, cz),
                     "the intercepted ask resolves up_to_date (done-bit)");
             var summary = service.getRegionSummaries().diagnostics();
+            // The whole summary line at timeout (2026-10-14 fold): tiles counted = the
+            // sweeper assembled; refresh_ms_max = how long it took; expired/reassembled
+            // = a ready frame aged out before a drain (a tick-thread stall) — so a
+            // further sighting says which leg stalled without a re-run.
             Gt.assertTrue(helper, summary.getFrames() >= 1,
                     "one summary frame must assemble and send, reqs=" + summary.getRequests()
-                            + " frames=" + summary.getFrames());
+                            + " frames=" + summary.getFrames() + " [" + summary.diagLineOrNull()
+                            + "; header_hits="
+                            + service.getDiskReader().getDiag().getHeaderHitsCount() + "]");
             Gt.assertTrue(helper, summary.getBytes() > 0,
                     "the frame's bytes count on the dedicated lane");
             Gt.assertTrue(helper, summary.getTilesKnown() + summary.getTilesNeverClean()
