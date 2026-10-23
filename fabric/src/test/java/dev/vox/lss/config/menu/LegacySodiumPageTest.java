@@ -154,7 +154,7 @@ class LegacySodiumPageTest {
         assertEquals(4, general.getGroups().size());
         assertEquals(List.of(1, 1, 2, 2), general.getGroups().stream().map(g -> g.getOptions().size()).toList());
         assertEquals(1, far.getGroups().size());
-        assertEquals(5, far.getGroups().get(0).getOptions().size(), "five explicit far-player controls");
+        assertEquals(6, far.getGroups().get(0).getOptions().size(), "six explicit far-player controls");
         // Names in catalog order.
         var expected = ClientOptionCatalog.pages().get(0).options().stream().map(OptionSpec::nameKey).toList();
         assertEquals(expected, general.getOptions().stream().map(o -> o.getName().getString()).toList());
