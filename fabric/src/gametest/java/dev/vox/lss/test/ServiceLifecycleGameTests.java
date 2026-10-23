@@ -1723,11 +1723,15 @@ public class ServiceLifecycleGameTests {
                             + service.getDiskReader().getDiag().getHeaderHitsCount() + "]");
             Gt.assertTrue(helper, summary.getBytes() > 0,
                     "the frame's bytes count on the dedicated lane");
+            // A frame that ages out unsent during a tick stall is re-assembled (the
+            // 2026-10-14 fold), and every assembly counts its tiles: 9 per assembly.
+            long assemblies = 1 + summary.getFramesReassembled();
             Gt.assertTrue(helper, summary.getTilesKnown() + summary.getTilesNeverClean()
-                            + summary.getTilesNoRegion() == 9,
-                    "a radius-1 window reports exactly 9 tiles, known="
+                            + summary.getTilesNoRegion() == 9 * assemblies,
+                    "a radius-1 window reports exactly 9 tiles per assembly, known="
                             + summary.getTilesKnown() + " never=" + summary.getTilesNeverClean()
-                            + " no_region=" + summary.getTilesNoRegion());
+                            + " no_region=" + summary.getTilesNoRegion()
+                            + " reassembled=" + summary.getFramesReassembled());
             Gt.assertTrue(helper, summary.getTilesKnown() >= 1,
                     "the saved chunk's own tile must report a real stamp");
             // Stamped up_to_date (the whole server lane's ONE real-server pin, per the
