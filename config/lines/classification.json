@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "0713b00f52ae0b7b28721a1c0df3de87314a152e",
-    "1.21.10": "6f946549837b7fa615807d674af914f15703534e",
-    "1.21.11": "da076aabef01b79c468ddae9120131bf5bbc4787",
-    "26.1": "c883ba9e7974c838cf3d62c6c2a342b62c411835",
-    "26.2": "819585d29ea84ba37c6bce444080c4314978ed58",
-    "26.3": "1549d31e58604ee39671ef9f92af1aab3a57806c"
+    "1.21.1": "aa9c8d416be753537e01c6ad904a64e6b6f83326",
+    "1.21.10": "273d626dcef69d66b1e95be1864158cbc5012f19",
+    "1.21.11": "0b3874a252de53dfde5d87f63ef1754bb3936711",
+    "26.1": "217b69d05b5fe43fcc3bc4c3fd2a9ce9f7e4361e",
+    "26.2": "f87cbfb45c1459067a43fabec77c4780b2b10cb6",
+    "26.3": "8aa5a73a53fa25e246bddbc56bc9373ddaaa6464"
   },
   "files": {
     ".github/line.env": {
@@ -855,14 +855,14 @@
     "common/src/test/java/dev/vox/lss/common/region/RegionSummaryServiceTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-20: identical DROP-test ordering fix on every line; retain RETRY until assembly is observable, then test DROP. Controlled fast-assembly red/green proof retained with v0.15.1 release evidence. Existing line-specific tests remain intact.",
+      "review": "2026-10-23 #364 far-plane extension: review fold plus the RegionSummaryServiceTest quit-during-assembly barrier fix (26.1 gate red, test ordering race). 2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-20: identical DROP-test ordering fix on every line; retain RETRY until assembly is observable, then test DROP. Controlled fast-assembly red/green proof retained with v0.15.1 release evidence. Existing line-specific tests remain intact.",
       "reviewed_blobs": {
-        "1.21.1": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
-        "1.21.10": "34e166c5067bae180f8d58a551cd86e8133ccfb3",
-        "1.21.11": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
-        "26.1": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
-        "26.2": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
-        "26.3": "cebda71e3069df2635c38eca5f17f2d60839bcd3"
+        "1.21.1": "da76b883286d3fe515913f8f339026120e1f784e",
+        "1.21.10": "0f4fcb9df63e05855fe165b6eb171c2d7a5500ab",
+        "1.21.11": "da76b883286d3fe515913f8f339026120e1f784e",
+        "26.1": "da76b883286d3fe515913f8f339026120e1f784e",
+        "26.2": "da76b883286d3fe515913f8f339026120e1f784e",
+        "26.3": "da76b883286d3fe515913f8f339026120e1f784e"
       },
       "surface": "line-adaptation:common/src/test/java/dev/vox/lss/common/region/RegionSummaryServiceTest.java",
       "tests": [
