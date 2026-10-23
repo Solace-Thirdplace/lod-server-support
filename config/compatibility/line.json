@@ -15,7 +15,8 @@
     "neoforge_renderer": "unsupported",
     "paper_loaders": [
       "paper",
-      "purpur"
+      "purpur",
+      "folia"
     ],
     "fabric_client_gametests": true,
     "sponge_shipping": true

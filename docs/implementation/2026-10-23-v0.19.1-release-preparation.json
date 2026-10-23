@@ -1,0 +1,107 @@
+{
+ "folia_build": "26.3-5-ver/26.3.x@8cffa90 (ALPHA)",
+ "lines": {
+  "26.3": {
+   "base": "main",
+   "gated_head": "cd1142fac2901d0020f7c84daf2ce440def19a98",
+   "jars_sha256": {
+    "lod-server-support-fabric-0.19.1+26.3.jar": "87183fef54182896ee269d7cdbb2a9600e56ac23f483f8bd3c1dd02e16219c75",
+    "lod-server-support-neoforge-0.19.1+26.3.jar": "c4704950e2ffa25f502650c65ee54d3d4b50da8aec588bdba85ebf23c673372c",
+    "lod-server-support-paper-0.19.1+26.3.jar": "849b2a7a783e288b3c709401802eb897f69b226b1ef7d3ce7bb0ca854413821a",
+    "lod-server-support-sponge-0.19.1+26.3.jar": "0f92098eced05a5517fc1cbd773d2508afc016aa61597ca79c908cb0b773ee83",
+    "voxy-server-side-fabric-0.19.1+26.3.jar": "b8275a14eae3efa0ac5988c7de6e7fcea1f2b8831234235ba4255ceb0278f1c2",
+    "voxy-server-side-neoforge-0.19.1+26.3.jar": "815369c36422111a54422fb982ec2c6dcf12c68f23d4f04a59429623035e0825",
+    "voxy-server-side-paper-0.19.1+26.3.jar": "ab034706508f4db7e6a4f706bd3b5ca7e3ae94f1b71fe7263ad65abe4d1be7fc",
+    "voxy-server-side-sponge-0.19.1+26.3.jar": "18a49cd40fd67db6d9d715c2e65844306af4f667b2d9e33d5b2de8deb7f4d0a6"
+   },
+   "junit": {
+    "common": {
+     "errors": 0,
+     "failures": 0,
+     "skipped": 0,
+     "tests": 1102
+    },
+    "fabric": {
+     "errors": 0,
+     "failures": 0,
+     "skipped": 4,
+     "tests": 2148
+    },
+    "neoforge": {
+     "errors": 0,
+     "failures": 0,
+     "skipped": 0,
+     "tests": 24
+    },
+    "paper": {
+     "errors": 0,
+     "failures": 0,
+     "skipped": 0,
+     "tests": 576
+    },
+    "sponge": {
+     "errors": 0,
+     "failures": 0,
+     "skipped": 0,
+     "tests": 25
+    }
+   },
+   "pin": "cd1142fac2901d0020f7c84daf2ce440def19a98",
+   "pr": null,
+   "release_branch": "release/v0.19.1-mc26.3",
+   "ship_neoforge": true,
+   "ship_sponge": true,
+   "tag": "v0.19.1"
+  }
+ },
+ "merged": false,
+ "published": false,
+ "schema_version": 1,
+ "scope": "26.3 only (Folia on 26.3)",
+ "sponge": true,
+ "status": "prepared",
+ "support_lines_pin_only": {
+  "1.21.1": {
+   "base": "support/mc1.21.1",
+   "note": "re-pin + test-only gametest fix; no version bump, no tag",
+   "pin": "b9c5415b83597a4c61559351ce35ff545163e1cf",
+   "pr": null,
+   "release_branch": "release/v0.19.1-mc1.21.1",
+   "released": false
+  },
+  "1.21.10": {
+   "base": "support/mc1.21.10",
+   "note": "re-pin + test-only gametest fix; no version bump, no tag",
+   "pin": "078e554632731a1b61f0a47c0266fa5f5b32c2d6",
+   "pr": null,
+   "release_branch": "release/v0.19.1-mc1.21.10",
+   "released": false
+  },
+  "1.21.11": {
+   "base": "support/mc1.21.11-v0.14",
+   "note": "re-pin + test-only gametest fix; no version bump, no tag",
+   "pin": "9d1d61ac420df28bac075146f8faa244aa1aba07",
+   "pr": null,
+   "release_branch": "release/v0.19.1-mc1.21.11",
+   "released": false
+  },
+  "26.1": {
+   "base": "support/mc26.1-v0.14",
+   "note": "re-pin + test-only gametest fix; no version bump, no tag",
+   "pin": "87bf0423c2529feb9cb06f45cb42cb8cb4d8c9f8",
+   "pr": null,
+   "release_branch": "release/v0.19.1-mc26.1",
+   "released": false
+  },
+  "26.2": {
+   "base": "support/mc26.2",
+   "note": "re-pin + test-only gametest fix; no version bump, no tag",
+   "pin": "9997b58bad901c08c63a5656a3fa05f4c91afe0a",
+   "pr": null,
+   "release_branch": "release/v0.19.1-mc26.2",
+   "released": false
+  }
+ },
+ "tagged": false,
+ "version": "0.19.1"
+}

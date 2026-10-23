@@ -467,9 +467,9 @@ def check_paper_jar(jar, problems):
         if _looks_unexpanded(ymltext):
             problems.append(f"{base}: plugin.yml has an unexpanded ${{version}} placeholder")
         # The flag's direction is the line's Folia fact (line.env LINE_PAPER_LOADERS): where
-        # Folia publishes a build (26.2) a jar that LOSES the flag silently stops loading on
-        # Folia servers; where it does not (26.3) a jar that declares it advertises an
-        # untested platform. Both directions are checked.
+        # Folia publishes a build (26.2, 26.3) a jar that LOSES the flag silently stops loading
+        # on Folia servers; where it does not (1.21.10 false, 1.21.1 absent) a jar that declares it
+        # advertises an untested platform. Both directions are checked.
         want_folia = "true" if FOLIA_SUPPORTED else "false"
         if not re.search(r"^folia-supported:\s*" + want_folia + r"\s*$", ymltext, re.MULTILINE):
             problems.append(f"{base}: plugin.yml folia-supported must be {want_folia} "
@@ -1860,7 +1860,7 @@ def _selftest():
 
 def _selftest_fixtures():
     # The folia-supported value this line's plugin.yml derives (LINE_PAPER_LOADERS) — the
-    # clean fixtures must carry it (26.3: false, no Folia build exists upstream).
+    # clean fixtures must carry it (26.3: true since 0.19.1, Folia 26.3 builds are ALPHA).
     FOLIA_YML = "folia-supported: " + ("true" if FOLIA_SUPPORTED else "false") + "\n"
     n = 0
 
