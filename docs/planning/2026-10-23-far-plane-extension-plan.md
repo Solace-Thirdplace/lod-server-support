@@ -1,31 +1,45 @@
 # Far-plane extension for far players (issue #364)
 
-Status: PLANNED v1 (2026-10-23). User approval: "add it as an option, disabled by default … execute
-the plan across all support lines … merged but not run a release yet"; "put it in the far players
-sodium options and use codex to run the visual check". Plan review: §11.
+Status: PLANNED v2 (2026-10-23), plan review folded (§11). User approval: "add it as an option,
+disabled by default … execute the plan across all support lines … merged but not run a release
+yet"; "put it in the far players sodium options and use codex to run the visual check".
 
 ## 1. Problem
 
-Without shaders, vanilla clips everything past its far plane. On 26.x that is
-`max(effective render distance × 64, cloud range × 16)` blocks (`Camera.update`, 768 at render
-distance 12); on 1.21.x it is `GameRenderer.getDepthFar()` = render distance × 64. Far-player
-proxies past it are not drawn, whatever `far_players.render_distance_blocks` says. The server
-sends far players out to `far_players.distance.max_blocks` (default 2048, up to 16384), so on a
-default server most of the ring is invisible at normal render distances. Iris extends the plane
-when shaders are on; plain clients have no way to.
+Vanilla clips everything past its far plane:
 
-The 2026-09-04 render-hardening plan made "no far-plane extension" an explicit non-goal
-(far-player-render-hardening-plan.md §1). This plan reverses it as an **opt-in, off by default**.
+| Lines | Vanilla far plane | Default (rd 12, Cloud Distance 128) |
+| --- | --- | --- |
+| 26.3, 26.2, 26.1 | `Camera.update`: `max(rd × 64, cloudRange × 16)` | 2048 |
+| 1.21.11, 1.21.10 | `GameRenderer.getDepthFar()`: `max(rd × 64, cloudRange × 16)` | 2048 |
+| 1.21.1 | `GameRenderer.getDepthFar()`: `rd × 64` | 768 |
+
+Far-player proxies past it are not drawn, whatever `far_players.render_distance_blocks` says. The
+server's ring is `far_players.distance.max_blocks` (default 2048, up to 16384). So the plane cuts
+far players off:
+- on 1.21.1 at any default setup (768 < 2048);
+- on every line when the server raises its ring past the client's plane;
+- on every line when the player lowers Cloud Distance (a common performance tweak).
+
+Shaders do not change this: Iris does not extend the plane (its `MixinTweakFarPlane` is not
+registered). The 2026-09-04 render-hardening plan's "Iris extends the far plane" is wrong (§10
+corrects it there).
+
+The hardening plan made "no far-plane extension" an explicit non-goal. This plan reverses it as an
+**opt-in, off by default**.
 
 ## 2. Approaches considered
 
-1. **Fixed huge far plane** (the issue's mixin: `max(vanilla, 8192)`). Simple, but moves the
-   plane for every frame and every mod even with no far players around. Rejected.
-2. **Static from settings** (`render_distance_blocks`, else 16384). Still moves the plane when no
-   far player is out there; the client does not know the server's ring. Rejected.
-3. **Sized to the far players actually tracked** (chosen). The plane grows only when a tracked
-   far player is beyond it, to just past the farthest one (capped by `render_distance_blocks`),
-   in 256-block steps with hysteresis. With nobody out there, the frame is byte-for-byte vanilla.
+1. **Fixed huge far plane** (the issue's mixin, `max(vanilla, 8192)`): moves the plane for every
+   frame and every mod even with nobody out there. Rejected.
+2. **Static from settings** (`render_distance_blocks`, else 16384): same, and the client does not
+   know the server's ring. Rejected.
+3. **Dynamic with shrink hysteresis** (plan v1): the server adds and drops far players exactly at
+   its ring edge, so a player hovering there (or teleporting) flaps the projection. Rejected.
+4. **Grow-only latch sized to the far players actually drawn** (chosen). The plane stays vanilla
+   until the renderer has a far player beyond it, then grows (256-block steps) to just past the
+   farthest one and never shrinks until the session state resets (§4). With nobody beyond the
+   plane the frame is vanilla.
 
 ## 3. Setting
 
@@ -35,134 +49,181 @@ far_players:
   extend_far_plane: true   # default false
 ```
 
-- Path `far_players.extend_far_plane`, boolean, default `false`, timing H (applies on Sodium
-  Apply / `/lss reload`), platform ALL, legacy JSON name `farPlayersExtendFarPlane`.
-- **Sidecar**, like `lod.source` and `integrations.map_ingestion.nether_store_mib`: the main
-  client file must stay readable by older versions, which reject unknown keys. Added to
-  `YamlSettingsCodec.SIDECAR_PATHS`; reads still accept it in the main file; writes move it out.
-- `client.yaml` gains a comment line under `far_players:` pointing at the sidecar key (like the
-  `nether_store_mib` comment), not the key itself.
-- **Sodium options, Far Players page**, after Full brightness:
-  - name `lss.config.far_players_extend_far_plane` — "Draw past view distance";
-  - tooltip — "Draw far players beyond your view distance by moving the camera's far clipping
-    plane out to the farthest one. Can affect other mods that draw distant things.";
-  - `Impact.LOW`, `enabledBy(ID_FAR_PLAYERS_ENABLED)`, `Visibility.RENDER_AVAILABLE` (hidden
-    where the loader does not draw far players: NeoForge 26.x/1.21.10/1.21.11);
-  - zh_cn and zh_tw translations; the VSS lang rewrite never names the brand here.
-- `LSSClientConfig.farPlayersExtendFarPlane()` accessor.
-- Settings reference (`settings.md`, `settings-schema.json`) regenerated by
-  `tools/settings/reference.py`; `reference.py`'s sidecar sentence lists the new key.
+- Path `far_players.extend_far_plane`, boolean, default `false`, timing H (Sodium Apply or
+  `/lss reload`), platform ALL, legacy JSON name `farPlayersExtendFarPlane`.
+- **Sidecar** (like `lod.source` and `integrations.map_ingestion.nether_store_mib`): the main
+  client file stays readable by older versions, which reject unknown keys.
+- Touchpoints (identical on every line unless noted):
+  - `YamlSettingsCodec.SIDECAR_PATHS` gains the path;
+  - `SettingsSchema`: the sidecar default (`false`; sidecar keys are not in `client.yaml`, so
+    `typed()` needs it) and the description;
+  - `SettingsSchemaSpecs`: the client `Spec`;
+  - `ClientSettings.FarPlayers` gains `extendFarPlane` (record, `values`, `fromValues`);
+  - `LSSClientConfig.farPlayersExtendFarPlane()`;
+  - `client.yaml`: one comment line under `far_players:` naming the sidecar key;
+  - `tools/settings/reference.py` sidecar sentence; `settings.md` regenerated by it,
+    `settings-schema.json` by `tools/settings/inventory.py`.
+- **Sodium options, Far Players page** (adapted per line), the row after Render distance:
+  - name "Extend far player draw range" (`lss.config.far_players_extend_far_plane`);
+  - tooltip "Draw far players past the game's normal draw limit, out to the farthest one. Needs
+    Voxy or another mod that removes distance fog. Not used while a shader pack is on."
+  - `Impact.LOW`, default false, `enabledBy(ID_FAR_PLAYERS_ENABLED)`,
+    `Visibility.RENDER_AVAILABLE` (hidden where the loader draws no far players);
+  - `withControlMetadata` id switch; en_us, zh_cn, zh_tw.
+  - `ClientOptionCatalogTest` pins move with it (render-only list, id list, group size 5 → 6).
 
-## 4. Sizing policy (pure, in `common`)
+## 4. The extension (shared logic)
 
-New `dev.vox.lss.common.farplayers.FarPlanePolicy` (no Minecraft types; Java 21):
+**Distance source = the renderer.** Each far-player renderer (Fabric on every line, NeoForge on
+1.21.1) records, per pass, the largest camera distance among proxies that passed its existing
+gates (enabled, capability bit, dimension, distance caps), before the frustum test. `clear()`
+zeroes it. No second copy of those gates.
+
+**Policy** (`dev.vox.lss.common.farplayers.FarPlanePolicy`, pure, in `common`):
 
 ```
-next(vanillaFar, enabled, farthestTrackedBlocks, renderCapBlocks, current) -> float
-  if !enabled || farthestTrackedBlocks <= 0           -> vanillaFar
-  need   = farthest + MARGIN (32)
-  if renderCapBlocks > 0: need = min(need, renderCapBlocks + MARGIN)
-  target = ceil(need / STEP(256)) * STEP, clamped to CEILING (16384 + 256)
-  if target <= vanillaFar                             -> vanillaFar
-  grow at once; shrink only when target <= current - 2*STEP (hysteresis)
-  return max(vanillaFar, chosen)
+STEP = 256, MARGIN = 32, CEILING = 16384 + STEP
+want(farthest, renderCap) = farthest <= 0 ? 0
+    : ceilToStep(min(farthest + MARGIN, renderCap > 0 ? renderCap + MARGIN : CEILING))
+latch' = max(latch, want(...))                 // grow only
+active(vanillaFar) = enabled && latch > vanillaFar && !shaderPack ? latch : vanillaFar
 ```
 
-- `farthestTrackedBlocks` = 3D distance from the camera to the farthest tracked far player in
-  the current dimension that the renderer would draw (its existing gates: enabled, capability
-  bit, dimension match, the `distance.min_blocks` inner ring does not shrink the far side).
-- Recomputed at most every 250 ms (cached; no per-frame allocation), read every frame.
-- Steps + hysteresis keep the projection from changing every frame as players move.
+**Latch resets to 0** on: setting turned off, dimension or level change, disconnect, shader pack
+switched on. Nothing else shrinks it.
 
-## 5. Hooks
+**Publish once per frame** (a review finding: two Voxy builds call `getDepthFar()` mid-frame to
+invert vanilla's projection, so the value must not change inside a frame):
+- the renderer writes `pending` during its pass;
+- the frame-start hook copies `pending` into `latch` and computes `active`;
+- the far-plane hook only reads `active`.
 
-One shared client helper in `xplat` (`FarPlaneExtension`) holds the cached value, reads the
-tracker and config, and records whether a hook ever ran. Per-line hooks:
+**Shader packs:** while Iris reports a shader pack in use (`IrisApi.isShaderPackInUse` by
+reflection, re-checked at most once a second), `active` = vanilla. Packs derive linear depth from
+their own assumptions; a moving plane under them is untested.
 
-| Lines | Loader | Target | Injection |
+**Main thread only:** `Camera.update` and `GameRenderer` run on the render thread, as does the
+renderer.
+
+## 5. Hooks (per line)
+
+| Lines | Loader | Frame start | Far plane |
 | --- | --- | --- | --- |
-| 26.3, 26.2, 26.1 | Fabric | `Camera.update(DeltaTracker)`: `depthFar = Math.max(rd×64, cloudRange×16)` | `@ModifyArg` on `Math.max(FF)F`, index 1 → `max(arg, extension)`; ordinal-checked |
-| 1.21.11, 1.21.10, 1.21.1 | Fabric | `GameRenderer.getDepthFar()` | `@Inject(at = RETURN, cancellable)` → `max(value, extension)` |
-| 1.21.1 | NeoForge | `GameRenderer.getDepthFar()` | the same twin in `neoforge/…/mixin` |
+| 26.3, 26.2, 26.1 | Fabric | `Camera.update(DeltaTracker)` itself (once per frame) | `@Inject` at `FIELD PUTFIELD depthFar` (shift AFTER): `depthFar = max(depthFar, active)` via `@Shadow`. Runs before `prepareCullFrustum` and the projection setup in the same method, so culling and the projection both see it |
+| 1.21.11, 1.21.10, 1.21.1 | Fabric | `GameRenderer.renderLevel` HEAD | `getDepthFar()` RETURN, cancellable: `max(value, active)` |
+| 1.21.1 | NeoForge | the same twin in `neoforge/…/mixin` | the same |
 
-- Everything else follows from the one value: projection, frustum culling, weather and world
-  border on 1.21.x; `CameraRenderState.depthFar` and the culling projection on 26.x.
-- **`require = 0` on each injector**, unlike the module default: another mod rewriting the same
-  code must not crash the game for an optional visual. If the setting is on, far players are
-  beyond the vanilla plane, and the hook has not run within 5 s, log one WARN per session:
-  "far plane extension unavailable (another mod changes the same code)".
-- No mixin on NeoForge 26.x, 1.21.11 or 1.21.10 (no far-player renderer there).
+- Injecting at the field write (not `@ModifyArg` on `Math.max`) combines with mods that redirect
+  that call.
+- **`require = 0`** on every injector (the module default is 1): an optional visual must never
+  crash the game when another mod rewrites the same code.
+- **Conflict detection** (one WARN per session, plain text):
+  - the hook has not run for 5 s while the setting is on and a level is loaded → "Far plane
+    extension is unavailable: another mod changes the same code.";
+  - the renderer reads the far plane actually in use (26.x `cameraState.depthFar`, 1.21.x
+    `getDepthFar()`) and it is below `active` → "Another mod overrides the far plane."
+  The hook returns vanilla before a level exists (it runs before `Camera.update`'s null return).
+- No mixin on NeoForge 26.x, 1.21.11 or 1.21.10 (no far-player renderer).
 
-## 6. Effects and limits (what the docs say)
+## 6. Effects and limits
 
-- Far players beyond the vanilla plane draw, up to the farthest tracked one (or
-  `render_distance_blocks`).
-- With Voxy, LOD terrain beyond the old plane now gets real depth instead of the far-plane clamp,
-  so proxies are hidden behind distant terrain. (Visual check, §9.)
-- The plane moves for the whole frame while extended: clouds and weather can reach further on
-  1.21.x; other mods reading the far plane see the larger value. Depth precision is dominated by
-  the near plane (0.05); 768 → 16384 changes it negligibly.
-- No server or wire change; no privacy change (the server already sends these positions).
+- **Fog:** vanilla distance fog ends at the render distance and LSS has no fog mixin
+  (`FarPlayerRenderer.java:90`). Voxy removes render-distance fog; without an LOD mod that does,
+  a proxy past the old plane is fully fogged, so the option shows nothing. The tooltip says so.
+- **With Voxy:** LOD terrain past the old plane gets real depth instead of the far-plane clamp, so
+  proxies hide behind distant terrain. Voxy 26.3 reads vanilla's projection every frame and keeps
+  its own far plane at 48000.
+- **Also uses the value:** the world border (all lines) and, on 26.x, the hand projection
+  (`render3dHud`). Clouds and weather do not. The plane only grows when a far player is beyond it.
+- **Depth precision** is dominated by the near plane (0.05); 768 → 16384 barely changes it.
+- No server, wire or privacy change.
+- **Where it helps:** 1.21.1 by default; elsewhere when the server's ring exceeds the client's
+  plane or Cloud Distance is lowered.
+
+**Diag:** the `/lss diag` far-player line (`FarPlayerRenderer.diagLine`) gains
+`far_plane=<active> (vanilla <v>)` and, when off for a reason, `far_plane_off=<shaders|hook|override>`.
 
 ## 7. Tests
 
-**Unit (common):** `FarPlanePolicyTest` — disabled, no players, inside vanilla, grow, step
-rounding, cap, ceiling, hysteresis (shrink only past two steps), never below vanilla. Mutation-check
-the hysteresis and the cap.
-
-**Settings (common):** default false; sidecar placement (a save with it on writes only the
-sidecar, the main file stays loadable by the 0.19 schema without the key); read from the main file
-accepted; schema/doc regeneration (`reference.py --check` style tests already in the suite).
-
-**Catalog (fabric):** `ClientOptionCatalogTest` — the row exists on the Far Players page after
-Full brightness, id mapping, default, `RENDER_AVAILABLE`, `enabledBy`; all three lang files carry
-both keys.
-
-**Hook contracts (fabric, per line):** a classfile-level test that the target still exists
-(26.x: `Camera.update` has exactly one `Math.max(FF)F` and it feeds `putfield depthFar`;
-1.21.x: `GameRenderer.getDepthFar()F` exists), and a source contract that the mixin is listed in
-the client section with `require = 0`.
-
-**Client gametest (Fabric lines with client gametests: 26.3, 26.2, 26.1, 1.21.11, 1.21.10):**
-with the setting on and a synthetic tracked far player at 3000 blocks, the camera's far plane is
-≥ 3000; off → vanilla. If the tracker cannot be fed in a gametest without production hooks, the
-unit + contract tests carry it and the visual check covers the live path (recorded in §12).
+- **`FarPlanePolicyTest` (common):** disabled; nobody tracked; inside vanilla; grow and step
+  rounding; render cap; ceiling; grow-only (a smaller `want` never shrinks); reset; shader pack;
+  never below vanilla. Mutation-check grow-only and the cap.
+- **Settings (common):** default false; a save with it on writes only the sidecar; the main file
+  without the key still parses under the 0.19 schema; read from the main file is accepted and
+  moved out on the next write.
+- **Catalog (fabric):** the row is on the Far Players page after Render distance; id mapping;
+  default; `RENDER_AVAILABLE`; `enabledBy`; both keys in all three lang files.
+- **Hook contracts (fabric per line; neoforge on 1.21.1), ASM classfile level:**
+  - 26.x: `Camera.update` has `putfield depthFar` and calls `prepareCullFrustum` after it;
+  - 1.21.x: `GameRenderer.getDepthFar()F` and `renderLevel` exist;
+  - the mixin is in the client list, every injector `require = 0`.
+- **Client gametest** (Fabric lines with client gametests: 26.3, 26.2, 26.1, 1.21.11, 1.21.10):
+  with the setting off the far plane equals vanilla and the hook ran. The tracker cannot be fed
+  in a gametest without production hooks, so the ON path is covered by the policy tests and the
+  visual check.
 
 ## 8. Per-line work
 
-- Identical files (settings core, `client.yaml`, `LSSClientConfig`, `FarPlanePolicy`,
-  `FarPlaneExtension` if xplat-identical): byte-identical on all six lines.
-- Adapted: the mixin per hook shape, `lss.mixins.json` (and the NeoForge 1.21.1 config),
-  `ClientOptionCatalog` (+test), lang files, docs.
-- Six-line re-pin after the content; no version bump; PRs merged, no tags (user: no release).
+- Identical: the settings core, `client.yaml`, `LSSClientConfig`, `FarPlanePolicy`,
+  `FarPlaneExtension` (xplat, if it stays line-invariant).
+- Adapted: the renderers (distance + diag), the mixins and their configs, the catalog (+test),
+  the lang files, the docs.
+- Six-line re-pin after the content; no version bump; PRs merged; no tags (no release).
 
 ## 9. Visual check (Astra / Codex)
 
-Two hook shapes, so two lines: **26.2 Fabric** (`Camera.update`) and **1.21.11 Fabric**
-(`getDepthFar`), both runnable on private desktops. Server: the line's `test-server.sh` Fabric
-rig with real terrain; two clients (observer = `lss-test-*` instance with Voxy; target = second
-client or the soak dummy).
+Lines, so every hook shape runs once: **26.3 Fabric** (Voxy 0.2.20 for 26.3 is on Modrinth;
+the visible-window rule applies, so it waits for "astra go" if blocked), **26.2 Fabric**,
+**1.21.11 Fabric** (`getDepthFar` + `renderLevel`), **1.21.1 NeoForge** (the twin, default plane
+768). Server: the line's `test-server.sh` rig; the far player is a second client (the soak dummy
+works). Observer: an `lss-test-*` instance with Voxy, shaders off unless the row says.
+
+On 26.x and 1.21.10/11 set Cloud Distance to 8 chunks first, so the vanilla plane is rd × 64.
 
 | Row | Setup | Expect |
 | --- | --- | --- |
-| P1 | observer rd 8 (plane 512), target 1200 blocks away, option OFF | target not drawn |
-| P2 | same, option ON (Sodium Apply) | target drawn; LOD terrain looks unchanged |
-| P3 | target behind a distant mountain, ON | target hidden by LOD terrain, no flicker |
-| P4 | target walks away 300 → 1500 blocks, ON | drawn throughout; no visible popping of terrain/clouds |
-| P5 | ON, no far players | frame identical to OFF (screenshot diff) |
-| P6 | the Far Players Sodium page | row present, greyed out when far players are off; zh_cn label shows |
+| P1 | rd 8, target 1500 blocks away, option OFF | target not drawn; diag `far_plane=` vanilla |
+| P2 | same, option ON (Sodium Apply) | target drawn; diag `far_plane=1792 (vanilla 512)` or similar |
+| P3 | target behind distant LOD terrain, ON | target hidden by the terrain, no flicker |
+| P4 | target walks 300 → 1500 → 300, ON | drawn throughout; diag value only grows; terrain does not pop |
+| P5 | ON, nobody beyond the plane | diag `far_plane=` vanilla |
+| P6 | Far Players Sodium page | row after Render distance, greyed when far players are off; zh_cn label shows |
+| P7 | client without Voxy, ON | target fogged out (documented limit), no errors |
+| P8 | shaders ON (Iris + a pack), ON | diag `far_plane_off=shaders`; nothing breaks |
+| P9 | target hovering at the server ring edge, ON | diag value stable (no flapping) |
+| P10 | observer changes dimension and returns | value resets to vanilla, grows again when needed |
+| P11 | world border in view, ON | border looks normal |
+| P12 | rd 2 and rd 32 | P2 holds at both |
 
-Shaders stay off (Iris already extends the plane). Fix confirmed findings before merge.
+Fix confirmed findings before merge.
 
-## 10. Risks
+## 10. Risks and corrections
 
-- Voxy's LOD depth copy assumes vanilla's plane; P3/P4 are the guard.
-- Hook drift across MC versions: the classfile contracts fail the build on drift.
-- Another mod on the same code: `require = 0` + the WARN.
+- Voxy's depth handling: P3/P4 guard it; the once-per-frame publish keeps inverted projections
+  consistent within a frame.
+- Hook drift across MC versions: the classfile contracts fail the build.
+- Another mod on the same code: `require = 0`, and the WARNs in §5.
+- The hardening plan's Iris claim is corrected in place (a dated note), as is any README line
+  that repeats it.
 
-## 11. Plan review
+## 11. Plan review (2 Opus, 2026-10-23)
 
-(Pending.)
+| Finding | Severity | Disposition |
+| --- | --- | --- |
+| §1 wrong on 26.x/1.21.10/11: Cloud Distance (default 128) already puts the plane at 2048 | MAJOR | Fixed (§1, §6 "where it helps", §9 sets Cloud Distance 8) |
+| Iris does not extend the plane; moving it under a pack is untested | MAJOR | Fixed: off while a shader pack is in use; old claim corrected |
+| Hysteresis bypassed at the vanilla boundary and the server ring edge (flapping) | MAJOR | Fixed: grow-only latch with explicit resets |
+| Value must not change mid-frame on 1.21.x (Voxy inverts `getDepthFar()` mid-frame) | MAJOR | Fixed: publish once per frame |
+| Fog hides the result without an LOD mod | MINOR | Fixed: tooltip, §6, P7 |
+| Distance re-derived outside the renderer would copy its gates | MINOR | Fixed: the renderer reports it |
+| `@ModifyArg` skipped silently under a redirect | MINOR | Fixed: inject at the field write |
+| WARN condition over-built / misses overrides | MINOR | Fixed: staleness + observed-value check |
+| Missing settings touchpoints; `inventory.py` generates the schema JSON | MINOR | Fixed (§3) |
+| Side-effect list wrong (world border, hand; not clouds/weather) | MINOR | Fixed (§6) |
+| Visual matrix gaps (26.3 Voxy exists, 1.21.1 NeoForge, no-Voxy, shaders, flapping, dimension, rd extremes, world border, diag instead of screenshot diff) | MINOR | Fixed (§9) |
+| Gametest cannot feed the tracker | MINOR | Fixed: OFF-path gametest; ON path by unit + visual |
+| Label overclaims; row placement | NIT | Fixed |
+| Euclidean distance + 32-block margin is safe | NIT | Kept |
 
 ## 12. As built
 
