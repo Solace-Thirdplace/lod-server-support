@@ -272,3 +272,34 @@ the annotation), the 26.3 write-back (client gametest: "active=3072, the frame u
 | Downgrade drops the whole sidecar on 0.19.1 (unknown key) | MINOR | Accepted: same as `nether_store_mib`; 0.19.1 WARNs and keeps working |
 | Single jump to the ceiling instead of steps | NIT | Kept steps: the plane stays close to the need |
 
+
+## 14. Visual check (Codex, 2026-10-23)
+
+Private Xvfb clients (Mesa llvmpipe) on copies of the `lss-test-*` instances, gated jars. Results
+and screenshots: `~/projects/lss-364/astra-results/2026-10-23-farplane/RESULTS.md` (first run,
+blocked on the launcher account: `…-farplane-run1/`).
+
+| Line | Pass | Fail | Skipped |
+| --- | --- | --- | --- |
+| 26.2 | P1, P5, P6, P7, P9, P10, P11 | P2, P4, P12 (visibility) | P3 (no distant hill), P8 (no Iris) |
+| 26.3 | P1 | P2 (visibility) | P3 |
+| 1.21.11 | P1, P2, P4, P6 | | |
+| 1.21.1 NeoForge | P1, P2, P4, P6 | | |
+
+Every plane value matched: off = vanilla, growth in steps, never shrinking (P4, P9), reset on
+rejoin and dimension change (P5, P10), no LOD terrain or cloud artifacts. On 26.x the far player
+stayed invisible past about 900 blocks although diag showed the grown plane and `drawn=1`.
+
+**Cause: vanilla atmospheric fog, not the plane.** 26.x fogs everything with
+`visual/fog_end_distance` (default 1024 blocks, linear from 0). Voxy's 26.x default fog mode
+(`FOG_AND_FADE`) removes vanilla's render-distance fog but keeps this one, so a player model is
+about 90% fog colour at 900 blocks and gone past 1024. The 1.21.x test instances had Voxy's
+`use_environmental_fog: false`, which is why they showed far players at 1500 and 2000.
+Confirmed on 26.2 with a dev-environment observer (no launcher), spyglass, extension on: Voxy's
+default fog shows only a faint ghost at 900 blocks; Voxy `fog_mode: off` shows the model and name
+tag clearly at 900 and 1500.
+
+**Decision (user, 2026-10-23): merge as built and document it.** The tooltip (all three
+locales), the setting description, the `client.yaml` comment and the README now say that fog
+can still hide very distant players and to turn off the LOD mod's fog if they fade out. Far
+players keep vanilla fog (the renderer's "no fog mixin" decision stands).
