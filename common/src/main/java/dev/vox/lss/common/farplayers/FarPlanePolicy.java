@@ -9,7 +9,7 @@ package dev.vox.lss.common.farplayers;
  * <p>Three steps per frame, all on the render thread:
  * <ol>
  *   <li>the renderer {@link #report}s each eligible proxy's camera distance during its pass
- *       (after its own gates, before the frustum test);</li>
+ *       (after its own gates, including its distance caps);</li>
  *   <li>the frame-start hook {@link #publish}es that into the latch, once per frame, so the
  *       far plane never changes inside a frame (Voxy inverts {@code getDepthFar()} mid-frame
  *       on 1.21.x);</li>
@@ -19,6 +19,8 @@ package dev.vox.lss.common.farplayers;
  * <p>The latch only grows (review MAJOR: the server adds and drops far players exactly at its
  * ring edge, so any shrink rule flaps the projection). It resets when the setting turns off and
  * when the caller resets it (level or dimension change, disconnect, a shader pack turning on).
+ * There is no separate render cap: the renderer already gates proxies by its distance caps, and
+ * a cap applied to camera distance would clip a gated proxy in third person (review fold).
  */
 public final class FarPlanePolicy {
 
@@ -38,12 +40,12 @@ public final class FarPlanePolicy {
     }
 
     /** Frame start: fold the last pass's farthest proxy into the grow-only latch. */
-    public void publish(boolean enabled, int renderCapBlocks) {
+    public void publish(boolean enabled) {
         if (!enabled) {
             reset();
             return;
         }
-        this.latch = Math.max(this.latch, want(this.pendingFarthest, renderCapBlocks));
+        this.latch = Math.max(this.latch, want(this.pendingFarthest));
         this.pendingFarthest = 0;
     }
 
@@ -60,13 +62,10 @@ public final class FarPlanePolicy {
 
     public int latch() { return this.latch; }
 
-    /** The plane a proxy at {@code farthest} blocks needs, in whole steps; 0 = none.
-     *  {@code renderCapBlocks} > 0 caps it ({@code far_players.render_distance_blocks}). */
-    public static int want(double farthest, int renderCapBlocks) {
+    /** The plane a proxy at {@code farthest} blocks needs, in whole steps; 0 = none. */
+    public static int want(double farthest) {
         if (!(farthest > 0)) return 0;
-        double need = farthest + MARGIN;
-        if (renderCapBlocks > 0) need = Math.min(need, renderCapBlocks + (double) MARGIN);
-        need = Math.min(need, CEILING);
+        double need = Math.min(farthest + MARGIN, CEILING);
         return (int) Math.min(CEILING, Math.ceil(need / STEP) * STEP);
     }
 }
