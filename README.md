@@ -18,7 +18,7 @@ Use the matching Fabric or shipped NeoForge artifact. Server support and rendere
 | 1.21.11 | maintained | experimental | maintained build only | unsupported | shipped; experimental |
 | 26.1 | maintained | experimental | shipped; best-effort | unsupported | shipped; experimental |
 | 26.2 | maintained | experimental | shipped; best-effort | unsupported | shipped; experimental |
-| 26.3 | maintained | unsupported | shipped; best-effort | unsupported | shipped; experimental |
+| 26.3 | maintained | experimental | shipped; best-effort | unsupported | shipped; experimental |
 <!-- LSS SERVER MATRIX END -->
 
 **Sponge (experimental):** a SpongeVanilla server plugin ships on the lines the matrix marks shipped. It speaks the same wire as every other server, so any Fabric or NeoForge client with LSS joins it normally. On SpongeNeo, use the NeoForge jar instead, on lines that ship one (see the matrix). SpongeForge is not supported.
