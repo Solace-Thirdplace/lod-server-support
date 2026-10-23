@@ -1,24 +1,24 @@
 {
   "basis": {
-    "1.21.1": "4821b915de121a112bb41aaac0309095591b4c11",
-    "1.21.10": "8a37e5223cae27832b1127cb8c9a93e1310048d3",
-    "1.21.11": "63f64a3a2b496fb326bc45ee2f024307559f3d03",
-    "26.1": "06c95eefa2bcc8da4fc1c8d4bd3f3b0c43ed1a63",
-    "26.2": "36db54149f41bb5951d1732f1ec36278e9d79aa8",
-    "26.3": "7f45f22adf85ede4117879e0cf21e75e98690d2c"
+    "1.21.1": "d814877b752785fe7d8640f3b138f0453725bc5b",
+    "1.21.10": "8a9263ded07882586a0251c12bf69526645e5c85",
+    "1.21.11": "aa68c9b2f5a7982d6aef60bbaaafba21fc888c21",
+    "26.1": "ee34dc4f2152544055a0a14502162648f8d68323",
+    "26.2": "b1ace2ad36de6cf2267700d0e5ab4fe0cfbc591e",
+    "26.3": "01e97c357935debb4f25ed0154cbdb47dff4dfbe"
   },
   "files": {
     ".github/line.env": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Implementation candidate; independent final change review must cover residual logic before handoff.",
+      "review": "2026-10-23 0.19.1: Folia on the 26.3 line (LINE_PAPER_LOADERS + catalog line facts gain folia; mainline ReleaseWorkflowContractTest pin flipped; stale no-Folia-26.3 comments refreshed); 26.3-only change, the five support lines only re-pin. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Implementation candidate; independent final change review must cover residual logic before handoff.",
       "reviewed_blobs": {
         "1.21.1": "26382eca2ef9008184071b3dabc8198a213502fe",
         "1.21.10": "693922813e71cc97a122071acf63e8968ccc4d00",
         "1.21.11": "ecb6bdd3f172388889595d1ce067206d07e69ba7",
         "26.1": "ffdcf61271e6c4670ea506b9e1b346aef9f43161",
         "26.2": "c5be6d115d784a59b8c6d2734debc9ce455cde08",
-        "26.3": "b3a5a78fb55d574f40235cfd1fa4e62e9220bda8"
+        "26.3": "1790cafa274b4689c342556c6b17436a171faefd"
       },
       "surface": "line-adaptation:.github/line.env",
       "tests": [
@@ -1103,14 +1103,14 @@
     "config/compatibility/line.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Nonnumeric metadata delta reviewed: 1.21.10, 1.21.11 and 26.1 declare the existing enabled Fabric client gametest task; all other data unchanged. Independent final change review remains pending.",
+      "review": "2026-10-23 0.19.1: Folia on the 26.3 line (LINE_PAPER_LOADERS + catalog line facts gain folia; mainline ReleaseWorkflowContractTest pin flipped; stale no-Folia-26.3 comments refreshed); 26.3-only change, the five support lines only re-pin. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Nonnumeric metadata delta reviewed: 1.21.10, 1.21.11 and 26.1 declare the existing enabled Fabric client gametest task; all other data unchanged. Independent final change review remains pending.",
       "reviewed_blobs": {
         "1.21.1": "486ab82737f4286b227c6503244220897bc1d81c",
         "1.21.10": "7f945db450d33cf46269976374bf916b4c7d62a9",
         "1.21.11": "20ba55c300e620ce2b0bf4fbc2307f5cfc292650",
         "26.1": "d6c635586e46055ce3427b11a74ce1357ec1ef8b",
         "26.2": "5f7de623b8c552b22fdd74668a407cf452ea6237",
-        "26.3": "fe32dcb3ca41d051d334f187f9cedc8d17ba714d"
+        "26.3": "2281e1acd694d22695feab1cfebbfe7c82224ba0"
       },
       "surface": "line-adaptation:config/compatibility/line.json",
       "tests": [
@@ -2045,14 +2045,14 @@
     "fabric/src/gametest/java/dev/vox/lss/test/ServiceLifecycleGameTests.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-23 0.19.1 re-pin after the gate fold: the region-freshness gametest counts tiles per summary assembly (re-assembled frames after a tick stall), on all six lines; Folia comment refresh on 26.3/26.2. 2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
-        "1.21.1": "4f708df013f8e95fb3387ade491800b8130f8018",
-        "1.21.10": "5f14e8eb9912625d1183675619d74e492a0f75ed",
-        "1.21.11": "655b1661b508c6e85c890be9ace57cba901961dc",
-        "26.1": "0a0404115af7938a18daa346bd26a66e50063bc1",
-        "26.2": "68e74bc1e547db4aaa61ec486c4bb3533fa1e6b7",
-        "26.3": "68e74bc1e547db4aaa61ec486c4bb3533fa1e6b7"
+        "1.21.1": "e4d1ffd16b2c7c5206315d14f2244d19abc21824",
+        "1.21.10": "78930d52f1b187747eda758efbbd7b4f2d0c5721",
+        "1.21.11": "e722a049cc82f4c6689a6e7d5e6394df2de70ffa",
+        "26.1": "2bdf0d58fcd2fa0179cfa66eb14783fe550fad5e",
+        "26.2": "f036294bbc85ceef6ccd3e63239c501faa853f06",
+        "26.3": "f036294bbc85ceef6ccd3e63239c501faa853f06"
       },
       "surface": "line-adaptation:fabric/src/gametest/java/dev/vox/lss/test/ServiceLifecycleGameTests.java",
       "tests": [
@@ -5497,14 +5497,14 @@
     "gradle.properties": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 0.18.0 release pin: reviewed diff changes only mod_version from 0.17.0 to 0.18.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged. 2026-10-12 Astra manual-test follow-ups and 26.3 compat pass: test-server.sh derives the Fabric loader from gradle.properties and re-fetches changed pins (URL stamps), latest C2ME per line, 26.3 AntiXray build, Moonrise/C2ME verification notes; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: reviewed diff changes only mod_version from 0.16.0 to 0.17.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged.",
+      "review": "2026-10-23 0.19.1: Folia on the 26.3 line (LINE_PAPER_LOADERS + catalog line facts gain folia; mainline ReleaseWorkflowContractTest pin flipped; stale no-Folia-26.3 comments refreshed); 26.3-only change, the five support lines only re-pin. 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 0.18.0 release pin: reviewed diff changes only mod_version from 0.17.0 to 0.18.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged. 2026-10-12 Astra manual-test follow-ups and 26.3 compat pass: test-server.sh derives the Fabric loader from gradle.properties and re-fetches changed pins (URL stamps), latest C2ME per line, 26.3 AntiXray build, Moonrise/C2ME verification notes; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: reviewed diff changes only mod_version from 0.16.0 to 0.17.0 on every line; all Minecraft/JDK/dependency/loader facts unchanged.",
       "reviewed_blobs": {
         "1.21.1": "3d25f9516e96cbb9a7e5c61a3c5b34881fb4091b",
         "1.21.10": "6af4cddc1a32b203ca8a2eaef30a00f7d0650263",
         "1.21.11": "b41eeee8409f364352b78ad854739d3cb8a3623c",
         "26.1": "f4da2821d7a4354cccbc41340c49c170b481625b",
         "26.2": "a2f78419f93f0d03ae4f588cf444d8eb3a1d211f",
-        "26.3": "ad364616ac1f3f6e6c1da529606f7bd572f9bfe0"
+        "26.3": "00d6d7de7118e3515cf44ccade19db9fa2714933"
       },
       "surface": "build-toolchain",
       "tests": [
@@ -6827,14 +6827,14 @@
     "paper/src/test/java/dev/vox/lss/paper/PluginYmlContractTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Implementation candidate; independent final change review must cover residual logic before handoff.",
+      "review": "2026-10-23 0.19.1 re-pin after the gate fold: the region-freshness gametest counts tiles per summary assembly (re-assembled frames after a tick stall), on all six lines; Folia comment refresh on 26.3/26.2. 2026-10-23 0.19.1: Folia on the 26.3 line (LINE_PAPER_LOADERS + catalog line facts gain folia; mainline ReleaseWorkflowContractTest pin flipped; stale no-Folia-26.3 comments refreshed); 26.3-only change, the five support lines only re-pin. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. Implementation candidate; independent final change review must cover residual logic before handoff.",
       "reviewed_blobs": {
         "1.21.1": "ee4b42c6fc9e6de2ea4d32a36044fc7304b523d3",
         "1.21.10": "b0a90af342d2315e3ba46c523aab230e0a85814d",
         "1.21.11": "45314cf01bbfd853e52f2847b29fed128b419f71",
         "26.1": "5658ce6c00e90c8fa2fc70e94b0c25458dc24fb8",
-        "26.2": "2ea0161bee1bfccb483dfeebda9a3f364697e15b",
-        "26.3": "2ea0161bee1bfccb483dfeebda9a3f364697e15b"
+        "26.2": "5d567c28fa24fb8e2d0d16118c8110b927536385",
+        "26.3": "5c639495f5dbad1f58e67199316351da9adbec80"
       },
       "surface": "line-adaptation:paper/src/test/java/dev/vox/lss/paper/PluginYmlContractTest.java",
       "tests": [
@@ -6847,14 +6847,14 @@
     "paper/src/test/java/dev/vox/lss/paper/ReleaseWorkflowContractTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 SQLite isolation port reviewed across all five lines by Astra: identical semantic changes, preserved MC/JDK/shipping facts and loader-specific zstd dev visibility. YAML parser, settings CLI, policy ownership and both packaging checkers preserved; runtime integration independently reviewed.",
+      "review": "2026-10-23 0.19.1: Folia on the 26.3 line (LINE_PAPER_LOADERS + catalog line facts gain folia; mainline ReleaseWorkflowContractTest pin flipped; stale no-Folia-26.3 comments refreshed); 26.3-only change, the five support lines only re-pin. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 SQLite isolation port reviewed across all five lines by Astra: identical semantic changes, preserved MC/JDK/shipping facts and loader-specific zstd dev visibility. YAML parser, settings CLI, policy ownership and both packaging checkers preserved; runtime integration independently reviewed.",
       "reviewed_blobs": {
         "1.21.1": "b98f2150f2ad6578c5793f163ef3881e21874531",
         "1.21.10": "67beedc8067faa3f4fc29b70a164b1d0dd3f8cee",
         "1.21.11": "4807adab5cf18cdf9e197460b1a3992e3650ab08",
         "26.1": "64fb8923e437a559ae026ca455be0fd2abf1da0f",
         "26.2": "2116ca4217050b30d9e1c918a5ce00ca64aaae7a",
-        "26.3": "8dc9b6915480fd276bae58ec8bb84a94b57c35c0"
+        "26.3": "d81fb5a344211b38b91cca847a817e2ce8dd9b2a"
       },
       "surface": "line-adaptation:paper/src/test/java/dev/vox/lss/paper/ReleaseWorkflowContractTest.java",
       "tests": [
@@ -7432,14 +7432,14 @@
     "scripts/release_check.py": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: the DH release-gate delta (client-only common/dh + private XZ placement, Paper exclusion, XZ third-party notice, forbidden fixture mixin configs, dependency allowlists and selftests) is textually identical on all five lines except documented line facts: FABRIC_DEPENDENCY_ALLOWLIST suggests also voxy on 1.21.10/1.21.11/26.1/26.2, matching each line's fabric.mod.json; NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST is {\"sqlite_jdbc\"} on 1.21.1 only (issue #304) and empty elsewhere, with the optional-sqlite selftest written against the line's allowlist (equivalent to 1.21.1's specialized assertion); the dependency selftest fixture names the line's Minecraft version. Pre-existing per-line gate flavours unchanged.",
+      "review": "2026-10-23 0.19.1 re-pin after the gate fold: the region-freshness gametest counts tiles per summary assembly (re-assembled frames after a tick stall), on all six lines; Folia comment refresh on 26.3/26.2. 2026-10-23 0.19.1: Folia on the 26.3 line (LINE_PAPER_LOADERS + catalog line facts gain folia; mainline ReleaseWorkflowContractTest pin flipped; stale no-Folia-26.3 comments refreshed); 26.3-only change, the five support lines only re-pin. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: the DH release-gate delta (client-only common/dh + private XZ placement, Paper exclusion, XZ third-party notice, forbidden fixture mixin configs, dependency allowlists and selftests) is textually identical on all five lines except documented line facts: FABRIC_DEPENDENCY_ALLOWLIST suggests also voxy on 1.21.10/1.21.11/26.1/26.2, matching each line's fabric.mod.json; NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST is {\"sqlite_jdbc\"} on 1.21.1 only (issue #304) and empty elsewhere, with the optional-sqlite selftest written against the line's allowlist (equivalent to 1.21.1's specialized assertion); the dependency selftest fixture names the line's Minecraft version. Pre-existing per-line gate flavours unchanged.",
       "reviewed_blobs": {
         "1.21.1": "d383327d86909a4cd4d4156b2fdfbd9df644144c",
         "1.21.10": "298dff02a3ac3005c36c541f289ef4ffe442a97b",
         "1.21.11": "d24336bc74993019acae887aa2259eba1dacec81",
         "26.1": "05b8507ba58cf43d5bb875a753ed35c6aa319ab7",
         "26.2": "fa9188a744db9f03b128e14c290d0f80e834329e",
-        "26.3": "a7b2978f3c61e11ad1fc458584038cbcea7d35fd"
+        "26.3": "e8cde604e6ccdbcd89d0b71967ff4967a94e5635"
       },
       "surface": "line-adaptation:scripts/release_check.py",
       "tests": [
@@ -9772,14 +9772,14 @@
     "test-server.sh": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 Astra manual-test follow-ups and 26.3 compat pass: test-server.sh derives the Fabric loader from gradle.properties and re-fetches changed pins (URL stamps), latest C2ME per line, 26.3 AntiXray build, Moonrise/C2ME verification notes; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. YAML staging/codec helpers, platform-specific soak YAML, historical JSON-only comparison arms, parser relocation/resource/license assertions and loader discovery reviewed. Feature deltas match exactly across all five pre-existing script flavors; inherited platform/version guards remain intact. Corrected canonical v16 generation echo. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-23 0.19.1: Folia on the 26.3 line (LINE_PAPER_LOADERS + catalog line facts gain folia; mainline ReleaseWorkflowContractTest pin flipped; stale no-Folia-26.3 comments refreshed); 26.3-only change, the five support lines only re-pin. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 Astra manual-test follow-ups and 26.3 compat pass: test-server.sh derives the Fabric loader from gradle.properties and re-fetches changed pins (URL stamps), latest C2ME per line, 26.3 AntiXray build, Moonrise/C2ME verification notes; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. YAML staging/codec helpers, platform-specific soak YAML, historical JSON-only comparison arms, parser relocation/resource/license assertions and loader discovery reviewed. Feature deltas match exactly across all five pre-existing script flavors; inherited platform/version guards remain intact. Corrected canonical v16 generation echo. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
         "1.21.1": "5ec81d973548460a056624bf4e8ef942a830c655",
         "1.21.10": "077819ecf67680d4f8ae245d14f9982aa8317cf0",
         "1.21.11": "46b371273cf0baeac62610685faa1076b9b4a032",
         "26.1": "0ac1c843b55e6fe026f8a693f0a37bf7ab79dddf",
         "26.2": "365717bfb90241760676c8c8a5a0cb92399539c5",
-        "26.3": "2fdcdeeaaff7496790db0f8cb2bf9a840bad283c"
+        "26.3": "d086acdbb587c8e71fdae3f02886a26c60dc6e05"
       },
       "surface": "line-adaptation:test-server.sh",
       "tests": [
