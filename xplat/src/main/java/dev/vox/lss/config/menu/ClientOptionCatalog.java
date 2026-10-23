@@ -40,6 +40,7 @@ public final class ClientOptionCatalog {
     public static final String ID_FAR_PLAYERS_NAME_TAGS = "lss:far_players_name_tags";
     public static final String ID_FAR_PLAYERS_FULL_BRIGHT = "lss:far_players_full_bright";
     public static final String ID_FAR_PLAYERS_RENDER_DISTANCE = "lss:far_players_render_distance";
+    public static final String ID_FAR_PLAYERS_EXTEND_FAR_PLANE = "lss:far_players_extend_far_plane";
 
     public static final String PAGE_GENERAL = "general";
     public static final String PAGE_FAR_PLAYERS = "far_players";
@@ -80,6 +81,7 @@ public final class ClientOptionCatalog {
             case "far_players.name_tags" -> ID_FAR_PLAYERS_NAME_TAGS;
             case "far_players.full_bright" -> ID_FAR_PLAYERS_FULL_BRIGHT;
             case "far_players.render_distance_blocks" -> ID_FAR_PLAYERS_RENDER_DISTANCE;
+            case "far_players.extend_far_plane" -> ID_FAR_PLAYERS_EXTEND_FAR_PLANE;
             default -> null;
         };
         if (id == null) return stored;
@@ -295,7 +297,21 @@ public final class ClientOptionCatalog {
                 .visibility(Visibility.RENDER_AVAILABLE)
                 .build();
 
+        // Far-plane extension (far-plane plan #364): render-only and off by default; it lives in
+        // the experimental sidecar, so turning it on never makes the main file unreadable by
+        // older versions. After Render Limit, which caps it.
+        var extendFarPlane = BoolSpec.builder(ID_FAR_PLAYERS_EXTEND_FAR_PLANE)
+                .name("lss.config.far_players_extend_far_plane")
+                .tooltip("lss.config.far_players_extend_far_plane.tooltip")
+                .impact(Impact.LOW)
+                .defaultValue(false)
+                .bind(c -> c.bool("far_players.extend_far_plane"), (c, v) -> c.set("far_players.extend_far_plane", v))
+                .enabledBy(ID_FAR_PLAYERS_ENABLED)
+                .saveHook(save)
+                .visibility(Visibility.RENDER_AVAILABLE)
+                .build();
+
         return PageSpec.of(PAGE_FAR_PLAYERS, "lss.config.far_players.page",
-                GroupSpec.of(enabled, share, tags, fullBright, render));
+                GroupSpec.of(enabled, share, tags, fullBright, render, extendFarPlane));
     }
 }

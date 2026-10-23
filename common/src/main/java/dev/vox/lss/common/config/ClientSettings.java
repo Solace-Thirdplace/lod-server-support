@@ -20,7 +20,7 @@ public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility comp
     public record Integrations(IntegrationsMapIngestion mapIngestion) {}
     public record FarPlayersDistance(int minBlocks, int maxBlocks) {}
     public record FarPlayersSharing(boolean enabled, int maxDistanceBlocks) {}
-    public record FarPlayers(boolean enabled, FarPlayersDistance distance, boolean nameTags, boolean fullBright, int renderDistanceBlocks, int animationDistanceBlocks, FarPlayersSharing sharing) {}
+    public record FarPlayers(boolean enabled, FarPlayersDistance distance, boolean nameTags, boolean fullBright, int renderDistanceBlocks, int animationDistanceBlocks, FarPlayersSharing sharing, boolean extendFarPlane) {}
     public static ClientSettings fromValues(Map<String,Object> values) { return ClientSettings(values); }
     public Map<String,Object> values() {
         var v = new LinkedHashMap<String,Object>();
@@ -56,6 +56,7 @@ public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility comp
         v.put("far_players.name_tags", s.farPlayers().nameTags());
         v.put("far_players.full_bright", s.farPlayers().fullBright());
         v.put("far_players.render_distance_blocks", s.farPlayers().renderDistanceBlocks());
+        v.put("far_players.extend_far_plane", s.farPlayers().extendFarPlane());
         v.put("far_players.animation_distance_blocks", s.farPlayers().animationDistanceBlocks());
         v.put("far_players.sharing.enabled", s.farPlayers().sharing().enabled());
         v.put("far_players.sharing.max_distance_blocks", s.farPlayers().sharing().maxDistanceBlocks());
@@ -108,7 +109,7 @@ public record ClientSettings(Lod lod, Scan scan, Cache cache, Compatibility comp
     }
     @SuppressWarnings("unchecked")
     private static FarPlayers FarPlayers(Map<String,Object> v) {
-        return new FarPlayers((boolean)v.get("far_players.enabled"), FarPlayersDistance(v), (boolean)v.get("far_players.name_tags"), (boolean)v.get("far_players.full_bright"), (int)v.get("far_players.render_distance_blocks"), (int)v.get("far_players.animation_distance_blocks"), FarPlayersSharing(v));
+        return new FarPlayers((boolean)v.get("far_players.enabled"), FarPlayersDistance(v), (boolean)v.get("far_players.name_tags"), (boolean)v.get("far_players.full_bright"), (int)v.get("far_players.render_distance_blocks"), (int)v.get("far_players.animation_distance_blocks"), FarPlayersSharing(v), (boolean)v.get("far_players.extend_far_plane"));
     }
     @SuppressWarnings("unchecked")
     private static ClientSettings ClientSettings(Map<String,Object> v) {

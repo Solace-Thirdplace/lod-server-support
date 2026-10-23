@@ -90,6 +90,9 @@ final class SettingsSchemaSpecs {
         client.add(new Spec("far_players.name_tags", "farPlayersNameTags", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.full_bright", "farPlayersFullBright", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.render_distance_blocks", "farPlayersMaxRenderDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));
+        // Far-plane extension (far-plane plan #364): experimental sidecar, so the main file
+        // stays readable by 0.19.1 and older.
+        client.add(new Spec("far_players.extend_far_plane", "farPlayersExtendFarPlane", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.animation_distance_blocks", "farPlayersMaxAnimationDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.sharing.enabled", "farPlayersShareSelf", Kind.BOOLEAN, Timing.H, Platform.ALL, false));
         client.add(new Spec("far_players.sharing.max_distance_blocks", "farPlayersShareDistanceBlocks", Kind.INTEGER, Timing.H, Platform.ALL, false));
