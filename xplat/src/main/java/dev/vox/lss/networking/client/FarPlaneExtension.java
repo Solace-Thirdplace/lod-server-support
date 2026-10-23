@@ -14,12 +14,14 @@ import java.lang.reflect.Method;
  *   <li>{@link #frameStart} — once per frame, before the far plane is read: the 26.x
  *       {@code Camera.update} hook, the 1.21.x {@code GameRenderer.renderLevel} HEAD hook;</li>
  *   <li>{@link #apply} — the far-plane hook: {@code max(vanilla, active)};</li>
- *   <li>{@link #report} / {@link #rendererPass} — the far-player renderer, per pass.</li>
+ *   <li>{@link #report} / {@link #rendererPass} — the far-player renderer, per pass;</li>
+ *   <li>{@link #onDisconnect} — the connection ends (1.21.x never runs {@code renderLevel}
+ *       without a level, so the frame start alone would keep the old level referenced).</li>
  * </ul>
  *
  * <p>The hooks are {@code require = 0}: another mod rewriting the same code must not crash the
  * game for an optional visual. {@link #rendererPass} turns a missing or overridden hook into one
- * WARN per session.
+ * WARN per connection and a {@code far_plane_off=} reason in {@code /lss diag}.
  */
 public final class FarPlaneExtension {
     private FarPlaneExtension() {}
@@ -31,32 +33,30 @@ public final class FarPlaneExtension {
     private static Object level;
     private static float vanillaFar;
     private static float activeFar;
+    private static long lastFrameStartNanos;
     private static long lastApplyNanos;
     private static boolean shaderPack;
     private static long shaderCheckedNanos;
-    private static boolean shaderProbeFailed;
+    private static boolean noIris;
+    private static boolean warnedProbe;
     private static Method irisInstance, irisInUse;
+    /** One WARN per connection each (reset by {@link #onDisconnect}, not by dimension changes). */
     private static boolean warnedStale, warnedOverride;
-    /** This frame: a shader pack keeps the extension off. */
-    private static boolean shaderOff;
-    /** Sticky until the level changes: "hook" (never ran) or "override" (another mod won). */
+    /** The last renderer pass's verdict: null, "hook" (a hook is not running) or "override". */
     private static String conflict;
 
     /** Frame start. {@code currentLevel} is the client level (identity only; null = none). */
     public static void frameStart(Object currentLevel) {
+        lastFrameStartNanos = System.nanoTime();
         boolean enabled = LSSClientConfig.CONFIG.farPlayersExtendFarPlane();
         if (currentLevel != level) {
             // A new ClientLevel per dimension and per connection: both reset the latch.
             level = currentLevel;
             POLICY.reset();
-            warnedStale = warnedOverride = false;
-            conflict = null;
         }
         boolean shaders = enabled && shaderPackInUse();
         if (shaders) POLICY.reset();
-        POLICY.publish(enabled && !shaders && currentLevel != null,
-                LSSClientConfig.CONFIG.snapshot().farPlayers().renderDistanceBlocks());
-        shaderOff = shaders;
+        POLICY.publish(enabled && !shaders && currentLevel != null);
     }
 
     /** The far-plane hook: the value to use given vanilla's {@code vanilla}. */
@@ -67,19 +67,32 @@ public final class FarPlaneExtension {
         return activeFar;
     }
 
-    /** Renderer: an eligible proxy (past its gates, before the frustum test). */
+    /** Renderer: an eligible proxy at {@code distanceBlocks} from the camera. */
     public static void report(double distanceBlocks) {
         POLICY.report(distanceBlocks);
     }
 
+    /** The connection ended: drop the level and the latch; the WARNs may fire again. */
+    public static void onDisconnect() {
+        level = null;
+        POLICY.reset();
+        warnedStale = warnedOverride = false;
+        conflict = null;
+    }
+
     /**
      * Renderer, once per pass: {@code planeInUse} is the far plane the frame actually used
-     * (26.x {@code cameraState.depthFar}, 1.21.x {@code getDepthFar()}).
+     * (26.x {@code cameraState.depthFar}, 1.21.x {@code getDepthFar()}). Both hooks must have
+     * run recently (on 1.21.x the renderer's own {@code getDepthFar()} call stamps the getter
+     * hook, so the frame-start stamp is the one that catches a lost {@code renderLevel} hook).
      */
     public static void rendererPass(float planeInUse) {
-        if (!LSSClientConfig.CONFIG.farPlayersExtendFarPlane() || shaderOff) return;
+        if (!LSSClientConfig.CONFIG.farPlayersExtendFarPlane() || shaderPack) {
+            conflict = null;
+            return;
+        }
         long now = System.nanoTime();
-        if (lastApplyNanos == 0 || now - lastApplyNanos > HOOK_STALE_NANOS) {
+        if (stale(lastFrameStartNanos, now) || stale(lastApplyNanos, now)) {
             conflict = "hook";
             if (!warnedStale) {
                 warnedStale = true;
@@ -92,28 +105,48 @@ public final class FarPlaneExtension {
                 LSSLogger.warn("Another mod overrides the far plane, so far players past "
                         + Math.round(planeInUse) + " blocks are not drawn.");
             }
+        } else {
+            conflict = null;
         }
     }
 
-    /** Gametest probes: whether the far-plane hook has run, and the last values it saw/returned. */
-    public static boolean hookRan() { return lastApplyNanos != 0; }
-    public static float lastVanillaFar() { return vanillaFar; }
-    public static float activeFar() { return activeFar; }
+    private static boolean stale(long stampNanos, long now) {
+        return stampNanos == 0 || now - stampNanos > HOOK_STALE_NANOS;
+    }
 
-    /** The {@code /lss diag} fragment for the far-player line; null while the setting is off. */
+    /** The {@code /lss diag} fragment for the far-player line (always present). */
     public static String diagFragment() {
-        if (!LSSClientConfig.CONFIG.farPlayersExtendFarPlane()) return null;
         String line = "far_plane=" + Math.round(activeFar) + " (vanilla " + Math.round(vanillaFar) + ")";
-        String off = shaderOff ? "shaders" : conflict;
+        if (!LSSClientConfig.CONFIG.farPlayersExtendFarPlane()) return line + ", extend=off";
+        String off = shaderPack ? "shaders" : conflict;
         return off == null ? line : line + ", far_plane_off=" + off;
     }
 
-    /** Iris reports a shader pack in use (reflection; re-checked at most once a second). */
+    /** Gametest probes: whether each hook has run, and the last values the far-plane hook saw/returned. */
+    public static boolean hookRan() { return lastApplyNanos != 0; }
+    public static boolean frameStartRan() { return lastFrameStartNanos != 0; }
+    public static float lastVanillaFar() { return vanillaFar; }
+    public static float activeFar() { return activeFar; }
+
+    /** Test support: forget everything (the state is static and outlives a test). */
+    static void resetForTest() {
+        onDisconnect();
+        vanillaFar = activeFar = 0;
+        lastFrameStartNanos = lastApplyNanos = 0;
+        shaderPack = noIris = warnedProbe = false;
+        shaderCheckedNanos = 0;
+    }
+
+    /**
+     * Iris reports a shader pack in use (reflection; re-checked at most once a second). No Iris
+     * means no pack. Any other failure fails CLOSED (treated as a pack in use, so the plane
+     * stays vanilla) and is retried a second later.
+     */
     private static boolean shaderPackInUse() {
         long now = System.nanoTime();
         if (shaderCheckedNanos != 0 && now - shaderCheckedNanos < SHADER_RECHECK_NANOS) return shaderPack;
         shaderCheckedNanos = now;
-        if (shaderProbeFailed) return shaderPack = false;
+        if (noIris) return shaderPack = false;
         try {
             if (irisInUse == null) {
                 Class<?> api = Class.forName("net.irisshaders.iris.api.v0.IrisApi", false,
@@ -123,12 +156,14 @@ public final class FarPlaneExtension {
             }
             return shaderPack = (boolean) irisInUse.invoke(irisInstance.invoke(null));
         } catch (ClassNotFoundException e) {
-            shaderProbeFailed = true; // no Iris
+            noIris = true;
             return shaderPack = false;
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-            shaderProbeFailed = true;
-            LSSLogger.warn("Could not ask Iris whether a shader pack is on; treating it as off.", e);
-            return shaderPack = false;
+            if (!warnedProbe) {
+                warnedProbe = true;
+                LSSLogger.warn("Could not ask Iris whether a shader pack is on; the far plane stays vanilla.", e);
+            }
+            return shaderPack = true;
         }
     }
 }

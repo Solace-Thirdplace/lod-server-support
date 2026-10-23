@@ -947,6 +947,9 @@ FABRIC_ONLY_CLASS_PREFIXES = (
     "dev/vox/lss/config/menu/SodiumConfigScreens",
     "dev/vox/lss/networking/client/LSSClientCommands",
     "dev/vox/lss/mixin/IntegratedServerLanHook",
+    # The far-plane extension hook (far-plane plan #364): fabric-only where NeoForge draws no
+    # far players (only 1.21.1 ships a NeoForge renderer and its twin hook).
+    "dev/vox/lss/mixin/FarPlaneHook",
     "dev/vox/lss/mixin/trace/MovementRejectHook",
     "dev/vox/lss/trace/MoveTraceBootstrap",
     "dev/vox/lss/platform/FabricLoaderServices",

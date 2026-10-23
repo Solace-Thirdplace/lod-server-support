@@ -352,8 +352,8 @@ public final class FarPlayerRenderer {
                             cameraPosition.distanceToSqr(real.position()))) {
                 continue;
             }
-            // Far-plane extension (#364): every proxy this pass would draw, before the frustum
-            // test (a proxy past the far plane is outside the frustum by construction).
+            // Far-plane extension (#364): every proxy this pass would draw (this line's renderer
+            // has no frustum test of its own; the projection clip is the far plane).
             FarPlaneExtension.report(cameraDistance);
 
             Proxy proxy = proxies.compute(tracked.uuid(), (uuid, current) ->
