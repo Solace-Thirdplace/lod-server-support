@@ -1,6 +1,6 @@
 # Far-plane extension for far players (issue #364)
 
-Status: PLANNED v2 (2026-10-23), plan review folded (§11). User approval: "add it as an option,
+Status: AS BUILT (2026-10-23). Plan review (§11) and implementation review (§13) folded. User approval: "add it as an option,
 disabled by default … execute the plan across all support lines … merged but not run a release
 yet"; "put it in the far players sodium options and use codex to run the visual check".
 
@@ -182,7 +182,7 @@ On 26.x and 1.21.10/11 set Cloud Distance to 8 chunks first, so the vanilla plan
 
 | Row | Setup | Expect |
 | --- | --- | --- |
-| P1 | rd 8, target 1500 blocks away, option OFF | target not drawn; diag `far_plane=` vanilla |
+| P1 | rd 8, target 1500 blocks away, option OFF | target not drawn; diag `far_plane=512 (vanilla 512), extend=off` |
 | P2 | same, option ON (Sodium Apply) | target drawn; diag `far_plane=1792 (vanilla 512)` or similar |
 | P3 | target behind distant LOD terrain, ON | target hidden by the terrain, no flicker |
 | P4 | target walks 300 → 1500 → 300, ON | drawn throughout; diag value only grows; terrain does not pop |
@@ -227,4 +227,48 @@ Fix confirmed findings before merge.
 
 ## 12. As built
 
-(Pending.)
+All six lines, no release. Changes against the plan, from the implementation review (§13):
+- **No render cap in the policy.** The renderer already gates proxies by its own distance caps
+  (on player distance); a cap on camera distance would clip a gated proxy in third person.
+  `FarPlanePolicy.want(farthest)` keeps the step, margin and ceiling only.
+- **Both hooks are watched.** `rendererPass` checks the frame-start stamp and the getter stamp:
+  on 1.21.x the renderer's own `getDepthFar()` call stamps the getter, so only the frame-start
+  stamp catches a lost `renderLevel` hook. The conflict reason is recomputed every pass; the
+  WARNs fire once per connection.
+- **Disconnect** clears the level and the latch (`ClientNetGlue.onDisconnect`): 1.21.x never
+  runs `renderLevel` without a level.
+- **Iris probe fails closed** (an unexpected failure keeps the plane vanilla and retries a
+  second later); no Iris installed means no shader pack.
+- **Diag always shows the plane:** `far_plane=<used> (vanilla <v>)`, plus `extend=off` while
+  the setting is off.
+- **Tooltip:** "Only visible with an LOD mod such as Voxy" (fog ends at the render distance for
+  far players in general).
+- **Release check:** `FarPlaneHook` is on the fabric-only class list where NeoForge draws no far
+  players (26.3, 26.2, 26.1, 1.21.11, 1.21.10); 1.21.1 ships the NeoForge twin.
+- **Pins moved with the new row:** client descriptor count 34 → 35, explicit controls 11 → 12,
+  far-player controls 5 → 6.
+
+Tests: `FarPlanePolicyTest` (8), `FarPlaneExtensionTest` (6, fabric), `FarPlaneSettingsTest`
+(3), `FarPlaneHookContractTest` (26.x bytecode / 1.21.x targets, 2), NeoForge
+`NeoForgeFarPlaneHookContractTest` (1.21.1), and the client gametest's OFF and ON paths on
+26.3, 26.2, 26.1, 1.21.11 and 1.21.10. Mutation-checked: grow-only, `require = 0` (scoped to
+the annotation), the 26.3 write-back (client gametest: "active=3072, the frame used 2048").
+
+## 13. Implementation review (2 Opus + 1 Fable, 2026-10-23)
+
+| Finding | Severity | Disposition |
+| --- | --- | --- |
+| 1.21.x: a lost `renderLevel` hook is silent (the renderer's own `getDepthFar()` stamps the getter) | MINOR (all three) | Fixed: frame-start stamp checked |
+| 1.21.x keeps the old `ClientLevel` after disconnect | MINOR | Fixed: `onDisconnect` |
+| Iris probe fails open, permanently | MINOR | Fixed: fails closed, retried |
+| Render cap on camera distance clips in third person | NIT | Fixed: cap removed (the renderer gates) |
+| False "hook" verdict sticks; WARN per level not per connection | NIT | Fixed: recomputed per pass; per connection |
+| P1 expects a diag value while off | MINOR | Fixed: diag always shows the plane |
+| Client gametest "never ran" | MAJOR (Fable) | Not a defect: it ran on 26.3 before the gate's clean; now also mutation-checked; ports run it in their gates |
+| No ON-path runtime check; no unit test for the extension | MINOR | Fixed: gametest ON path + `FarPlaneExtensionTest` |
+| Tests: duplicate policy case; cap test | NIT | Fixed |
+| Tooltip: fog applies to far players generally | NIT | Fixed |
+| Comment "before the frustum test" wrong on 1.21.10/11 | NIT | Fixed |
+| Downgrade drops the whole sidecar on 0.19.1 (unknown key) | MINOR | Accepted: same as `nether_store_mib`; 0.19.1 WARNs and keeps working |
+| Single jump to the ceiling instead of steps | NIT | Kept steps: the plane stays close to the need |
+
