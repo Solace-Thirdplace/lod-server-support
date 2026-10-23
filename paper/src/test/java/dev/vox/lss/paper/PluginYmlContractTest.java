@@ -25,9 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * plugin: an unresolvable {@code main} or wrong {@code api-version} aborts plugin load, a
  * renamed plugin moves the {@code plugins/LodServerSupport/} data folder the config and
  * soak staging rely on, and {@code folia-supported} must match the line's Folia fact in
- * {@code .github/line.env} — declared where Folia publishes a build (26.2: a jar that loses
- * the flag silently STOPS loading on Folia), false where it does not (26.3 has no Folia
- * build, so the flag would advertise an untested platform).
+ * {@code .github/line.env} — declared where Folia publishes a build (26.3, 26.2: a jar that
+ * loses the flag silently STOPS loading on Folia), false where it does not (1.21.10, 1.21.1:
+ * the flag would advertise an untested platform).
  */
 class PluginYmlContractTest {
 

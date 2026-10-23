@@ -402,10 +402,12 @@ class ReleaseWorkflowContractTest {
         assertTrue(stepBlock("- name: Upload NeoForge to Modrinth").contains("loaders: neoforge"));
         assertTrue(stepBlock("- name: Upload Sponge to Modrinth").contains("loaders: sponge"));
         if (isMainline) {
-            // LINE FLAVOR (26.3): Folia has published no 26.3 build, so the mainline Paper
-            // step must NOT advertise folia (plugin.yml derives folia-supported: false).
-            assertTrue(!env("LINE_PAPER_LOADERS").contains("folia"),
-                    "the 26.3 Paper step must NOT advertise folia — no Folia 26.3 exists");
+            // LINE FLAVOR (26.3): Folia published 26.3 builds (ALPHA, 2026-10-14) and the
+            // SOAK_PLATFORM=folia scenarios pass on them, so the mainline Paper step
+            // advertises folia (plugin.yml derives folia-supported: true; still experimental).
+            assertTrue(env("LINE_PAPER_LOADERS").contains("folia"),
+                    "the 26.3 Paper step advertises folia (jar declares folia-supported; "
+                            + "the SOAK_PLATFORM=folia scenarios pass)");
         }
     }
 
