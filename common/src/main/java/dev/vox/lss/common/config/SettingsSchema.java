@@ -66,7 +66,7 @@ public final class SettingsSchema<T> {
                 case "lod.dh.real_time_updates" -> "Receive server-pushed DH terrain changes when allowed; no periodic polling.";
                 case "lod.voxy_border_fill" -> "Fill Voxy's missing vanilla border chunks while a native or DH terrain session is active.";
                 case "integrations.map_ingestion.nether_store_mib" -> "Disk cap (MiB) for the terrain kept to fill Xaero cave layers when you switch layer; 0 = no store and no fill on switch.";
-                case "far_players.extend_far_plane" -> "Draw far players past the game's far clipping plane, out to the farthest one; only visible with an LOD mod such as Voxy, and not used while a shader pack is on.";
+                case "far_players.extend_far_plane" -> "Draw far players past the game's far clipping plane, out to the farthest one; only visible with an LOD mod such as Voxy, not used while a shader pack is on, and fog can still hide very distant players (turn off the LOD mod's fog).";
                 default -> "";
             };
             if (inline.isEmpty()) inline=inlineComment(resource("server"),spec.path());
