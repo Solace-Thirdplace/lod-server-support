@@ -645,7 +645,8 @@ far_players:
   full_bright: false # Draw distant players at full brightness, including at night.
   render_distance_blocks: 0 # 0 = effective server/client ring; caps models and name tags.
   # extend_far_plane (experimental file, default false) draws far players past the game's
-  # far clipping plane, out to the farthest one; needs an LOD mod that removes distance fog.
+  # far clipping plane, out to the farthest one; only visible with an LOD mod such as Voxy,
+  # not used while a shader pack is on.
   animation_distance_blocks: 512 # Animate nearby proxies; 0 = no walk animation.
   # Controls whether others may see your position through the far-player feature.
   # This does not hide you from normal Minecraft tracking or unrelated systems.
