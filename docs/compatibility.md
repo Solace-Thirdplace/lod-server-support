@@ -5,12 +5,12 @@ This snapshot describes build capabilities. A capability is not live validation.
 
 | Line | Fabric / Paper / Neo / Sponge targets | Java (common) | Neo shipped | Neo far renderer | Sponge shipped | Paper loaders | Client gametests | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1.21.1 | 1.21.1 / 1.21.1 / 1.21.1 / 1.21.1 | 21 (21) | true | available | true | paper, purpur | False | `4821b915de121a112bb41aaac0309095591b4c11` |
-| 1.21.10 | 1.21.10 / 1.21.10 / 1.21.10 / 1.21.10 | 21 (21) | false | unsupported | true | paper, purpur | True | `8a37e5223cae27832b1127cb8c9a93e1310048d3` |
-| 1.21.11 | 1.21.11 / 1.21.11 / 1.21.11 / 1.21.11 | 21 (21) | false | unsupported | true | paper, purpur, folia | True | `63f64a3a2b496fb326bc45ee2f024307559f3d03` |
-| 26.1 | 26.1.2 / 26.1.2 / 26.1.2 / 26.1.2 | 25 (21) | true | unsupported | true | paper, purpur, folia | True | `06c95eefa2bcc8da4fc1c8d4bd3f3b0c43ed1a63` |
-| 26.2 | 26.2 / 26.2 / 26.2 / 26.2 | 25 (21) | true | unsupported | true | paper, purpur, folia | True | `36db54149f41bb5951d1732f1ec36278e9d79aa8` |
-| 26.3 | 26.3 / 26.3 / 26.3 / 26.3 | 25 (21) | true | unsupported | true | paper, purpur | True | `7f45f22adf85ede4117879e0cf21e75e98690d2c` |
+| 1.21.1 | 1.21.1 / 1.21.1 / 1.21.1 / 1.21.1 | 21 (21) | true | available | true | paper, purpur | False | `d814877b752785fe7d8640f3b138f0453725bc5b` |
+| 1.21.10 | 1.21.10 / 1.21.10 / 1.21.10 / 1.21.10 | 21 (21) | false | unsupported | true | paper, purpur | True | `8a9263ded07882586a0251c12bf69526645e5c85` |
+| 1.21.11 | 1.21.11 / 1.21.11 / 1.21.11 / 1.21.11 | 21 (21) | false | unsupported | true | paper, purpur, folia | True | `aa68c9b2f5a7982d6aef60bbaaafba21fc888c21` |
+| 26.1 | 26.1.2 / 26.1.2 / 26.1.2 / 26.1.2 | 25 (21) | true | unsupported | true | paper, purpur, folia | True | `ee34dc4f2152544055a0a14502162648f8d68323` |
+| 26.2 | 26.2 / 26.2 / 26.2 / 26.2 | 25 (21) | true | unsupported | true | paper, purpur, folia | True | `b1ace2ad36de6cf2267700d0e5ab4fe0cfbc591e` |
+| 26.3 | 26.3 / 26.3 / 26.3 / 26.3 | 25 (21) | true | unsupported | true | paper, purpur, folia | True | `01e97c357935debb4f25ed0154cbdb47dff4dfbe` |
 
 Dependency locks and feature-specific validation records are line-local under `config/compatibility/`. Installed jars are unverified until an exact run identity has accepted evidence. Blocked dependency profiles cannot be launched as validated profiles.
 
