@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "aa9c8d416be753537e01c6ad904a64e6b6f83326",
-    "1.21.10": "273d626dcef69d66b1e95be1864158cbc5012f19",
-    "1.21.11": "0b3874a252de53dfde5d87f63ef1754bb3936711",
-    "26.1": "217b69d05b5fe43fcc3bc4c3fd2a9ce9f7e4361e",
-    "26.2": "f87cbfb45c1459067a43fabec77c4780b2b10cb6",
-    "26.3": "8aa5a73a53fa25e246bddbc56bc9373ddaaa6464"
+    "1.21.1": "4cc278d19c414a35a568b95e3340855fe4ebd193",
+    "1.21.10": "2dde64861bd959e7ae9985c063d54f79b5e2e4fc",
+    "1.21.11": "2eecfced3e7494f2ad5260e97ab731b743dacfdd",
+    "26.1": "56368dbc7aa06f92947da2472e5d7157fab2ed2f",
+    "26.2": "f8637f8dfa23db55027748c63ba9313da7eec82d",
+    "26.3": "3b0eb2092a7ca5770cc59c7fab55fa56a3e4154a"
   },
   "files": {
     ".github/line.env": {
@@ -2495,14 +2495,14 @@
     "fabric/src/main/resources/assets/lss/lang/en_us.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH source/option string additions on every line; 1.21.10 and 1.21.11 drop the \"(NeoForge: restart required)\" note from lss.config.lod_source.tooltip because those lines have no NeoForge client route. Other keys unchanged.",
+      "review": "2026-10-23 #364 far-plane extension: review fold, RegionSummaryServiceTest barrier fix, and the fog note from the visual check. 2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH source/option string additions on every line; 1.21.10 and 1.21.11 drop the \"(NeoForge: restart required)\" note from lss.config.lod_source.tooltip because those lines have no NeoForge client route. Other keys unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "022bbb9237cc3eda56c310c664c757649dae8e5e",
-        "1.21.10": "fda09be01f0d24c19057a29bfe5a4f5ccff0de73",
-        "1.21.11": "123122fb6e47b5ef8311b1e40edf3bcdd3e1fe9b",
-        "26.1": "022bbb9237cc3eda56c310c664c757649dae8e5e",
-        "26.2": "470fbbd5be301e2328833240d18fb1665ae4c633",
-        "26.3": "470fbbd5be301e2328833240d18fb1665ae4c633"
+        "1.21.1": "5966a835ea8aaba279e05123a4f225e55cfaf9b5",
+        "1.21.10": "eb634cac63b71b936e62175ae5f37f4e1def7bcf",
+        "1.21.11": "60a72cce2789ac333f402f49a259f460fc0389af",
+        "26.1": "5966a835ea8aaba279e05123a4f225e55cfaf9b5",
+        "26.2": "d4859f3de862ee599778a1164bfc1239500d14f5",
+        "26.3": "d4859f3de862ee599778a1164bfc1239500d14f5"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/en_us.json",
       "tests": [
@@ -2513,14 +2513,14 @@
     "fabric/src/main/resources/assets/lss/lang/zh_cn.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
+      "review": "2026-10-23 #364 far-plane extension: review fold, RegionSummaryServiceTest barrier fix, and the fog note from the visual check. 2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
       "reviewed_blobs": {
-        "1.21.1": "c248e7757d73659bfcee017e28a318d37646d1a5",
-        "1.21.10": "ce8e46f4a745a524a548900b2519d3c10b8b520c",
-        "1.21.11": "4bd625ad6350439d98d8bfeeccdfbf57a14af162",
-        "26.1": "c248e7757d73659bfcee017e28a318d37646d1a5",
-        "26.2": "566036fbaac3be7b12c2240a7bcd0cda06dc2f93",
-        "26.3": "566036fbaac3be7b12c2240a7bcd0cda06dc2f93"
+        "1.21.1": "7c7d811b21e999d70fb04c6648f583f3105a5c5d",
+        "1.21.10": "9514a1f9ce641833117e112fdac39b99fd3ec9d6",
+        "1.21.11": "87c4babe09c727e4bb23adc541197f2b391e5891",
+        "26.1": "7c7d811b21e999d70fb04c6648f583f3105a5c5d",
+        "26.2": "d5934b80677e930803067468cbe33a492dc4f3c5",
+        "26.3": "d5934b80677e930803067468cbe33a492dc4f3c5"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/zh_cn.json",
       "tests": [
@@ -2531,14 +2531,14 @@
     "fabric/src/main/resources/assets/lss/lang/zh_tw.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
+      "review": "2026-10-23 #364 far-plane extension: review fold, RegionSummaryServiceTest barrier fix, and the fog note from the visual check. 2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
       "reviewed_blobs": {
-        "1.21.1": "1079a8530a4fdddf893a3a8fa609255acf39f8c6",
-        "1.21.10": "7749e72f30c05f0a1988dcd420a1cd5808b1d32d",
-        "1.21.11": "7ee594775b6ce9debca582770190563ff7d6584f",
-        "26.1": "1079a8530a4fdddf893a3a8fa609255acf39f8c6",
-        "26.2": "0fd9134175102bfc147a9f6c049ece4753577d85",
-        "26.3": "0fd9134175102bfc147a9f6c049ece4753577d85"
+        "1.21.1": "cca019a3b453f6d2fb05169cd68b1bdd21750dde",
+        "1.21.10": "85ec28ffa797ed6bac45233bd6b38040a3557307",
+        "1.21.11": "679f8082a0c2d9098111de5dc3c52635a6591f94",
+        "26.1": "cca019a3b453f6d2fb05169cd68b1bdd21750dde",
+        "26.2": "766ff28e150bb3a24dcf425a7474446910ac64b1",
+        "26.3": "766ff28e150bb3a24dcf425a7474446910ac64b1"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/zh_tw.json",
       "tests": [
