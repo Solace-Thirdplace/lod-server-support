@@ -25,7 +25,7 @@ class SettingInventoryTest {
         assertTrue(ClientOptionCatalog.find("lss:dh_sync_on_load").isEmpty());
         assertTrue(ClientOptionCatalog.find("lss:dh_real_time_updates").isEmpty());
         for (var binding : bindings) assertEquals(config.snapshot().values().get(binding.descriptor().key()),binding.storedValue().apply(config));
-        assertEquals(11, bindings.stream().filter(b -> b.descriptor().exposure()
+        assertEquals(12, bindings.stream().filter(b -> b.descriptor().exposure()
                 == dev.vox.lss.common.config.SettingDescriptor.Exposure.UI).count());
     }
 }
