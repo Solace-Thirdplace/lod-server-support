@@ -199,6 +199,7 @@ public final class LSSClientConfig {
     public int farPlayersMinDistanceBlocks() { return snapshot().farPlayers().distance().minBlocks(); }
     public boolean farPlayersNameTags() { return snapshot().farPlayers().nameTags(); }
     public boolean farPlayersFullBright() { return snapshot().farPlayers().fullBright(); }
+    public boolean farPlayersExtendFarPlane() { return snapshot().farPlayers().extendFarPlane(); }
     public boolean farPlayersShareSelf() { return snapshot().farPlayers().sharing().enabled(); }
     public int farPlayersShareDistanceBlocks() { return snapshot().farPlayers().sharing().maxDistanceBlocks(); }
     public int farPlayersMaxRenderDistanceBlocks() { return snapshot().farPlayers().renderDistanceBlocks(); }

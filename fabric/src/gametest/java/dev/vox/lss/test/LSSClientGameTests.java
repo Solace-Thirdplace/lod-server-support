@@ -5,6 +5,7 @@ import dev.vox.lss.api.VoxelColumnConsumer;
 import dev.vox.lss.api.VoxelColumnData;
 import dev.vox.lss.config.LSSServerConfig;
 import dev.vox.lss.config.LSSClientConfig;
+import dev.vox.lss.networking.client.FarPlaneExtension;
 import dev.vox.lss.networking.client.LSSClientNetworking;
 import dev.vox.lss.networking.server.LSSServerNetworking;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -98,6 +99,19 @@ public class LSSClientGameTests implements FabricClientGameTest {
             if (LSSClientNetworking.getServerLodDistance() != LSSServerConfig.CONFIG.lodDistanceChunks()) {
                 throw new AssertionError("Server LOD distance should match config: expected "
                         + LSSServerConfig.CONFIG.lodDistanceChunks() + ", got " + LSSClientNetworking.getServerLodDistance());
+            }
+
+            // Far-plane extension (#364) OFF by default: the hook runs every frame and changes
+            // nothing — the plane equals vanilla's max(render distance x 64, cloud range x 16).
+            boolean farPlaneHookRan = context.computeOnClient(client -> FarPlaneExtension.hookRan());
+            float vanillaFar = context.computeOnClient(client ->
+                    Math.max(client.options.getEffectiveRenderDistance() * 16 * 4.0f,
+                            client.options.cloudRange().get() * 16.0f));
+            float seenFar = context.computeOnClient(client -> FarPlaneExtension.lastVanillaFar());
+            float usedFar = context.computeOnClient(client -> FarPlaneExtension.activeFar());
+            if (!farPlaneHookRan || seenFar != vanillaFar || usedFar != vanillaFar) {
+                throw new AssertionError("far-plane hook (setting off): ran=" + farPlaneHookRan
+                        + ", vanilla=" + vanillaFar + ", hook saw " + seenFar + ", used " + usedFar);
             }
 
             // C2: Effective LOD distance calculation
