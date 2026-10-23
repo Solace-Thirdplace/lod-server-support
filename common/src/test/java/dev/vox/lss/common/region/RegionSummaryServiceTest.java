@@ -568,19 +568,26 @@ class RegionSummaryServiceTest {
                     "premise: assembly in flight on the sweeper");
             rig.service.removePlayer(player); // the quit lands mid-assembly
             release.countDown();
+            // Barrier (2026-10-23): the sweeper assembles one job at a time, so a second
+            // player's frame becoming ready proves the first assembly, post-add re-check
+            // included, has returned. Waiting for ready == 0 raced: it is already 0 before
+            // the add, so the check below could land between the add and the re-check.
+            var barrier = UUID.randomUUID();
+            rig.service.offerRequest(barrier, new RegionSummaryWire.Request(DIM, 0, 0, 0));
+            rig.pump(rig.anchorsAt(barrier, DIM, 0, 0)); // admits the barrier's job
             long deadline = System.nanoTime() + POLL_DEADLINE_NANOS;
-            while (rig.service.readyCountForTest() != 0) {
+            while (!rig.service.hasReadyEntryForTest(barrier)) {
                 if (System.nanoTime() > deadline) {
-                    fail("timed out waiting for the post-add re-check to sweep the"
-                            + " resurrected queue, ready=" + rig.service.readyCountForTest());
+                    fail("timed out waiting for the barrier assembly behind the quit one");
                 }
                 Thread.sleep(10);
             }
             assertFalse(rig.service.hasReadyEntryForTest(player),
                     "the resurrected MAP ENTRY is swept too — a drained-but-retained"
                             + " empty queue for a dead UUID is the server-lifetime leak");
-            rig.pump(u -> null); // a later drain must find nothing to send
-            assertNull(rig.sent.poll(), "no dead-session frame may reach the sender");
+            rig.pump(u -> null); // a later drain must find nothing of the dead player's
+            assertTrue(rig.sent.stream().noneMatch(s -> s.player().equals(player)),
+                    "no dead-session frame may reach the sender");
         } finally {
             release.countDown();
             rig.service.shutdown();
