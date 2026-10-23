@@ -335,6 +335,8 @@ public final class FarPlayerRenderer {
         boolean fullBright = config.fullBright();
         boolean nameTags = config.nameTags() && Minecraft.renderNames(); // F1/hide-GUI hides every tag (fold D3)
         int drawn = 0, culled = 0, mounts = 0;
+        // The far plane this frame actually used (#364): a missing or overridden hook WARNs once.
+        FarPlaneExtension.rendererPass(minecraft.gameRenderer.getDepthFar());
         List<PendingTag> pendingTags = new ArrayList<>();
 
         Set<UUID> active = new HashSet<>();
@@ -367,6 +369,9 @@ public final class FarPlayerRenderer {
                             cameraPosition.distanceToSqr(real.position()))) {
                 continue;
             }
+            // Far-plane extension (#364): every proxy this pass would draw, before the frustum
+            // test (a proxy past the far plane is outside the frustum by construction).
+            FarPlaneExtension.report(cameraDistance);
 
             Proxy proxy;
             try {
@@ -1075,7 +1080,14 @@ public final class FarPlayerRenderer {
         if (r == null) return "FarPlayerRender: off";
         return "FarPlayerRender: drawn=" + r.lastDrawn + ", culled=" + r.lastCulled
                 + ", mounts=" + r.lastMounts + ", tags=" + r.lastTags
-                + ", light=" + (LSSClientConfig.CONFIG.farPlayersFullBright() ? "full" : "floor");
+                + ", light=" + (LSSClientConfig.CONFIG.farPlayersFullBright() ? "full" : "floor")
+                + farPlaneDiag();
+    }
+
+    /** The far-plane extension's fragment (#364); empty while the setting is off. */
+    private static String farPlaneDiag() {
+        String fragment = FarPlaneExtension.diagFragment();
+        return fragment == null ? "" : ", " + fragment;
     }
 
     /** Monotonic id from the LSS block, probed against the live level (a taken id —
