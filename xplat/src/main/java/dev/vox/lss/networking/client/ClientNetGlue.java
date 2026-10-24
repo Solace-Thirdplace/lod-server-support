@@ -520,6 +520,7 @@ public final class ClientNetGlue {
         DhClientSession.disconnect();
         sessionGate.onDisconnect();
         FarPlayerClientSupport.onSessionEnd();
+        FarPlaneExtension.onDisconnect();
         dev.vox.lss.compat.ModCompat.onDisconnect();
         LSSClientConfig.CONFIG.endConnection();
     }

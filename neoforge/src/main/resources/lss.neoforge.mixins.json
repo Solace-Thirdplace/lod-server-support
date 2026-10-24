@@ -21,6 +21,7 @@
     "AccessorScreenWidgets",
     "AccessorLivingEntity",
     "AccessorBiomeManager",
-    "SodiumDraftHook"
+    "SodiumDraftHook",
+    "FarPlaneHook"
   ]
 }

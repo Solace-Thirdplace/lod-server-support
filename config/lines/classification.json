@@ -1,11 +1,11 @@
 {
   "basis": {
-    "1.21.1": "d814877b752785fe7d8640f3b138f0453725bc5b",
-    "1.21.10": "8a9263ded07882586a0251c12bf69526645e5c85",
-    "1.21.11": "aa68c9b2f5a7982d6aef60bbaaafba21fc888c21",
-    "26.1": "ee34dc4f2152544055a0a14502162648f8d68323",
-    "26.2": "b1ace2ad36de6cf2267700d0e5ab4fe0cfbc591e",
-    "26.3": "01e97c357935debb4f25ed0154cbdb47dff4dfbe"
+    "1.21.1": "4cc278d19c414a35a568b95e3340855fe4ebd193",
+    "1.21.10": "2dde64861bd959e7ae9985c063d54f79b5e2e4fc",
+    "1.21.11": "2eecfced3e7494f2ad5260e97ab731b743dacfdd",
+    "26.1": "56368dbc7aa06f92947da2472e5d7157fab2ed2f",
+    "26.2": "f8637f8dfa23db55027748c63ba9313da7eec82d",
+    "26.3": "3b0eb2092a7ca5770cc59c7fab55fa56a3e4154a"
   },
   "files": {
     ".github/line.env": {
@@ -313,6 +313,9 @@
     "common/src/main/java/dev/vox/lss/common/diagnostics/StatusCache.java": {
       "kind": "identical"
     },
+    "common/src/main/java/dev/vox/lss/common/farplayers/FarPlanePolicy.java": {
+      "kind": "identical"
+    },
     "common/src/main/java/dev/vox/lss/common/farplayers/FarPlayerBroadcastService.java": {
       "kind": "identical"
     },
@@ -593,6 +596,9 @@
     "common/src/test/java/dev/vox/lss/common/config/ExternalOptionRefreshTest.java": {
       "kind": "identical"
     },
+    "common/src/test/java/dev/vox/lss/common/config/FarPlaneSettingsTest.java": {
+      "kind": "identical"
+    },
     "common/src/test/java/dev/vox/lss/common/config/LegacySettingsMigrationTest.java": {
       "kind": "identical"
     },
@@ -709,6 +715,9 @@
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/diagnostics/StatusStateTest.java": {
+      "kind": "identical"
+    },
+    "common/src/test/java/dev/vox/lss/common/farplayers/FarPlanePolicyTest.java": {
       "kind": "identical"
     },
     "common/src/test/java/dev/vox/lss/common/farplayers/FarPlayerBroadcastServiceTest.java": {
@@ -846,14 +855,14 @@
     "common/src/test/java/dev/vox/lss/common/region/RegionSummaryServiceTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-20: identical DROP-test ordering fix on every line; retain RETRY until assembly is observable, then test DROP. Controlled fast-assembly red/green proof retained with v0.15.1 release evidence. Existing line-specific tests remain intact.",
+      "review": "2026-10-23 #364 far-plane extension: review fold plus the RegionSummaryServiceTest quit-during-assembly barrier fix (26.1 gate red, test ordering race). 2026-10-14 0.19.0 second restage: the 8-agent implementation review fold (fill-level leak, store bounds and world keying, leftover cave layers, JourneyMap replay window, summary frame re-assembly, connection-keyed policy line, harness job reap, soak verdict); identical on every line except the existing per-line seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-20: identical DROP-test ordering fix on every line; retain RETRY until assembly is observable, then test DROP. Controlled fast-assembly red/green proof retained with v0.15.1 release evidence. Existing line-specific tests remain intact.",
       "reviewed_blobs": {
-        "1.21.1": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
-        "1.21.10": "34e166c5067bae180f8d58a551cd86e8133ccfb3",
-        "1.21.11": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
-        "26.1": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
-        "26.2": "cebda71e3069df2635c38eca5f17f2d60839bcd3",
-        "26.3": "cebda71e3069df2635c38eca5f17f2d60839bcd3"
+        "1.21.1": "da76b883286d3fe515913f8f339026120e1f784e",
+        "1.21.10": "0f4fcb9df63e05855fe165b6eb171c2d7a5500ab",
+        "1.21.11": "da76b883286d3fe515913f8f339026120e1f784e",
+        "26.1": "da76b883286d3fe515913f8f339026120e1f784e",
+        "26.2": "da76b883286d3fe515913f8f339026120e1f784e",
+        "26.3": "da76b883286d3fe515913f8f339026120e1f784e"
       },
       "surface": "line-adaptation:common/src/test/java/dev/vox/lss/common/region/RegionSummaryServiceTest.java",
       "tests": [
@@ -1941,14 +1950,14 @@
     "fabric/src/gametest/java/dev/vox/lss/test/LSSClientGameTests.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
+      "review": "2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared each line\u2019s changes against its previously reviewed blob; reviewed immutable fixture migration, explicit reload tests, registration and generation/disk-policy assertions. Residual variants are existing annotation/assertion/MC API seams and the 1.21.1 Tier3 absence. Corrected direct ChunkPos accessor errors on 1.21.10/11; TestPositions record access remains correct on 1.21.1 and 26.2. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger.",
       "reviewed_blobs": {
         "1.21.1": null,
-        "1.21.10": "050e314afd8e646d5373dc4623af5c4e55b133d9",
-        "1.21.11": "050e314afd8e646d5373dc4623af5c4e55b133d9",
-        "26.1": "a81ff8fc83b484134f7afd4374bb211d4c142af6",
-        "26.2": "383ea98245ea529372b7394660fd5650e1334156",
-        "26.3": "383ea98245ea529372b7394660fd5650e1334156"
+        "1.21.10": "f86b1bccb38ca85558605903819be78e96f8e675",
+        "1.21.11": "f86b1bccb38ca85558605903819be78e96f8e675",
+        "26.1": "baa7ff5c7ae5622dc122e244b2af58680278da74",
+        "26.2": "9311f91c3b948ab2b1cbdc3c818c0e5e04aba2a2",
+        "26.3": "9311f91c3b948ab2b1cbdc3c818c0e5e04aba2a2"
       },
       "surface": "line-adaptation:fabric/src/gametest/java/dev/vox/lss/test/LSSClientGameTests.java",
       "tests": [
@@ -2303,6 +2312,24 @@
         "Full platform build and existing version-surface/behavior contracts"
       ]
     },
+    "fabric/src/main/java/dev/vox/lss/mixin/FarPlaneHook.java": {
+      "axes": "MC far-plane shape: 26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar",
+      "kind": "adapted",
+      "review": "2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1).",
+      "reviewed_blobs": {
+        "1.21.1": "0a26e22a125424d4c5a20d72089626d6d6014546",
+        "1.21.10": "0a26e22a125424d4c5a20d72089626d6d6014546",
+        "1.21.11": "0a26e22a125424d4c5a20d72089626d6d6014546",
+        "26.1": "1db4bfe52b6bff053e2dd71c108873c0eb299a70",
+        "26.2": "1db4bfe52b6bff053e2dd71c108873c0eb299a70",
+        "26.3": "1db4bfe52b6bff053e2dd71c108873c0eb299a70"
+      },
+      "surface": "far-plane-extension",
+      "tests": [
+        "FarPlaneHookContractTest",
+        "LSSClientGameTests far-plane OFF check"
+      ]
+    },
     "fabric/src/main/java/dev/vox/lss/mixin/IntegratedServerLanHook.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
@@ -2383,14 +2410,14 @@
     "fabric/src/main/java/dev/vox/lss/networking/client/FarPlayerRenderer.java": {
       "axes": "Fabric render API generations; Neo only1.21.1 live, others intentional stubs.",
       "kind": "adapted",
-      "review": "2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger. Followup b3f39c3e reviewed: 1.21.1 renderer runtime is unchanged; comments describe the local switch and preference carrier. Loader contract pins snapshot capture and capability/enabled gate instead of the removed getter.",
+      "review": "2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger. Followup b3f39c3e reviewed: 1.21.1 renderer runtime is unchanged; comments describe the local switch and preference carrier. Loader contract pins snapshot capture and capability/enabled gate instead of the removed getter.",
       "reviewed_blobs": {
-        "1.21.1": "9902ce0e861f14ed584d86ea3e3f49975454479c",
-        "1.21.10": "b4334ab99d21b3ea546711b0ae8804b5373f7b6d",
-        "1.21.11": "ca053d1b0eb223e64449e36bada1fe4bccc10ee3",
-        "26.1": "fddb15eb9466b4becc5f3eeda3a18b6c06631285",
-        "26.2": "7b982667aa8a17533a6d531d421d6cda78782dd1",
-        "26.3": "83cda058fbab093ac136342bf2bd40c05a054727"
+        "1.21.1": "34173ed98c65f053855a8df02438ae7645ed1193",
+        "1.21.10": "38821e12c6914aaa8b68f17013c700769b493f7b",
+        "1.21.11": "11e2ca079aec158456d901aac1db5a72a0c82b50",
+        "26.1": "ee19de06c22712c8f87397e8eb5ba2dff8ae1b06",
+        "26.2": "0e2eba8282e818c7fdc523819f6c1232ee741aff",
+        "26.3": "ae6ef247a4ceb840a8d36ab3fed51ae33253b252"
       },
       "surface": "far-player-renderer",
       "tests": [
@@ -2468,14 +2495,14 @@
     "fabric/src/main/resources/assets/lss/lang/en_us.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH source/option string additions on every line; 1.21.10 and 1.21.11 drop the \"(NeoForge: restart required)\" note from lss.config.lod_source.tooltip because those lines have no NeoForge client route. Other keys unchanged.",
+      "review": "2026-10-23 #364 far-plane extension: review fold, RegionSummaryServiceTest barrier fix, and the fog note from the visual check. 2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH source/option string additions on every line; 1.21.10 and 1.21.11 drop the \"(NeoForge: restart required)\" note from lss.config.lod_source.tooltip because those lines have no NeoForge client route. Other keys unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "53b8ca21767299c9151b8bbbd36c7320b3353af7",
-        "1.21.10": "6f6b1955cb02b64546eab4a6d8ae918cf52b955e",
-        "1.21.11": "d647f695ce6d9c4ed0347766d454cdf8553a15e1",
-        "26.1": "53b8ca21767299c9151b8bbbd36c7320b3353af7",
-        "26.2": "5ba10bace094b43f7e5c9b23734d0ef18f0d436c",
-        "26.3": "5ba10bace094b43f7e5c9b23734d0ef18f0d436c"
+        "1.21.1": "5966a835ea8aaba279e05123a4f225e55cfaf9b5",
+        "1.21.10": "eb634cac63b71b936e62175ae5f37f4e1def7bcf",
+        "1.21.11": "60a72cce2789ac333f402f49a259f460fc0389af",
+        "26.1": "5966a835ea8aaba279e05123a4f225e55cfaf9b5",
+        "26.2": "d4859f3de862ee599778a1164bfc1239500d14f5",
+        "26.3": "d4859f3de862ee599778a1164bfc1239500d14f5"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/en_us.json",
       "tests": [
@@ -2486,14 +2513,14 @@
     "fabric/src/main/resources/assets/lss/lang/zh_cn.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
+      "review": "2026-10-23 #364 far-plane extension: review fold, RegionSummaryServiceTest barrier fix, and the fog note from the visual check. 2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
       "reviewed_blobs": {
-        "1.21.1": "7fb1dbb11ac071f03100365a5f6f9c776cf30eb7",
-        "1.21.10": "92c0211969deb0760541b92c45e53c9d4dec0ce2",
-        "1.21.11": "63b1224c388fc3b2a587b0dd08370dcf121b22d0",
-        "26.1": "7fb1dbb11ac071f03100365a5f6f9c776cf30eb7",
-        "26.2": "1aa69b217b2bbe7716038169601d56195b4eb798",
-        "26.3": "1aa69b217b2bbe7716038169601d56195b4eb798"
+        "1.21.1": "7c7d811b21e999d70fb04c6648f583f3105a5c5d",
+        "1.21.10": "9514a1f9ce641833117e112fdac39b99fd3ec9d6",
+        "1.21.11": "87c4babe09c727e4bb23adc541197f2b391e5891",
+        "26.1": "7c7d811b21e999d70fb04c6648f583f3105a5c5d",
+        "26.2": "d5934b80677e930803067468cbe33a492dc4f3c5",
+        "26.3": "d5934b80677e930803067468cbe33a492dc4f3c5"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/zh_cn.json",
       "tests": [
@@ -2504,14 +2531,14 @@
     "fabric/src/main/resources/assets/lss/lang/zh_tw.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
+      "review": "2026-10-23 #364 far-plane extension: review fold, RegionSummaryServiceTest barrier fix, and the fog note from the visual check. 2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH string additions on every line; 1.21.10 and 1.21.11 drop the NeoForge restart note from the DH source tooltip (no NeoForge client route there).",
       "reviewed_blobs": {
-        "1.21.1": "f1feacc4e653e8dc2b63ef2702ef7a86edfc8f0a",
-        "1.21.10": "a988f9515d165233b438aded68eb394696ccc614",
-        "1.21.11": "cca0f341756227902698cea341cebc8f08338942",
-        "26.1": "f1feacc4e653e8dc2b63ef2702ef7a86edfc8f0a",
-        "26.2": "efa61e4566f8cb1fb9701a356efda3a6d301612e",
-        "26.3": "efa61e4566f8cb1fb9701a356efda3a6d301612e"
+        "1.21.1": "cca019a3b453f6d2fb05169cd68b1bdd21750dde",
+        "1.21.10": "85ec28ffa797ed6bac45233bd6b38040a3557307",
+        "1.21.11": "679f8082a0c2d9098111de5dc3c52635a6591f94",
+        "26.1": "cca019a3b453f6d2fb05169cd68b1bdd21750dde",
+        "26.2": "766ff28e150bb3a24dcf425a7474446910ac64b1",
+        "26.3": "766ff28e150bb3a24dcf425a7474446910ac64b1"
       },
       "surface": "line-adaptation:fabric/src/main/resources/assets/lss/lang/zh_tw.json",
       "tests": [
@@ -2595,14 +2622,14 @@
     "fabric/src/main/resources/lss.mixins.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-10 0.17.0 release pin: identical one-line addition of AccessorScreenWidgets on every line; per-line compatibilityLevel flavour unchanged.",
+      "review": "2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-10 0.17.0 release pin: identical one-line addition of AccessorScreenWidgets on every line; per-line compatibilityLevel flavour unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "3f15ba35b4a6891bf7fb743be84f23d025c3f909",
-        "1.21.10": "5112a5bb917aa282adce414ef251e7a14ce09a8d",
-        "1.21.11": "5112a5bb917aa282adce414ef251e7a14ce09a8d",
-        "26.1": "5276ab7b6fb879e1db217328743a5f6b4e1b220d",
-        "26.2": "5276ab7b6fb879e1db217328743a5f6b4e1b220d",
-        "26.3": "5276ab7b6fb879e1db217328743a5f6b4e1b220d"
+        "1.21.1": "7cf6a4774a8b0b9b076b83c85513d1675ab4e398",
+        "1.21.10": "f4b0349634b9589fdcff8fcc3583eff8b7ef1630",
+        "1.21.11": "f4b0349634b9589fdcff8fcc3583eff8b7ef1630",
+        "26.1": "2a6a85d7e7967faebb3c7687ef4c0558a5d20f18",
+        "26.2": "2a6a85d7e7967faebb3c7687ef4c0558a5d20f18",
+        "26.3": "2a6a85d7e7967faebb3c7687ef4c0558a5d20f18"
       },
       "surface": "line-adaptation:fabric/src/main/resources/lss.mixins.json",
       "tests": [
@@ -2660,6 +2687,23 @@
       "surface": "line-adaptation:fabric/src/test/java/dev/vox/lss/FabricModJsonContractTest.java",
       "tests": [
         "Full platform build and existing version-surface/behavior contracts"
+      ]
+    },
+    "fabric/src/test/java/dev/vox/lss/FarPlaneHookContractTest.java": {
+      "axes": "MC far-plane shape: 26.x Camera bytecode; 1.21.x GameRenderer targets",
+      "kind": "adapted",
+      "review": "2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1).",
+      "reviewed_blobs": {
+        "1.21.1": "81e5e112803b4dc90ef1f233cb0d54f0d64ad781",
+        "1.21.10": "81e5e112803b4dc90ef1f233cb0d54f0d64ad781",
+        "1.21.11": "81e5e112803b4dc90ef1f233cb0d54f0d64ad781",
+        "26.1": "0efa104eebdfccdd9adb555f95df666b299cdf60",
+        "26.2": "0efa104eebdfccdd9adb555f95df666b299cdf60",
+        "26.3": "0efa104eebdfccdd9adb555f95df666b299cdf60"
+      },
+      "surface": "far-plane-extension",
+      "tests": [
+        "FarPlaneHookContractTest"
       ]
     },
     "fabric/src/test/java/dev/vox/lss/GameTestEntrypointContractTest.java": {
@@ -3322,14 +3366,14 @@
     "fabric/src/test/java/dev/vox/lss/config/LSSConfigMenuTest.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical delta (multi-dependency enabled-provider pin, display-time tooltip pin) apart from ResourceLocation (1.21.1) vs Identifier; absent on 1.21.10 with the walker.",
+      "review": "2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical delta (multi-dependency enabled-provider pin, display-time tooltip pin) apart from ResourceLocation (1.21.1) vs Identifier; absent on 1.21.10 with the walker.",
       "reviewed_blobs": {
-        "1.21.1": "4da161ae807001498a19087e1e457619a84ad7d8",
+        "1.21.1": "1b9cc4652173ab27c17003e42045c3534d74b199",
         "1.21.10": null,
-        "1.21.11": "054fe88318f3b8c2c919d8c3eb96f9bc2751854a",
-        "26.1": "054fe88318f3b8c2c919d8c3eb96f9bc2751854a",
-        "26.2": "054fe88318f3b8c2c919d8c3eb96f9bc2751854a",
-        "26.3": "054fe88318f3b8c2c919d8c3eb96f9bc2751854a"
+        "1.21.11": "937a88228b8b4efc36ba973ab844a685b381dc63",
+        "26.1": "937a88228b8b4efc36ba973ab844a685b381dc63",
+        "26.2": "937a88228b8b4efc36ba973ab844a685b381dc63",
+        "26.3": "937a88228b8b4efc36ba973ab844a685b381dc63"
       },
       "surface": "line-adaptation:fabric/src/test/java/dev/vox/lss/config/LSSConfigMenuTest.java",
       "tests": [
@@ -3348,14 +3392,14 @@
     "fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java": {
       "axes": "Sodium page generation: 1.21.10 pins display-time tooltip context on the legacy LegacySodiumPage twins (its Sodium 0.8 LSSConfigMenu walker is cut); the other lines pin the LSSConfigMenu twins. All other assertions byte-identical.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: 1.21.10 differs from the shared blob only in the display-time twin pin (commit 27d61c1e), which targets the legacy page twins because LSSConfigMenu does not exist on that line; both legacy twins contain the pinned buildWith(h, cfg, MenuContext.current(), call. Other four lines byte-identical. 2026-10-10 default flip: the fallback-permission test now asserts the default is on, turns it off and defers \"lss\" to the next connection; identical edit on every line, the 1.21.10 twin-pin residual unchanged.",
+      "review": "2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: 1.21.10 differs from the shared blob only in the display-time twin pin (commit 27d61c1e), which targets the legacy page twins because LSSConfigMenu does not exist on that line; both legacy twins contain the pinned buildWith(h, cfg, MenuContext.current(), call. Other four lines byte-identical. 2026-10-10 default flip: the fallback-permission test now asserts the default is on, turns it off and defers \"lss\" to the next connection; identical edit on every line, the 1.21.10 twin-pin residual unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "a3a8bd8cd5fde6668052ae9dcfdd47a6f6f7ab29",
-        "1.21.10": "f13955f7e9328ab8eb7367c61f6f258fe6bcd06d",
-        "1.21.11": "a3a8bd8cd5fde6668052ae9dcfdd47a6f6f7ab29",
-        "26.1": "a3a8bd8cd5fde6668052ae9dcfdd47a6f6f7ab29",
-        "26.2": "a3a8bd8cd5fde6668052ae9dcfdd47a6f6f7ab29",
-        "26.3": "a3a8bd8cd5fde6668052ae9dcfdd47a6f6f7ab29"
+        "1.21.1": "329849e3a8a7917dbf5dce9226b0e68b272589b6",
+        "1.21.10": "fb200db37a582d6ffdab058c8607919fc7fb0149",
+        "1.21.11": "329849e3a8a7917dbf5dce9226b0e68b272589b6",
+        "26.1": "329849e3a8a7917dbf5dce9226b0e68b272589b6",
+        "26.2": "329849e3a8a7917dbf5dce9226b0e68b272589b6",
+        "26.3": "329849e3a8a7917dbf5dce9226b0e68b272589b6"
       },
       "surface": "sodium-generation:fabric/src/test/java/dev/vox/lss/config/menu/ClientOptionCatalogTest.java",
       "tests": [
@@ -3600,6 +3644,9 @@
       "tests": [
         "DhColumnConverterTest"
       ]
+    },
+    "fabric/src/test/java/dev/vox/lss/networking/client/FarPlaneExtensionTest.java": {
+      "kind": "identical"
     },
     "fabric/src/test/java/dev/vox/lss/networking/client/FarPlayerClientSupportTest.java": {
       "kind": "identical"
@@ -5678,6 +5725,23 @@
         "Full platform build and existing version-surface/behavior contracts"
       ]
     },
+    "neoforge/src/main/java/dev/vox/lss/mixin/FarPlaneHook.java": {
+      "axes": "NeoForge far-player renderer lives on 1.21.1 only; GameRenderer twin of the Fabric 1.21.x hook",
+      "kind": "adapted",
+      "review": "2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1).",
+      "reviewed_blobs": {
+        "1.21.1": "e5fe129297895500dd26952d33a233e1dd439542",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null,
+        "26.3": null
+      },
+      "surface": "far-plane-extension",
+      "tests": [
+        "NeoForgeFarPlaneHookContractTest"
+      ]
+    },
     "neoforge/src/main/java/dev/vox/lss/mixin/IntegratedServerLanHook.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
@@ -5762,9 +5826,9 @@
     "neoforge/src/main/java/dev/vox/lss/networking/client/FarPlayerRenderer.java": {
       "axes": "Fabric render API generations; Neo only1.21.1 live, others intentional stubs.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger. Followup b3f39c3e reviewed: 1.21.1 renderer runtime is unchanged; comments describe the local switch and preference carrier. Loader contract pins snapshot capture and capability/enabled gate instead of the removed getter.",
+      "review": "2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-09-28 cross-line YAML residual review. Compared feature changes against each line\u2019s prior reviewed blob; config reads become immutable snapshot/getter reads, draft bindings replace immediate save/push, connection-scoped preferences retain transport retry, and manual renderer toggle replaces automatic coexistence detection. Residual renderer capability, field/accessor, identifier and packet-distributor differences preserve the existing MC/loader implementations. Exact reviewed refs and resolved findings recorded in docs/implementation/2026-09-28-yaml-settings-cross-line-review.md. This binds source review; build/live evidence is recorded in the implementation progress ledger. Followup b3f39c3e reviewed: 1.21.1 renderer runtime is unchanged; comments describe the local switch and preference carrier. Loader contract pins snapshot capture and capability/enabled gate instead of the removed getter.",
       "reviewed_blobs": {
-        "1.21.1": "db947cd7181c504fd6de92b3fffcb0510275845b",
+        "1.21.1": "8c7e1399f66c01765c4c2476136bad736f6b3b8f",
         "1.21.10": "9deb6d2016cee768c30b8f5ce1b34fe7578cdbfb",
         "1.21.11": "9deb6d2016cee768c30b8f5ce1b34fe7578cdbfb",
         "26.1": "056495674fe5238df84e6d3b3ea1e9a96f8bb10e",
@@ -6106,9 +6170,9 @@
     "neoforge/src/main/resources/lss.neoforge.mixins.json": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-10 0.17.0 release pin: identical one-line addition of AccessorScreenWidgets on every line; per-line compatibilityLevel flavour unchanged.",
+      "review": "2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-10 0.17.0 release pin: identical one-line addition of AccessorScreenWidgets on every line; per-line compatibilityLevel flavour unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "3f15ba35b4a6891bf7fb743be84f23d025c3f909",
+        "1.21.1": "7cf6a4774a8b0b9b076b83c85513d1675ab4e398",
         "1.21.10": "5112a5bb917aa282adce414ef251e7a14ce09a8d",
         "1.21.11": "5112a5bb917aa282adce414ef251e7a14ce09a8d",
         "26.1": "5276ab7b6fb879e1db217328743a5f6b4e1b220d",
@@ -6155,6 +6219,23 @@
       "surface": "dh-client-adapter:neoforge/src/test/java/dev/vox/lss/neoforge/NeoForgeDhTransportContractTest.java",
       "tests": [
         "NeoForgeDhTransportContractTest"
+      ]
+    },
+    "neoforge/src/test/java/dev/vox/lss/neoforge/NeoForgeFarPlaneHookContractTest.java": {
+      "axes": "NeoForge far-player renderer lives on 1.21.1 only",
+      "kind": "adapted",
+      "review": "2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1).",
+      "reviewed_blobs": {
+        "1.21.1": "482be4adb40a259d16e4b38d9d0ab20bbb51b0d4",
+        "1.21.10": null,
+        "1.21.11": null,
+        "26.1": null,
+        "26.2": null,
+        "26.3": null
+      },
+      "surface": "far-plane-extension",
+      "tests": [
+        "NeoForgeFarPlaneHookContractTest"
       ]
     },
     "neoforge/src/test/java/dev/vox/lss/neoforge/NeoForgeLoaderSeamContractTest.java": {
@@ -7432,14 +7513,14 @@
     "scripts/release_check.py": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-23 0.19.1 re-pin after the gate fold: the region-freshness gametest counts tiles per summary assembly (re-assembled frames after a tick stall), on all six lines; Folia comment refresh on 26.3/26.2. 2026-10-23 0.19.1: Folia on the 26.3 line (LINE_PAPER_LOADERS + catalog line facts gain folia; mainline ReleaseWorkflowContractTest pin flipped; stale no-Folia-26.3 comments refreshed); 26.3-only change, the five support lines only re-pin. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: the DH release-gate delta (client-only common/dh + private XZ placement, Paper exclusion, XZ third-party notice, forbidden fixture mixin configs, dependency allowlists and selftests) is textually identical on all five lines except documented line facts: FABRIC_DEPENDENCY_ALLOWLIST suggests also voxy on 1.21.10/1.21.11/26.1/26.2, matching each line's fabric.mod.json; NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST is {\"sqlite_jdbc\"} on 1.21.1 only (issue #304) and empty elsewhere, with the optional-sqlite selftest written against the line's allowlist (equivalent to 1.21.1's specialized assertion); the dependency selftest fixture names the line's Minecraft version. Pre-existing per-line gate flavours unchanged.",
+      "review": "2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-23 0.19.1 re-pin after the gate fold: the region-freshness gametest counts tiles per summary assembly (re-assembled frames after a tick stall), on all six lines; Folia comment refresh on 26.3/26.2. 2026-10-23 0.19.1: Folia on the 26.3 line (LINE_PAPER_LOADERS + catalog line facts gain folia; mainline ReleaseWorkflowContractTest pin flipped; stale no-Folia-26.3 comments refreshed); 26.3-only change, the five support lines only re-pin. 2026-10-12 0.18.0 with Sponge: the Sponge server plugin merged onto every 0.18.0 candidate and ported to 26.3 (SpongeVanilla per-line pins, the one SpongeLineSurface flavor file and the same-FQN twins), LINE_SHIP_SPONGE=true on all six lines; flavors preserved per line. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: the DH release-gate delta (client-only common/dh + private XZ placement, Paper exclusion, XZ third-party notice, forbidden fixture mixin configs, dependency allowlists and selftests) is textually identical on all five lines except documented line facts: FABRIC_DEPENDENCY_ALLOWLIST suggests also voxy on 1.21.10/1.21.11/26.1/26.2, matching each line's fabric.mod.json; NEOFORGE_OPTIONAL_DEPENDENCY_ALLOWLIST is {\"sqlite_jdbc\"} on 1.21.1 only (issue #304) and empty elsewhere, with the optional-sqlite selftest written against the line's allowlist (equivalent to 1.21.1's specialized assertion); the dependency selftest fixture names the line's Minecraft version. Pre-existing per-line gate flavours unchanged.",
       "reviewed_blobs": {
         "1.21.1": "d383327d86909a4cd4d4156b2fdfbd9df644144c",
-        "1.21.10": "298dff02a3ac3005c36c541f289ef4ffe442a97b",
-        "1.21.11": "d24336bc74993019acae887aa2259eba1dacec81",
-        "26.1": "05b8507ba58cf43d5bb875a753ed35c6aa319ab7",
-        "26.2": "fa9188a744db9f03b128e14c290d0f80e834329e",
-        "26.3": "e8cde604e6ccdbcd89d0b71967ff4967a94e5635"
+        "1.21.10": "35a2dc4bdb2b797e29e581c9b8bcc5b3194e88f4",
+        "1.21.11": "a21cdbd0b0252acaa792001fb193990091a2e2da",
+        "26.1": "67d3a8465456a209bf796507973839d99f53eec6",
+        "26.2": "145992e9fb6138218074f5db399960af16514cc6",
+        "26.3": "7a06202c91f03fb7a50151d119b52f480e9b108f"
       },
       "surface": "line-adaptation:scripts/release_check.py",
       "tests": [
@@ -11025,14 +11106,14 @@
     "xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH option/dependency delta on every line; residual line flavours unchanged. 2026-10-10 default flip (user decision): lod_source defaultValue false->true plus a two-line comment, identical on every line.",
+      "review": "2026-10-23 #364 far-plane extension (opt-in far_players.extend_far_plane): settings core, FarPlanePolicy, FarPlaneExtension identical on all lines; the hook is per MC shape (26.x Camera.update depthFar write; 1.21.x GameRenderer renderLevel/getDepthFar; NeoForge twin on 1.21.1). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH option/dependency delta on every line; residual line flavours unchanged. 2026-10-10 default flip (user decision): lod_source defaultValue false->true plus a two-line comment, identical on every line.",
       "reviewed_blobs": {
-        "1.21.1": "b77a1165ba7ec6191ecf8d8e74231d3b62bce69e",
-        "1.21.10": "611b1ff22dd0754087fab86fcedfe6fad91de210",
-        "1.21.11": "611b1ff22dd0754087fab86fcedfe6fad91de210",
-        "26.1": "611b1ff22dd0754087fab86fcedfe6fad91de210",
-        "26.2": "611b1ff22dd0754087fab86fcedfe6fad91de210",
-        "26.3": "611b1ff22dd0754087fab86fcedfe6fad91de210"
+        "1.21.1": "317449194b6b2cfb4be1addc0c19c64993ddc840",
+        "1.21.10": "136855f1c9bf1412a23679b34a0b4c1ea0c939eb",
+        "1.21.11": "136855f1c9bf1412a23679b34a0b4c1ea0c939eb",
+        "26.1": "136855f1c9bf1412a23679b34a0b4c1ea0c939eb",
+        "26.2": "136855f1c9bf1412a23679b34a0b4c1ea0c939eb",
+        "26.3": "136855f1c9bf1412a23679b34a0b4c1ea0c939eb"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/config/menu/ClientOptionCatalog.java",
       "tests": [
@@ -11296,14 +11377,14 @@
     "xplat/src/main/java/dev/vox/lss/networking/client/ClientNetGlue.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
       "kind": "adapted",
-      "review": "2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH session lifecycle wiring (join/disconnect/tick, native offer, reception gate, cache sweep) on every line; residual line flavours unchanged.",
+      "review": "2026-10-23 #364 far-plane extension, implementation review fold (both hooks watched, disconnect reset, Iris fails closed, no render cap, diag, ON-path gametest, FarPlaneExtensionTest, menu pins, release_check fabric-only row). 2026-10-14 0.19.0 server map policy (#316) + Xaero cave layers and fill-on-switch (#313), with the 8-agent review fold; identical on every line except the per-line Minecraft/Xaero seams. 2026-10-12 post-0.17 review fold (8 Opus + 4 Fable panel): whitelist/gamerule harness fixes, sidecar-safe settings saves, distance-0 follow-ups, map-ingestion lifecycle fixes and the map-only cache mark, per-line JourneyMap hint; flavors preserved per line. 2026-10-12 MC 26.3 line (main moves to 26.3; 26.2 continues on support/mc26.2): the 26.3 port's per-line flavors recorded with this line's reviewed blobs; six-line catalog; full 26.3 gate green. 2026-10-11 map-ingestion program (plan docs/planning/2026-10-11-map-ingestion-journeymap-plan.md \u00a711.4): the neutral map_ingestion setting, JourneyMap backend and Xaero window/heap belt merged three-way onto each line's prior reviewed blob with the line flavor preserved; 2-Opus port-fidelity review (26.1+1.21.11, 1.21.10+1.21.1) with every finding folded; full per-line gates green. 2026-10-10 0.17.0 release pin: identical DH session lifecycle wiring (join/disconnect/tick, native offer, reception gate, cache sweep) on every line; residual line flavours unchanged.",
       "reviewed_blobs": {
-        "1.21.1": "1e55c617ace4b352df20127a8312b20d1bef8297",
-        "1.21.10": "8881a3f137cc12f10e6f912abba7d0a8e1c2b0e8",
-        "1.21.11": "8881a3f137cc12f10e6f912abba7d0a8e1c2b0e8",
-        "26.1": "8881a3f137cc12f10e6f912abba7d0a8e1c2b0e8",
-        "26.2": "8881a3f137cc12f10e6f912abba7d0a8e1c2b0e8",
-        "26.3": "8881a3f137cc12f10e6f912abba7d0a8e1c2b0e8"
+        "1.21.1": "56954f22b9fbc82ee2999658917ec7efbbabd06b",
+        "1.21.10": "7b47a16f715a53bbc7ce667815b7deb12392db1c",
+        "1.21.11": "7b47a16f715a53bbc7ce667815b7deb12392db1c",
+        "26.1": "7b47a16f715a53bbc7ce667815b7deb12392db1c",
+        "26.2": "7b47a16f715a53bbc7ce667815b7deb12392db1c",
+        "26.3": "7b47a16f715a53bbc7ce667815b7deb12392db1c"
       },
       "surface": "line-adaptation:xplat/src/main/java/dev/vox/lss/networking/client/ClientNetGlue.java",
       "tests": [
@@ -11464,6 +11545,9 @@
         "VoxyVanillaCoverageTest",
         "Full platform build and existing version-surface/behavior contracts"
       ]
+    },
+    "xplat/src/main/java/dev/vox/lss/networking/client/FarPlaneExtension.java": {
+      "kind": "identical"
     },
     "xplat/src/main/java/dev/vox/lss/networking/client/FarPlayerClientSupport.java": {
       "axes": "Exact file flavor; residual shared logic is not normalized or exempted.",
