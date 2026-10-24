@@ -86,6 +86,11 @@ public class SpongeLoaderServices implements LoaderServices {
     }
 
     @Override
+    public String storePlatform() {
+        return "sponge";
+    }
+
+    @Override
     public String permissionProviderToken() {
         return "sponge";
     }

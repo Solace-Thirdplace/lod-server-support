@@ -64,6 +64,11 @@ public class FabricLoaderServices implements LoaderServices {
     }
 
     @Override
+    public String storePlatform() {
+        return "fabric";
+    }
+
+    @Override
     public String permissionProviderToken() {
         return dev.vox.lss.compat.FabricPermissionsBridge.providerToken();
     }

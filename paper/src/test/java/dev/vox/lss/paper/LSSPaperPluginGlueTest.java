@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -987,6 +988,7 @@ class LSSPaperPluginGlueTest {
         PaperConfig startServiceConfig;
         PaperRequestProcessingService worldHandlerService;
         PaperConfig worldHandlerConfig;
+        boolean versionAccepted = true;
 
         RecordingSteps(boolean enabled) {
             MutablePaperSettings.set(config, "service.enabled", enabled);
@@ -995,6 +997,12 @@ class LSSPaperPluginGlueTest {
         @Override
         public void loadBranding() {
             order.add("loadBranding");
+        }
+
+        @Override
+        public boolean checkMinecraftVersion() {
+            order.add("checkMinecraftVersion");
+            return versionAccepted;
         }
 
         @Override
@@ -1047,7 +1055,8 @@ class LSSPaperPluginGlueTest {
     void enablePlanRunsEveryStepInProductionOrderWhenEnabled() {
         var steps = new RecordingSteps(true);
         LSSPaperPlugin.runEnablePlan(steps);
-        assertEquals(List.of("loadBranding", "loadConfig", "registerChannels", "registerQuitListener", "startService",
+        assertEquals(List.of("loadBranding", "checkMinecraftVersion", "loadConfig", "registerChannels",
+                        "registerQuitListener", "startService",
                         "registerWorldHandler", "registerCommands", "scheduleServiceTick", "initSoakBridge"),
                 steps.order,
                 "/reload re-runs onEnable, so this order is the re-enable contract; the soak bridge "
@@ -1067,9 +1076,61 @@ class LSSPaperPluginGlueTest {
         LSSPaperPlugin.runEnablePlan(steps);
         assertFalse(steps.order.contains("registerWorldHandler"),
                 "enabled=false must never construct PaperWorldHandler (tracker would grow unbounded)");
-        assertEquals(List.of("loadBranding", "loadConfig", "registerChannels", "registerQuitListener", "startService",
+        assertEquals(List.of("loadBranding", "checkMinecraftVersion", "loadConfig", "registerChannels",
+                        "registerQuitListener", "startService",
                         "registerCommands", "scheduleServiceTick", "initSoakBridge"),
                 steps.order, "every other enable step still runs, in the same order");
+    }
+
+    // ---- version guard (paper-version-guard-store-plan §3.1/§4) ----
+
+    @Test
+    void versionMismatchStopsTheEnablePlanBeforeAnyChannelConfigOrStore() {
+        // The guard disables the plugin itself; the plan must then run NOTHING else: no
+        // config file created, no channel registered, no service (and so no store) built.
+        var steps = new RecordingSteps(true);
+        steps.versionAccepted = false;
+        LSSPaperPlugin.runEnablePlan(steps);
+        assertEquals(List.of("loadBranding", "checkMinecraftVersion"), steps.order,
+                "a refused version must stop the plan right after the check (branding first so"
+                        + " the ERROR names the right plugin)");
+        assertNull(steps.startServiceConfig, "no service, so no store, on a refused version");
+    }
+
+    private static final String SITE = "https://modrinth.com/plugin/lod-server-support";
+
+    @Test
+    void versionRuleAcceptsThePatchFamilyAndExactPins() {
+        assertNull(LSSPaperPlugin.minecraftVersionRefusal(">=26.3 <26.4-", "26.3", "LodServerSupport", SITE));
+        assertNull(LSSPaperPlugin.minecraftVersionRefusal(">=26.3 <26.4-", "26.3.1", "LodServerSupport", SITE));
+        assertNull(LSSPaperPlugin.minecraftVersionRefusal("1.21.10", "1.21.10", "LodServerSupport", SITE));
+    }
+
+    @Test
+    void versionMismatchRefusalNamesTheRunningVersionTheRangeAndTheDownload() {
+        String msg = LSSPaperPlugin.minecraftVersionRefusal(">=26.2 <26.3-", "26.3", "LodServerSupport", SITE);
+        assertNotNull(msg, "the incident: a 26.2 jar on a 26.3 server must be refused");
+        assertTrue(msg.startsWith("LodServerSupport supports Minecraft 26.2 up to (not including) 26.3."),
+                "the supported versions come first: " + msg);
+        assertTrue(msg.contains("This server runs Minecraft 26.3"), msg);
+        assertTrue(msg.endsWith("Download the LodServerSupport build for Minecraft 26.3 from " + SITE
+                + " if one exists."), "the download advice is conditional (not every version has a build): " + msg);
+        String old = LSSPaperPlugin.minecraftVersionRefusal(">=26.3 <26.4-", "1.21.4", "VoxyServerSide", SITE);
+        assertTrue(old.startsWith("VoxyServerSide supports Minecraft 26.3 up to (not including) 26.4."), old);
+        assertTrue(old.endsWith("build for Minecraft 1.21.4 from " + SITE + " if one exists."), old);
+        assertNotNull(LSSPaperPlugin.minecraftVersionRefusal(">=26.3 <26.4-", "26.4", "LodServerSupport", SITE));
+        assertNotNull(LSSPaperPlugin.minecraftVersionRefusal("1.21.10", "1.21.11", "LodServerSupport", SITE),
+                "1.21.x jars are exact: another 1.21.x is refused (decision U1)");
+    }
+
+    @Test
+    void missingOrMalformedRuleRefusesRatherThanRunningUnguarded() {
+        String missing = LSSPaperPlugin.minecraftVersionRefusal(null, "26.3", "VoxyServerSide", null);
+        assertNotNull(missing, "a jar without the rule is a broken build — never enable unguarded");
+        assertTrue(missing.contains("lss-minecraft-dependency is missing"), missing);
+        assertTrue(missing.startsWith("VoxyServerSide "), "the message names the running brand: " + missing);
+        assertNotNull(LSSPaperPlugin.minecraftVersionRefusal("${minecraft_dependency}", "26.3", "LodServerSupport", SITE),
+                "an unexpanded placeholder refuses");
     }
 
     // ---- log capture (LSSLogger is static-final; observing 'logged' must hook the backend) ----

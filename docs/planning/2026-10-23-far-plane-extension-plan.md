@@ -269,7 +269,7 @@ the annotation), the 26.3 write-back (client gametest: "active=3072, the frame u
 | Tests: duplicate policy case; cap test | NIT | Fixed |
 | Tooltip: fog applies to far players generally | NIT | Fixed |
 | Comment "before the frustum test" wrong on 1.21.10/11 | NIT | Fixed |
-| Downgrade drops the whole sidecar on 0.19.1 (unknown key) | MINOR | Accepted: same as `nether_store_mib`; 0.19.1 WARNs and keeps working |
+| Downgrade on 0.19.1 with the key set | MINOR | Accepted. Corrected 2026-10-24: 0.19.x drops only the unknown key (one WARN, "Unknown experimental client setting ignored"); the rest of the sidecar keeps working |
 | Single jump to the ceiling instead of steps | NIT | Kept steps: the plane stays close to the need |
 
 

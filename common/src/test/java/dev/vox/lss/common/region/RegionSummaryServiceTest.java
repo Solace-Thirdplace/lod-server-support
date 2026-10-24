@@ -574,7 +574,13 @@ class RegionSummaryServiceTest {
             // the add, so the check below could land between the add and the re-check.
             var barrier = UUID.randomUUID();
             rig.service.offerRequest(barrier, new RegionSummaryWire.Request(DIM, 0, 0, 0));
+            // The pump admits AND drains. It can run while the dead player's frame sits
+            // between the add and the re-check; RETRY keeps that frame queued instead of
+            // handing it to this always-SENT sender (production's sender DROPs a gone
+            // player), so the final check below still means something (2026-10-24).
+            rig.senderOutcome = RegionSummaryService.SendOutcome.RETRY;
             rig.pump(rig.anchorsAt(barrier, DIM, 0, 0)); // admits the barrier's job
+            rig.senderOutcome = RegionSummaryService.SendOutcome.SENT;
             long deadline = System.nanoTime() + POLL_DEADLINE_NANOS;
             while (!rig.service.hasReadyEntryForTest(barrier)) {
                 if (System.nanoTime() > deadline) {
