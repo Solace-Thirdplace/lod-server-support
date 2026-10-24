@@ -23,6 +23,30 @@ class BuildInfoTest {
     }
 
     @Test
+    void minecraftVersionRuleIsTheExpandedDependencyRule() throws Exception {
+        var props = new java.util.Properties();
+        try (var in = Files.newInputStream(MinecraftVersionRuleTest.locate("gradle.properties"))) {
+            props.load(in);
+        }
+        assertEquals(props.getProperty("minecraft_dependency"), BuildInfo.minecraftVersionRule().raw(),
+                "processResources must expand gradle.properties' minecraft_dependency");
+        org.junit.jupiter.api.Assertions.assertTrue(
+                BuildInfo.minecraftVersionRule().accepts(BuildInfo.minecraftVersion()),
+                "the jar's rule accepts the version it is built for");
+    }
+
+    @Test
+    void missingUnexpandedOrMalformedRuleFailsLoudly() {
+        assertThrows(IllegalStateException.class, () -> BuildInfo.loadRule(null));
+        assertThrows(IllegalStateException.class, () -> BuildInfo.loadRule(stream(
+                "minecraft_version=26.3\nminecraft_dependency=${minecraft_dependency}\n")));
+        assertThrows(IllegalStateException.class, () -> BuildInfo.loadRule(stream("minecraft_version=26.3\n")));
+        assertThrows(IllegalStateException.class, () -> BuildInfo.loadRule(stream(
+                "minecraft_dependency=>=x.y\n")));
+        assertEquals(">=26.3 <26.4-", BuildInfo.loadRule(stream("minecraft_dependency=>=26.3 <26.4-\n")).raw());
+    }
+
+    @Test
     void missingOrUnexpandedResourceFailsLoudly() {
         assertThrows(IllegalStateException.class, () -> BuildInfo.load(null));
         assertThrows(IllegalStateException.class, () -> BuildInfo.load(stream(

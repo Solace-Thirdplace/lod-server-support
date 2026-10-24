@@ -2443,6 +2443,180 @@ public class ServiceLifecycleGameTests {
     }
 
     /**
+     * 0.20.0 implementation-review fold: an arming reload that ALSO changes the distance
+     * runs the full re-push, which carries and records every CURRENT session's flags — the
+     * map-policy sweep before it must not push the capable session too. Exactly one push per
+     * capable session (the PaperMapPolicyTest twin pins the same on Paper).
+     */
+    @GameTest(template = "fabric-gametest-api-v1:empty", timeoutTicks = 600)
+    public void mapPolicyArmingReloadWithADistanceChangePushesEachCapableSessionOnce(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var old = placeMockServerPlayer(helper);
+        var capable = placeMockServerPlayer(helper);
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        service.setMapPolicyNoticeSenderForTest((player, text) -> { });
+        LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                LSSConstants.PROTOCOL_VERSION, VOXEL), old, service, reply -> { });
+        LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                LSSConstants.PROTOCOL_VERSION, VOXEL | MAP_BIT), capable, service, reply -> { });
+        var pushes = new java.util.concurrent.CopyOnWriteArrayList<Object[]>();
+        service.setSessionConfigPusher((to, payload) -> pushes.add(new Object[]{to, payload}));
+        var disarmed = config.snapshot();
+        config.set("privacy.request_no_map_ingestion", true);
+        config.set("lod.distance.default_chunks", 251);
+        var arm = service.reconcileSettings(disarmed, config.snapshot(), 1);
+        succeedWhenThenTearDown(helper, 600, () -> {
+            if (!arm.isDone()) helper.assertTrue(false, "waiting for the arming reconcile");
+            helper.assertTrue(!arm.isCompletedExceptionally(), "the arming reconcile failed");
+            var toCapable = pushes.stream().filter(e -> e[0] == capable).toList();
+            helper.assertTrue(toCapable.size() == 1,
+                    "exactly one push to the capable session, got " + toCapable.size());
+            var push = (SessionConfigS2CPayload) toCapable.get(0)[1];
+            helper.assertTrue(push.enabled() && push.sessionFlags() == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION
+                            && push.lodDistanceChunks() == 251,
+                    "the full re-push carries the new distance and the armed flags: " + push);
+            helper.assertTrue(Boolean.TRUE.equals(service.getServiceGateState().lastMapFlagsSent(capable.getUUID())),
+                    "…and records them");
+            helper.assertTrue(pushes.get(0)[0] == old && !((SessionConfigS2CPayload) pushes.get(0)[1]).enabled()
+                            && pushes.stream().filter(e -> e[0] == old).count() == 1,
+                    "REVOKE FIRST, once");
+            int before = pushes.size();
+            service.runMapPolicySweep(config);
+            helper.assertTrue(pushes.size() == before, "the cadence sweep finds nothing new to tell");
+        }, () -> {
+            service.shutdown();
+            server.getPlayerList().remove(old);
+            server.getPlayerList().remove(capable);
+        });
+    }
+
+    /**
+     * 0.20.0 implementation-review fold: the 10 s sweep reads the exemption in three states,
+     * and a FAILED read (a throwing permission backend) keeps the flags a capable session was
+     * last sent — no push, no flip of a granted player; a real revoke still lands on the next
+     * good read. The handshake stays fail-closed (see the provider-less test below).
+     */
+    @GameTest(template = "fabric-gametest-api-v1:empty", timeoutTicks = 400)
+    public void mapIngestionSweepKeepsTheLastSentFlagsOnAFailedRead(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var capable = placeMockServerPlayer(helper);
+        var uuid = capable.getUUID();
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        var exempt = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var failing = new java.util.concurrent.atomic.AtomicBoolean(false);
+        service.setMapIngestionExemptProbeForTest(p -> {
+            if (failing.get()) throw new IllegalStateException("backend exploded");
+            return p.getUUID().equals(uuid) && exempt.get();
+        });
+        var gateState = service.getServiceGateState();
+        try {
+            config.set("privacy.request_no_map_ingestion", true);
+            service.adoptMapPolicyForTest(true);
+            var replies = new ArrayList<SessionConfigS2CPayload>();
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL | MAP_BIT), capable, service, replies::add);
+            helper.assertTrue(replies.size() == 1 && replies.get(0).sessionFlags() == 0
+                            && Boolean.FALSE.equals(gateState.lastMapFlagsSent(uuid)),
+                    "premise: the granted capable client may ingest");
+            var pushes = new ArrayList<SessionConfigS2CPayload>();
+            service.setSessionConfigPusher((to, payload) -> { if (to == capable) pushes.add(payload); });
+
+            failing.set(true);
+            helper.assertTrue(service.mapIngestionExemption(capable) == dev.vox.lss.common.MapPolicy.Exemption.FAILED,
+                    "premise: the read fails");
+            service.runMapPolicySweep(config);
+            service.runMapPolicySweep(config);
+            helper.assertTrue(pushes.isEmpty(), "a failed read pushes nothing, got " + pushes.size());
+            helper.assertTrue(Boolean.FALSE.equals(gateState.lastMapFlagsSent(uuid))
+                            && gateState.mapPolicyExemptCount() == 1,
+                    "the session keeps what it was last told (and is counted so)");
+            helper.assertTrue(service.denyMapIngestionFor(capable, config),
+                    "every other site stays fail-closed on the same read");
+
+            failing.set(false);
+            exempt.set(false);
+            service.runMapPolicySweep(config);
+            helper.assertTrue(pushes.size() == 1
+                            && pushes.get(0).sessionFlags() == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION,
+                    "a real revoke lands on the next good read");
+        } finally {
+            service.shutdown();
+            server.getPlayerList().remove(capable);
+        }
+        helper.succeed();
+    }
+
+    /**
+     * 0.20.0 implementation-review fold, reconcile-driven: a disarm ends the exempt
+     * admissions of older clients, so after the grant is withdrawn a re-arm decides the
+     * older client afresh and refuses it as a non-exempt older client.
+     */
+    @GameTest(template = "fabric-gametest-api-v1:empty", timeoutTicks = 800)
+    public void mapPolicyDisarmClearsExemptAdmissionsSoAReArmDecidesAfresh(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var old = placeMockServerPlayer(helper);
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        service.setMapPolicyNoticeSenderForTest((player, text) -> { });
+        var exempt = java.util.concurrent.ConcurrentHashMap.<java.util.UUID>newKeySet();
+        exempt.add(old.getUUID());
+        service.setMapIngestionExemptProbeForTest(p -> exempt.contains(p.getUUID()));
+        LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                LSSConstants.PROTOCOL_VERSION, VOXEL), old, service, reply -> { });
+        var pushes = new java.util.concurrent.CopyOnWriteArrayList<Object[]>();
+        service.setSessionConfigPusher((to, payload) -> pushes.add(new Object[]{to, payload}));
+        var gateState = service.getServiceGateState();
+        var disarmedSettings = config.snapshot();
+        config.set("privacy.request_no_map_ingestion", true);
+        var armedSettings = config.snapshot();
+        var arm = service.reconcileSettings(disarmedSettings, armedSettings, 1);
+        var disarm = new java.util.concurrent.atomic.AtomicReference<java.util.concurrent.CompletableFuture<Void>>();
+        var rearm = new java.util.concurrent.atomic.AtomicReference<java.util.concurrent.CompletableFuture<Void>>();
+        succeedWhenThenTearDown(helper, 800, () -> {
+            if (!arm.isDone()) helper.assertTrue(false, "waiting for the arming reconcile");
+            helper.assertTrue(!arm.isCompletedExceptionally(), "the arming reconcile failed");
+            if (disarm.get() == null) {
+                helper.assertTrue(service.getPlayers().get(old.getUUID()) != null
+                                && gateState.isMapPolicyExemptAdmission(old.getUUID()),
+                        "premise: the exempt older session is admitted and keeps serving");
+                config.set("privacy.request_no_map_ingestion", false);
+                disarm.set(service.reconcileSettings(armedSettings, config.snapshot(), 2));
+                helper.assertTrue(false, "waiting for the disarming reconcile");
+            }
+            if (!disarm.get().isDone()) helper.assertTrue(false, "waiting for the disarming reconcile");
+            helper.assertTrue(!disarm.get().isCompletedExceptionally(), "the disarming reconcile failed");
+            if (rearm.get() == null) {
+                helper.assertTrue(!gateState.isMapPolicyExemptAdmission(old.getUUID()),
+                        "the disarm ends the admission");
+                exempt.remove(old.getUUID()); // the grant is withdrawn while disarmed
+                pushes.clear();
+                config.set("privacy.request_no_map_ingestion", true);
+                rearm.set(service.reconcileSettings(disarmedSettings, config.snapshot(), 3));
+                helper.assertTrue(false, "waiting for the re-arming reconcile");
+            }
+            if (!rearm.get().isDone()) helper.assertTrue(false, "waiting for the re-arming reconcile");
+            helper.assertTrue(!rearm.get().isCompletedExceptionally(), "the re-arming reconcile failed");
+            helper.assertTrue(service.getPlayers().get(old.getUUID()) == null
+                            && gateState.peekDenied(old.getUUID()) != null
+                            && gateState.peekDenied(old.getUUID()).has(dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY),
+                    "re-armed: refused as a non-exempt older client");
+            helper.assertTrue(pushes.size() == 1 && pushes.get(0)[0] == old
+                            && !((SessionConfigS2CPayload) pushes.get(0)[1]).enabled(),
+                    "one revocation push, got " + pushes.size());
+            helper.assertTrue(service.settingsFeedback().mapPolicyRevoked() == 1,
+                    "the re-arm reports the revocation");
+        }, () -> {
+            service.shutdown();
+            server.getPlayerList().remove(old);
+        });
+    }
+
+    /**
      * 0.19.0 review O6 P1 — the xplat twin of PaperMapPolicyTest's legacy pins: a LIVE arm
      * never revokes a legacy-dialect session mid-session. v19, v18 and v16 sessions keep
      * serving until rejoin (where the handshake refuses them) — no push, no memo, no chat

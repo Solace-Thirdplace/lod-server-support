@@ -65,14 +65,40 @@ public final class MapPolicy {
      * must never lift the request for anyone.
      */
     public static boolean holdsExemption(java.util.function.Predicate<String> holds) {
-        try {
-            return holds.test(LSSPermissions.MAP_INGESTION_LSS)
-                    || holds.test(LSSPermissions.MAP_INGESTION_VSS);
-        } catch (VirtualMachineError e) {
-            throw e;
-        } catch (Throwable e) {
-            return false;
+        return readExemption(holds) == Exemption.EXEMPT;
+    }
+
+    /**
+     * The exemption read in three states (0.20.0 implementation-review fold): the 10 s
+     * sweep keeps what a capable session was last sent when the read FAILED, rather than
+     * flapping its flags on a transient permission-backend error; every other site (the
+     * handshake included) folds {@link Exemption#FAILED} into "not exempt" through
+     * {@link #holdsExemption}.
+     */
+    public enum Exemption {
+        EXEMPT, NOT_EXEMPT, FAILED;
+
+        /** Whether this read lifts the request (FAILED never does). */
+        public boolean exempt() {
+            return this == EXEMPT;
         }
+
+        /** One boolean read, a throw (bar a VM error) answering {@link #FAILED}. */
+        public static Exemption of(java.util.function.BooleanSupplier read) {
+            try {
+                return read.getAsBoolean() ? EXEMPT : NOT_EXEMPT;
+            } catch (VirtualMachineError e) {
+                throw e;
+            } catch (Throwable e) {
+                return FAILED;
+            }
+        }
+    }
+
+    /** {@link #holdsExemption} in three states: either spelling, a throw is {@link Exemption#FAILED}. */
+    public static Exemption readExemption(java.util.function.Predicate<String> holds) {
+        return Exemption.of(() -> holds.test(LSSPermissions.MAP_INGESTION_LSS)
+                || holds.test(LSSPermissions.MAP_INGESTION_VSS));
     }
 
     /** The {@code /lsslod diag} line while the policy is armed, or null while it is off
