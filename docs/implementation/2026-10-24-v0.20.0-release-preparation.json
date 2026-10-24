@@ -50,7 +50,7 @@
     }
    },
    "pin": "a770a11bfbdc7fc42e1483a83eafd18a1f5db78d",
-   "pr": null,
+   "pr": 379,
    "release_branch": "release/v0.20.0-mc1.21.1"
   },
   "1.21.10": {
@@ -103,7 +103,7 @@
     }
    },
    "pin": "32b8a2eeb567484685fc21ebc320caf189bfa14f",
-   "pr": null,
+   "pr": 378,
    "release_branch": "release/v0.20.0-mc1.21.10"
   },
   "1.21.11": {
@@ -156,7 +156,7 @@
     }
    },
    "pin": "9846b0f09f0006d565b8ebdeee971a68ff90ce74",
-   "pr": null,
+   "pr": 377,
    "release_branch": "release/v0.20.0-mc1.21.11"
   },
   "26.1": {
@@ -209,7 +209,7 @@
     }
    },
    "pin": "f2be008d987d9821c23fd0318a637ec70eb14313",
-   "pr": null,
+   "pr": 376,
    "release_branch": "release/v0.20.0-mc26.1"
   },
   "26.2": {
@@ -262,7 +262,7 @@
     }
    },
    "pin": "c695016920a578f126679c3be91b90d869191c39",
-   "pr": null,
+   "pr": 375,
    "release_branch": "release/v0.20.0-mc26.2"
   },
   "26.3": {
@@ -315,7 +315,7 @@
     }
    },
    "pin": "376596c5534cb71ba9e81563344d1d99ada4d165",
-   "pr": null,
+   "pr": 374,
    "release_branch": "release/v0.20.0-mc26.3"
   }
  },
