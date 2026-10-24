@@ -8,7 +8,7 @@ https://github.com/user-attachments/assets/721fb344-890e-4e03-ab36-539444427f7b
 
 ## Compatibility
 
-Clients use the Fabric mod on every version; on 26.3, 26.2, 26.1, and 1.21.1 a NeoForge client works as well. Voxy has not published a Minecraft 26.3 build yet: until it does, a 26.3 client gets map ingestion and far players (Fabric) but no LOD terrain. Voxy's 26.3 support in development runs on the OpenGL graphics backend only, so keep Graphics API on Default or OpenGL. No Voxy port exists for NeoForge 26.3, so a NeoForge 26.3 client gets map ingestion only. Supported servers:
+Clients use the Fabric mod on every version; on 26.3, 26.2, 26.1, and 1.21.1 a NeoForge client works as well. Voxy publishes 26.3 builds (0.2.20-beta, Fabric). Voxy runs on the OpenGL graphics backend only, so keep Graphics API on Default or OpenGL. No Voxy port exists for NeoForge 26.3, so a NeoForge 26.3 client gets map ingestion only. Supported servers:
 
 <!-- LSS SERVER MATRIX START -->
 | Minecraft line | Fabric / Paper | Folia | NeoForge shipping | Neo far renderer | Sponge |
