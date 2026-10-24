@@ -148,11 +148,13 @@ privacy:
       - "minecraft:deepslate_emerald_ore"
       - "minecraft:ender_chest"
   # Asks players' clients not to copy distant terrain into Xaero's World Map or
-  # JourneyMap. Only clients on 0.19.0 or newer can honor this, so while it is on,
-  # older clients get no distant terrain (and no far players) until they update.
-  # Clients still receive and render the terrain, so a modified client can ignore
-  # the request. Maps players already saved, and areas they explore normally,
-  # are not affected.
+  # JourneyMap. Players with the lss.map_ingestion (vss.map_ingestion) permission
+  # are exempt; granting it needs a permissions mod such as LuckPerms.
+  # Only clients on 0.19.0 or newer can honor this, so while it is on, older
+  # clients get no distant terrain (and no far players) until they update, unless
+  # exempt. Clients still receive and render the terrain, so
+  # a modified client can ignore the request. Maps players already saved, and
+  # areas they explore normally, are not affected.
   request_no_map_ingestion: false # Ask clients not to add distant terrain to their maps.
 
 # Sends lightweight distant-player snapshots beyond normal entity tracking range.

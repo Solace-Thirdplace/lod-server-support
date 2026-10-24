@@ -138,6 +138,16 @@ turn it on keep their terrain until they reconnect; they have no map support. On
 also runs Distant Horizons, a refused client doesn't fall back to DH terrain either. A server file with this
 key will not load on LSS 0.18 or older; remove the line before downgrading.
 
+To let some players (admins, say) keep filling their maps while it is on, grant them the
+`lss.map_ingestion` permission (`vss.map_ingestion` for VSS) with a permissions plugin or
+mod such as LuckPerms; nobody holds it by default, and on Fabric there is nothing to grant
+it with until a permissions mod is installed. The server treats the request as off for
+those players: clients on 0.19.0 or newer pick up a grant or a revoke within about 10
+seconds and map the terrain that arrives from then on. Older clients that hold it are
+served instead of refused (a refused one is offered terrain within about 10 seconds of a
+grant); taking it away from an older client applies when it next joins. `/lsslod diag`
+shows the count on its `MapPolicy:` line (`exempt=`).
+
 ```yaml
 lod:
   distance:

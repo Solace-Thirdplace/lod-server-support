@@ -153,3 +153,93 @@ doesn't).
 | NeoForge `nodeFor` mapping; HandshakeGate rows add nothing; diag count cached; template wording; release_check default check; reply details | NIT | Folded §3.5, §6, §2, §9 |
 | Node name could be `lss.map_ingestion.exempt` | NIT | Kept `lss.map_ingestion` (reads as "may ingest"); described in plugin.yml |
 | Release vehicle 0.20.0 | MINOR | Recommended (U2) |
+
+## 12. As built (2026-10-23, 26.3 line, branch `impl/v0.20.0-perm`)
+
+Status: IMPLEMENTED on the 26.3 line with the approved defaults (U1 `false`, U2 0.20.0). Ports
+to the five support lines and the six-line re-pin are still to do.
+
+**Decision point.** `MapPolicy.decide(policyOn, exemptSupplier)` (common) returns
+`Decision(deny, exempt)` and reads the exemption only while the request is on.
+`MapPolicy.holdsExemption(reader)` is the fail-closed either-spelling read (a throw is not
+exempt). Per platform:
+
+- xplat: `RequestProcessingService.denyMapIngestionFor(player, cfg)`, backed by
+  `mapIngestionExempt(player)` (probe seam `setMapIngestionExemptProbeForTest`, production
+  `mapIngestionExemptViaLoader` = `checkPermission(p, node, false)` for both spellings). The
+  glue's production gate overrides `PlayerServiceGate.mapIngestionExempt()` with the
+  service's read, so the handshake, the grant replay and the sweeps share one seam.
+- Paper: `PaperRequestProcessingService.denyMapIngestionFor(player)` (probe: the Bukkit
+  permissible through `holdsExemption`, a throw is not exempt). The plugin's gate
+  memoizes its read once per handshake, and the plugin passes `gate::mapIngestionExempt`
+  into the Register mailbox event, so the decision, the deferred reply and the pump's
+  drain re-check can never disagree.
+
+**Sites converted** (every one assigns `denyMapIngestion` from the helper; the census
+pins it): xplat handshake decision and reply, settings repush, service-gate revocation
+push, dimension-change push, the map-policy sweep (both passes), `mapPolicyCleared` in the
+grant sweep; Paper handshake decision, `refusedAtSend`, the plugin sender lambda, the
+service's sender (now `send(player, cfg, enabled, caps, denyMapIngestion)`, called only
+through a recording `sendSessionConfig` wrapper) at repush, gate revocation, map
+revocation, flags push and dimension change, the grant sweep's `mapPolicyCleared`, and the
+drain's `honorsMapPolicy` re-check.
+
+**Live changes.** `ServiceGateState` gained the last-sent flags (`noteMapFlagsSent`,
+recorded only for a frame that carries the field, cleared on disconnect/clear), the exempt
+admissions of older clients, and the cached `exempt=` count. `runMapPolicySweep` runs two
+passes: older CURRENT sessions without the bit first (an exempt admission is skipped; any
+other is decided now: exempt → recorded as admitted, otherwise revoked as before), then
+capable sessions, each pushed one flags-only SessionConfig only when the decision differs
+from the last-sent flags. `repushSessionConfig(true)` (the reload's policy-only repush) now
+skips sessions without the bit and sessions whose last-sent flags already match, so the
+arming reload still sends exactly one push per capable session (the sweep's). A disarm
+clears the exempt admissions.
+
+**Diag.** `MapPolicy: on refused=<n> exempt=<n>`, plus ` provider=<token>` on the shared
+(Fabric/NeoForge/Sponge) line; Paper carries no provider token. No boot WARN.
+
+**Deviations and judgment calls.**
+- Older clients refused at the handshake are re-offered by the grant sweep within one sweep
+  of a grant. §3.2 lists `mapPolicyCleared` among the helper sites, so a refused player who
+  becomes exempt clears its MAP_POLICY reason; the replay is a full handshake, which then
+  decides it as exempt. Revoking an older client's exemption still applies only at its next
+  join (§3.4): the sweep never revokes an exempt admission mid-session.
+- An older CURRENT session already connected when the policy is armed (a reload, or a
+  registration that raced it) is decided once by the sweep that first sees it, using the
+  live read, and then treated like a handshake admission.
+- Template wording: "granting it needs a permissions mod such as LuckPerms" (server.yaml)
+  and "grant it with a permissions plugin such as LuckPerms" (paper.yaml), instead of §2's
+  "on Fabric that needs a permissions mod": NeoForge, Sponge and Paper also have no built-in
+  per-player grant, so naming Fabric alone would mislead. The lines are wrapped so the
+  phrases `MapPolicySettingsTest` pins stay on one line.
+- Paper's service `SessionConfigSender` takes the decision as a fifth argument, so the
+  caller decides once and records what it sent; the test lambdas gained the parameter.
+- The flags-only repush skipping unchanged and capability-less sessions is new; it was
+  needed so the arming reload keeps sending one push per capable session.
+
+**Tests.** Common: `MapPolicyGateTest` (the decision, either spelling, fail-closed, OPEN
+exempts nobody, the diag line), `ServiceGateStateTest` (last-sent flags recorded only for
+frames carrying the field, admissions, lifecycle), `DiagnosticsFormatterTest`,
+`MapPolicySettingsTest` (template wording). Fabric: `MapPolicyWiringContractTest` (every
+`denyMapIngestion` assigned from the helper; the last send argument is the decision; a
+raw-read allowlist; Paper's wrapper is the only sender call), `LoaderPermissionSeamContractTest`
+(default-true everywhere except the one named fail-closed read; the exemption routes on
+every platform), `ViaGuardWiringContractTest`, and three gametests beside the `mapPolicy*`
+ones (capable grant and revoke within one sweep, no redundant push including after a
+dimension change; older and v19 clients decided at handshake, grant re-offer; no provider
+or a throwing read exempts nobody). Paper: six `PaperMapPolicyTest` twins (sweep, older
+sessions, throwing reads on the service and the gate, either spelling read once per
+handshake, the static core, the drain), `PluginYmlContractTest`, `PaperCommandsTest`.
+NeoForge `LSSNeoPermissionsContractTest` (exact `addNodes` list and `nodeFor` mapping),
+Sponge `SpongePermissionsTest` (regex accepts `_`), `release_check.py` (both spellings,
+`default: false`, pair belt, self-test fixtures). Mutations, each red then restored:
+the sweep's send site reading the raw policy (census, Paper twin, gametest); a failed read
+answering exempt (seam pin, Paper twins, gametest); the last-sent record dropped on a
+dimension change (Paper twin, gametest); `release_check` accepting an `op` default
+(self-test).
+
+**Port notes.** The 26.x server cores are byte-identical, so the change should apply as-is
+on 26.2 and 26.1. On 1.21.11, 1.21.10 and 1.21.1, re-check the per-line seams: the
+`ServerPlayer.level()` accessor the dimension-change gametest uses, the gametest End-level
+lookup, and NeoForge's `PermissionNode` constructor (no name validation on 26.3.0.76;
+`_` is valid in node paths).
