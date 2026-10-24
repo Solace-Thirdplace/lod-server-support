@@ -26,6 +26,8 @@
   "lss.config.far_players_render_distance": "远处玩家渲染上限",
   "lss.config.far_players_render_distance.tooltip": "远处玩家的最远绘制距离（方块）。0 表示跟随服务器限制。也限制本模组绘制的名牌。",
   "lss.config.far_players_render_distance.server": "服务器限制",
+  "lss.config.far_players_extend_far_plane": "扩展远处玩家绘制范围",
+  "lss.config.far_players_extend_far_plane.tooltip": "在游戏常规绘制上限之外继续绘制远处玩家，直到最远的那一位。仅在安装 Voxy 等远景模组时可见。雾仍可能遮住很远的玩家；如果他们逐渐消失，请在远景模组中关闭雾。启用光影包时不生效。",
   "lss.status.title": "LOD 状态",
   "lss.status.export": "导出",
   "lss.status.more": "更多",

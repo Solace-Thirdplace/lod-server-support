@@ -31,7 +31,7 @@ def render(data: dict | None = None) -> str:
               "copy any desired changes back into JSON before downgrading.",
               "Invalid authoritative YAML never falls back to JSON. Reload does not write files.", "",
               "Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`,",
-              "`integrations.map_ingestion.nether_store_mib`) live in a",
+              "`integrations.map_ingestion.nether_store_mib`, `far_players.extend_far_plane`) live in a",
               "sidecar file beside the selected client file (`lss-client-experimental.yaml` or",
               "`vss-client-experimental.yaml`), so the main client file stays readable by v0.16.0.",
               "The sidecar holds only nondefault values; deleting it restores the defaults. Allow DH",
