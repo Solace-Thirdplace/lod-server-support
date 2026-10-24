@@ -140,6 +140,27 @@ class PluginYmlContractTest {
     }
 
     @Test
+    void bothMapIngestionExemptionNodesAreDeclaredDefaultFalse() {
+        // Map-ingestion permission plan §2: a GRANT model (holding EITHER spelling exempts the
+        // player from privacy.request_no_map_ingestion). Bukkit resolves an UNDECLARED node to
+        // the op default, so a lost declaration — or a default flipped to op — would silently
+        // exempt every op on a server that turned the request on; both spellings ship in both
+        // jars for the LSS<->VSS swap.
+        assertEquals("false", yml.getString("permissions/lss.map_ingestion/default"),
+                "lss.map_ingestion must be declared default false (nobody is exempt until granted)");
+        assertEquals("false", yml.getString("permissions/vss.map_ingestion/default"),
+                "vss.map_ingestion must be declared default false");
+        for (String node : new String[]{"lss.map_ingestion", "vss.map_ingestion"}) {
+            String description = yml.getString("permissions/" + node + "/description");
+            assertNotNull(description, node + " must say what it does");
+            assertTrue(description.contains("privacy.request_no_map_ingestion"),
+                    node + "'s description must name the request it exempts from: " + description);
+        }
+        assertEquals("lss.map_ingestion", dev.vox.lss.common.LSSPermissions.MAP_INGESTION_LSS);
+        assertEquals("vss.map_ingestion", dev.vox.lss.common.LSSPermissions.MAP_INGESTION_VSS);
+    }
+
+    @Test
     void apiVersionMatchesTheDevBundleMinecraftVersion() throws Exception {
         // V-1/P3: the SOURCE carries the template token; the value IS gradle.properties'
         // minecraft_version by construction (paper processResources), so the lockstep

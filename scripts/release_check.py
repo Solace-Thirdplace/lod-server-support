@@ -495,6 +495,24 @@ def check_paper_jar(jar, problems):
                 problems.append(f"{base}: plugin.yml service-gate node {node!r} declares "
                                 f"default: {m.group(1)} — must be true (arming "
                                 "requireServicePermission alone must deny NOBODY)")
+        # Map-ingestion exemption nodes (map-ingestion permission plan §2/§6): the GRANT-model
+        # mirror — both spellings declared with `default: false`. An undeclared node falls back
+        # to Bukkit's op default and an `op` default exempts every op from
+        # privacy.request_no_map_ingestion the moment a server turns it on.
+        for node in ("lss.map_ingestion", "vss.map_ingestion"):
+            m = re.search(r"^  " + re.escape(node)
+                          + r":\s*\n(?:^    .*\n)*?^    default:\s*['\"]?(\w+)['\"]?\s*(?:#.*)?$",
+                          ymltext, re.MULTILINE)
+            if m is None:
+                problems.append(f"{base}: plugin.yml is missing the map-ingestion exemption node "
+                                f"{node!r} with an explicit default (both brand spellings "
+                                "must be declared — Bukkit resolves an undeclared node to "
+                                "the op default, exempting every op)")
+            elif m.group(1) != "false":
+                problems.append(f"{base}: plugin.yml map-ingestion exemption node {node!r} "
+                                f"declares default: {m.group(1)} — must be false (an op or "
+                                "true default exempts players from "
+                                "privacy.request_no_map_ingestion nobody granted)")
     if not any(n.startswith("dev/vox/lss/common/") and n.endswith(".class") for n in names):
         problems.append(f"{base}: shaded jar missing the shared common/ classes")
     if "paperweight-mappings-namespace: mojang" not in _manifest(jar):
@@ -1319,6 +1337,17 @@ def check_vss_pair_paper(lss_jar, vss_jar, problems):
                                 f"{tok!r} — BOTH brand spellings must be declared in BOTH jars "
                                 "(an undeclared node resolves to Bukkit's op default TRUE, so a "
                                 "dropped declaration silently hides every op as a far player)")
+    # The map-ingestion exemption nodes (map-ingestion permission plan §6): the same dual-jar
+    # belt — a widened rewrite renaming lss.map_ingestion -> vss.map_ingestion would leave the
+    # VSS jar's lss. spelling undeclared, i.e. op-default TRUE, and the OR-read would then
+    # exempt every op from privacy.request_no_map_ingestion.
+    for jar_text, jar_name in ((ltext, os.path.basename(lss_jar)), (vtext, vbase)):
+        for tok in ("lss.map_ingestion", "vss.map_ingestion"):
+            if tok not in jar_text:
+                problems.append(f"{jar_name}: plugin.yml is missing the map-ingestion exemption "
+                                f"node {tok!r} — BOTH brand spellings must be declared in BOTH "
+                                "jars (an undeclared node resolves to Bukkit's op default TRUE, "
+                                "exempting every op from privacy.request_no_map_ingestion)")
 
 
 # ---------------------------------------------------------------- brand.properties + wire
@@ -2078,7 +2107,9 @@ def _selftest_fixtures():
 
         GATE_NODES_YML = ("permissions:\n"
                           "  lss.use:\n    description: receive LOD data\n    default: true\n"
-                          "  vss.use:\n    description: receive LOD data\n    default: true\n")
+                          "  vss.use:\n    description: receive LOD data\n    default: true\n"
+                          "  lss.map_ingestion:\n    description: exempt\n    default: false\n"
+                          "  vss.map_ingestion:\n    description: exempt\n    default: false\n")
         good_pap = os.path.join(td, "lod-server-support-paper.jar")
         _make_jar(good_pap, {
             "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\n" + FOLIA_YML
@@ -2116,6 +2147,31 @@ def _selftest_fixtures():
         check_paper_jar(flipped_pap, p)
         check(any("declares default: op" in m and "vss.use" in m for m in p),
               f"flipped default not caught: {p}")
+        # The map-ingestion exemption pair (map-ingestion permission plan §6): a missing
+        # spelling and an `op` default must both be caught, unconditionally.
+        mapless_pap = os.path.join(td, "lod-server-support-paper-mapless.jar")
+        _make_jar(mapless_pap, {
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\n" + FOLIA_YML
+                          + GATE_NODES_YML.replace("  vss.map_ingestion:\n    description: exempt\n    default: false\n", ""),
+            "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
+            "dev/vox/lss/common/PositionUtil.class": "x",
+        }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
+        p = []
+        check_paper_jar(mapless_pap, p)
+        check(any("missing the map-ingestion exemption node 'vss.map_ingestion'" in m for m in p),
+              f"missing vss.map_ingestion node not caught: {p}")
+        opmap_pap = os.path.join(td, "lod-server-support-paper-opmap.jar")
+        _make_jar(opmap_pap, {
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\n" + FOLIA_YML
+                          + GATE_NODES_YML.replace("  lss.map_ingestion:\n    description: exempt\n    default: false\n",
+                                                   "  lss.map_ingestion:\n    description: exempt\n    default: op\n"),
+            "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
+            "dev/vox/lss/common/PositionUtil.class": "x",
+        }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
+        p = []
+        check_paper_jar(opmap_pap, p)
+        check(any("declares default: op" in m and "lss.map_ingestion" in m for m in p),
+              f"op-default map-ingestion node not caught: {p}")
 
         # a paper jar whose folia-supported flag disagrees with the line's Folia fact must
         # be caught (lost on a Folia line = silently stops loading there; declared on a
@@ -2436,7 +2492,14 @@ def _selftest_fixtures():
                           "    default: true\n"
                           "  vss.use:\n"
                           "    description: receive LOD data (VSS spelling)\n"
-                          "    default: true\n")
+                          "    default: true\n"
+                          # Map-ingestion exemption nodes, same dual-spelling rule (default false).
+                          "  lss.map_ingestion:\n"
+                          "    description: exempt\n"
+                          "    default: false\n"
+                          "  vss.map_ingestion:\n"
+                          "    description: exempt (VSS spelling)\n"
+                          "    default: false\n")
         # Mirror vssJar's exact rewrites (2026-08-13 shape: name/author rebrand too; the
         # farplayers + service-gate nodes are deliberately NOT renamed — both
         # spellings ship in both jars).
@@ -2512,6 +2575,16 @@ def _selftest_fixtures():
         check_vss_pair_paper(pair_lss_pap, pair_linecount_vpap, p)
         check(any("line count differs" in m for m in p),
               f"paper line-count change not caught: {p}")
+
+        # a widened rewrite renaming lss.map_ingestion -> vss.map_ingestion (in place, so the
+        # line count holds) MUST fail: the VSS jar's lss. spelling would be op-default TRUE
+        pair_maprename_vpap = os.path.join(td, "pair-maprename-vss-paper.jar")
+        _make_jar(pair_maprename_vpap, {"plugin.yml": VSS_PLUGIN_YML.replace(
+            "  lss.map_ingestion:", "  vss.map_ingestion:", 1)})
+        p = []
+        check_vss_pair_paper(pair_lss_pap, pair_maprename_vpap, p)
+        check(any("missing the map-ingestion exemption node 'lss.map_ingestion'" in m for m in p),
+              f"renamed map-ingestion node not caught: {p}")
 
         # ---- brand.properties (both platforms) ----
         BRAND_LSS_TXT = ("shortName=LSS\ndisplayName=LOD Server Support\n"
@@ -2899,7 +2972,9 @@ def _selftest_fixtures():
                   "  lss.farplayers.hidden:\n    description: hidden\n    default: false\n"
                   "  vss.farplayers.hidden:\n    description: hidden\n    default: false\n"
                   "  lss.use:\n    description: receive LOD data\n    default: true\n"
-                  "  vss.use:\n    description: receive LOD data\n    default: true\n")
+                  "  vss.use:\n    description: receive LOD data\n    default: true\n"
+                  "  lss.map_ingestion:\n    description: exempt\n    default: false\n"
+                  "  vss.map_ingestion:\n    description: exempt\n    default: false\n")
         # The 2026-08-13 rewrite shape: name/author rebrand; the dual-spelling
         # farplayers + service-gate nodes are NOT renamed.
         PY_VSS = (PY_LSS
