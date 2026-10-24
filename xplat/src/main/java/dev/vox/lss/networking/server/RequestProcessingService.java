@@ -70,31 +70,49 @@ public class RequestProcessingService {
     /** The map-ingestion exemption read (map-ingestion permission plan §3.1) — the ONE
      *  named fail-closed exception to the service-gate doctrine above (default FALSE, a
      *  throwing backend answers not exempt). Seam-injected for tests; production reads
-     *  {@link #mapIngestionExemptViaLoader}. The handshake gate, the grant replay and the
-     *  sweeps all read it through {@link #mapIngestionExempt}. */
-    private java.util.function.Predicate<ServerPlayer> mapIngestionExemptProbe =
-            RequestProcessingService::mapIngestionExemptViaLoader;
+     *  {@link #mapIngestionExemptionViaLoader}. The handshake gate, the grant replay and
+     *  the sweeps all read it through {@link #mapIngestionExemption} (three states: the
+     *  10 s sweep keeps a session's last-sent flags on a FAILED read) or its fail-closed
+     *  boolean form {@link #mapIngestionExempt}. */
+    private java.util.function.Function<ServerPlayer, dev.vox.lss.common.MapPolicy.Exemption>
+            mapIngestionExemptProbe = RequestProcessingService::mapIngestionExemptionViaLoader;
 
     /** The production exemption read: either brand spelling through the loader seam with
      *  default FALSE — no provider (a Fabric server without a permissions mod) means
-     *  nobody is exempt. LoaderPermissionSeamContractTest allowlists exactly this
-     *  {@code checkPermission} call as the fail-closed exception. */
-    static boolean mapIngestionExemptViaLoader(ServerPlayer player) {
-        return dev.vox.lss.common.MapPolicy.holdsExemption(
+     *  nobody is exempt; a throwing backend is {@code FAILED}. LoaderPermissionSeamContractTest
+     *  allowlists exactly this {@code checkPermission} call as the fail-closed exception. */
+    static dev.vox.lss.common.MapPolicy.Exemption mapIngestionExemptionViaLoader(ServerPlayer player) {
+        return dev.vox.lss.common.MapPolicy.readExemption(
                 node -> dev.vox.lss.platform.LoaderServices.get().checkPermission(player, node, false));
     }
 
-    /** Test seam; {@code null} restores the production read. */
+    /** The production read's fail-closed boolean form (the glue's read without a service). */
+    static boolean mapIngestionExemptViaLoader(ServerPlayer player) {
+        return mapIngestionExemptionViaLoader(player).exempt();
+    }
+
+    /** Test seam; {@code null} restores the production read. A throwing probe reads FAILED. */
     public void setMapIngestionExemptProbeForTest(java.util.function.Predicate<ServerPlayer> probe) {
-        this.mapIngestionExemptProbe = probe != null ? probe
-                : RequestProcessingService::mapIngestionExemptViaLoader;
+        this.mapIngestionExemptProbe = probe != null
+                ? player -> dev.vox.lss.common.MapPolicy.Exemption.of(() -> probe.test(player))
+                : RequestProcessingService::mapIngestionExemptionViaLoader;
+    }
+
+    /** The exemption in three states: a throwing or absent read is {@code FAILED}. */
+    public dev.vox.lss.common.MapPolicy.Exemption mapIngestionExemption(ServerPlayer player) {
+        try {
+            var read = this.mapIngestionExemptProbe.apply(player);
+            return read != null ? read : dev.vox.lss.common.MapPolicy.Exemption.FAILED;
+        } catch (Exception e) {
+            return dev.vox.lss.common.MapPolicy.Exemption.FAILED;
+        }
     }
 
     /** Whether {@code player} holds the map-ingestion exemption — fail-closed: a throwing
-     *  read is not exempt. */
+     *  (FAILED) read is not exempt. */
     public boolean mapIngestionExempt(ServerPlayer player) {
         try {
-            return this.mapIngestionExemptProbe.test(player);
+            return mapIngestionExemption(player).exempt();
         } catch (Exception e) {
             return false;
         }
@@ -106,6 +124,14 @@ public class RequestProcessingService {
     public boolean denyMapIngestionFor(ServerPlayer player, LSSServerConfig config) {
         return dev.vox.lss.common.MapPolicy.decide(config.requestNoMapIngestion(),
                 () -> mapIngestionExempt(player)).deny();
+    }
+
+    /** The same decision from an exemption the caller already read (the sweep's
+     *  three-state read; a FAILED read is not exempt here). */
+    public boolean denyMapIngestionFor(LSSServerConfig config,
+                                       dev.vox.lss.common.MapPolicy.Exemption exemption) {
+        return dev.vox.lss.common.MapPolicy.decide(config.requestNoMapIngestion(),
+                exemption::exempt).deny();
     }
 
     /** The map policy's chat-line send (map-policy plan A3.3): a system message on the
@@ -844,9 +870,14 @@ public class RequestProcessingService {
             // Map-policy plan A3.4: REVOKE FIRST — a session about to lose service must
             // not first get an enabled=true manager rebuild from the re-push below. -1 on
             // an unchanged policy: a later reload must not repeat this revision's count.
-            settingsMapPolicyRevoked = mapPolicyChanged ? runMapPolicySweep(serviceConfig) : -1;
+            // A distance/generation change re-pushes every CURRENT session in full below, and
+            // that push carries (and records) each one's flags: the sweep then leaves the
+            // capable sessions to it, so an arming reload never pushes one twice.
+            boolean fullRepush = generationChanged || !advertisedLod.equals(next.lod());
+            settingsMapPolicyRevoked = mapPolicyChanged
+                    ? runMapPolicySweep(serviceConfig, !fullRepush) : -1;
             settingsMapPolicyArmed = mapPolicy;
-            if (generationChanged || !advertisedLod.equals(next.lod()))
+            if (fullRepush)
                 settingsLegacyReconnects = repushSessionConfig()[1];
             else if (mapPolicyChanged)
                 repushSessionConfig(true); // the flags change alone; legacy sessions are not told
@@ -1445,9 +1476,20 @@ public class RequestProcessingService {
      * until rejoin, where the handshake decides them, and they have no map ingestion to
      * leak. Caches the exempt count for the diag line. Server thread.
      *
+     * <p>A FAILED exemption read (a throwing permission backend) keeps the flags a capable
+     * session was last sent — no push, no flip — and the next sweep reads again; the
+     * handshake and the reload's re-push stay fail-closed.
+     *
      * @return how many sessions this pass revoked
      */
     public int runMapPolicySweep(LSSServerConfig config) {
+        return runMapPolicySweep(config, true);
+    }
+
+    /** @param pushCapable false when the caller's full re-push follows and tells every
+     *                     capable session its flags (an arming reload that also changes
+     *                     distance or generation): the capable pass then only counts */
+    public int runMapPolicySweep(LSSServerConfig config, boolean pushCapable) {
         if (!config.requestNoMapIngestion()) return 0;
         var gateState = this.serviceGateState;
         int revoked = 0;
@@ -1503,9 +1545,19 @@ public class RequestProcessingService {
         for (var state : capable) {
             var player = state.getPlayer();
             UUID uuid = state.getPlayerUUID();
-            boolean denyMapIngestion = denyMapIngestionFor(player, config);
+            Boolean lastSent = gateState.lastMapFlagsSent(uuid);
+            var exemption = mapIngestionExemption(player);
+            if (exemption == dev.vox.lss.common.MapPolicy.Exemption.FAILED && lastSent != null) {
+                // Keep what the session was last told: a transient backend error must not
+                // flip a granted player's map (nor push anything); the next sweep re-reads.
+                // A session never told any flags has nothing to keep: fail-closed below.
+                if (Boolean.FALSE.equals(lastSent)) exempt++;
+                continue;
+            }
+            boolean denyMapIngestion = denyMapIngestionFor(config, exemption);
             if (!denyMapIngestion) exempt++;
-            if (Boolean.valueOf(denyMapIngestion).equals(gateState.lastMapFlagsSent(uuid))) {
+            if (!pushCapable) continue; // the caller's full re-push tells it
+            if (Boolean.valueOf(denyMapIngestion).equals(lastSent)) {
                 continue; // nothing changed: no push (the client keeps its flag)
             }
             int dist = lodDistanceFor(player);
