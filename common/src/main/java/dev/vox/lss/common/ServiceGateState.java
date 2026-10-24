@@ -43,6 +43,16 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@code map_policy_refused}), and the policy's once-per-connection chat line has its own
  * latch (a registration clears the denial-log latch, so it cannot share it).
  *
+ * <p><b>Map-ingestion exemption</b> (map-ingestion permission plan §3.3/§3.4): three more
+ * session-scoped structures. The LAST FLAGS SENT per session — written at every
+ * flag-carrying send, read by the map-policy sweep so a capable session is pushed only on
+ * a real change; it lives HERE (UUID-keyed, cleared on disconnect), never on the
+ * per-dimension request state, which is rebuilt on every dimension change. The EXEMPT
+ * ADMISSIONS — sessions without the capability bit that were served because they held the
+ * exemption while the policy was on: older clients are decided at handshake only, so the
+ * sweep never revokes them mid-session (a grant or revoke applies at their next join).
+ * And the sweep's cached {@code exempt=} count for the diag line.
+ *
  * <p>All structures are concurrent: handshakes may run on region threads (Folia)
  * while the pump sweeps.
  */
@@ -77,6 +87,59 @@ public final class ServiceGateState {
     private final Map<UUID, Integer> revocationStreaks = new ConcurrentHashMap<>();
     private final AtomicLong permissionDenied = new AtomicLong();
     private final AtomicLong mapPolicyRefused = new AtomicLong();
+    /** uuid → whether the last flag-carrying SessionConfig told it to deny map ingestion. */
+    private final Map<UUID, Boolean> mapFlagsSent = new ConcurrentHashMap<>();
+    /** Sessions without the capability bit admitted under the exemption (decided at handshake). */
+    private final Set<UUID> mapPolicyExemptAdmissions = ConcurrentHashMap.newKeySet();
+    private volatile int mapPolicyExemptCount;
+
+    /**
+     * Records a flag-carrying send (map-ingestion permission plan §3.3): only a frame that
+     * actually carries the {@code sessionFlags} field counts — a version-20 frame to a
+     * session that declared {@code CAPABILITY_MAP_POLICY} (the encoder's own guard). Every
+     * other frame is a no-op, so call sites record unconditionally after a successful send.
+     */
+    public void noteMapFlagsSent(UUID uuid, int protocolVersion, int capabilities,
+                                 boolean denyMapIngestion) {
+        if (protocolVersion != LSSConstants.PROTOCOL_VERSION
+                || (capabilities & LSSConstants.CAPABILITY_MAP_POLICY) == 0) {
+            return;
+        }
+        this.mapFlagsSent.put(uuid, denyMapIngestion);
+    }
+
+    /** The deny flag the session was last sent, or null when no flag-carrying frame has
+     *  been sent on this connection. */
+    public Boolean lastMapFlagsSent(UUID uuid) {
+        return this.mapFlagsSent.get(uuid);
+    }
+
+    /** Sets whether {@code uuid}'s session was admitted under the exemption without the
+     *  capability bit (written at every handshake registration; true only while the policy
+     *  is on). */
+    public void setMapPolicyExemptAdmission(UUID uuid, boolean admitted) {
+        if (admitted) this.mapPolicyExemptAdmissions.add(uuid);
+        else this.mapPolicyExemptAdmissions.remove(uuid);
+    }
+
+    public boolean isMapPolicyExemptAdmission(UUID uuid) {
+        return this.mapPolicyExemptAdmissions.contains(uuid);
+    }
+
+    /** The policy was turned off: the admissions describe an episode that ended — a later
+     *  arm decides every session afresh. */
+    public void clearMapPolicyExemptAdmissions() {
+        this.mapPolicyExemptAdmissions.clear();
+    }
+
+    /** The {@code MapPolicy:} line's {@code exempt=}: set by the enforcement sweep. */
+    public void setMapPolicyExemptCount(int count) {
+        this.mapPolicyExemptCount = count;
+    }
+
+    public int mapPolicyExemptCount() {
+        return this.mapPolicyExemptCount;
+    }
 
     /** The once-per-episode log claim — see {@link PlayerServiceGate#claimDenialLog}. */
     public boolean claimDenialLog(UUID uuid) {
@@ -171,6 +234,8 @@ public final class ServiceGateState {
         this.denialLogged.remove(uuid);
         this.mapPolicyNoticed.remove(uuid);
         this.revocationStreaks.remove(uuid);
+        this.mapFlagsSent.remove(uuid);
+        this.mapPolicyExemptAdmissions.remove(uuid);
     }
 
     /** Server stop / plugin disable: everything session-scoped clears. */
@@ -179,6 +244,9 @@ public final class ServiceGateState {
         this.denialLogged.clear();
         this.mapPolicyNoticed.clear();
         this.revocationStreaks.clear();
+        this.mapFlagsSent.clear();
+        this.mapPolicyExemptAdmissions.clear();
+        this.mapPolicyExemptCount = 0;
     }
 
     /** Whether the memo remembers {@code uuid} as denied. */

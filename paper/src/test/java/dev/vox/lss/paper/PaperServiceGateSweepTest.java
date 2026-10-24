@@ -92,7 +92,7 @@ class PaperServiceGateSweepTest {
             if (throwing.contains(p.getUUID())) throw new IllegalStateException("backend exploded");
             return !denied.contains(p.getUUID());
         });
-        service.setSessionConfigSender((p, cfg, enabled, caps) ->
+        service.setSessionConfigSender((p, cfg, enabled, caps, deny) ->
                 sentConfigs.add(new Object[]{p.getUUID(), enabled}));
         service.setHandshakeReplayer((p, remembered) -> replays.add(remembered));
     }

@@ -20,6 +20,9 @@ import java.util.List;
  *       it changes nothing until an admin grants a negative.</li>
  *   <li>{@code lss.farplayers.hidden} / {@code vss.farplayers.hidden}: FALSE — the
  *       grant-model privacy lever; both spellings, for the LSS↔VSS jar swap.</li>
+ *   <li>{@code lss.map_ingestion} / {@code vss.map_ingestion}: FALSE — the grant-model
+ *       exemption from {@code privacy.request_no_map_ingestion} (map-ingestion permission
+ *       plan §2); both spellings.</li>
  *   <li>{@code <brand>.admin}: NO default (UNDEFINED), so Sponge's default service falls
  *       back to op status — but only for ops at or above the server's
  *       {@code op-permission-level} (default 4), unlike Paper's {@code default: op},
@@ -43,7 +46,12 @@ public final class SpongePermissions {
                 new Node(LSSPermissions.SERVICE_LSS,
                         "Receive LOD data when requireServicePermission is enabled", Tristate.TRUE),
                 new Node(LSSPermissions.SERVICE_VSS,
-                        "Receive LOD data when requireServicePermission is enabled (VSS spelling)", Tristate.TRUE));
+                        "Receive LOD data when requireServicePermission is enabled (VSS spelling)", Tristate.TRUE),
+                new Node(LSSPermissions.MAP_INGESTION_LSS,
+                        "Exempts the player from privacy.request_no_map_ingestion (may add distant terrain to world maps)",
+                        Tristate.FALSE),
+                new Node(LSSPermissions.MAP_INGESTION_VSS,
+                        "Exempts the player from privacy.request_no_map_ingestion (VSS spelling)", Tristate.FALSE));
     }
 
     static void register(PermissionService service, PluginContainer container) {

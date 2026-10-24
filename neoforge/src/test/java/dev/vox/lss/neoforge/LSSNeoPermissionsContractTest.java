@@ -57,6 +57,18 @@ class LSSNeoPermissionsContractTest {
     }
 
     @Test
+    void theMapIngestionNodesAreMintedFromTheSharedConstantsAsDenyNodes() throws IOException {
+        // Map-ingestion permission plan §2/§3.1: a grant-model exemption, default FALSE — a
+        // default-TRUE resolver would exempt everyone from privacy.request_no_map_ingestion on
+        // a provider-less NeoForge server; an unregistered node would answer the caller's
+        // default without ever querying LuckPerms (nobody could be granted it).
+        String src = read("neoforge/src/main/java/dev/vox/lss/neoforge/LSSNeoPermissions.java");
+        assertTrue(src.contains("MAP_INGESTION_LSS = denyNode(LSSPermissions.MAP_INGESTION_LSS)")
+                        && src.contains("MAP_INGESTION_VSS = denyNode(LSSPermissions.MAP_INGESTION_VSS)"),
+                "both exemption spellings are minted from the shared constants as deny (default-false) nodes");
+    }
+
+    @Test
     void theGatherListenerIsWiredUnconditionally() throws IOException {
         String mod = read("neoforge/src/main/java/dev/vox/lss/neoforge/LSSNeoMod.java");
         assertTrue(mod.contains("PermissionGatherEvent.Nodes.class"),
@@ -64,8 +76,9 @@ class LSSNeoPermissionsContractTest {
         assertTrue(mod.contains("LSSNeoPermissions::onGatherNodes"),
                 "…routing to the node registration");
         String perms = read("neoforge/src/main/java/dev/vox/lss/neoforge/LSSNeoPermissions.java");
-        assertTrue(perms.contains("event.addNodes(SERVICE_LSS, SERVICE_VSS, FARPLAYERS_HIDDEN_LSS, FARPLAYERS_HIDDEN_VSS)"),
-                "all four nodes register — a missing one throws at its first query");
+        assertTrue(perms.replaceAll("\\s+", " ").contains("event.addNodes(SERVICE_LSS, SERVICE_VSS, FARPLAYERS_HIDDEN_LSS, "
+                        + "FARPLAYERS_HIDDEN_VSS, MAP_INGESTION_LSS, MAP_INGESTION_VSS);"),
+                "all six nodes register — exactly this list; a missing one is never queried");
     }
 
     @Test
@@ -74,12 +87,14 @@ class LSSNeoPermissionsContractTest {
         assertTrue(perms.contains("PermissionAPI.getPermission(player, node)"),
                 "the query passes the REGISTERED node instances (PermissionNode equality is name+type,"
                         + " so this pins the routing, not identity)");
-        assertTrue(perms.contains("? SERVICE_LSS")
-                        && perms.contains("? SERVICE_VSS")
-                        && perms.contains("? FARPLAYERS_HIDDEN_LSS")
-                        && perms.contains("? FARPLAYERS_HIDDEN_VSS : null"),
-                "the string→node map covers exactly the four shared spellings; unknown "
-                        + "strings answer the default without querying");
+        assertTrue(perms.contains("LSSPermissions.SERVICE_LSS.equals(nodeName) ? SERVICE_LSS")
+                        && perms.contains("LSSPermissions.SERVICE_VSS.equals(nodeName) ? SERVICE_VSS")
+                        && perms.contains("LSSPermissions.FARPLAYERS_HIDDEN_LSS.equals(nodeName) ? FARPLAYERS_HIDDEN_LSS")
+                        && perms.contains("LSSPermissions.FARPLAYERS_HIDDEN_VSS.equals(nodeName) ? FARPLAYERS_HIDDEN_VSS")
+                        && perms.contains("LSSPermissions.MAP_INGESTION_LSS.equals(nodeName) ? MAP_INGESTION_LSS")
+                        && perms.contains("LSSPermissions.MAP_INGESTION_VSS.equals(nodeName) ? MAP_INGESTION_VSS : null"),
+                "the string→node map covers exactly the six shared spellings, each to its own "
+                        + "node; unknown strings answer the default without querying");
         String services = read("neoforge/src/main/java/dev/vox/lss/platform/NeoForgeLoaderServices.java");
         assertTrue(services.contains("LSSNeoPermissions.check(player, node, defaultValue)"),
                 "the LoaderServices override must route to the native rung");

@@ -66,9 +66,26 @@ public interface PlayerServiceGate {
     }
 
     /**
+     * Whether the handshaking player holds the map-ingestion exemption
+     * ({@code lss.map_ingestion} / {@code vss.map_ingestion}, either spelling — the
+     * map-ingestion permission plan §3.1): while {@code privacy.request_no_map_ingestion}
+     * is on, an exempt player is treated as if it were off. A SEPARATE, FAIL-CLOSED read:
+     * {@link #hasPermission} answers TRUE on doubt (the service gate's doctrine), so the
+     * exemption never rides it — on a provider-less Fabric server or a throwing Folia read
+     * that would exempt everyone. Consulted only while the request is on.
+     *
+     * <p>The default — and so the {@link #OPEN} gate and test gates — answers false:
+     * nobody is exempt.
+     */
+    default boolean mapIngestionExempt() {
+        return false;
+    }
+
+    /**
      * The gate the pre-gate handshake overloads ride: permits everything, never logs,
      * remembers nothing — exactly the behavior of every build before
-     * {@code requireServicePermission} existed.
+     * {@code requireServicePermission} existed — and exempts nobody from the map policy
+     * (the default {@link #mapIngestionExempt}).
      *
      * <p><b>Test/legacy-overload only.</b> The production paths always build a real
      * gate; a production call site left on an OPEN overload would open the gate for
