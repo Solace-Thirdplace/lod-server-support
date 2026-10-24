@@ -198,7 +198,8 @@ class ClientOptionCatalogTest {
     void rendererOnlyOptionsAreConditionalAndSharingAlwaysVisible() {
         var renderOnly = allOptions().stream().filter(o -> o.visibility() == Visibility.RENDER_AVAILABLE).map(OptionSpec::id).toList();
         assertEquals(List.of(ClientOptionCatalog.ID_FAR_PLAYERS_ENABLED, ClientOptionCatalog.ID_FAR_PLAYERS_NAME_TAGS,
-                ClientOptionCatalog.ID_FAR_PLAYERS_FULL_BRIGHT, ClientOptionCatalog.ID_FAR_PLAYERS_RENDER_DISTANCE), renderOnly);
+                ClientOptionCatalog.ID_FAR_PLAYERS_FULL_BRIGHT, ClientOptionCatalog.ID_FAR_PLAYERS_RENDER_DISTANCE,
+                ClientOptionCatalog.ID_FAR_PLAYERS_EXTEND_FAR_PLANE), renderOnly);
         assertEquals(Visibility.ALWAYS, ClientOptionCatalog.find(ClientOptionCatalog.ID_FAR_PLAYERS_SHARE_SELF).orElseThrow().visibility());
         assertTrue(Visibility.RENDER_AVAILABLE.test(new MenuContext(false, false, true)));
         assertFalse(Visibility.RENDER_AVAILABLE.test(new MenuContext(true, true, false)));
@@ -210,11 +211,12 @@ class ClientOptionCatalogTest {
         assertEquals(List.of("lss:receive_server_lods", "lss:lod_distance", "lss:column_rate_limit",
                         "lss:join_slow_start", "lss:map_ingestion", "lss:lod_source", "lss:far_players_enabled",
                         "lss:far_players_share_self", "lss:far_players_name_tags",
-                        "lss:far_players_full_bright", "lss:far_players_render_distance"),
+                        "lss:far_players_full_bright", "lss:far_players_render_distance",
+                        "lss:far_players_extend_far_plane"),
                 allOptions().stream().map(OptionSpec::id).toList());
         // group shape + titles
         assertEquals(List.of(1, 1, 2, 2), ClientOptionCatalog.pages().get(0).groups().stream().map(g -> g.options().size()).toList());
-        assertEquals(List.of(5), ClientOptionCatalog.pages().get(1).groups().stream().map(g -> g.options().size()).toList());
+        assertEquals(List.of(6), ClientOptionCatalog.pages().get(1).groups().stream().map(g -> g.options().size()).toList());
         assertEquals("lss.config.page", ClientOptionCatalog.pages().get(0).titleKey());
         assertEquals("lss.config.far_players.page", ClientOptionCatalog.pages().get(1).titleKey());
         // impacts: HIGH on the master toggle, none on the LOD-distance slider, LOW elsewhere
