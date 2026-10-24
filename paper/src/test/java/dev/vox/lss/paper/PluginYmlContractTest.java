@@ -142,6 +142,27 @@ class PluginYmlContractTest {
     }
 
     @Test
+    void bothMapIngestionExemptionNodesAreDeclaredDefaultFalse() {
+        // Map-ingestion permission plan §2: a GRANT model (holding EITHER spelling exempts the
+        // player from privacy.request_no_map_ingestion). Bukkit resolves an UNDECLARED node to
+        // the op default, so a lost declaration — or a default flipped to op — would silently
+        // exempt every op on a server that turned the request on; both spellings ship in both
+        // jars for the LSS<->VSS swap.
+        assertEquals("false", yml.getString("permissions/lss.map_ingestion/default"),
+                "lss.map_ingestion must be declared default false (nobody is exempt until granted)");
+        assertEquals("false", yml.getString("permissions/vss.map_ingestion/default"),
+                "vss.map_ingestion must be declared default false");
+        for (String node : new String[]{"lss.map_ingestion", "vss.map_ingestion"}) {
+            String description = yml.getString("permissions/" + node + "/description");
+            assertNotNull(description, node + " must say what it does");
+            assertTrue(description.contains("privacy.request_no_map_ingestion"),
+                    node + "'s description must name the request it exempts from: " + description);
+        }
+        assertEquals("lss.map_ingestion", dev.vox.lss.common.LSSPermissions.MAP_INGESTION_LSS);
+        assertEquals("vss.map_ingestion", dev.vox.lss.common.LSSPermissions.MAP_INGESTION_VSS);
+    }
+
+    @Test
     void apiVersionMatchesTheDevBundleMinecraftVersion() throws Exception {
         // V-1/P3: the SOURCE carries the template token; the value IS gradle.properties'
         // minecraft_version by construction (paper processResources), so the lockstep
@@ -177,6 +198,37 @@ class PluginYmlContractTest {
                 "...and it must be true; a false/absent flag makes Folia refuse the jar");
         assertTrue(rawText.contains("folia-supported: true"),
                 "release_check.py greps the RAW line, so the source must carry that exact form");
+    }
+
+    @Test
+    void versionGuardRuleIsTemplatedFromMinecraftDependency() throws Exception {
+        // paper-version-guard-store-plan §3.1: the guard reads this key from the jar's own
+        // plugin.yml. The source keeps the placeholder (a support cut never edits this
+        // resource); the expanded copy must carry gradle.properties' minecraft_dependency,
+        // the same rule fabric.mod.json declares, and that rule must accept the version the
+        // jar is built for (or the guard would refuse its own server).
+        assertTrue(rawText.contains(LSSPaperPlugin.MINECRAFT_DEPENDENCY_KEY
+                        + ": '${minecraft_dependency}'"),
+                "plugin.yml must template the guard rule from minecraft_dependency, single-quoted");
+        var props = new Properties();
+        try (var in = Files.newInputStream(locate("gradle.properties"))) {
+            props.load(in);
+        }
+        String rule = props.getProperty("minecraft_dependency");
+        assertNotNull(rule, "gradle.properties must declare minecraft_dependency");
+        var expanded = new YamlConfiguration();
+        try (var in = LSSPaperPlugin.class.getResourceAsStream("/plugin.yml")) {
+            assertNotNull(in, "expanded plugin.yml must be on the test classpath");
+            expanded.loadFromString(new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+        }
+        assertEquals(rule, expanded.getString(LSSPaperPlugin.MINECRAFT_DEPENDENCY_KEY),
+                "processResources must expand the guard rule from gradle.properties");
+        assertTrue(dev.vox.lss.common.MinecraftVersionRule.parse(rule)
+                        .accepts(props.getProperty("minecraft_version")),
+                "the guard rule must accept the jar's own minecraft_version");
+        assertTrue(LSSPaperPlugin.MINECRAFT_DEPENDENCY_KEY.startsWith("lss-")
+                        && !LSSPaperPlugin.MINECRAFT_DEPENDENCY_KEY.contains("lsslod"),
+                "the key must survive the vssJar rewrite (which renames 'lsslod' and 'lss.admin')");
     }
 
     @Test

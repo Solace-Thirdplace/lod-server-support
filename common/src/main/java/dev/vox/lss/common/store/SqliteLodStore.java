@@ -166,12 +166,21 @@ public final class SqliteLodStore implements LodStoreService {
     // NOTE: no knownDimensions list — the sweep iterates the DIMS TABLE, so every
     // dimension the store holds rows for gets a freshness pass; a dim the resolver
     // cannot place fail-safe drops. A caller-frozen list exempted late-created worlds.
+    //
+    // Build marker (paper-version-guard-store-plan §3.2): buildMc is the Minecraft version
+    // the JAR was built for (BuildInfo), never the running server's (mcVersion) — a Paper
+    // jar for another version could run unguarded before 0.20.0 and poison the store under
+    // the running server's mc_version. platform is evidence only (paper/folia/fabric/
+    // neoforge/sponge). legacyStoreMigration decides, once, what happens to a store that
+    // predates the marker.
     public record Environment(Path storeDir, String mcVersion, int wireVersion,
                               Function<String, Path> regionDirResolver,
                               Function<String, String> maskFingerprintResolver,
                               int resweepSeconds, long maxDbBytes,
                               String registryFingerprint,
-                              String registryContentFingerprint) {
+                              String registryContentFingerprint,
+                              String buildMc, String platform,
+                              LegacyStoreMigration legacyStoreMigration) {
 
         /** Null fingerprints normalize to "" — the record's convention for "no
          *  evidence" (a null would NPE inside evaluateMeta/writeMeta, and the
@@ -180,6 +189,23 @@ public final class SqliteLodStore implements LodStoreService {
             registryFingerprint = registryFingerprint == null ? "" : registryFingerprint;
             registryContentFingerprint =
                     registryContentFingerprint == null ? "" : registryContentFingerprint;
+            java.util.Objects.requireNonNull(buildMc, "buildMc");
+            platform = platform == null ? "unknown" : platform;
+            java.util.Objects.requireNonNull(legacyStoreMigration, "legacyStoreMigration");
+        }
+
+        /** Pre-build-marker shape (tests; production passes the marker): the jar is taken
+         *  to be built for the running version, the platform is unknown, and an unmarked
+         *  store is refreshed in place (the pre-0.20.0 behavior). */
+        public Environment(Path storeDir, String mcVersion, int wireVersion,
+                           Function<String, Path> regionDirResolver,
+                           Function<String, String> maskFingerprintResolver,
+                           int resweepSeconds, long maxDbBytes,
+                           String registryFingerprint, String registryContentFingerprint) {
+            this(storeDir, mcVersion, wireVersion, regionDirResolver,
+                    maskFingerprintResolver, resweepSeconds, maxDbBytes,
+                    registryFingerprint, registryContentFingerprint,
+                    mcVersion, "unknown", LegacyStoreMigration.REFRESH);
         }
 
         /** Pre-content-fingerprint shape (v0.13.1 permutation plan §3.2): an empty
@@ -422,8 +448,14 @@ public final class SqliteLodStore implements LodStoreService {
     private void openOrRecreateWriter() throws Exception {
         try {
             openWriter();
-            maybeLazyUpgradeFromV19();
-            MetaVerdict verdict = evaluateMeta();
+            // The build marker is decided ONCE and FIRST (paper-version-guard-store-plan
+            // §3.2): before the v0.9 lazy upgrade, whose writeMeta would otherwise stamp
+            // the marker onto an unmarked Paper store and launder it as trusted.
+            MetaVerdict verdict = evaluateBuildMarker();
+            if (verdict == null) {
+                maybeLazyUpgradeFromV19();
+                verdict = evaluateMeta();
+            }
             this.lastMetaVerdict = verdict;
             switch (verdict.kind()) {
                 case OPEN -> { }
@@ -588,6 +620,40 @@ public final class SqliteLodStore implements LodStoreService {
         return false;
     }
 
+    /** Meta key: the Minecraft version the writing jar was BUILT for (a core key). */
+    static final String META_BUILD_MC = "build_mc";
+    /** Meta key: the writing platform (evidence only, never compared). */
+    static final String META_PLATFORM = "platform";
+    static final String LEGACY_DROP_DETAIL = "store written before build tracking; rebuilding once";
+
+    /**
+     * The one-shot rule for a store that predates the build marker (plan §3.2). Returns a
+     * DROP verdict, or {@code null} to continue down the ordinary ladder. A store that
+     * carries the marker continues untouched: {@code evaluateMeta} compares it as a core
+     * key, so a store written by a jar for another Minecraft version drops there.
+     */
+    private MetaVerdict evaluateBuildMarker() throws SQLException {
+        if (readMetaMap().containsKey(META_BUILD_MC)) return null;
+        if (this.env.legacyStoreMigration() == LegacyStoreMigration.DROP) {
+            return MetaVerdict.drop(LEGACY_DROP_DETAIL);
+        }
+        // REFRESH: this loader refuses a wrong-version jar, so the unmarked store was written
+        // by a matching one. Stamp the marker, keep the rows.
+        try (PreparedStatement ps = this.writer.prepareStatement(
+                "INSERT OR REPLACE INTO meta (k, v) VALUES (?,?)")) {
+            ps.setString(1, META_BUILD_MC);
+            ps.setString(2, this.env.buildMc());
+            ps.executeUpdate();
+            ps.setString(1, META_PLATFORM);
+            ps.setString(2, this.env.platform());
+            ps.executeUpdate();
+        }
+        this.writer.commit();
+        LSSLogger.info("LOD store: stamped the build marker (build_mc=" + this.env.buildMc()
+                + ") on a store written before build tracking — store kept");
+        return null;
+    }
+
     /** The open-time meta verdict (store-registry-permutation-plan.md §3.3). */
     record MetaVerdict(Kind kind, String detail) {
         enum Kind { OPEN, REFRESH, KEEP_PERMUTED, DROP }
@@ -608,6 +674,7 @@ public final class SqliteLodStore implements LodStoreService {
         core.put("store_layout", STORE_LAYOUT);
         core.put("wire_format_version", String.valueOf(this.env.wireVersion()));
         core.put("mc_version", this.env.mcVersion());
+        core.put(META_BUILD_MC, this.env.buildMc());
         core.put("codec", StoreCodec.NAME);
         var drifted = new java.util.ArrayList<String>();
         for (var e : core.entrySet()) {
@@ -701,6 +768,10 @@ public final class SqliteLodStore implements LodStoreService {
                     "schema_version", String.valueOf(SCHEMA_VERSION),
                     "wire_format_version", String.valueOf(this.env.wireVersion()),
                     "mc_version", this.env.mcVersion(),
+                    // Build marker (paper-version-guard-store-plan §3.2): the jar's
+                    // build version (core key) and the writing platform (evidence).
+                    META_BUILD_MC, this.env.buildMc(),
+                    META_PLATFORM, this.env.platform(),
                     "codec", StoreCodec.NAME,
                     // Structural layout key (C4 mega-plan): evaluateMeta compares meta
                     // only, never table structure — a C1..C3-era dev store (meta 4∧20,

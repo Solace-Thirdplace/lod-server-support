@@ -453,6 +453,18 @@ def check_paper_jar(jar, problems):
         if not re.search(r"^folia-supported:\s*true\s*$", ymltext, re.MULTILINE):
             problems.append(f"{base}: plugin.yml lost folia-supported: true — Folia servers "
                             "will refuse this jar")
+        # Version guard (paper-version-guard-store-plan §3.1): the plugin reads this rule from
+        # its own plugin.yml and REFUSES to enable without it, so a jar that lost or
+        # mis-expanded the line is dead on every server.
+        rule = _minecraft_dependency()
+        if rule is None:
+            problems.append(f"{base}: cannot read minecraft_dependency from gradle.properties "
+                            "to check plugin.yml's version guard")
+        elif not re.search(r"^lss-minecraft-dependency:\s*'" + re.escape(rule) + r"'\s*$",
+                           ymltext, re.MULTILINE):
+            problems.append(f"{base}: plugin.yml lss-minecraft-dependency must be '{rule}' "
+                            "(gradle.properties minecraft_dependency) — without it the version "
+                            "guard refuses to enable the plugin")
         # Service-gate nodes (plan §2.6 / §8 O1-m13): UNCONDITIONAL — the dual-jar pair
         # check below only runs when a VSS jar exists, and it pins token PRESENCE, not
         # the declared default. Both spellings must be declared AND both must carry the
@@ -472,6 +484,24 @@ def check_paper_jar(jar, problems):
                 problems.append(f"{base}: plugin.yml service-gate node {node!r} declares "
                                 f"default: {m.group(1)} — must be true (arming "
                                 "requireServicePermission alone must deny NOBODY)")
+        # Map-ingestion exemption nodes (map-ingestion permission plan §2/§6): the GRANT-model
+        # mirror — both spellings declared with `default: false`. An undeclared node falls back
+        # to Bukkit's op default and an `op` default exempts every op from
+        # privacy.request_no_map_ingestion the moment a server turns it on.
+        for node in ("lss.map_ingestion", "vss.map_ingestion"):
+            m = re.search(r"^  " + re.escape(node)
+                          + r":\s*\n(?:^    .*\n)*?^    default:\s*['\"]?(\w+)['\"]?\s*(?:#.*)?$",
+                          ymltext, re.MULTILINE)
+            if m is None:
+                problems.append(f"{base}: plugin.yml is missing the map-ingestion exemption node "
+                                f"{node!r} with an explicit default (both brand spellings "
+                                "must be declared — Bukkit resolves an undeclared node to "
+                                "the op default, exempting every op)")
+            elif m.group(1) != "false":
+                problems.append(f"{base}: plugin.yml map-ingestion exemption node {node!r} "
+                                f"declares default: {m.group(1)} — must be false (an op or "
+                                "true default exempts players from "
+                                "privacy.request_no_map_ingestion nobody granted)")
     if not any(n.startswith("dev/vox/lss/common/") and n.endswith(".class") for n in names):
         problems.append(f"{base}: shaded jar missing the shared common/ classes")
     if "paperweight-mappings-namespace: mojang" not in _manifest(jar):
@@ -1199,7 +1229,8 @@ def check_vss_pair_fabric(lss_jar, vss_jar, problems):
 # `name:` LEFT this list 2026-08-13 (XANTHA's release patch): the VSS plugin presents as
 # VoxyServerSide — check_vss_paper_identity pins the rebranded value instead, and the
 # data-folder fork it causes is documented there.
-VSS_PAPER_IDENTITY_PREFIXES = ("main:", "api-version:", "folia-supported:", "version:")
+VSS_PAPER_IDENTITY_PREFIXES = ("main:", "api-version:", "folia-supported:", "version:",
+                               "lss-minecraft-dependency:")
 
 
 def check_vss_pair_paper(lss_jar, vss_jar, problems):
@@ -1296,6 +1327,17 @@ def check_vss_pair_paper(lss_jar, vss_jar, problems):
                                 f"{tok!r} — BOTH brand spellings must be declared in BOTH jars "
                                 "(an undeclared node resolves to Bukkit's op default TRUE, so a "
                                 "dropped declaration silently hides every op as a far player)")
+    # The map-ingestion exemption nodes (map-ingestion permission plan §6): the same dual-jar
+    # belt — a widened rewrite renaming lss.map_ingestion -> vss.map_ingestion would leave the
+    # VSS jar's lss. spelling undeclared, i.e. op-default TRUE, and the OR-read would then
+    # exempt every op from privacy.request_no_map_ingestion.
+    for jar_text, jar_name in ((ltext, os.path.basename(lss_jar)), (vtext, vbase)):
+        for tok in ("lss.map_ingestion", "vss.map_ingestion"):
+            if tok not in jar_text:
+                problems.append(f"{jar_name}: plugin.yml is missing the map-ingestion exemption "
+                                f"node {tok!r} — BOTH brand spellings must be declared in BOTH "
+                                "jars (an undeclared node resolves to Bukkit's op default TRUE, "
+                                "exempting every op from privacy.request_no_map_ingestion)")
 
 
 # ---------------------------------------------------------------- brand.properties + wire
@@ -1782,6 +1824,19 @@ def _minecraft_version(root=ROOT):
     return None
 
 
+def _minecraft_dependency(root=ROOT):
+    """The line's minecraft_dependency from gradle.properties (the Paper version guard's rule,
+    paper-version-guard-store-plan §3.1), or None if unreadable."""
+    try:
+        with open(os.path.join(root, "gradle.properties"), encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip().startswith("minecraft_dependency="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return None
+
+
 def _require_version(jars, prefix, version, problems, mc=None):
     """Restrict checking to the exact release jar for `version`; a missing jar is a failure
     — otherwise a stale jar from an earlier build gets validated in its place and the
@@ -1839,6 +1894,9 @@ def _selftest():
 
 
 def _selftest_fixtures():
+    # The version-guard line every shipped plugin.yml carries (paper-version-guard-store-plan
+    # §3.1); every clean Paper fixture below carries it beside the line's folia-supported fact.
+    GUARD_YML = "lss-minecraft-dependency: '" + (_minecraft_dependency() or "") + "'\n"
     n = 0
 
     def check(cond, msg):
@@ -2052,10 +2110,12 @@ def _selftest_fixtures():
 
         GATE_NODES_YML = ("permissions:\n"
                           "  lss.use:\n    description: receive LOD data\n    default: true\n"
-                          "  vss.use:\n    description: receive LOD data\n    default: true\n")
+                          "  vss.use:\n    description: receive LOD data\n    default: true\n"
+                          "  lss.map_ingestion:\n    description: exempt\n    default: false\n"
+                          "  vss.map_ingestion:\n    description: exempt\n    default: false\n")
         good_pap = os.path.join(td, "lod-server-support-paper.jar")
         _make_jar(good_pap, {
-            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n"
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n" + GUARD_YML
                           + GATE_NODES_YML,
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
             "dev/vox/lss/common/PositionUtil.class": "x",
@@ -2064,13 +2124,28 @@ def _selftest_fixtures():
         check_paper_jar(good_pap, p)
         check(p == [], f"clean paper jar flagged: {p}")
 
+        # The version guard's rule must ship expanded and equal to the line's
+        # minecraft_dependency (paper-version-guard-store-plan §3.1).
+        unguarded_pap = os.path.join(td, "lod-server-support-paper-unguarded.jar")
+        _make_jar(unguarded_pap, {
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\n"
+                          + "folia-supported: true\nlss-minecraft-dependency: '1.0'\n"
+                          + GATE_NODES_YML,
+            "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
+            "dev/vox/lss/common/PositionUtil.class": "x",
+        }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
+        p = []
+        check_paper_jar(unguarded_pap, p)
+        check(any("lss-minecraft-dependency" in m for m in p),
+              f"wrong version-guard rule not caught: {p}")
+
         # Service-gate node checks are UNCONDITIONAL (plan §2.6): a jar missing a node,
         # and a jar whose declared default flipped, must both be caught here — the pair
         # check only runs when a VSS jar exists.
         nodeless_pap = os.path.join(td, "lod-server-support-paper-nodeless.jar")
         _make_jar(nodeless_pap, {
-            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n"
-                          "permissions:\n  lss.use:\n    default: true\n",
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n" + GUARD_YML
+                          + "permissions:\n  lss.use:\n    default: true\n",
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
             "dev/vox/lss/common/PositionUtil.class": "x",
         }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
@@ -2080,7 +2155,7 @@ def _selftest_fixtures():
               f"missing vss.use node not caught: {p}")
         flipped_pap = os.path.join(td, "lod-server-support-paper-flipped.jar")
         _make_jar(flipped_pap, {
-            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n"
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n" + GUARD_YML
                           + GATE_NODES_YML.replace("  vss.use:\n    description: receive LOD data\n    default: true\n",
                                                    "  vss.use:\n    description: receive LOD data\n    default: op\n"),
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
@@ -2090,6 +2165,31 @@ def _selftest_fixtures():
         check_paper_jar(flipped_pap, p)
         check(any("declares default: op" in m and "vss.use" in m for m in p),
               f"flipped default not caught: {p}")
+        # The map-ingestion exemption pair (map-ingestion permission plan §6): a missing
+        # spelling and an `op` default must both be caught, unconditionally.
+        mapless_pap = os.path.join(td, "lod-server-support-paper-mapless.jar")
+        _make_jar(mapless_pap, {
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n" + GUARD_YML
+                          + GATE_NODES_YML.replace("  vss.map_ingestion:\n    description: exempt\n    default: false\n", ""),
+            "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
+            "dev/vox/lss/common/PositionUtil.class": "x",
+        }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
+        p = []
+        check_paper_jar(mapless_pap, p)
+        check(any("missing the map-ingestion exemption node 'vss.map_ingestion'" in m for m in p),
+              f"missing vss.map_ingestion node not caught: {p}")
+        opmap_pap = os.path.join(td, "lod-server-support-paper-opmap.jar")
+        _make_jar(opmap_pap, {
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n" + GUARD_YML
+                          + GATE_NODES_YML.replace("  lss.map_ingestion:\n    description: exempt\n    default: false\n",
+                                                   "  lss.map_ingestion:\n    description: exempt\n    default: op\n"),
+            "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
+            "dev/vox/lss/common/PositionUtil.class": "x",
+        }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
+        p = []
+        check_paper_jar(opmap_pap, p)
+        check(any("declares default: op" in m and "lss.map_ingestion" in m for m in p),
+              f"op-default map-ingestion node not caught: {p}")
 
         # a paper jar LOSING folia-supported must be caught: Folia ships a 26.2 build since
         # 2026-07-28, so a jar without the flag silently stops loading on Folia servers
@@ -2244,8 +2344,8 @@ def _selftest_fixtures():
         good_vpap = os.path.join(td, "voxy-server-side-paper.jar")
         _make_jar(good_vpap, {
             "plugin.yml": ("name: VoxyServerSide\nversion: 0.7.0\n"
-                           "folia-supported: true\n"
-                           "description: Render distant Voxy LODs on servers\n"
+                           "folia-supported: true\n" + GUARD_YML
+                           + "description: Render distant Voxy LODs on servers\n"
                            + GATE_NODES_YML),
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
             "dev/vox/lss/common/PositionUtil.class": "x",
@@ -2411,7 +2511,14 @@ def _selftest_fixtures():
                           "    default: true\n"
                           "  vss.use:\n"
                           "    description: receive LOD data (VSS spelling)\n"
-                          "    default: true\n")
+                          "    default: true\n"
+                          # Map-ingestion exemption nodes, same dual-spelling rule (default false).
+                          "  lss.map_ingestion:\n"
+                          "    description: exempt\n"
+                          "    default: false\n"
+                          "  vss.map_ingestion:\n"
+                          "    description: exempt (VSS spelling)\n"
+                          "    default: false\n")
         # Mirror vssJar's exact rewrites (2026-08-13 shape: name/author rebrand too; the
         # farplayers + service-gate nodes are deliberately NOT renamed — both
         # spellings ship in both jars).
@@ -2487,6 +2594,16 @@ def _selftest_fixtures():
         check_vss_pair_paper(pair_lss_pap, pair_linecount_vpap, p)
         check(any("line count differs" in m for m in p),
               f"paper line-count change not caught: {p}")
+
+        # a widened rewrite renaming lss.map_ingestion -> vss.map_ingestion (in place, so the
+        # line count holds) MUST fail: the VSS jar's lss. spelling would be op-default TRUE
+        pair_maprename_vpap = os.path.join(td, "pair-maprename-vss-paper.jar")
+        _make_jar(pair_maprename_vpap, {"plugin.yml": VSS_PLUGIN_YML.replace(
+            "  lss.map_ingestion:", "  vss.map_ingestion:", 1)})
+        p = []
+        check_vss_pair_paper(pair_lss_pap, pair_maprename_vpap, p)
+        check(any("missing the map-ingestion exemption node 'lss.map_ingestion'" in m for m in p),
+              f"renamed map-ingestion node not caught: {p}")
 
         # ---- brand.properties (both platforms) ----
         BRAND_LSS_TXT = ("shortName=LSS\ndisplayName=LOD Server Support\n"
@@ -2862,8 +2979,8 @@ def _selftest_fixtures():
         os.makedirs(dneo)
         PY_LSS = ("name: LodServerSupport\nversion: '0.7.0'\n"
                   "main: dev.vox.lss.paper.LSSPaperPlugin\napi-version: '26.2'\n"
-                  "folia-supported: true\n"
-                  "description: LSS plugin.\n"
+                  "folia-supported: true\n" + GUARD_YML
+                  + "description: LSS plugin.\n"
                   "author: VoX\n"
                   "website: https://modrinth.com/plugin/lod-server-support\n"
                   "commands:\n  lsslod:\n"
@@ -2874,7 +2991,9 @@ def _selftest_fixtures():
                   "  lss.farplayers.hidden:\n    description: hidden\n    default: false\n"
                   "  vss.farplayers.hidden:\n    description: hidden\n    default: false\n"
                   "  lss.use:\n    description: receive LOD data\n    default: true\n"
-                  "  vss.use:\n    description: receive LOD data\n    default: true\n")
+                  "  vss.use:\n    description: receive LOD data\n    default: true\n"
+                  "  lss.map_ingestion:\n    description: exempt\n    default: false\n"
+                  "  vss.map_ingestion:\n    description: exempt\n    default: false\n")
         # The 2026-08-13 rewrite shape: name/author rebrand; the dual-spelling
         # farplayers + service-gate nodes are NOT renamed.
         PY_VSS = (PY_LSS
