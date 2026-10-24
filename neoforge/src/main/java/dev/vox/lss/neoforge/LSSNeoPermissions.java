@@ -19,7 +19,9 @@ import net.neoforged.neoforge.server.permission.nodes.PermissionTypes;
  * (verified at the plan review — the service starts at ServerStartedEvent). The two
  * far-player HIDE nodes (far-player-render-hardening-plan.md WI-7a) register beside
  * them with DEFAULT-FALSE resolvers — a grant-model "deny me" lever, the opposite
- * shape (see {@link LSSPermissions}).
+ * shape (see {@link LSSPermissions}) — and so do the two MAP-INGESTION exemption nodes
+ * (map-ingestion permission plan §2: default false, grant = exempt from
+ * {@code privacy.request_no_map_ingestion}; their read passes default FALSE).
  *
  * <p>{@code PermissionAPI.getPermission} is keyed on the registered node INSTANCES
  * (never equal-named copies — pinned); the string-keyed {@code check} maps the
@@ -37,6 +39,9 @@ public final class LSSNeoPermissions {
     /** The far-player hide nodes — default-FALSE resolvers (grant = hidden). */
     public static final PermissionNode<Boolean> FARPLAYERS_HIDDEN_LSS = denyNode(LSSPermissions.FARPLAYERS_HIDDEN_LSS);
     public static final PermissionNode<Boolean> FARPLAYERS_HIDDEN_VSS = denyNode(LSSPermissions.FARPLAYERS_HIDDEN_VSS);
+    /** The map-ingestion exemption nodes — default-FALSE resolvers (grant = exempt). */
+    public static final PermissionNode<Boolean> MAP_INGESTION_LSS = denyNode(LSSPermissions.MAP_INGESTION_LSS);
+    public static final PermissionNode<Boolean> MAP_INGESTION_VSS = denyNode(LSSPermissions.MAP_INGESTION_VSS);
 
     private static volatile boolean queryWarned;
 
@@ -60,7 +65,8 @@ public final class LSSNeoPermissions {
 
     /** The gather-event listener — wired unconditionally from {@code LSSNeoMod}. */
     public static void onGatherNodes(PermissionGatherEvent.Nodes event) {
-        event.addNodes(SERVICE_LSS, SERVICE_VSS, FARPLAYERS_HIDDEN_LSS, FARPLAYERS_HIDDEN_VSS);
+        event.addNodes(SERVICE_LSS, SERVICE_VSS, FARPLAYERS_HIDDEN_LSS, FARPLAYERS_HIDDEN_VSS,
+                MAP_INGESTION_LSS, MAP_INGESTION_VSS);
     }
 
     /** The string→node map: exactly the shared spellings; anything else answers the
@@ -69,7 +75,9 @@ public final class LSSNeoPermissions {
         return LSSPermissions.SERVICE_LSS.equals(nodeName) ? SERVICE_LSS
                 : LSSPermissions.SERVICE_VSS.equals(nodeName) ? SERVICE_VSS
                 : LSSPermissions.FARPLAYERS_HIDDEN_LSS.equals(nodeName) ? FARPLAYERS_HIDDEN_LSS
-                : LSSPermissions.FARPLAYERS_HIDDEN_VSS.equals(nodeName) ? FARPLAYERS_HIDDEN_VSS : null;
+                : LSSPermissions.FARPLAYERS_HIDDEN_VSS.equals(nodeName) ? FARPLAYERS_HIDDEN_VSS
+                : LSSPermissions.MAP_INGESTION_LSS.equals(nodeName) ? MAP_INGESTION_LSS
+                : LSSPermissions.MAP_INGESTION_VSS.equals(nodeName) ? MAP_INGESTION_VSS : null;
     }
 
     /** The string-keyed read behind {@code LoaderServices.checkPermission}. */

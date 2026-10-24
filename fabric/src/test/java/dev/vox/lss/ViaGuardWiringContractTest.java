@@ -54,8 +54,9 @@ class ViaGuardWiringContractTest {
                         + " the seam — LSSConstants.PROTOCOL_VERSION there denies every"
                         + " legacy client (20 != any real Via protocol)");
         // (map-policy plan A3.2: the map-policy flag now rides after the mismatch RULE —
-        // the widest, 9-arg form)
-        assertTrue(src.contains("ViaProbe.isMismatch(viaProtocol, nativeProtocol), mapPolicyArmed);"),
+        // the widest, 9-arg form; the per-player decision since the map-ingestion
+        // permission plan §3.2)
+        assertTrue(src.contains("ViaProbe.isMismatch(viaProtocol, nativeProtocol), denyMapIngestion);"),
                 "Fabric must feed the shared mismatch RULE into the gate's widest form");
         assertTrue(src.contains("Outcome.VIA_MISMATCH"),
                 "Fabric must classify the denial (the INFO line) off the dedicated outcome");
@@ -71,7 +72,7 @@ class ViaGuardWiringContractTest {
                 "Paper's production caller must pass the REAL MC native protocol into"
                         + " the seam, never the LSS constant the no-signal overload"
                         + " defaults to");
-        assertTrue(src.contains("ViaProbe.isMismatch(viaProtocol, nativeProtocol), mapPolicyArmed);"),
+        assertTrue(src.contains("ViaProbe.isMismatch(viaProtocol, nativeProtocol), denyMapIngestion);"),
                 "Paper's seam must feed the shared mismatch RULE into the gate's widest form");
         assertTrue(src.contains("Outcome.VIA_MISMATCH"),
                 "Paper must classify the denial off the dedicated outcome");
