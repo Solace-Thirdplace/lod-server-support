@@ -192,3 +192,15 @@ Deviations and choices:
   `1.21.11-18`, `26.1.2-19`, `26.2-20`, `26.3-21`); Sponge refuses to load a plugin whose
   dependency range excludes the running API. The mixins (`ChunkLoadHook` and friends) also bind
   version-specific targets.
+
+Verification (local, 2026-10-23): `:common:test` 1160, `:fabric:test` 2157 (4 skipped),
+`:paper:test` 582, `:neoforge:test` 24, `:sponge:test` 25, all passing; `:fabric:runGameTest`
+88/88 on the second attempt (the first went red once on
+`SerializerParityGameTests.storeHitBytesMatchNbtServedBytesThroughTheReaderPath`, "waiting for
+the deposit to commit (batcher) on tick 1202"; that test uses the unchanged default
+constructor on a fresh store, and the signature is not in the flake catalog yet).
+`release_check.py` (all eight jars) and `--selftest` pass. Mutation checks, each red: absent
+marker trusted everywhere; marker decided after the lazy upgrade; `build_mc` not a core key;
+the refresh not stamping; the guard step skipped; the refusal never firing; Paper passing
+`REFRESH`; the Fabric site passing the running version; `plugin.yml` losing the key; the rule's
+`-` bound and upper bound. The live rerun (§4) is still to do.
