@@ -1110,9 +1110,14 @@ class LSSPaperPluginGlueTest {
     void versionMismatchRefusalNamesTheRunningVersionTheRangeAndTheDownload() {
         String msg = LSSPaperPlugin.minecraftVersionRefusal(">=26.2 <26.3-", "26.3", "LodServerSupport", SITE);
         assertNotNull(msg, "the incident: a 26.2 jar on a 26.3 server must be refused");
-        assertTrue(msg.contains("runs Minecraft 26.3"), msg);
-        assertTrue(msg.contains("built for Minecraft 26.2 up to (not including) 26.3"), msg);
-        assertTrue(msg.contains("Download the LodServerSupport build for Minecraft 26.3 from " + SITE), msg);
+        assertTrue(msg.startsWith("LodServerSupport supports Minecraft 26.2 up to (not including) 26.3."),
+                "the supported versions come first: " + msg);
+        assertTrue(msg.contains("This server runs Minecraft 26.3"), msg);
+        assertTrue(msg.endsWith("Download the LodServerSupport build for Minecraft 26.3 from " + SITE
+                + " if one exists."), "the download advice is conditional (not every version has a build): " + msg);
+        String old = LSSPaperPlugin.minecraftVersionRefusal(">=26.3 <26.4-", "1.21.4", "VoxyServerSide", SITE);
+        assertTrue(old.startsWith("VoxyServerSide supports Minecraft 26.3 up to (not including) 26.4."), old);
+        assertTrue(old.endsWith("build for Minecraft 1.21.4 from " + SITE + " if one exists."), old);
         assertNotNull(LSSPaperPlugin.minecraftVersionRefusal(">=26.3 <26.4-", "26.4", "LodServerSupport", SITE));
         assertNotNull(LSSPaperPlugin.minecraftVersionRefusal("1.21.10", "1.21.11", "LodServerSupport", SITE),
                 "1.21.x jars are exact: another 1.21.x is refused (decision U1)");

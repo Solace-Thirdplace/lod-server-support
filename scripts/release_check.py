@@ -1372,6 +1372,64 @@ def check_brand_properties(jar, expected, problems):
             problems.append(f"{base}: lss-brand.properties {key}={props.get(key)!r}, expected {want!r}")
 
 
+# ---------------------------------------------------------------- lss-build.properties
+
+# The jar's own build facts (paper-version-guard-store-plan §3.2): BuildInfo reads them to
+# stamp the LOD store's build_mc and to keep a same-family marker, and throws on a missing or
+# unexpanded resource — so a packaging slip would disable the store on every server.
+BUILD_PROPERTIES = "dev/vox/lss/common/lss-build.properties"
+
+
+def _build_properties_copies(jar):
+    """[(where, text)] for every lss-build.properties the jar ships: top level (the flat
+    Paper/Sponge/NeoForge layouts) or inside a nested jar (Fabric's common-*.jar)."""
+    out = []
+    with zipfile.ZipFile(jar) as z:
+        names = z.namelist()
+        if BUILD_PROPERTIES in names:
+            out.append((None, z.read(BUILD_PROPERTIES).decode("utf-8", "replace")))
+        for entry in names:
+            if entry.startswith(("META-INF/jars/", "META-INF/jarjar/")) and entry.endswith(".jar"):
+                with zipfile.ZipFile(io.BytesIO(z.read(entry))) as nested:
+                    if BUILD_PROPERTIES in nested.namelist():
+                        out.append((entry, nested.read(BUILD_PROPERTIES).decode("utf-8", "replace")))
+    return out
+
+
+def check_build_properties(jar, problems, root=ROOT):
+    """Every shipped server jar carries lss-build.properties with an expanded
+    minecraft_version (and minecraft_dependency), equal to the line's gradle.properties
+    values when the line is known."""
+    base = os.path.basename(jar)
+    try:
+        copies = _build_properties_copies(jar)
+    except zipfile.BadZipFile as e:
+        problems.append(f"{base}: unreadable jar while looking for {BUILD_PROPERTIES} ({e})")
+        return
+    if not copies:
+        problems.append(f"{base}: no {BUILD_PROPERTIES} (top level or nested common jar) — "
+                        "BuildInfo would throw and the LOD store could not open")
+        return
+    want = {"minecraft_version": _minecraft_version(root),
+            "minecraft_dependency": _minecraft_dependency(root)}
+    for where, text in copies:
+        label = base if where is None else f"{base}!{where}"
+        props = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if line and not line.startswith(("#", "!")) and "=" in line:
+                k, v = line.split("=", 1)
+                props[k.strip()] = v.strip()
+        for key, expected in want.items():
+            value = props.get(key, "")
+            if not value or "${" in value:
+                problems.append(f"{label}: {BUILD_PROPERTIES} carries no expanded {key} "
+                                f"(got {value!r}) — :common:processResources did not expand it")
+            elif expected and value != expected:
+                problems.append(f"{label}: {BUILD_PROPERTIES} {key}={value!r}, but this line's "
+                                f"gradle.properties says {expected!r}")
+
+
 def check_wire_identity_fabric(lss_jar, vss_jar, problems):
     """The strongest LSS<->VSS wire-compat pin: the nested common jar (which holds every
     channel id, the protocol version, and all payload codecs) must be byte-for-byte identical
@@ -1646,6 +1704,7 @@ def discover(problems, expected_version=None, root=ROOT):
     check_glob_hygiene(problems, soak)
     for jar in fab + pap + vfab + vpap + neo + vneo + spo + vspo:
         sqlite_capsule.check(jar, problems)
+        check_build_properties(jar, problems, root)
     for loader, jars in (("fabric", fab + vfab), ("paper", pap + vpap), ("neoforge", neo + vneo),
                          ("sponge", spo + vspo)):
         for jar in jars:
@@ -1920,10 +1979,15 @@ def _selftest_fixtures():
             entries[XZ_LICENSE] = xz_license_bytes
         return entries
 
-    def _nested_common(version="0.4.0"):
+    BUILD_PROPS_TXT = ("minecraft_version=" + (_minecraft_version() or "26.3") + "\n"
+                       "minecraft_dependency=" + (_minecraft_dependency() or ">=26.3 <26.4-") + "\n")
+
+    def _nested_common(version="0.4.0", build_props=None):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as z:
             z.writestr("dev/vox/lss/common/PositionUtil.class", "x")
+            if build_props is not False:
+                z.writestr(BUILD_PROPERTIES, BUILD_PROPS_TXT if build_props is None else build_props)
             for name, value in _yaml_entries().items():
                 z.writestr(name, value)
             for name, data in sqlite_capsule.fixture_entries().items():
@@ -2635,6 +2699,40 @@ def _selftest_fixtures():
         check_brand_properties(pair_lss_pap, _BRAND_LSS, p)
         check(any("no lss-brand.properties" in m for m in p), "missing brand.properties not caught")
 
+        # ---- lss-build.properties (every shipped server jar; Fabric's in the nested common) ----
+        bp_ok = os.path.join(td, "build-props-ok.jar")
+        _make_jar(bp_ok, {BUILD_PROPERTIES: BUILD_PROPS_TXT})
+        bp_nested = os.path.join(td, "build-props-nested.jar")
+        _make_jar(bp_nested, {"META-INF/jars/common-0.7.0.jar": _nested_common("0.7.0")})
+        p = []
+        check_build_properties(bp_ok, p)
+        check_build_properties(bp_nested, p)
+        check(p == [], f"present, expanded lss-build.properties flagged: {p}")
+        bp_missing = os.path.join(td, "build-props-missing.jar")
+        _make_jar(bp_missing, {"META-INF/jars/common-0.7.0.jar": _nested_common("0.7.0", build_props=False),
+                               "dev/vox/lss/LSSMod.class": "x"})
+        p = []
+        check_build_properties(bp_missing, p)
+        check(any("no dev/vox/lss/common/lss-build.properties" in m for m in p),
+              f"missing lss-build.properties not caught: {p}")
+        for bad, what in (("minecraft_version=${minecraft_version}\n"
+                           "minecraft_dependency=>=26.3 <26.4-\n", "minecraft_version"),
+                          ("minecraft_version=26.3\nminecraft_dependency=${minecraft_dependency}\n",
+                           "minecraft_dependency"),
+                          ("minecraft_dependency=>=26.3 <26.4-\n", "minecraft_version")):
+            bp_bad = os.path.join(td, "build-props-unexpanded.jar")
+            _make_jar(bp_bad, {"META-INF/jars/common-0.7.0.jar": _nested_common("0.7.0", build_props=bad)})
+            p = []
+            check_build_properties(bp_bad, p)
+            check(any("carries no expanded " + what in m for m in p),
+                  f"unexpanded/absent {what} not caught: {p}")
+        bp_other = os.path.join(td, "build-props-other-line.jar")
+        _make_jar(bp_other, {BUILD_PROPERTIES: "minecraft_version=0.0.1\nminecraft_dependency=0.0.1\n"})
+        p = []
+        check_build_properties(bp_other, p)
+        check(any("but this line's gradle.properties says" in m for m in p),
+              f"another line's lss-build.properties not caught: {p}")
+
         # ---- wire identity: nested common jar must be byte-identical across the pair ----
         nested_common = io.BytesIO()
         with zipfile.ZipFile(nested_common, "w") as z:
@@ -3043,10 +3141,11 @@ def _selftest_fixtures():
                 entries.pop(d, None)
             _make_jar(os.path.join(dfab, name), entries, manifest=fab_manifest)
 
-        def _write_tree_paper(name, yml, brand):
+        def _write_tree_paper(name, yml, brand, build_props=None):
             entries = {
                 "plugin.yml": yml,
                 "lss-brand.properties": brand,
+                BUILD_PROPERTIES: BUILD_PROPS_TXT if build_props is None else build_props,
                 "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
                 "dev/vox/lss/common/PositionUtil.class": "x",
                 "THIRD-PARTY-NOTICES": notices,
@@ -3093,6 +3192,7 @@ def _selftest_fixtures():
                 "META-INF/services/dev.vox.lss.platform.LoaderServices":
                     "dev.vox.lss.platform.NeoForgeLoaderServices",
                 "lss-brand.properties": brand,
+                BUILD_PROPERTIES: BUILD_PROPS_TXT,
                 "dev/vox/lss/common/PositionUtil.class": "x",
                 "dev/vox/lss/networking/server/RequestProcessingService.class": shared_class,
                 "dev/vox/lss/neoforge/LSSNeoMod.class": "x",
@@ -3138,6 +3238,25 @@ def _selftest_fixtures():
             check(any(os.path.basename(yaml_jar) in issue and "unrelocated SnakeYAML" in issue for issue in p),
                   f"discovery missed parser leakage in {yaml_jar}: {p}")
             _make_jar(yaml_jar, original_entries)
+
+        # Prove the lss-build.properties check is wired into discovery for every family
+        # (Fabric's copy rides the nested common jar; the rest are flat).
+        for bp_jar in fab_d + pap_d + vfab_d + vpap_d + neo_d + vneo_d:
+            with zipfile.ZipFile(bp_jar) as archive:
+                original_entries = {name: archive.read(name) for name in archive.namelist()}
+            broken = dict(original_entries)
+            unexpanded = "minecraft_version=${minecraft_version}\nminecraft_dependency=${minecraft_dependency}\n"
+            if BUILD_PROPERTIES in broken:
+                broken[BUILD_PROPERTIES] = unexpanded
+            else:
+                broken["META-INF/jars/common-0.7.0.jar"] = _nested_common("0.7.0", build_props=unexpanded)
+            _make_jar(bp_jar, broken)
+            p = []
+            discover(p, root=droot)
+            check(any(os.path.basename(bp_jar) in issue and "carries no expanded minecraft_version" in issue
+                      for issue in p),
+                  f"discovery missed an unexpanded lss-build.properties in {bp_jar}: {p}")
+            _make_jar(bp_jar, original_entries)
 
         # a neoforge jar whose entrypoint/seam classes were shaded OUT must fail
         # (round-3 review NIT-3: the gametest smoke runs off classes dirs, never the
@@ -3428,6 +3547,7 @@ def _selftest_fixtures():
             entries = {
                 "META-INF/sponge_plugins.json": json.dumps(meta),
                 "lss-brand.properties": brand,
+                BUILD_PROPERTIES: BUILD_PROPS_TXT,
                 "dev/vox/lss/sponge/LSSSpongePlugin.class": "x",
                 "dev/vox/lss/common/PositionUtil.class": "x",
                 "dev/vox/lss/networking/server/RequestProcessingService.class": "x",
