@@ -116,6 +116,16 @@ restart or reconnect; it does not rewrite comments or normalized values.
 | `privacy.request_no_map_ingestion` | Ask players' clients not to copy LOD terrain into map mods (below). Reloads. |
 | `far_players` | Distant player display/sharing policies and distances in blocks. Players control local rendering manually. |
 
+**Paper: use the jar for your Minecraft version.** Paper only refuses a plugin built for a
+*newer* Minecraft version, so from 0.20.0 the Paper/Folia plugin checks for itself: on a
+server running a Minecraft version its jar was not built for, it logs one error naming the
+build to download and disables itself. A 26.x jar runs on that version's patch releases
+(the 26.3 jar on 26.3.1); a 1.21.x jar runs only on its exact version. A jar for another
+version used to start anyway and could fill the LOD store with empty terrain, so after the
+update to 0.20.0 a Paper or Folia server rebuilds its LOD store once (it refills as players
+are served); Fabric, NeoForge and Sponge keep theirs. Players who joined while a jar for
+another version was running should run `/lss clearcache` once on that server.
+
 **Turning LODs off in a dimension.** Set its distance to `0`: no LOD terrain is sent there
 (players stay connected to LSS, and far players keep working). Add `default_chunks: 0` to
 serve only the dimensions you list. Paper's `by_world` takes world names and works the

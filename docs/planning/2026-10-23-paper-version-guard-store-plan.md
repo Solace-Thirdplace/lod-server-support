@@ -144,3 +144,51 @@ rebuild once after this update), CLAUDE.md (one line), release notes.
 | Older unguarded jar can re-poison; moved stores | MINOR/NIT | §3.5 accepted residuals |
 | Live test needs newly built guarded jars | NIT | Folded §4 |
 | `lss-timestamps.bin` holds served stamps, not modification times | MINOR | Corrected (§3.3) |
+
+## 9. As built (2026-10-23, 26.3 line)
+
+**Guard (§3.1).** `plugin.yml` gains `lss-minecraft-dependency: '${minecraft_dependency}'`,
+expanded by `:paper:processResources` from `gradle.properties` (the value `fabric.mod.json`
+declares). The `vssJar` rewrite leaves the line verbatim; `release_check.py` pins it as a VSS
+identity line and checks the shipped value against `minecraft_dependency`. The rule parser is
+`common`'s `MinecraftVersionRule` (pure, Java 21 tests): a bare version is exact, comparators
+are ANDed, versions compare as zero-padded numeric tuples, a pre-release sorts below its
+release and a bound ending in a bare `-` is below every build of that version (so `<26.4-`
+refuses 26.4 pre-releases, as Fabric does). `EnableSteps.checkMinecraftVersion()` runs right
+after `loadBranding`; on a mismatch it logs one ERROR (running version, supported range,
+"Download the <plugin> build for Minecraft <running> from <website>", brand-correct for VSS)
+and calls `disablePlugin(this)`, and `runEnablePlan` returns before config, channels or the
+store exist.
+
+**Store marker (§3.2).** `Environment` gains `buildMc`, `platform` and
+`legacyStoreMigration` (`LegacyStoreMigration.REFRESH|DROP`); the existing constructors
+default them to the running version, `"unknown"` and `REFRESH`. `evaluateBuildMarker()` runs
+first in `openOrRecreateWriter`, before `maybeLazyUpgradeFromV19`: absent + `DROP` returns the
+drop verdict ("store written before build tracking; rebuilding once"); absent + `REFRESH`
+stamps `build_mc`/`platform` in place, logs one INFO and continues down the ordinary ladder.
+`build_mc` is a core key in `evaluateMeta`; `platform` is written by `writeMeta` and never
+compared. Fabric/NeoForge/Sponge pass `BuildInfo.minecraftVersion()`,
+`LoaderServices.storePlatform()` and `LoaderServices.legacyStoreMigration()` (default
+`REFRESH`); Paper passes `BuildInfo.minecraftVersion()`, `paper`/`folia` (`FoliaSupport`) and
+`DROP`. The soak store downgrade also deletes the two keys, to stay the exact v0.9.x shape.
+
+Deviations and choices:
+- **Build version source.** `BuildInfo` reads `dev/vox/lss/common/lss-build.properties`, a
+  resource `:common:processResources` expands from `minecraft_version` (the
+  `SqliteDriverRuntime` descriptor precedent: a package-local resource read through
+  `Class.getResourceAsStream`, which works in Fabric's nested jar, NeoForge's module and the
+  flattened Paper/Sponge jars). Identical on every line, so ports carry it unchanged. Paper
+  could have read `api-version`, but one source for all platforms is simpler to pin.
+- **Missing or malformed rule fails closed.** A Paper jar whose `plugin.yml` lacks the rule (or
+  carries an unexpanded or unparseable one) refuses to enable with its own ERROR, rather than
+  running unguarded. `release_check.py` and `PluginYmlContractTest` keep that unreachable for a
+  built jar. Likewise a missing or unexpanded `lss-build.properties` throws (a packaging bug).
+- **`storePlatform()` is abstract** on `LoaderServices` (all three loaders override it; the
+  NeoForge/Sponge seam-completeness tests require it), while `legacyStoreMigration()` is a
+  default (`REFRESH`) since no shared-code loader differs.
+- **Sponge needs no guard (metadata evidence, not rig-confirmed).** Each line's
+  `sponge_api_dependency` spans exactly one SpongeAPI major, and each major pairs with one
+  Minecraft release in the line's `spongevanilla_version` pin (`1.21.1-12`, `1.21.10-17`,
+  `1.21.11-18`, `26.1.2-19`, `26.2-20`, `26.3-21`); Sponge refuses to load a plugin whose
+  dependency range excludes the running API. The mixins (`ChunkLoadHook` and friends) also bind
+  version-specific targets.
