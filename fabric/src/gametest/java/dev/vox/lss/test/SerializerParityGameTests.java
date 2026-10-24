@@ -1004,8 +1004,13 @@ public class SerializerParityGameTests {
                     helper.assertTrue(false, "deposited, awaiting batcher visibility");
                 }
                 case 2 -> {
-                    helper.assertTrue(store.get(dim, packed) != null,
-                            "waiting for the deposit to commit (batcher)");
+                    if (store.get(dim, packed) == null) {
+                        // The batcher is a wall-clock thread: an unthrottled gametest server
+                        // can burn every remaining tick before it commits under load, so this
+                        // wait (and only this one) is wall-denominated (the TwoPlayer fix family).
+                        waitWallClock(helper);
+                        helper.assertTrue(false, "waiting for the deposit to commit (batcher)");
+                    }
                     reader.submitReadDirect(readerId, registration(readerId), dim, level, cx, cz, 1, 0L);
                     step.set(3);
                     helper.assertTrue(false, "store-rung read submitted, awaiting result");
