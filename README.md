@@ -119,7 +119,7 @@ restart or reconnect; it does not rewrite comments or normalized values.
 | `far_players` | Distant player display/sharing policies and distances in blocks. Players control local rendering manually. |
 
 **Paper: use the jar for your Minecraft version.** Paper only refuses a plugin built for a
-*newer* Minecraft version, so from 0.20.0 the Paper/Folia plugin checks for itself: on a
+*newer* Minecraft version, so from 0.20.0 the Paper plugin checks for itself: on a
 server running a Minecraft version its jar was not built for, it logs one error naming the
 build to download and disables itself. A 26.x jar runs on that version's patch releases
 (the 26.3 jar on 26.3.1); a 1.21.x jar runs only on its exact version. A jar for another

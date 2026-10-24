@@ -5,7 +5,7 @@
 
 ### Bug Fixes
 
-- **Paper version check** — The Paper plugin no longer starts on a Minecraft version it wasn't built for, which could fill the LOD store with empty terrain. Paper LOD stores rebuild once after updating; if distant terrain went missing after a Paper update, run `/lss clearcache` once on that server.
+- **Paper version check** — The Paper plugin no longer starts on a Minecraft version it wasn't built for, which could fill the LOD store with empty terrain. Paper LOD stores rebuild once after updating; if distant terrain went missing after a Paper update, players who joined during that time should run `/lss clearcache` once while connected.
 
 ### Support
 
