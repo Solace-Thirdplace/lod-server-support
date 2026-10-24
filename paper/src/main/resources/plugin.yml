@@ -71,3 +71,15 @@ permissions:
   vss.use:
     description: Receive LOD data when requireServicePermission is enabled (VSS spelling)
     default: true
+  # Map-ingestion exemption (privacy.request_no_map_ingestion, default off): while that request
+  # is on, holders may still add distant terrain to their world maps (Xaero's World Map,
+  # JourneyMap) — the server treats the request as off for them. A GRANT model like the
+  # far-player privacy nodes: holding EITHER spelling exempts, both spellings are declared for
+  # the same Bukkit undeclared-node reason, and both default to false. NOT op: an op default
+  # would silently exempt every op on a server that turned the request on.
+  lss.map_ingestion:
+    description: Exempts the player from privacy.request_no_map_ingestion (may add distant terrain to world maps)
+    default: false
+  vss.map_ingestion:
+    description: Exempts the player from privacy.request_no_map_ingestion (VSS spelling)
+    default: false

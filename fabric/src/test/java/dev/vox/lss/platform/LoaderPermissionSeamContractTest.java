@@ -36,31 +36,83 @@ class LoaderPermissionSeamContractTest {
                 "the Gate: diag line's provider token must be the loader's, not \"none\"");
     }
 
+    /** The named FAIL-CLOSED exceptions to the default-true doctrine: the map-ingestion
+     *  exemption read (map-ingestion permission plan §3.1) — a grant-model node whose doubt
+     *  must exempt NOBODY (a default-true read would exempt everyone on a provider-less
+     *  Fabric server). Method declaration → the file it lives in. */
+    private static final java.util.Map<String, String> FAIL_CLOSED_READS = java.util.Map.of(
+            "static boolean mapIngestionExemptViaLoader(",
+            "xplat/src/main/java/dev/vox/lss/networking/server/RequestProcessingService.java");
+
     @Test
     void everyServiceGateCallSitePassesDefaultTrue() throws IOException {
         // A flipped default is a silent server-wide black-out on the two platforms with
         // no plugin.yml to catch it (plan §2.1). Scan every production checkPermission
-        // call site for the literal `true` default. The ONE deliberate `false` default —
-        // the far-player hide nodes' grant-model read (far-player-render-hardening-plan.md
-        // WI-7a) — lives in FabricFarPlayerSnapshots, outside the two gate files scanned
-        // here, and is pinned by FabricFarPlayerSnapshotsHiddenTest instead.
+        // call site for the literal `true` default — except inside the named fail-closed
+        // methods above, which must pass the literal `false`. The far-player hide nodes'
+        // grant-model read (far-player-render-hardening-plan.md WI-7a) lives in
+        // FabricFarPlayerSnapshots, outside the two gate files scanned here, and is pinned
+        // by FabricFarPlayerSnapshotsHiddenTest instead.
+        int failClosed = 0;
         for (String repoPath : new String[] {
                 "xplat/src/main/java/dev/vox/lss/networking/server/ServerReceiverGlue.java",
                 "xplat/src/main/java/dev/vox/lss/networking/server/RequestProcessingService.java",
         }) {
             String text = source(repoPath);
+            var exceptions = new java.util.ArrayList<int[]>();
+            for (var e : FAIL_CLOSED_READS.entrySet()) {
+                if (!e.getValue().equals(repoPath)) continue;
+                int start = text.indexOf(e.getKey());
+                assertTrue(start >= 0, "the named fail-closed read " + e.getKey() + " is missing");
+                exceptions.add(new int[]{start, text.indexOf("\n    }", start)});
+            }
             int idx = 0;
             while ((idx = text.indexOf("checkPermission(", idx)) >= 0) {
                 int close = text.indexOf(")", idx);
                 String call = text.substring(idx, close + 1);
                 if (!call.contains("boolean defaultValue")) { // skip declarations
-                    assertTrue(call.contains("true"),
-                            repoPath + " has a checkPermission call without the literal "
-                                    + "default-true: " + call);
+                    final int at = idx;
+                    if (exceptions.stream().anyMatch(r -> at > r[0] && at < r[1])) {
+                        assertTrue(call.contains("false") && !call.contains("true"),
+                                repoPath + ": the map-ingestion exemption read must pass the "
+                                        + "literal default-FALSE (fail-closed): " + call);
+                        failClosed++;
+                    } else {
+                        assertTrue(call.contains("true"),
+                                repoPath + " has a checkPermission call without the literal "
+                                        + "default-true: " + call);
+                    }
                 }
                 idx = close;
             }
         }
+        assertEquals(1, failClosed, "exactly one fail-closed exemption read (the loader seam's)");
+    }
+
+    @Test
+    void theExemptionReadsAreSeparateAndFailClosedOnEveryPlatform() throws IOException {
+        // Map-ingestion permission plan §3.1: the service gate's reads fail OPEN, so the
+        // exemption must never ride them. The xplat gate's member routes to the service's
+        // fail-closed read; Paper's reads the Bukkit permissible through the fail-closed
+        // common helper (a throw is not exempt), never through hasPermission's fail-open catch.
+        String glue = source("xplat/src/main/java/dev/vox/lss/networking/server/ServerReceiverGlue.java");
+        assertTrue(glue.contains("public boolean mapIngestionExempt() {")
+                        && glue.contains("service.mapIngestionExempt(player)")
+                        && glue.contains("RequestProcessingService.mapIngestionExemptViaLoader(player)"),
+                "the shared glue's gate overrides the exemption with the service's read");
+        String svc = source("xplat/src/main/java/dev/vox/lss/networking/server/RequestProcessingService.java");
+        assertTrue(svc.contains("RequestProcessingService::mapIngestionExemptViaLoader;"),
+                "production wires the loader read into the service's exemption probe");
+        assertTrue(java.util.regex.Pattern.compile("public boolean mapIngestionExempt\\(ServerPlayer player\\) \\{"
+                        + "\\s*try \\{[\\s\\S]{0,120}?catch \\(Exception e\\) \\{\\s*return false;")
+                        .matcher(svc).find(),
+                "a throwing probe is contained as NOT exempt");
+        String paper = source("paper/src/main/java/dev/vox/lss/paper/LSSPaperPlugin.java");
+        assertTrue(paper.contains("MapPolicy.holdsExemption(bukkitPlayer::hasPermission)"),
+                "Paper's gate reads the Bukkit permissible through the fail-closed helper");
+        String paperSvc = source("paper/src/main/java/dev/vox/lss/paper/PaperRequestProcessingService.java");
+        assertTrue(paperSvc.contains("MapPolicy.holdsExemption(p.getBukkitEntity()::hasPermission)"),
+                "…and so does the Paper service's sweep probe");
     }
 
     // ---- the three-receiver census (plan §2.2 / §8 O1-M4) ----

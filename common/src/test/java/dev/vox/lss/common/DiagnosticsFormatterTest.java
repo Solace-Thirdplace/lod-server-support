@@ -470,7 +470,7 @@ class DiagnosticsFormatterTest {
         assertTrue(dirty.stream().noneMatch(l -> l.startsWith("MapPolicy:")),
                 "a disarmed policy (null line) must add nothing");
         // …renders right after the Gate slot and survives every later with-* copy.
-        String mLine = MapPolicy.diagLineOrNull(true, 1);
+        String mLine = MapPolicy.diagLineOrNull(true, 1, 2, "none");
         var policed = DiagnosticsFormatter.formatDiagnostics(
                 d.withMapPolicyLine(mLine)
                         .withDirtyLine(dLine)
@@ -486,12 +486,12 @@ class DiagnosticsFormatterTest {
         assertTrue(indexOfPrefix(policed, "Gate:") < mIdx
                         && mIdx < indexOfPrefix(policed, "Dirty:"),
                 "the MapPolicy line sits between Gate and Dirty: " + policed);
-        assertEquals("MapPolicy: on refused=1", policed.get(mIdx),
+        assertEquals("MapPolicy: on refused=1 exempt=2 provider=none", policed.get(mIdx),
                 "mapPolicyLine must survive every subsequent with-* copy");
         // Without the permission gate armed the policy line still renders on its own.
         var alone = DiagnosticsFormatter.formatDiagnostics(d.withMapPolicyLine(mLine));
         assertTrue(alone.stream().noneMatch(l -> l.startsWith("Gate:"))
-                        && alone.contains("MapPolicy: on refused=1"),
+                        && alone.contains("MapPolicy: on refused=1 exempt=2 provider=none"),
                 "the policy line never depends on the Gate line: " + alone);
     }
 
