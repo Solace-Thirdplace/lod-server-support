@@ -34,11 +34,15 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
@@ -83,6 +87,11 @@ class PaperSerializerParityTest {
     /** Live path: mocked ServerLevel/LevelChunk/light-engine around the real sections.
      *  Null DataLayer entries mean "light engine has no data for that section". */
     private LoadedColumnData serializeLive(LevelChunkSection[] sections, DataLayer[] blockLight, DataLayer[] skyLight) {
+        return serializeLive(sections, blockLight, skyLight, null);
+    }
+
+    private LoadedColumnData serializeLive(LevelChunkSection[] sections, DataLayer[] blockLight, DataLayer[] skyLight,
+                                           PaperXrayMaskManager.MaskEntry maskEntry) {
         var blockListener = mock(LayerLightEventListener.class);
         var skyListener = mock(LayerLightEventListener.class);
         for (int i = 0; i < sections.length; i++) {
@@ -100,12 +109,17 @@ class PaperSerializerParityTest {
         when(level.registryAccess()).thenReturn(REGISTRY_ACCESS);
         var chunk = mock(LevelChunk.class);
         when(chunk.getSections()).thenReturn(sections);
-        return PaperSectionSerializer.serializeColumn(level, chunk, CX, CZ);
+        return PaperSectionSerializer.serializeColumn(level, chunk, CX, CZ, maskEntry);
     }
 
     /** Disk path: region-file NBT equivalent of the SAME sections/light (vanilla save
      *  shape: codec-encoded containers, raw 2048-byte light arrays, Y = minSectionY + index). */
     private byte[] serializeNbt(LevelChunkSection[] sections, DataLayer[] blockLight, DataLayer[] skyLight) {
+        return serializeNbt(sections, blockLight, skyLight, null);
+    }
+
+    private byte[] serializeNbt(LevelChunkSection[] sections, DataLayer[] blockLight, DataLayer[] skyLight,
+                                PaperXrayMaskManager.MaskEntry maskEntry) {
         var c = new CompoundTag();
         c.putString("Status", "minecraft:full");
         var list = new ListTag();
@@ -120,7 +134,7 @@ class PaperSerializerParityTest {
             list.add(s);
         }
         c.put("sections", list);
-        return PaperNbtSectionSerializer.serializeChunkNbt(c, REGISTRY_ACCESS);
+        return PaperNbtSectionSerializer.serializeChunkNbt(c, REGISTRY_ACCESS, maskEntry);
     }
 
     private static void assertWireBytesIdentical(byte[] nbtBytes, byte[] liveBytes) {
@@ -306,5 +320,114 @@ class PaperSerializerParityTest {
         assertEquals(0, live.estimatedBytes());
         assertEquals(CX, live.cx());
         assertEquals(CZ, live.cz());
+    }
+
+    // ---- deferred masking (ThirdplaceMC fork): the probe snapshots, the processing thread masks ----
+
+    private LevelChunkSection stoneWithOreSection() {
+        var sec = new LevelChunkSection(FACTORY);
+        for (int y = 0; y < 16; y++)
+            for (int z = 0; z < 16; z++)
+                for (int x = 0; x < 16; x++)
+                    sec.setBlockState(x, y, z, Blocks.STONE.defaultBlockState());
+        sec.setBlockState(3, 4, 5, Blocks.DIAMOND_ORE.defaultBlockState());
+        sec.setBlockState(10, 1, 2, Blocks.DIAMOND_ORE.defaultBlockState());
+        return normalized(sec);
+    }
+
+    private static PaperXrayMaskManager.MaskEntry diamondMask() {
+        return new PaperXrayMaskManager.MaskEntry(
+                PaperXrayMaskFilter.MaskSet.resolve(List.of("diamond_ore"), 2048),
+                dev.vox.lss.common.XrayMaskPolicy.FallbackKind.OVERWORLD, "config");
+    }
+
+    @Test
+    void maskedColumn_isDeferredAndByteIdenticalToTheMaskedNbtPath() {
+        var sections = new LevelChunkSection[]{stoneWithOreSection(), null, dirtSection()};
+        var blockLight = new DataLayer[]{new DataLayer(light(0, (byte) 0x1F)), null, null};
+        var skyLight = new DataLayer[]{null, null, new DataLayer(light(9, (byte) 0xF0))};
+        var mask = diamondMask();
+
+        byte[] nbt = serializeNbt(sections, blockLight, skyLight, mask);
+        var live = serializeLive(sections, blockLight, skyLight, mask);
+        assertTrue(live.isDeferred(), "a column with ore to hide must leave the masking to the processing thread");
+
+        assertWireBytesIdentical(nbt, live.serializedSections());
+        assertFalse(live.isDeferred(), "the first read serializes the snapshot");
+        assertEquals(live.serializedSections().length, live.estimatedBytes());
+        assertEquals(Blocks.STONE.defaultBlockState(),
+                decode(live.serializedSections()).get(0).section().getBlockState(3, 4, 5),
+                "the ore is masked on the wire");
+    }
+
+    @Test
+    void deferredColumn_servesTheProbeTimeSnapshotNotTheLaterWorld() {
+        byte[] glow = light(0, (byte) 0x1F);
+        var mask = diamondMask();
+        byte[] expected = serializeNbt(new LevelChunkSection[]{stoneWithOreSection()},
+                new DataLayer[]{new DataLayer(glow.clone())}, new DataLayer[]{null}, mask);
+
+        var liveSection = stoneWithOreSection();
+        var liveBlockLight = new DataLayer(glow.clone());
+        var live = serializeLive(new LevelChunkSection[]{liveSection},
+                new DataLayer[]{liveBlockLight}, new DataLayer[]{null}, mask);
+        assertTrue(live.isDeferred());
+
+        // The world moves on before the processing thread reads the column.
+        liveSection.setBlockState(7, 7, 7, Blocks.GLASS.defaultBlockState());
+        liveBlockLight.set(1, 1, 1, 9);
+
+        assertWireBytesIdentical(expected, live.serializedSections());
+    }
+
+    @Test
+    void maskActiveButNothingToHide_serializesEagerly() {
+        var sections = new LevelChunkSection[]{stoneAndGlassSection()};
+        var blockLight = new DataLayer[]{null};
+        var skyLight = new DataLayer[]{null};
+
+        var live = serializeLive(sections, blockLight, skyLight, diamondMask());
+        assertFalse(live.isDeferred(), "an ore-free palette pays nothing and stays on the eager path");
+        assertWireBytesIdentical(serializeNbt(sections, blockLight, skyLight), live.serializedSections());
+    }
+
+    @Test
+    void maskOff_serializesEagerly() {
+        var live = serializeLive(new LevelChunkSection[]{stoneWithOreSection()},
+                new DataLayer[]{null}, new DataLayer[]{null});
+        assertFalse(live.isDeferred(), "no mask entry means the pre-fork eager path, unchanged");
+    }
+
+    @Test
+    void deferredSerializer_runsOnceAcrossConcurrentReaders() throws Exception {
+        var calls = new AtomicInteger();
+        byte[] bytes = {1, 2, 3};
+        var column = LoadedColumnData.deferred(1, 2, () -> {
+            calls.incrementAndGet();
+            return bytes;
+        });
+        var pool = Executors.newFixedThreadPool(8);
+        try {
+            var futures = new ArrayList<Future<byte[]>>();
+            for (int i = 0; i < 16; i++) futures.add(pool.submit(column::serializedSections));
+            for (var f : futures) assertSame(bytes, f.get());
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(1, calls.get());
+        assertEquals(3, column.estimatedBytes());
+    }
+
+    @Test
+    void deferredSerializerThatThrows_readsAsAllAirAndIsNotRetried() {
+        var calls = new AtomicInteger();
+        var column = LoadedColumnData.deferred(1, 2, () -> {
+            calls.incrementAndGet();
+            throw new IllegalStateException("boom");
+        });
+        assertNull(column.serializedSections());
+        assertNull(column.serializedSections());
+        assertEquals(0, column.estimatedBytes());
+        assertEquals(1, calls.get());
     }
 }

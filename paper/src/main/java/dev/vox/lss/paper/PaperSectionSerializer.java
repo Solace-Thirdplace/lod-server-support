@@ -2,6 +2,7 @@ package dev.vox.lss.paper;
 
 import dev.vox.lss.common.processing.LoadedColumnData;
 import io.netty.buffer.Unpooled;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.SectionPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
@@ -9,6 +10,10 @@ import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.PalettedContainerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Serializes loaded chunk columns into MC-native wire format for Paper.
@@ -24,6 +29,15 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
  * are legal and tear-free off-thread — getChunkNow is a concurrent-map lookup, light
  * listeners clone SWMR state, PalettedContainer.write is synchronized (audited for the Folia
  * port, spec §3/§5).
+ *
+ * <p>Deferred masking (ThirdplaceMC fork): when x-ray masking has work to do in a column,
+ * the calling thread only snapshots it ({@link LevelChunkSection#copy()} and
+ * {@link DataLayer#copy()}) and returns a {@link LoadedColumnData#deferred deferred} column.
+ * The mask, the section writes and the v20 translation run on the processing thread, which
+ * is the only reader of the bytes. Masking was most of the probe's server-thread cost
+ * (21.8 s of 23.4 s in an hour-long Backend profile). The bytes are identical to the eager
+ * path's: the same sections, in the same state, go through the same code. Columns with
+ * nothing to mask, and every column while masking is off, serialize eagerly as before.
  */
 final class PaperSectionSerializer {
     private PaperSectionSerializer() {}
@@ -36,11 +50,13 @@ final class PaperSectionSerializer {
                                DataLayer blLayer, boolean hasBlockLight,
                                DataLayer slLayer, boolean hasSkyLight) {}
 
-    // LevelChunkSection.write(buf) is @Deprecated on Paper (an anti-xray overload was added),
-    // but the 1-arg form is the canonical vanilla serialization and is byte-identical to the
-    // Fabric path. The wire format must match Fabric exactly, so keep this call (do not migrate).
-    @SuppressWarnings("deprecation")
     static LoadedColumnData serializeColumn(ServerLevel level, LevelChunk chunk, int cx, int cz) {
+        return serializeColumn(level, chunk, cx, cz, PaperXrayMaskManager.entryForActive(level));
+    }
+
+    /** As above with the mask entry supplied (null = unmasked): the seam Tier 1 drives. */
+    static LoadedColumnData serializeColumn(ServerLevel level, LevelChunk chunk, int cx, int cz,
+                                            PaperXrayMaskManager.MaskEntry maskEntry) {
         int minSectionY = level.getMinSectionY();
         var sections = chunk.getSections();
         var lightEngine = level.getLightEngine();
@@ -51,7 +67,7 @@ final class PaperSectionSerializer {
         // WITH stored non-zero sky light are served too (2026-07-27, black-boundary-faces
         // fix — see the Fabric twin for the full rationale): those boundary air layers are
         // what lights top/side faces of adjacent terrain at chunk borders.
-        var includedSections = new java.util.ArrayList<SectionInfo>(sections.length);
+        var includedSections = new ArrayList<SectionInfo>(sections.length);
         for (int i = 0; i < sections.length; i++) {
             var section = sections[i];
             if (section == null) continue;
@@ -89,15 +105,53 @@ final class PaperSectionSerializer {
             return new LoadedColumnData(cx, cz, null, 0);
         }
 
-        // Second pass: serialize using cached results
-        var maskEntry = PaperXrayMaskManager.entryForActive(level);
-        var maskFactory = maskEntry != null ? PaperNbtSectionSerializer.factoryFor(level.registryAccess()) : null;
-        var buf = new FriendlyByteBuf(Unpooled.buffer(sections.length * 1024));
+        var registryAccess = level.registryAccess();
+        var maskFactory = maskEntry != null ? PaperNbtSectionSerializer.factoryFor(registryAccess) : null;
+        int capacityHint = sections.length * 1024;
+        var toWrite = new LevelChunkSection[includedSections.size()];
+        boolean anyToMask = false;
+        for (int i = 0; i < toWrite.length; i++) {
+            var info = includedSections.get(i);
+            toWrite[i] = sections[info.index()];
+            if (maskEntry != null && !anyToMask) {
+                anyToMask = PaperXrayMaskFilter.needsMasking(toWrite[i], info.sectionY(), maskEntry.mask());
+            }
+        }
+
+        if (!anyToMask) {
+            byte[] serialized = writeColumn(includedSections, toWrite, maskEntry, maskFactory,
+                    registryAccess, capacityHint);
+            return new LoadedColumnData(cx, cz, serialized, serialized.length);
+        }
+
+        // Snapshot on this thread; everything after it runs on the processing thread.
+        var infos = new ArrayList<SectionInfo>(includedSections.size());
+        for (int i = 0; i < toWrite.length; i++) {
+            var info = includedSections.get(i);
+            toWrite[i] = toWrite[i].copy();
+            infos.add(new SectionInfo(info.index(), info.sectionY(), info.sectionPos(),
+                    info.hasBlockLight() ? info.blLayer().copy() : null, info.hasBlockLight(),
+                    info.hasSkyLight() ? info.slLayer().copy() : null, info.hasSkyLight()));
+        }
+        return LoadedColumnData.deferred(cx, cz, () -> writeColumn(infos, toWrite, maskEntry,
+                maskFactory, registryAccess, capacityHint));
+    }
+
+    // LevelChunkSection.write(buf) is @Deprecated on Paper (an anti-xray overload was added),
+    // but the 1-arg form is the canonical vanilla serialization and is byte-identical to the
+    // Fabric path. The wire format must match Fabric exactly, so keep this call (do not migrate).
+    @SuppressWarnings("deprecation")
+    private static byte[] writeColumn(List<SectionInfo> includedSections, LevelChunkSection[] toWrite,
+                                      PaperXrayMaskManager.MaskEntry maskEntry,
+                                      PalettedContainerFactory maskFactory,
+                                      RegistryAccess registryAccess, int capacityHint) {
+        var buf = new FriendlyByteBuf(Unpooled.buffer(capacityHint));
         try {
             buf.writeVarInt(includedSections.size());
 
-            for (var info : includedSections) {
-                var section = sections[info.index];
+            for (int i = 0; i < toWrite.length; i++) {
+                var info = includedSections.get(i);
+                var section = toWrite[i];
                 if (maskEntry != null) {
                     // Masking INSIDE the choke point: probe, generation, and every consumer
                     // see identical masked bytes by construction.
@@ -135,8 +189,7 @@ final class PaperSectionSerializer {
             // C1 produce-path v20 hook (progress-doc decision 2026-08-07): native emit
             // unchanged, canonical translation at the boundary — live, generation, and
             // the dirty-detection consumers all see the same translated bytes.
-            serialized = PaperNbtSectionSerializer.toV20(serialized, level.registryAccess());
-            return new LoadedColumnData(cx, cz, serialized, serialized.length);
+            return PaperNbtSectionSerializer.toV20(serialized, registryAccess);
         } finally {
             buf.release();
         }

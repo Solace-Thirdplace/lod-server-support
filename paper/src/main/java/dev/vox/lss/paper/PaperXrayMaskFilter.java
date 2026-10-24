@@ -202,7 +202,9 @@ final class PaperXrayMaskFilter {
         return fresh;
     }
 
-    private static boolean needsMasking(LevelChunkSection section, int sectionY, MaskSet mask) {
+    /** Package-private so the serializer can decide on the server thread, from the palette
+     *  alone, whether a column has masking work worth deferring. */
+    static boolean needsMasking(LevelChunkSection section, int sectionY, MaskSet mask) {
         if (mask == null || mask.isEmpty()) return false;
         // Step 0, the height gate: a section entirely at/above the cutoff skips even the
         // palette scan (with the default 64 that is every section from sectionY 4 up).
