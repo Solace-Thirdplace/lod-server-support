@@ -250,11 +250,13 @@ privacy:
       - "minecraft:deepslate_emerald_ore"
       - "minecraft:ender_chest"
   # Asks players' clients not to copy distant terrain into Xaero's World Map or
-  # JourneyMap. Only clients on 0.19.0 or newer can honor this, so while it is on,
-  # older clients get no distant terrain (and no far players) until they update.
-  # Clients still receive and render the terrain, so a modified client can ignore
-  # the request. Maps players already saved, and areas they explore normally,
-  # are not affected.
+  # JourneyMap. Players with the lss.map_ingestion (vss.map_ingestion) permission
+  # are exempt; granting it needs a permissions mod such as LuckPerms.
+  # Only clients on 0.19.0 or newer can honor this, so while it is on, older
+  # clients get no distant terrain (and no far players) until they update, unless
+  # exempt. Clients still receive and render the terrain, so
+  # a modified client can ignore the request. Maps players already saved, and
+  # areas they explore normally, are not affected.
   request_no_map_ingestion: false # Ask clients not to add distant terrain to their maps.
 
 # Sends lightweight distant-player snapshots beyond normal entity tracking range.
@@ -469,11 +471,13 @@ privacy:
       - "minecraft:deepslate_emerald_ore"
       - "minecraft:ender_chest"
   # Asks players' clients not to copy distant terrain into Xaero's World Map or
-  # JourneyMap. Only clients on 0.19.0 or newer can honor this, so while it is on,
-  # older clients get no distant terrain (and no far players) until they update.
-  # Clients still receive and render the terrain, so a modified client can ignore
-  # the request. Maps players already saved, and areas they explore normally,
-  # are not affected.
+  # JourneyMap. Players with the lss.map_ingestion (vss.map_ingestion) permission
+  # are exempt; grant it with a permissions plugin such as LuckPerms.
+  # Only clients on 0.19.0 or newer can honor this, so while it is on, older
+  # clients get no distant terrain (and no far players) until they update, unless
+  # exempt. Clients still receive and render the terrain, so
+  # a modified client can ignore the request. Maps players already saved, and
+  # areas they explore normally, are not affected.
   request_no_map_ingestion: false # Ask clients not to add distant terrain to their maps.
 
 # Sends lightweight distant-player snapshots beyond normal entity tracking range.
@@ -645,9 +649,9 @@ far_players:
   full_bright: false # Draw distant players at full brightness, including at night.
   render_distance_blocks: 0 # 0 = effective server/client ring; caps models and name tags.
   # extend_far_plane (experimental file, default false) draws far players past the game's
-  # far clipping plane, out to the farthest one; only visible with an LOD mod such as Voxy,
-  # not used while a shader pack is on. Fog can still hide very distant players: turn off
-  # your LOD mod's fog if they fade out.
+  # far clipping plane, out to the farthest far player; only visible with an LOD mod such
+  # as Voxy, not used while a shader pack is on. Fog can still hide very distant players:
+  # turn off your LOD mod's fog if they fade out.
   animation_distance_blocks: 512 # Animate nearby proxies; 0 = no walk animation.
   # Controls whether others may see your position through the far-player feature.
   # This does not hide you from normal Minecraft tracking or unrelated systems.

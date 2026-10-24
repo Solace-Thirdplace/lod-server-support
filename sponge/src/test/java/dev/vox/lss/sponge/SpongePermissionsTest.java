@@ -22,7 +22,8 @@ class SpongePermissionsTest {
         String section = yml.substring(yml.indexOf("\npermissions:") + 1);
         String node = null;
         for (String line : section.split("\n")) {
-            if (line.matches("^  [a-z.]+:\\s*$")) node = line.strip().replace(":", "");
+            // `_` allowed: lss.map_ingestion (map-ingestion permission plan §6).
+            if (line.matches("^  [a-z._]+:\\s*$")) node = line.strip().replace(":", "");
             else if (node != null && line.strip().startsWith("default:")) out.put(node, line.strip().substring(8).strip());
         }
         return out;
@@ -36,5 +37,9 @@ class SpongePermissionsTest {
             sponge.put(node.id(), d == null ? "op" : d == Tristate.TRUE ? "true" : "false");
         }
         assertEquals(paperDefaults(), sponge);
+        // The parse must actually see the underscore nodes (a regex that skipped them would
+        // drop them from BOTH sides and still compare equal).
+        assertEquals("false", paperDefaults().get("lss.map_ingestion"));
+        assertEquals("false", paperDefaults().get("vss.map_ingestion"));
     }
 }
