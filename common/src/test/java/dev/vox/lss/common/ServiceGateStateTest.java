@@ -208,4 +208,45 @@ class ServiceGateStateTest {
                 new ServiceGateState.DeniedHandshake(20, 1, "Steve").reasons(),
                 "every pre-policy deposit is a PERMISSION entry");
     }
+
+    // ---- map-ingestion exemption bookkeeping (map-ingestion permission plan §3.3/§3.4) ----
+
+    @Test
+    void theLastFlagsSentRecordOnlyFramesThatCarryTheFieldAndDieWithTheConnection() {
+        int bit = LSSConstants.CAPABILITY_MAP_POLICY;
+        int v20 = LSSConstants.PROTOCOL_VERSION;
+        assertNull(state.lastMapFlagsSent(uuid), "nothing sent yet");
+        state.noteMapFlagsSent(uuid, v20, 1, true);
+        assertNull(state.lastMapFlagsSent(uuid), "a session without the bit has no flags field");
+        state.noteMapFlagsSent(uuid, LSSConstants.V19_COMPAT_PROTOCOL_VERSION, 1 | bit, true);
+        assertNull(state.lastMapFlagsSent(uuid), "a 19 echo never carries the field");
+        state.noteMapFlagsSent(uuid, v20, 1 | bit, true);
+        assertEquals(Boolean.TRUE, state.lastMapFlagsSent(uuid));
+        state.noteMapFlagsSent(uuid, v20, 1 | bit, false);
+        assertEquals(Boolean.FALSE, state.lastMapFlagsSent(uuid), "the latest send wins");
+        state.onRegistered(uuid);
+        assertEquals(Boolean.FALSE, state.lastMapFlagsSent(uuid),
+                "a registration (also the dimension-change reuse path's neighbour) keeps it");
+        state.onDisconnect(uuid);
+        assertNull(state.lastMapFlagsSent(uuid), "the connection died: forgotten");
+    }
+
+    @Test
+    void exemptAdmissionsAreSessionScopedAndEndWithTheEpisode() {
+        state.setMapPolicyExemptAdmission(uuid, true);
+        assertTrue(state.isMapPolicyExemptAdmission(uuid));
+        state.setMapPolicyExemptAdmission(uuid, false);
+        assertFalse(state.isMapPolicyExemptAdmission(uuid), "a later non-exempt registration clears it");
+        state.setMapPolicyExemptAdmission(uuid, true);
+        state.onDisconnect(uuid);
+        assertFalse(state.isMapPolicyExemptAdmission(uuid), "disconnect clears it");
+        state.setMapPolicyExemptAdmission(uuid, true);
+        state.clearMapPolicyExemptAdmissions();
+        assertFalse(state.isMapPolicyExemptAdmission(uuid), "a disarm clears every admission");
+        state.setMapPolicyExemptCount(3);
+        state.noteMapFlagsSent(uuid, LSSConstants.PROTOCOL_VERSION, LSSConstants.CAPABILITY_MAP_POLICY, true);
+        state.clear();
+        assertEquals(0, state.mapPolicyExemptCount());
+        assertNull(state.lastMapFlagsSent(uuid), "server stop clears everything");
+    }
 }

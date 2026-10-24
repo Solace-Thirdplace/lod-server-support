@@ -505,6 +505,222 @@ class SqliteLodStoreTest {
         bumped.shutdown();
     }
 
+    // ---- build marker (paper-version-guard-store-plan §3.2/§4) ----
+
+    /** Production shape: the running version is 26.3 throughout; only the jar's build
+     *  version, platform and legacy rule vary. */
+    private SqliteLodStore.Environment markerEnv(String buildMc, String platform,
+                                                 LegacyStoreMigration migration) {
+        return new SqliteLodStore.Environment(storeDir(), "26.3-test", WIRE,
+                this::regionDir, d -> "", 0, Long.MAX_VALUE, "bs:1000/bio:aa",
+                "bsc:cc/bioc:aa", buildMc, platform, migration);
+    }
+
+    /** A shut-down store carrying one served row, written under {@code env}. */
+    private long seedStore(SqliteLodStore.Environment env) throws Exception {
+        long p = PositionUtil.packPosition(0, 2);
+        writeRegion(OW, 0, 0, Map.of(p, (int) (nowSec() - 1000)));
+        SqliteLodStore store = open(env);
+        store.deposit(OW, p, bytes(7, 400), 100);
+        assertNotNull(awaitHit(store, OW, p));
+        store.shutdown();
+        return p;
+    }
+
+    /** Turns the seeded store into one written before build tracking (every pre-0.20.0 store). */
+    private void stripBuildMarker() throws Exception {
+        rawSql("DELETE FROM meta WHERE k IN ('build_mc', 'platform')");
+        assertNull(readMetaValue("build_mc"));
+    }
+
+    @Test
+    void freshStoreIsStampedWithTheBuildMarker() throws Exception {
+        seedStore(markerEnv("26.3-build", "paper", LegacyStoreMigration.DROP));
+        assertEquals("26.3-build", readMetaValue("build_mc"));
+        assertEquals("paper", readMetaValue("platform"));
+    }
+
+    @Test
+    void presentEqualBuildMarkerOpens() throws Exception {
+        long p = seedStore(markerEnv("26.3-build", "paper", LegacyStoreMigration.DROP));
+        SqliteLodStore reopened = open(markerEnv("26.3-build", "paper", LegacyStoreMigration.DROP));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.OPEN, reopened.lastMetaVerdictForTest().kind(),
+                "a marked store written by a matching jar is kept, even under the DROP rule");
+        assertNotNull(reopened.get(OW, p), "rows must survive a matching reopen");
+        reopened.shutdown();
+    }
+
+    @Test
+    void presentDifferentBuildMarkerDropsAsCoreDrift() throws Exception {
+        // The incident shape: same running server (mc_version 26.3), same registry and
+        // wire, but the store was written by a jar BUILT for 26.2.
+        long p = seedStore(markerEnv("26.2-build", "paper", LegacyStoreMigration.DROP));
+        SqliteLodStore reopened = open(markerEnv("26.3-build", "paper", LegacyStoreMigration.DROP));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.DROP, reopened.lastMetaVerdictForTest().kind());
+        assertTrue(reopened.lastMetaVerdictForTest().detail().contains("build_mc"),
+                "the core-key drop must NAME build_mc, got: "
+                        + reopened.lastMetaVerdictForTest().detail());
+        assertNull(reopened.get(OW, p), "rows from a jar built for another version must not survive");
+        assertEquals("26.3-build", readMetaValue("build_mc"), "the rebuilt store carries this jar's marker");
+        reopened.shutdown();
+    }
+
+    @Test
+    void presentDifferentBuildMarkerDropsUnderTheRefreshRuleToo() throws Exception {
+        // The legacy rule applies ONLY to an unmarked store: once stamped, a Fabric store
+        // compares the marker like any core key.
+        long p = seedStore(markerEnv("26.2-build", "fabric", LegacyStoreMigration.REFRESH));
+        SqliteLodStore reopened = open(markerEnv("26.3-build", "fabric", LegacyStoreMigration.REFRESH));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.DROP, reopened.lastMetaVerdictForTest().kind());
+        assertNull(reopened.get(OW, p));
+        reopened.shutdown();
+    }
+
+    @Test
+    void absentBuildMarkerUnderTheDropRuleRebuildsOnceAndStamps() throws Exception {
+        long p = seedStore(markerEnv("26.3-build", "paper", LegacyStoreMigration.DROP));
+        stripBuildMarker();
+
+        SqliteLodStore reopened = open(markerEnv("26.3-build", "paper", LegacyStoreMigration.DROP));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.DROP, reopened.lastMetaVerdictForTest().kind());
+        assertEquals("store written before build tracking; rebuilding once",
+                reopened.lastMetaVerdictForTest().detail());
+        assertNull(reopened.get(OW, p),
+                "an unmarked Paper store may hold rows a mismatched jar wrote — it must rebuild");
+        assertEquals(0, reopened.diagnostics().getErrors(), "drop-and-rebuild is not an error");
+        assertEquals("26.3-build", readMetaValue("build_mc"));
+        assertEquals("paper", readMetaValue("platform"));
+        reopened.deposit(OW, p, bytes(8, 400), 200);
+        assertNotNull(awaitHit(reopened, OW, p), "the rebuilt store must accept deposits");
+        reopened.shutdown();
+
+        // Once: the stamped store now opens like any matching store.
+        SqliteLodStore third = open(markerEnv("26.3-build", "paper", LegacyStoreMigration.DROP));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.OPEN, third.lastMetaVerdictForTest().kind());
+        assertNotNull(third.get(OW, p), "the rebuild fires exactly once");
+        third.shutdown();
+    }
+
+    @Test
+    void absentBuildMarkerUnderTheRefreshRuleKeepsRowsAndStamps() throws Exception {
+        long p = seedStore(markerEnv("26.3-build", "fabric", LegacyStoreMigration.REFRESH));
+        stripBuildMarker();
+
+        SqliteLodStore reopened = open(markerEnv("26.3-build", "fabric", LegacyStoreMigration.REFRESH));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.OPEN, reopened.lastMetaVerdictForTest().kind(),
+                "Fabric/NeoForge/Sponge refuse a wrong-version jar: an unmarked store is kept");
+        assertNotNull(reopened.get(OW, p), "the rows must survive the refresh");
+        reopened.shutdown();
+        assertEquals("26.3-build", readMetaValue("build_mc"), "the refresh stamps build_mc");
+        assertEquals("fabric", readMetaValue("platform"), "the refresh stamps platform");
+    }
+
+    // ---- build marker families (0.20.0 implementation-review fold 1) ----
+
+    /** {@link #markerEnv} plus the jar's own {@code minecraft_dependency} (BuildInfo). */
+    private SqliteLodStore.Environment familyEnv(String buildMc, String rule, String platform) {
+        return new SqliteLodStore.Environment(storeDir(), "26.3-test", WIRE,
+                this::regionDir, d -> "", 0, Long.MAX_VALUE, "bs:1000/bio:aa",
+                "bsc:cc/bioc:aa", buildMc, platform, LegacyStoreMigration.DROP,
+                dev.vox.lss.common.MinecraftVersionRule.parse(rule));
+    }
+
+    @Test
+    void aSameFamilyBuildMarkerIsKeptAndReStampedToThisBuild() throws Exception {
+        // A 26.3 jar opening a store a 26.3.1 build wrote: its rule accepts 26.3.1, so the
+        // rows stay and the marker becomes this build's.
+        long p = seedStore(familyEnv("26.3.1", ">=26.3 <26.4-", "paper"));
+        assertEquals("26.3.1", readMetaValue("build_mc"));
+        SqliteLodStore reopened = open(familyEnv("26.3", ">=26.3 <26.4-", "paper"));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.REFRESH, reopened.lastMetaVerdictForTest().kind(),
+                "a same-family marker is not drift: REFRESH, never DROP");
+        assertNotNull(reopened.get(OW, p), "the rows must survive a same-family build change");
+        reopened.shutdown();
+        assertEquals("26.3", readMetaValue("build_mc"), "the marker is re-stamped to this build");
+
+        SqliteLodStore again = open(familyEnv("26.3", ">=26.3 <26.4-", "paper"));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.OPEN, again.lastMetaVerdictForTest().kind(),
+                "an equal marker opens");
+        assertNotNull(again.get(OW, p));
+        again.shutdown();
+    }
+
+    @Test
+    void aBuildMarkerTheRuleRejectsDropsAsCoreDrift() throws Exception {
+        long p = seedStore(familyEnv("26.2", ">=26.2 <26.3-", "paper"));
+        SqliteLodStore reopened = open(familyEnv("26.3", ">=26.3 <26.4-", "paper"));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.DROP, reopened.lastMetaVerdictForTest().kind());
+        assertTrue(reopened.lastMetaVerdictForTest().detail().contains("build_mc"),
+                reopened.lastMetaVerdictForTest().detail());
+        assertNull(reopened.get(OW, p), "a 26.2 build's rows never survive under a 26.3 build");
+        reopened.shutdown();
+        assertEquals("26.3", readMetaValue("build_mc"));
+    }
+
+    @Test
+    void aPatchBuildKeepsTheBaseReleaseStampOfItsFamily() throws Exception {
+        // The 26.1 line's jar is built for 26.1.2 and declares >=26.1 <26.2-.
+        long p = seedStore(familyEnv("26.1", ">=26.1 <26.2-", "fabric"));
+        SqliteLodStore reopened = open(familyEnv("26.1.2", ">=26.1 <26.2-", "fabric"));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.REFRESH, reopened.lastMetaVerdictForTest().kind());
+        assertNotNull(reopened.get(OW, p));
+        reopened.shutdown();
+        assertEquals("26.1.2", readMetaValue("build_mc"));
+    }
+
+    @Test
+    void anExactRuleStillDropsAnotherPatchVersion() throws Exception {
+        long p = seedStore(familyEnv("1.21.11", "1.21.11", "fabric"));
+        SqliteLodStore reopened = open(familyEnv("1.21.10", "1.21.10", "fabric"));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.DROP, reopened.lastMetaVerdictForTest().kind());
+        assertNull(reopened.get(OW, p));
+        reopened.shutdown();
+    }
+
+    // ---- the platform key is first-writer (0.20.0 implementation-review fold 6) ----
+
+    @Test
+    void thePlatformKeyIsWrittenOnlyByTheStoresCreator() throws Exception {
+        long p = seedStore(familyEnv("26.3.1", ">=26.3 <26.4-", "fabric"));
+        assertEquals("fabric", readMetaValue("platform"), "create writes it");
+
+        // REFRESH (a same-family re-stamp) under another platform: kept.
+        SqliteLodStore refreshed = open(familyEnv("26.3", ">=26.3 <26.4-", "neoforge"));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.REFRESH, refreshed.lastMetaVerdictForTest().kind());
+        refreshed.shutdown();
+        assertEquals("fabric", readMetaValue("platform"), "a REFRESH never overwrites it");
+
+        // OPEN: kept.
+        SqliteLodStore opened = open(familyEnv("26.3", ">=26.3 <26.4-", "sponge"));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.OPEN, opened.lastMetaVerdictForTest().kind());
+        opened.shutdown();
+        assertEquals("fabric", readMetaValue("platform"), "an OPEN never overwrites it");
+
+        // KEEP_PERMUTED (same content, shuffled ids): kept.
+        SqliteLodStore permuted = open(new SqliteLodStore.Environment(storeDir(), "26.3-test", WIRE,
+                this::regionDir, d -> "", 0, Long.MAX_VALUE, "bs:1002/bio:aa",
+                "bsc:cc/bioc:aa", "26.3", "paper", LegacyStoreMigration.DROP,
+                dev.vox.lss.common.MinecraftVersionRule.parse(">=26.3 <26.4-")));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.KEEP_PERMUTED, permuted.lastMetaVerdictForTest().kind());
+        assertNotNull(permuted.get(OW, p));
+        permuted.shutdown();
+        assertEquals("fabric", readMetaValue("platform"), "a KEEP_PERMUTED never overwrites it");
+
+        // Drop-and-rebuild: the rebuilt store's creator writes it.
+        SqliteLodStore rebuilt = open(familyEnv("26.4", ">=26.4 <26.5-", "paper"));
+        assertEquals(SqliteLodStore.MetaVerdict.Kind.DROP, rebuilt.lastMetaVerdictForTest().kind());
+        rebuilt.shutdown();
+        assertEquals("paper", readMetaValue("platform"), "a drop-and-rebuild writes it");
+
+        // The legacy-marker stamp writes it too.
+        stripBuildMarker();
+        SqliteLodStore stamped = open(new SqliteLodStore.Environment(storeDir(), "26.3-test", WIRE,
+                this::regionDir, d -> "", 0, Long.MAX_VALUE, "bs:1000/bio:aa",
+                "bsc:cc/bioc:aa", "26.4", "folia", LegacyStoreMigration.REFRESH));
+        stamped.shutdown();
+        assertEquals("folia", readMetaValue("platform"), "the legacy-marker stamp writes it");
+    }
+
     /** The v3->v4 bump (R4: chash/fhash FNV-1a -> CRC32C): a store stamped with the
      *  PREVIOUS schema version must drop-and-rebuild exactly once — old rows' hashes
      *  would fail every validation under the new function. evaluateMeta's core gate is

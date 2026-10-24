@@ -976,8 +976,13 @@ public class SerializerParityGameTests {
                     Gt.assertTrue(helper, false, "deposited, awaiting batcher visibility");
                 }
                 case 2 -> {
-                    Gt.assertTrue(helper, store.get(dim, packed) != null,
-                            "waiting for the deposit to commit (batcher)");
+                    if (store.get(dim, packed) == null) {
+                        // The batcher is a wall-clock thread: an unthrottled gametest server
+                        // can burn every remaining tick before it commits under load, so this
+                        // wait (and only this one) is wall-denominated (the TwoPlayer fix family).
+                        waitWallClock(helper);
+                        Gt.assertTrue(helper, false, "waiting for the deposit to commit (batcher)");
+                    }
                     reader.submitReadDirect(readerId, registration(readerId), dim, level, cx, cz, 1, 0L);
                     step.set(3);
                     Gt.assertTrue(helper, false, "store-rung read submitted, awaiting result");
@@ -998,5 +1003,17 @@ public class SerializerParityGameTests {
                 default -> Gt.fail(helper, "unexpected store parity step " + step.get());
             }
         });
+    }
+
+    /** Wall-denominate a tick-polled wait on real disk I/O (the TwoPlayerGameTests fix family):
+     *  an unthrottled gametest server burns its maxTicks budget in well under a second, while
+     *  a BACKGROUND-priority IOWorker read can queue behind a generation batch's saves. */
+    private static void waitWallClock(GameTestHelper helper) {
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            Gt.fail(helper, "wall-clock wait interrupted");
+        }
     }
 }

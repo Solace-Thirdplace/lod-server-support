@@ -267,10 +267,12 @@ public class PaperCommands implements CommandExecutor, TabCompleter {
                                 + service.getServiceGateState().deniedCount(
                                         dev.vox.lss.common.ServiceGateState.REASON_PERMISSION)
                                 + " provider=bukkit")
+                // exempt= is the sweep's cached count (map-ingestion permission plan §3.5).
                 .withMapPolicyLine(!config.requestNoMapIngestion() ? null
                         : dev.vox.lss.common.MapPolicy.diagLineOrNull(true,
                                 service.getServiceGateState().deniedCount(
-                                        dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)));
+                                        dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY),
+                                service.getServiceGateState().mapPolicyExemptCount(), null));
 
         for (var line : DiagnosticsFormatter.formatDiagnostics(data)) {
             sender.sendMessage(line);
