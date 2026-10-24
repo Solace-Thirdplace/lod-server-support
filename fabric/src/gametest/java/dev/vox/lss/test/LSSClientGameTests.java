@@ -5,6 +5,7 @@ import dev.vox.lss.api.VoxelColumnConsumer;
 import dev.vox.lss.api.VoxelColumnData;
 import dev.vox.lss.config.LSSServerConfig;
 import dev.vox.lss.config.LSSClientConfig;
+import dev.vox.lss.networking.client.FarPlaneExtension;
 import dev.vox.lss.networking.client.LSSClientNetworking;
 import dev.vox.lss.networking.server.LSSServerNetworking;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -98,6 +99,39 @@ public class LSSClientGameTests implements FabricClientGameTest {
             if (LSSClientNetworking.getServerLodDistance() != LSSServerConfig.CONFIG.lodDistanceChunks()) {
                 throw new AssertionError("Server LOD distance should match config: expected "
                         + LSSServerConfig.CONFIG.lodDistanceChunks() + ", got " + LSSClientNetworking.getServerLodDistance());
+            }
+
+            // Far-plane extension (#364) OFF by default: the hook runs every frame and changes
+            // nothing — the plane equals vanilla's max(render distance x 64, cloud range x 16).
+            boolean farPlaneHookRan = context.computeOnClient(client -> FarPlaneExtension.hookRan());
+            float vanillaFar = context.computeOnClient(client ->
+                    Math.max(client.options.getEffectiveRenderDistance() * 16 * 4.0f,
+                            client.options.cloudRange().get() * 16.0f));
+            float seenFar = context.computeOnClient(client -> FarPlaneExtension.lastVanillaFar());
+            float usedFar = context.computeOnClient(client -> FarPlaneExtension.activeFar());
+            if (!farPlaneHookRan || seenFar != vanillaFar || usedFar != vanillaFar) {
+                throw new AssertionError("far-plane hook (setting off): ran=" + farPlaneHookRan
+                        + ", vanilla=" + vanillaFar + ", hook saw " + seenFar + ", used " + usedFar);
+            }
+
+            // ON path: the hooks publish and write the extension back. A synthetic report stands
+            // in for a far player (the tracker cannot be fed here); the latch only grows.
+            applyClientSetting(context, "far_players.extend_far_plane", true);
+            context.runOnClient(client -> FarPlaneExtension.report(3000));
+            context.waitTicks(3);
+            boolean frameStartRan = context.computeOnClient(client -> FarPlaneExtension.frameStartRan());
+            float extendedFar = context.computeOnClient(client -> FarPlaneExtension.activeFar());
+            float frameFar = context.computeOnClient(client -> {
+                try {
+                    var field = net.minecraft.client.Camera.class.getDeclaredField("depthFar");
+                    field.setAccessible(true);
+                    return (float) field.get(client.gameRenderer.mainCamera());
+                } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+            });
+            applyClientSetting(context, "far_players.extend_far_plane", false);
+            if (!frameStartRan || extendedFar != 3072f || frameFar != 3072f) {
+                throw new AssertionError("far-plane hook (setting on, a far player at 3000): frame start ran="
+                        + frameStartRan + ", active=" + extendedFar + ", the frame used " + frameFar);
             }
 
             // C2: Effective LOD distance calculation
@@ -560,13 +594,17 @@ public class LSSClientGameTests implements FabricClientGameTest {
     }
 
     private static void applyReception(ClientGameTestContext context, boolean enabled) {
+        applyClientSetting(context, "lod.receive", enabled);
+    }
+
+    private static void applyClientSetting(ClientGameTestContext context, String path, Object value) {
         var completed = new java.util.concurrent.atomic.AtomicBoolean();
         var failure = new java.util.concurrent.atomic.AtomicReference<String>();
         context.runOnClient(client -> {
             var config = LSSClientConfig.CONFIG;
             try {
                 var document = config.store().read();
-                config.store().saveDraft(document.hash(), java.util.Map.of("lod.receive", enabled));
+                config.store().saveDraft(document.hash(), java.util.Map.of(path, value));
             } catch (java.io.IOException error) { throw new java.io.UncheckedIOException(error); }
             config.reload(message -> {
                 if (message.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents text) {

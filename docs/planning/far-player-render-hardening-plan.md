@@ -60,7 +60,8 @@ API fact below was re-read from the right archive.)
   .zip` `shaders/program/voxy.json:7` sets `"excludeLodsFromVanillaDepth": true` → Voxy's Iris
   pipeline never writes LOD depth → every entity, proxies included, draws over LODs (Voxy's
   `IrisShaderPatch.emitToVanillaDepth() = !excludeLodsFromVanillaDepth`). Iris also extends the
-  far plane. Not fixable by LSS render ordering. Without shaders the vanilla far plane is
+  far plane [correction 2026-10-23: it does not; Iris's `MixinTweakFarPlane` is not registered,
+  see 2026-10-23-far-plane-extension-plan.md §1]. Not fixable by LSS render ordering. Without shaders the vanilla far plane is
   `renderDistance × 64` blocks (rd 12 → 768; `GameRenderer.getDepthFar()`) and Voxy 0.2.16 does
   not extend it → proxies beyond are clipped, whatever `farPlayersMaxRenderDistanceBlocks` says.
   Note for the live check: the user's instance has `enableShaders=false` and its selected pack
@@ -93,7 +94,8 @@ instrument so the next regression is measurable, not eyeballed.
 Non-goals: no wire/protocol change (verified: the `lss:far_player_*` channels, `FarPlayerWire`,
 the capability bit and the prefs carrier are untouched; `WireParityTest`'s channel census would
 red otherwise); no fog mixin (Roxy already forces no-fog under Voxy; broke Voxy fog); no
-glow; no far-plane extension (Voxy does not extend it — a proxy past the far plane is invisible,
+glow; no far-plane extension [reversed 2026-10-23 as an opt-in, off by default:
+2026-10-23-far-plane-extension-plan.md] (Voxy does not extend it — a proxy past the far plane is invisible,
 documented); no change to the handoff predicate or the mount ladder semantics (E2/E3 pins); no
 copying of the historical renderer code (F7).
 
