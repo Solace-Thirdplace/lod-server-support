@@ -22,9 +22,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <ul>
  *   <li>the SITE CENSUS over every production tree: no flag-less SessionConfig
  *       constructor (fully qualified spellings included), every {@code forSession} and
- *       Paper {@code sendSessionConfig} call passes the session's capabilities and a
- *       policy read as its last two arguments, and Paper's capability-less encoder is
- *       not reachable from production;</li>
+ *       Paper {@code sendSessionConfig} call passes the session's capabilities and the
+ *       PER-PLAYER decision as its last two arguments, and Paper's capability-less
+ *       encoder is not reachable from production;</li>
+ *   <li>the per-player decision (map-ingestion permission plan §3.2): every
+ *       {@code denyMapIngestion} a send passes is assigned from the helper
+ *       ({@code denyMapIngestionFor} / {@code MapPolicy.decide}), and every remaining
+ *       raw {@code requestNoMapIngestion()} read is on a named allowlist (the helper's
+ *       own input, the sweep guard, the reload adoption, the diag line, the re-offer log
+ *       text) — a send site that reads the server-wide value ignores the exemption;</li>
  *   <li>both production handshake cores ride the widest {@code HandshakeGate.evaluate}
  *       form and branch on {@code MAP_POLICY_REFUSED} explicitly (a new outcome would
  *       otherwise fall into a generic branch silently);</li>
@@ -139,17 +145,74 @@ class MapPolicyWiringContractTest {
         return out;
     }
 
-    /** The session's capabilities, then a policy read — the last two arguments. */
+    /** The session's capabilities, then the per-player decision — the last two arguments. */
     private static void assertCapabilitiesThenPolicy(Path file, List<String> args) {
         assertTrue(args.size() >= 2, file + ": " + args);
         String caps = args.get(args.size() - 2);
         String policy = args.get(args.size() - 1);
-        assertTrue(caps.toLowerCase(java.util.Locale.ROOT).contains("capabilities"),
+        assertTrue(caps.toLowerCase(java.util.Locale.ROOT).contains("capabilities")
+                        || caps.equals("caps"),
                 file + ": the second-to-last argument must be the SESSION's capabilities, got " + args);
-        assertTrue(policy.contains("requestNoMapIngestion()") || policy.equals("mapPolicyArmed")
-                        || policy.equals("true"),
-                file + ": the last argument must read the policy at send time (or be the "
+        // Map-ingestion permission plan §3.2: the per-player decision (assigned from the
+        // helper — pinned below), or the literal of the revocation push to a session WITHOUT
+        // the bit (no flags field). Never the raw server-wide read: that ignores the exemption.
+        assertTrue(policy.equals("denyMapIngestion") || policy.equals("true"),
+                file + ": the last argument must be the per-player decision at send time (or the "
                         + "revocation push's literal), got " + args);
+    }
+
+    /** Every production assignment of the decision variable takes the helper's answer. */
+    @Test
+    void everyDecisionVariableIsAssignedFromTheHelper() throws IOException {
+        int assignments = 0;
+        var assign = Pattern.compile("boolean\\s+denyMapIngestion\\s*=([^;]*);");
+        for (var f : productionFiles()) {
+            var m = assign.matcher(withoutComments(Files.readString(f)));
+            while (m.find()) {
+                String rhs = m.group(1);
+                assertTrue(rhs.contains("denyMapIngestionFor(") || rhs.contains("MapPolicy.decide(")
+                                || rhs.trim().equals("mapPolicy.deny()"),
+                        f + ": denyMapIngestion must come from the per-player helper, got " + rhs.trim());
+                assignments++;
+            }
+        }
+        assertTrue(assignments >= 13, "the census must see every send/decision site "
+                + "(xplat 6, Paper 7), got " + assignments);
+    }
+
+    /** The raw server-wide read is allowed only where the per-player decision does not apply. */
+    private static final List<Pattern> RAW_POLICY_READ_ALLOWLIST = List.of(
+            // the helper's own input (both cores, both services, the Paper reply/sender/drain)
+            Pattern.compile("MapPolicy\\.decide\\(\\s*(?:this\\.)?(?:lssConfig|config)\\.requestNoMapIngestion\\(\\)$"),
+            // the reload adoption (constructor + reconcile): the policy, not a player
+            Pattern.compile("privacy\\(\\)\\.requestNoMapIngestion\\(\\)$"),
+            // the sweep's armed guard
+            Pattern.compile("if \\(!config\\.requestNoMapIngestion\\(\\)$"),
+            // the diag line renders while armed
+            Pattern.compile("withMapPolicyLine\\(!config\\.requestNoMapIngestion\\(\\)$"),
+            // the re-offer INFO line's wording (exempt vs disarmed), after the decision
+            Pattern.compile("reofferReason\\(remembered, config\\.requireServicePermission\\(\\), "
+                    + "denyMapIngestion, config\\.requestNoMapIngestion\\(\\)$"));
+
+    @Test
+    void everyRawPolicyReadIsAllowlisted() throws IOException {
+        int reads = 0;
+        String needle = "requestNoMapIngestion()";
+        for (var f : productionFiles()) {
+            String code = withoutComments(Files.readString(f)).replaceAll("\\s+", " ");
+            int idx = 0;
+            while ((idx = code.indexOf(needle, idx)) >= 0) {
+                String upTo = code.substring(Math.max(0, idx - 120), idx + needle.length())
+                        .replace("( ", "(");
+                boolean allowed = RAW_POLICY_READ_ALLOWLIST.stream()
+                        .anyMatch(pt -> pt.matcher(upTo).find());
+                assertTrue(allowed, f + ": a raw requestNoMapIngestion() read outside the allowlist "
+                        + "ignores the per-player exemption — use the helper: ..." + upTo);
+                reads++;
+                idx += needle.length();
+            }
+        }
+        assertTrue(reads >= 10, "the census must see the reads, got " + reads);
     }
 
     // ---- the site census (A2) ----
@@ -175,8 +238,8 @@ class MapPolicyWiringContractTest {
                 calls++;
             }
         }
-        assertTrue(calls >= 5, "the census must see the xplat sites (reply, repush, two revocations, "
-                + "dimension change), got " + calls);
+        assertTrue(calls >= 6, "the census must see the xplat sites (reply, repush, two revocations, "
+                + "dimension change, the sweep's flags push), got " + calls);
     }
 
     @Test
@@ -200,6 +263,19 @@ class MapPolicyWiringContractTest {
             }
         }
         assertTrue(sends >= 2, "the handshake reply and the service's send lambda, got " + sends);
+        // The Paper service's own send path: one sender call inside the recording wrapper,
+        // and every wrapper call passes the session's capabilities and the decision.
+        String service = withoutComments(source("paper/src/main/java/dev/vox/lss/paper/PaperRequestProcessingService.java"));
+        var senderCalls = callArgs(service, "this.sessionConfigSender.send(");
+        assertEquals(1, senderCalls.size(), "only the recording wrapper calls the sender");
+        assertCapabilitiesThenPolicy(Path.of("PaperRequestProcessingService"), senderCalls.getFirst());
+        var wrapped = callArgs(service.replace("private void sendSessionConfig(", "private void DECL("),
+                " sendSessionConfig(");
+        assertTrue(wrapped.size() >= 5, "repush, gate revocation, map revocation, flags push, dimension change");
+        for (var args : wrapped) {
+            assertEquals(4, args.size(), args.toString());
+            assertCapabilitiesThenPolicy(Path.of("PaperRequestProcessingService"), args);
+        }
     }
 
     @Test
@@ -219,9 +295,13 @@ class MapPolicyWiringContractTest {
     @Test
     void bothProductionCoresUseTheWidestGateAndBranchOnTheRefusalExplicitly() throws IOException {
         for (String path : new String[]{GLUE, PAPER_PLUGIN}) {
-            String src = normalized(path);
-            assertTrue(src.contains("ViaProbe.isMismatch(viaProtocol, nativeProtocol), mapPolicyArmed);"),
+            String src = normalized(path).replace("( ", "(");
+            assertTrue(src.contains("ViaProbe.isMismatch(viaProtocol, nativeProtocol), denyMapIngestion);"),
                     path + " must ride the widest (9-arg) evaluate form");
+            // Map-ingestion permission plan §3.2: the rung takes the PER-PLAYER decision,
+            // whose exemption read is the gate's fail-closed member.
+            assertTrue(src.contains("MapPolicy.decide(config.requestNoMapIngestion(), serviceGate::mapIngestionExempt)"),
+                    path + " must assign the handshake decision from the helper with the gate's exemption read");
             assertTrue(src.contains("decision.outcome() == HandshakeGate.Outcome.MAP_POLICY_REFUSED"),
                     path + " must branch on the new outcome explicitly");
         }

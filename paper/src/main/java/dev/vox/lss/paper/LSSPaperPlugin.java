@@ -142,6 +142,25 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                 if (deniedWhileRegistered != null) deniedWhileRegistered.run();
                 return transition;
             }
+
+            /** Read once per handshake (map-ingestion permission plan §3.1/§3.2): the
+             *  decision, the deferred reply and the pump's Register drain all see the same
+             *  answer, so a refusal at the drain and the reply's enabled flag can never
+             *  disagree. */
+            private volatile Boolean exemptOnce;
+
+            @Override
+            public boolean mapIngestionExempt() {
+                Boolean memo = this.exemptOnce;
+                if (memo == null) {
+                    // FAIL-CLOSED, unlike hasPermission above: either spelling (default
+                    // false in plugin.yml); a throwing permissible (a Folia read race) is
+                    // not exempt.
+                    memo = dev.vox.lss.common.MapPolicy.holdsExemption(bukkitPlayer::hasPermission);
+                    this.exemptOnce = memo;
+                }
+                return memo;
+            }
         };
     }
 
@@ -477,12 +496,10 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
         int viaProtocol = this.lssConfig.enableViaMismatchGuard()
                 ? dev.vox.lss.common.compat.ViaProbe.playerProtocol(nmsPlayer.getUUID())
                 : dev.vox.lss.common.compat.ViaProbe.NO_SIGNAL;
-        handleHandshake(data, nmsPlayer.getName().getString(), nmsPlayer, this.lssConfig, service != null,
-                viaProtocol, net.minecraft.SharedConstants.getProtocolVersion(),
-                // Ticket #6: the per-player service gate. Read inline on this thread (region
-                // thread on Folia) — no scheduling, and an online player's permissible is
-                // safe to read there, the same shape PaperFarPlayerSnapshots already uses.
-                serviceGateFor(bukkitPlayer, nmsPlayer.getUUID(),
+        // Ticket #6: the per-player service gate. Read inline on this thread (region
+        // thread on Folia) — no scheduling, and an online player's permissible is
+        // safe to read there, the same shape PaperFarPlayerSnapshots already uses.
+        var serviceGate = serviceGateFor(bukkitPlayer, nmsPlayer.getUUID(),
                         nmsPlayer.getName().getString(),
                         service == null ? null : service.getServiceGateState(),
                         service == null ? null
@@ -494,7 +511,10 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                         service == null ? null
                                 : () -> service.enqueueRuntimeTask(
                                         () -> service.noticeMapPolicyRefusal(nmsPlayer)),
-                        replay),
+                        replay);
+        handleHandshake(data, nmsPlayer.getName().getString(), nmsPlayer, this.lssConfig, service != null,
+                viaProtocol, net.minecraft.SharedConstants.getProtocolVersion(),
+                serviceGate,
                 (dialect, enabled, lodDistanceChunks, syncCap, genCap, generationEnabled,
                  capabilities, keepDialectMark) -> {
                     if (service != null) generationEnabled = service.generationEnabledForSession();
@@ -520,12 +540,23 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                         PaperPayloadHandler.sendSessionConfigV16(bukkitPlayer, enabled,
                                 lodDistanceChunks, syncCap, genCap, generationEnabled);
                     } else {
+                        // Map-policy plan A2: decided at SEND time — for a registering
+                        // handshake that is the pump's Register drain — per player (the
+                        // gate's exemption read, once per handshake).
+                        boolean denyMapIngestion = dev.vox.lss.common.MapPolicy.decide(
+                                this.lssConfig.requestNoMapIngestion(),
+                                serviceGate::mapIngestionExempt).deny();
+                        int version = sessionConfigVersionFor(dialect);
                         PaperPayloadHandler.sendSessionConfig(bukkitPlayer,
-                                sessionConfigVersionFor(dialect),
+                                version,
                                 enabled, lodDistanceChunks, generationEnabled,
-                                // Map-policy plan A2: read at SEND time — for a registering
-                                // handshake that is the pump's Register drain.
-                                capabilities, this.lssConfig.requestNoMapIngestion());
+                                capabilities, denyMapIngestion);
+                        if (service != null) {
+                            // The last flags this session was sent (map-ingestion permission
+                            // plan §3.3; a no-op unless the frame carries the field).
+                            service.getServiceGateState().noteMapFlagsSent(nmsPlayer.getUUID(),
+                                    version, capabilities, denyMapIngestion);
+                        }
                     }
                 },
                 (capabilities, dialect, replyAfterRegister) -> {
@@ -552,8 +583,9 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                             dialectFlipFor(dialect, service.getV16CompatManager(),
                                     service.getDialectTracker(), nmsPlayer.getUUID()),
                             replyAfterRegister,
-                            // Review fold A10: the drain re-checks the map policy.
-                            dialect);
+                            // Review fold A10: the drain re-checks the map policy — with
+                            // this handshake's exemption read (the same answer the reply sees).
+                            dialect, serviceGate::mapIngestionExempt);
                 });
     }
 
@@ -669,13 +701,15 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
         boolean serviceDenied = config.requireServicePermission()
                 && !holdsServicePermission(serviceGate);
 
-        // Map-policy plan A3.2: the MAP_POLICY_REFUSED rung (DISABLED < it < REGISTER).
-        boolean mapPolicyArmed = config.requestNoMapIngestion();
+        // Map-policy plan A3.2: the MAP_POLICY_REFUSED rung (DISABLED < it < REGISTER),
+        // per player (map-ingestion permission plan §3.2): an exempt player is served.
+        boolean denyMapIngestion = dev.vox.lss.common.MapPolicy.decide(
+                config.requestNoMapIngestion(), serviceGate::mapIngestionExempt).deny();
         var decision = HandshakeGate.evaluate(handshake.protocolVersion(),
                 handshake.capabilities(), config.enabled() && !serviceDenied, servicePresent,
                 config.enableV16Compat(), config.enableV18Compat(), config.enableV19Compat(),
                 dev.vox.lss.common.compat.ViaProbe.isMismatch(viaProtocol, nativeProtocol),
-                mapPolicyArmed);
+                denyMapIngestion);
 
         if (decision.outcome() == HandshakeGate.Outcome.VIA_MISMATCH) {
             // Silent deny — "Minecraft protocol" to keep the number space distinct
@@ -746,8 +780,10 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
             int lodDistance = legacyDialect ? config.legacyAdvertisedDistance(worldLod) : worldLod;
             // Review fold A10: a REGISTER decided on the pre-arm config whose Register drains
             // after an arm is refused there — this reply then says so (re-read at SEND time).
-            boolean refusedAtSend = decision.registerPlayer() && config.requestNoMapIngestion()
-                    && !HandshakeGate.honorsMapPolicy(decision.dialect(), handshake.capabilities());
+            boolean refusedAtSend = decision.registerPlayer()
+                    && !HandshakeGate.honorsMapPolicy(decision.dialect(), handshake.capabilities())
+                    && dev.vox.lss.common.MapPolicy.decide(config.requestNoMapIngestion(),
+                            serviceGate::mapIngestionExempt).deny();
             boolean mapPolicyRefused = refusedAtSend
                     || decision.outcome() == HandshakeGate.Outcome.MAP_POLICY_REFUSED;
             boolean enabledHere = decision.effectiveEnabled() && !refusedAtSend
