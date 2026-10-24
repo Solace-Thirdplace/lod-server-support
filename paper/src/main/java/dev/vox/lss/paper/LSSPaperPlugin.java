@@ -387,14 +387,16 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                     + " (plugin.yml " + MINECRAFT_DEPENDENCY_KEY + " is "
                     + (rule == null ? "missing" : "'" + rule + "'") + "), so it is disabling"
                     + " itself. Download the " + pluginName + " build for Minecraft " + running
-                    + where + ".";
+                    + where + " if one exists.";
         }
         if (parsed.accepts(running)) return null;
-        return pluginName + " is built for Minecraft " + parsed.describe() + ", but this"
-                + " server runs Minecraft " + running + ", so it is disabling itself (a jar"
+        // The supported versions come first; the download advice is conditional, because
+        // not every Minecraft version has a build (e.g. no 0.20.0 Paper build for 1.21.4).
+        return pluginName + " supports Minecraft " + parsed.describe() + ". This server runs"
+                + " Minecraft " + running + ", so " + pluginName + " is disabling itself (a jar"
                 + " for another version can misread your world and fill the LOD store with"
                 + " bad data). Download the " + pluginName + " build for Minecraft " + running
-                + where + ".";
+                + where + " if one exists.";
     }
 
     @Override
