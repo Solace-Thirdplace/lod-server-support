@@ -162,6 +162,22 @@ class MapPolicyGateTest {
     }
 
     @Test
+    void theThreeStateReadSeparatesAFailedReadFromNotExempt() {
+        assertEquals(MapPolicy.Exemption.EXEMPT,
+                MapPolicy.readExemption(LSSPermissions.MAP_INGESTION_VSS::equals), "either spelling");
+        assertEquals(MapPolicy.Exemption.NOT_EXEMPT, MapPolicy.readExemption(node -> false));
+        assertEquals(MapPolicy.Exemption.FAILED,
+                MapPolicy.readExemption(node -> { throw new IllegalStateException("backend exploded"); }),
+                "the sweep keeps the last-sent flags on this state");
+        assertFalse(MapPolicy.Exemption.FAILED.exempt(), "a FAILED read never lifts the request");
+        assertEquals(MapPolicy.Exemption.FAILED,
+                MapPolicy.Exemption.of(() -> { throw new IllegalStateException("x"); }));
+        org.junit.jupiter.api.Assertions.assertThrows(StackOverflowError.class,
+                () -> MapPolicy.Exemption.of(() -> { throw new StackOverflowError(); }),
+                "a VM error is never swallowed");
+    }
+
+    @Test
     void theExemptionHoldsOnEitherSpellingAndFailsClosed() {
         assertEquals("lss.map_ingestion", LSSPermissions.MAP_INGESTION_LSS);
         assertEquals("vss.map_ingestion", LSSPermissions.MAP_INGESTION_VSS);

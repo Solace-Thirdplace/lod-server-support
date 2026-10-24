@@ -56,10 +56,11 @@ class PaperStoreEnvironmentContractTest {
                         + "(?://[^\\n]*\\s*)*"
                         + "dev\\.vox\\.lss\\.common\\.BuildInfo\\.minecraftVersion\\(\\)\\s*,\\s*"
                         + "FoliaSupport\\.IS_FOLIA \\? \"folia\" : \"paper\"\\s*,\\s*"
-                        + "dev\\.vox\\.lss\\.common\\.store\\.LegacyStoreMigration\\.DROP\\s*\\)",
+                        + "dev\\.vox\\.lss\\.common\\.store\\.LegacyStoreMigration\\.DROP\\s*,\\s*"
+                        + "dev\\.vox\\.lss\\.common\\.BuildInfo\\.minecraftVersionRule\\(\\)\\s*\\)",
                 Pattern.DOTALL);
         assertTrue(call.matcher(source).find(),
                 "the Paper Environment must pass BuildInfo.minecraftVersion(), the paper/folia"
-                        + " platform name and LegacyStoreMigration.DROP after the fingerprints");
+                        + " platform name, LegacyStoreMigration.DROP and the jar's rule after the fingerprints");
     }
 }
