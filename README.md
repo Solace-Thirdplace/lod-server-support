@@ -116,6 +116,16 @@ restart or reconnect; it does not rewrite comments or normalized values.
 | `privacy.request_no_map_ingestion` | Ask players' clients not to copy LOD terrain into map mods (below). Reloads. |
 | `far_players` | Distant player display/sharing policies and distances in blocks. Players control local rendering manually. |
 
+**Paper: use the jar for your Minecraft version.** Paper only refuses a plugin built for a
+*newer* Minecraft version, so from 0.20.0 the Paper/Folia plugin checks for itself: on a
+server running a Minecraft version its jar was not built for, it logs one error naming the
+build to download and disables itself. A 26.x jar runs on that version's patch releases
+(the 26.3 jar on 26.3.1); a 1.21.x jar runs only on its exact version. A jar for another
+version used to start anyway and could fill the LOD store with empty terrain, so after the
+update to 0.20.0 a Paper or Folia server rebuilds its LOD store once (it refills as players
+are served); Fabric, NeoForge and Sponge keep theirs. Players who joined while a jar for
+another version was running should run `/lss clearcache` once on that server.
+
 **Turning LODs off in a dimension.** Set its distance to `0`: no LOD terrain is sent there
 (players stay connected to LSS, and far players keep working). Add `default_chunks: 0` to
 serve only the dimensions you list. Paper's `by_world` takes world names and works the
@@ -137,6 +147,16 @@ themselves. Legacy-protocol clients (older than 0.10) that are already connected
 turn it on keep their terrain until they reconnect; they have no map support. On a server that
 also runs Distant Horizons, a refused client doesn't fall back to DH terrain either. A server file with this
 key will not load on LSS 0.18 or older; remove the line before downgrading.
+
+To let some players (admins, say) keep filling their maps while it is on, grant them the
+`lss.map_ingestion` permission (`vss.map_ingestion` for VSS) with a permissions plugin or
+mod such as LuckPerms; nobody holds it by default, and on Fabric there is nothing to grant
+it with until a permissions mod is installed. The server treats the request as off for
+those players: clients on 0.19.0 or newer pick up a grant or a revoke within about 10
+seconds and map the terrain that arrives from then on. Older clients that hold it are
+served instead of refused (a refused one is offered terrain within about 10 seconds of a
+grant); taking it away from an older client applies when it next joins. `/lsslod diag`
+shows the count on its `MapPolicy:` line (`exempt=`).
 
 ```yaml
 lod:

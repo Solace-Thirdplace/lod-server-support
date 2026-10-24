@@ -41,6 +41,16 @@ dependencies {
     xzEngine 'org.tukaani:xz:1.10'
 }
 
+// The Minecraft version this jar is BUILT for (paper-version-guard-store-plan §3.2): the LOD
+// store stamps it as meta build_mc, so a store written by a jar for another version is
+// detected. One templated resource from gradle.properties — identical on every line.
+tasks.named('processResources') {
+    inputs.property 'minecraft_version', project.minecraft_version
+    filesMatching('dev/vox/lss/common/lss-build.properties') {
+        expand 'minecraft_version': project.minecraft_version
+    }
+}
+
 // Captured DH frames are shared by MC-independent and loader conversion tests.
 tasks.named('processTestFixturesResources') {
     from('src/test/resources') { include 'dh-corpus/**' }
