@@ -62,10 +62,14 @@ test {
 processResources {
     inputs.property "version", project.version
     inputs.property "api_version", project.minecraft_version
+    inputs.property "minecraft_dependency", project.minecraft_dependency
     filesMatching("plugin.yml") {
         // V-1/P3: api-version equals gradle.properties' minecraft_version on every
         // recorded line — templated so a support cut never edits this resource.
-        expand "version": project.version, "api_version": project.minecraft_version
+        // minecraft_dependency feeds the version guard (paper-version-guard-store-plan
+        // §3.1); the vssJar rewrite below leaves the line verbatim.
+        expand "version": project.version, "api_version": project.minecraft_version,
+                "minecraft_dependency": project.minecraft_dependency
     }
 }
 
@@ -204,8 +208,9 @@ tasks.register('vssJar') {
                         // presents as VoxyServerSide; its data folder therefore FORKS to
                         // plugins/VoxyServerSide/, so a Paper-side jar swap starts a fresh
                         // config folder — the config-filename candidates only adopt within
-                        // one folder. main/version/api-version and folia-supported are
-                        // preserved — identity + wire contract. Command name and permission
+                        // one folder. main/version/api-version, folia-supported and the
+                        // lss-minecraft-dependency version guard are preserved — identity +
+                        // wire contract. Command name and permission
                         // node are LOCAL, never on the wire, so LSS and VSS stay
                         // wire-compatible. release_check.py's pair check pins this scope.
                         text = text.replaceFirst(/(?m)^name:.*$/,

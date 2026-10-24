@@ -292,10 +292,15 @@ public class LSSServerCommands {
                 .withYieldLine(DiagnosticsFormatter.yieldDiagLineOrNull(
                         config.lodYieldsToVanillaTransport(), service.getTickDiag()))
                 .withGateLine(serviceGateDiagLineOrNull(config, service))
+                // exempt= is the sweep's cached count (no permission read here); the provider
+                // token says whether a permission backend can grant the exemption at all
+                // (map-ingestion permission plan §3.5 — "none" = nobody is exempt).
                 .withMapPolicyLine(!config.requestNoMapIngestion() ? null
                         : dev.vox.lss.common.MapPolicy.diagLineOrNull(true,
                                 service.getServiceGateState().deniedCount(
-                                        dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)))
+                                        dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY),
+                                service.getServiceGateState().mapPolicyExemptCount(),
+                                dev.vox.lss.platform.LoaderServices.get().permissionProviderToken()))
                 .withDirtyLine(dirtyDiagLine(service));
 
         for (var line : DiagnosticsFormatter.formatDiagnostics(data)) {

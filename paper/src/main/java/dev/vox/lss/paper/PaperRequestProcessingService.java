@@ -72,6 +72,56 @@ public class PaperRequestProcessingService {
         this.permissionProbe = probe;
     }
 
+    /** The map-ingestion exemption read (map-ingestion permission plan §3.1): FAIL-CLOSED —
+     *  either spelling through the Bukkit permissible, a throwing read (a Folia race) is
+     *  not exempt. Unlike {@link #permissionProbe} (the service gate's fail-open doctrine).
+     *  Seam-injected for tests. Three states (the xplat twin): the 10 s sweep keeps a
+     *  capable session's last-sent flags on a FAILED read. */
+    private java.util.function.Function<ServerPlayer, dev.vox.lss.common.MapPolicy.Exemption>
+            mapIngestionExemptProbe = PaperRequestProcessingService::mapIngestionExemptionViaBukkit;
+
+    private static dev.vox.lss.common.MapPolicy.Exemption mapIngestionExemptionViaBukkit(ServerPlayer p) {
+        return dev.vox.lss.common.MapPolicy.readExemption(p.getBukkitEntity()::hasPermission);
+    }
+
+    /** Test seam; {@code null} restores the production read. A throwing probe reads FAILED. */
+    void setMapIngestionExemptProbeForTest(java.util.function.Predicate<ServerPlayer> probe) {
+        this.mapIngestionExemptProbe = probe != null
+                ? player -> dev.vox.lss.common.MapPolicy.Exemption.of(() -> probe.test(player))
+                : PaperRequestProcessingService::mapIngestionExemptionViaBukkit;
+    }
+
+    /** The exemption in three states: any throw (a player without a Bukkit entity, a Folia
+     *  read race) or an absent read is {@code FAILED}. */
+    public dev.vox.lss.common.MapPolicy.Exemption mapIngestionExemption(ServerPlayer player) {
+        try {
+            var read = this.mapIngestionExemptProbe.apply(player);
+            return read != null ? read : dev.vox.lss.common.MapPolicy.Exemption.FAILED;
+        } catch (Throwable e) {
+            if (e instanceof VirtualMachineError vme) throw vme;
+            return dev.vox.lss.common.MapPolicy.Exemption.FAILED;
+        }
+    }
+
+    /** Whether {@code player} holds the exemption — fail-closed (any throw: not exempt). */
+    public boolean mapIngestionExempt(ServerPlayer player) {
+        return mapIngestionExemption(player).exempt();
+    }
+
+    /** The per-player map-ingestion decision (the xplat twin, map-ingestion permission plan
+     *  §3.2): the request is on and this player is not exempt. */
+    public boolean denyMapIngestionFor(ServerPlayer player) {
+        return dev.vox.lss.common.MapPolicy.decide(this.config.requestNoMapIngestion(),
+                () -> mapIngestionExempt(player)).deny();
+    }
+
+    /** The same decision from an exemption the caller already read (the sweep's
+     *  three-state read; a FAILED read is not exempt here). */
+    public boolean denyMapIngestionFor(dev.vox.lss.common.MapPolicy.Exemption exemption) {
+        return dev.vox.lss.common.MapPolicy.decide(this.config.requestNoMapIngestion(),
+                exemption::exempt).deny();
+    }
+
     /** Test seam (production wiring: the constructor). */
     public void setHandshakeReplayer(java.util.function.BiConsumer<ServerPlayer,
             dev.vox.lss.common.ServiceGateState.DeniedHandshake> replayer) {
@@ -601,7 +651,15 @@ public class PaperRequestProcessingService {
                     dev.vox.lss.common.store.RegistryFingerprint.of(
                             registryIds.states(), registryIds.biomes()),
                     dev.vox.lss.common.store.RegistryFingerprint.contentOf(
-                            registryIds.states(), registryIds.biomes()));
+                            registryIds.states(), registryIds.biomes()),
+                    // Build marker (paper-version-guard-store-plan §3.2): before 0.20.0
+                    // nothing stopped a Paper jar for another Minecraft version from
+                    // enabling, so a store without the marker is rebuilt once. The jar's
+                    // own Minecraft rule keeps a same-family marker (26.3.1 → 26.3).
+                    dev.vox.lss.common.BuildInfo.minecraftVersion(),
+                    FoliaSupport.IS_FOLIA ? "folia" : "paper",
+                    dev.vox.lss.common.store.LegacyStoreMigration.DROP,
+                    dev.vox.lss.common.BuildInfo.minecraftVersionRule());
             lodStore = dev.vox.lss.common.store.LodStores.createOrNull(env);
             if (lodStore == null) {
                 // LodStores.createOrNull logged the per-cause warn (codec vs SQLite init —
@@ -752,12 +810,13 @@ public class PaperRequestProcessingService {
          *  for why the dialect flip must be the former and the reply the latter. */
         record Register(ServerPlayer player, int capabilities,
                         Runnable beforeRegister, Runnable replyAfterRegister,
-                        dev.vox.lss.common.HandshakeGate.WireDialect dialect)
+                        dev.vox.lss.common.HandshakeGate.WireDialect dialect,
+                        java.util.function.BooleanSupplier mapIngestionExempt)
                 implements LifecycleEvent {
             /** The pre-map-policy shape: no handshake dialect — the drain re-check skips. */
             Register(ServerPlayer player, int capabilities, Runnable beforeRegister,
                      Runnable replyAfterRegister) {
-                this(player, capabilities, beforeRegister, replyAfterRegister, null);
+                this(player, capabilities, beforeRegister, replyAfterRegister, null, () -> false);
             }
         }
         /** {@code connectionEpoch} = the dying connection's epoch at quit time —
@@ -805,8 +864,20 @@ public class PaperRequestProcessingService {
     public void enqueueRegister(ServerPlayer player, int capabilities,
                                 Runnable beforeRegister, Runnable replyAfterRegister,
                                 dev.vox.lss.common.HandshakeGate.WireDialect dialect) {
+        enqueueRegister(player, capabilities, beforeRegister, replyAfterRegister, dialect,
+                () -> mapIngestionExempt(player));
+    }
+
+    /** As above, with the handshake's own exemption read (map-ingestion permission plan
+     *  §3.2): the production plugin passes its gate's once-per-handshake answer, so the
+     *  drain's re-check and the deferred reply (which reads the same gate) agree. */
+    public void enqueueRegister(ServerPlayer player, int capabilities,
+                                Runnable beforeRegister, Runnable replyAfterRegister,
+                                dev.vox.lss.common.HandshakeGate.WireDialect dialect,
+                                java.util.function.BooleanSupplier mapIngestionExempt) {
         this.lifecycleMailbox.add(new LifecycleEvent.Register(
-                player, capabilities, beforeRegister, replyAfterRegister, dialect));
+                player, capabilities, beforeRegister, replyAfterRegister, dialect,
+                mapIngestionExempt));
     }
 
     /** The drain's map-policy refusal of a deferred Register (review fold A10). */
@@ -938,17 +1009,29 @@ public class PaperRequestProcessingService {
         /** {@code enabled} is passed explicitly (not read off the config): the service
          *  gate's revocation push advertises {@code false} at a player on a server whose
          *  config says {@code true}. {@code capabilities} are the SESSION's: the map-policy
-         *  flags ride only a session that declared the bit (map-policy plan A2). */
-        void send(ServerPlayer player, PaperConfig config, boolean enabled, int capabilities)
-                throws Exception;
+         *  flags ride only a session that declared the bit (map-policy plan A2).
+         *  {@code denyMapIngestion} is the caller's per-player decision at send time
+         *  ({@link #denyMapIngestionFor} — map-ingestion permission plan §3.2), which the
+         *  caller also records as the session's last-sent flags. */
+        void send(ServerPlayer player, PaperConfig config, boolean enabled, int capabilities,
+                  boolean denyMapIngestion) throws Exception;
     }
 
-    private SessionConfigSender sessionConfigSender = (player, cfg, enabled, capabilities) ->
+    private SessionConfigSender sessionConfigSender = (player, cfg, enabled, capabilities, denyMapIngestion) ->
             PaperPayloadHandler.sendSessionConfig(player.getBukkitEntity(),
                     LSSConstants.PROTOCOL_VERSION, enabled,
                     PaperWorldLod.distance(cfg, player), generationEnabledForSession(),
-                    // Map-policy plan A2: the policy is read at SEND time.
-                    capabilities, cfg.requestNoMapIngestion());
+                    capabilities, denyMapIngestion);
+
+    /** Every service-side SessionConfig send (all version 20): the per-player decision,
+     *  the send, then the last-sent record (map-ingestion permission plan §3.3 — only on a
+     *  successful send; a no-op for a session without the bit). */
+    private void sendSessionConfig(ServerPlayer player, boolean enabled, int capabilities,
+                                   boolean denyMapIngestion) throws Exception {
+        this.sessionConfigSender.send(player, this.config, enabled, capabilities, denyMapIngestion);
+        this.serviceGateState.noteMapFlagsSent(player.getUUID(), LSSConstants.PROTOCOL_VERSION,
+                capabilities, denyMapIngestion);
+    }
 
     /** Test seam: the adopted map policy, as the reconcile would set it (the 200-tick
      *  cadence sweep runs only once the arm is adopted — review fold A9). */
@@ -965,7 +1048,9 @@ public class PaperRequestProcessingService {
     }
 
     /** @param flagsOnly a map-policy-only change (review fold A9, the xplat twin): no off-world
-     *                   re-register and no far-player roster re-send — only the new flags */
+     *                   re-register and no far-player roster re-send — only the new flags,
+     *                   and only to a capable session whose decision differs from the flags
+     *                   it was last sent (map-ingestion permission plan §3.3) */
     public int[] repushSessionConfig(boolean flagsOnly) {
         int pushed = 0;
         int legacy = 0;
@@ -974,6 +1059,12 @@ public class PaperRequestProcessingService {
                     != dev.vox.lss.common.HandshakeGate.WireDialect.CURRENT) {
                 legacy++;
                 continue;
+            }
+            boolean denyMapIngestion = denyMapIngestionFor(state.getPlayer());
+            if (flagsOnly && ((state.getCapabilities() & LSSConstants.CAPABILITY_MAP_POLICY) == 0
+                    || Boolean.valueOf(denyMapIngestion)
+                            .equals(this.serviceGateState.lastMapFlagsSent(state.getPlayerUUID())))) {
+                continue; // nothing new to tell this session
             }
             try {
                 int dist = PaperWorldLod.distance(this.config, state.getPlayer());
@@ -991,8 +1082,8 @@ public class PaperRequestProcessingService {
                     this.farPlayerService.onViewerDimensionChange(player.getUUID());
                 }
                 // 0 = no LOD service in this world.
-                this.sessionConfigSender.send(state.getPlayer(), this.config, this.config.enabled() && dist > 0,
-                        state.getCapabilities());
+                sendSessionConfig(state.getPlayer(), this.config.enabled() && dist > 0,
+                        state.getCapabilities(), denyMapIngestion);
                 pushed++;
             } catch (Exception e) {
                 LSSLogger.error("Session-config re-push failed for "
@@ -1038,7 +1129,8 @@ public class PaperRequestProcessingService {
                 }
                 if (!gateState.bumpRevocationStreak(uuid)) continue;
                 try {
-                    this.sessionConfigSender.send(player, config, false, state.getCapabilities());
+                    boolean denyMapIngestion = denyMapIngestionFor(player);
+                    sendSessionConfig(player, false, state.getCapabilities(), denyMapIngestion);
                 } catch (Exception e) {
                     LSSLogger.error("Service-gate disable push failed for "
                             + player.getName().getString(), e);
@@ -1109,15 +1201,18 @@ public class PaperRequestProcessingService {
                         permissionCleared = true; // fail-open, the doctrine
                     }
                 }
+                // Per player (map-ingestion permission plan §3.2): a refused player who now
+                // holds the exemption clears too — the replay is its new handshake.
+                boolean denyMapIngestion = denyMapIngestionFor(player);
                 if (!permissionCleared
-                        || !mapPolicyCleared(entry, config.requestNoMapIngestion())) continue;
+                        || !mapPolicyCleared(entry, denyMapIngestion)) continue;
                 if (this.handshakeReplayer == null) continue; // bare test wiring: RETAIN
                 var remembered = gateState.takeDenied(uuid);
                 if (remembered == null) continue;
                 LSSLogger.info("Re-offering " + dev.vox.lss.common.Brand.shortName() + " to "
                         + remembered.playerName() + " (re-offer): "
                         + reofferReason(remembered, config.requireServicePermission(),
-                                config.requestNoMapIngestion())
+                                denyMapIngestion, config.requestNoMapIngestion())
                         + " — replaying the stored handshake");
                 try {
                     this.handshakeReplayer.accept(player, remembered);
@@ -1131,11 +1226,12 @@ public class PaperRequestProcessingService {
         }
     }
 
-    /** Twin of {@code RequestProcessingService.mapPolicyCleared}. */
+    /** Twin of {@code RequestProcessingService.mapPolicyCleared}
+     *  ({@code denyMapIngestion} = the per-player decision). */
     static boolean mapPolicyCleared(dev.vox.lss.common.ServiceGateState.DeniedHandshake entry,
-                                    boolean mapPolicyArmed) {
+                                    boolean denyMapIngestion) {
         return !entry.has(dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)
-                || !mapPolicyArmed
+                || !denyMapIngestion
                 || (entry.protocolVersion() == LSSConstants.PROTOCOL_VERSION
                         && (entry.capabilities() & LSSConstants.CAPABILITY_MAP_POLICY) != 0);
     }
@@ -1143,14 +1239,16 @@ public class PaperRequestProcessingService {
     /** Twin of {@code RequestProcessingService.reofferReason} — policy refusals get their
      *  own text. */
     static String reofferReason(dev.vox.lss.common.ServiceGateState.DeniedHandshake entry,
-                                boolean gateArmed, boolean mapPolicyArmed) {
+                                boolean gateArmed, boolean denyMapIngestion, boolean policyOn) {
         var reasons = new java.util.ArrayList<String>(2);
         if (entry.has(dev.vox.lss.common.ServiceGateState.REASON_PERMISSION)) {
             reasons.add(gateArmed ? "the service permission cleared"
                     : "requireServicePermission was disarmed");
         }
         if (entry.has(dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY)) {
-            reasons.add(mapPolicyArmed ? "the client can now honor the map-ingestion request"
+            reasons.add(denyMapIngestion ? "the client can now honor the map-ingestion request"
+                    : policyOn ? "the player now holds " + dev.vox.lss.common.LSSPermissions.MAP_INGESTION_LSS
+                            + " or " + dev.vox.lss.common.LSSPermissions.MAP_INGESTION_VSS
                     : "privacy.request_no_map_ingestion was turned off");
         }
         return String.join(" and ", reasons);
@@ -1158,21 +1256,39 @@ public class PaperRequestProcessingService {
 
     /**
      * The map-ingestion policy's enforcement sweep (twin of
-     * {@code RequestProcessingService.runMapPolicySweep}, map-policy plan A3.4): while
-     * armed, every registered CURRENT session without {@code CAPABILITY_MAP_POLICY} gets
-     * the per-player enabled=false push, the memo deposit (MAP_POLICY), the composite and
-     * the chat line. Legacy dialects keep serving until rejoin. Run by the arming reload
-     * (before the re-push) and on the 200-tick cadence — the cadence closes the Folia race
-     * (a region thread deciding a handshake on the pre-arm config and enqueueing its
-     * Register after the one-shot sweep). Pump thread only, AFTER the lifecycle drain.
+     * {@code RequestProcessingService.runMapPolicySweep}, map-policy plan A3.4; per player
+     * since the map-ingestion permission plan §3.3/§3.4). While armed, over the registered
+     * CURRENT sessions, revocations first: an older client (no {@code CAPABILITY_MAP_POLICY})
+     * admitted under the exemption is left alone; any other is decided now — exempt, it is
+     * recorded as admitted; not exempt, the per-player enabled=false push, the memo deposit
+     * (MAP_POLICY), the composite and the chat line. Then each capable session gets one
+     * flags-only push only when its decision differs from the flags it was last sent.
+     * Legacy dialects keep serving until rejoin. Run by the arming reload (before the
+     * re-push) and on the 200-tick cadence — the cadence closes the Folia race (a region
+     * thread deciding a handshake on the pre-arm config and enqueueing its Register after
+     * the one-shot sweep) and is how a grant or revoke reaches a capable session. Pump
+     * thread only, AFTER the lifecycle drain. Caches the exempt count for the diag line.
+     *
+     * <p>A FAILED exemption read keeps the flags a capable session was last sent (no push,
+     * no flip); the next sweep reads again. The handshake and the reload's re-push stay
+     * fail-closed.
      *
      * @return how many sessions this pass revoked
      */
     public int runMapPolicySweep() {
+        return runMapPolicySweep(true);
+    }
+
+    /** @param pushCapable false when the caller's full re-push follows and tells every
+     *                     capable session its flags (an arming reload that also changes
+     *                     distance or generation): the capable pass then only counts */
+    public int runMapPolicySweep(boolean pushCapable) {
         var config = this.config;
         if (!config.requestNoMapIngestion()) return 0;
         var gateState = this.serviceGateState;
         int revoked = 0;
+        int exempt = 0;
+        var capable = new java.util.ArrayList<PaperPlayerRequestState>();
         for (var state : java.util.List.copyOf(this.players.values())) {
             UUID uuid = state.getPlayerUUID();
             // An EXPLICIT CURRENT mark (review fold A9; the xplat twin).
@@ -1180,11 +1296,23 @@ public class PaperRequestProcessingService {
                 continue; // legacy sessions keep serving until rejoin (recorded)
             }
             int capabilities = state.getCapabilities();
-            if ((capabilities & LSSConstants.CAPABILITY_MAP_POLICY) != 0) continue;
+            if ((capabilities & LSSConstants.CAPABILITY_MAP_POLICY) != 0) {
+                capable.add(state);
+                continue;
+            }
             var player = state.getPlayer();
+            if (gateState.isMapPolicyExemptAdmission(uuid)) {
+                exempt++; // decided at its handshake
+                continue;
+            }
+            if (!denyMapIngestionFor(player)) {
+                gateState.setMapPolicyExemptAdmission(uuid, true); // decided now, then left alone
+                exempt++;
+                continue;
+            }
             String name = player.getName().getString();
             try {
-                this.sessionConfigSender.send(player, config, false, capabilities);
+                sendSessionConfig(player, false, capabilities, true);
             } catch (Exception e) {
                 LSSLogger.error("Map-policy disable push failed for " + name, e);
             }
@@ -1199,6 +1327,34 @@ public class PaperRequestProcessingService {
             }
             revoked++;
         }
+        for (var state : capable) {
+            var player = state.getPlayer();
+            Boolean lastSent = gateState.lastMapFlagsSent(state.getPlayerUUID());
+            var exemption = mapIngestionExemption(player);
+            if (exemption == dev.vox.lss.common.MapPolicy.Exemption.FAILED && lastSent != null) {
+                // Keep what the session was last told (no push, no flip); re-read next sweep.
+                // A session never told any flags has nothing to keep: fail-closed below.
+                if (Boolean.FALSE.equals(lastSent)) exempt++;
+                continue;
+            }
+            boolean denyMapIngestion = denyMapIngestionFor(exemption);
+            if (!denyMapIngestion) exempt++;
+            if (!pushCapable) continue; // the caller's full re-push tells it
+            if (Boolean.valueOf(denyMapIngestion).equals(lastSent)) {
+                continue; // nothing changed: no push
+            }
+            try {
+                // The flags-only shape (the client's fast path; a map-only client parks or
+                // un-parks on the flag).
+                int dist = PaperWorldLod.distance(config, player);
+                sendSessionConfig(player, config.enabled() && dist > 0, state.getCapabilities(),
+                        denyMapIngestion);
+            } catch (Exception e) {
+                LSSLogger.error("Map-policy flags push failed for "
+                        + player.getName().getString(), e);
+            }
+        }
+        gateState.setMapPolicyExemptCount(exempt);
         return revoked;
     }
 
@@ -1213,9 +1369,13 @@ public class PaperRequestProcessingService {
             try {
                 switch (ev) {
                     case LifecycleEvent.Register r -> {
-                        if (r.dialect() != null && this.config.requestNoMapIngestion()
-                                && !dev.vox.lss.common.HandshakeGate.honorsMapPolicy(
-                                        r.dialect(), r.capabilities())) {
+                        // Per player (map-ingestion permission plan §3.2): an exempt
+                        // player's Register drains as usual.
+                        var mapPolicy = dev.vox.lss.common.MapPolicy.decide(
+                                this.config.requestNoMapIngestion(), r.mapIngestionExempt());
+                        if (r.dialect() != null && !dev.vox.lss.common.HandshakeGate.honorsMapPolicy(
+                                        r.dialect(), r.capabilities())
+                                && mapPolicy.deny()) {
                             refuseDeferredRegister(r); // review fold A10: the arm raced the drain
                             continue;
                         }
@@ -1237,6 +1397,12 @@ public class PaperRequestProcessingService {
                             // log latch re-armed. Not in registerPlayer: that is the dim-change
                             // reuse path (R3).
                             this.serviceGateState.onRegistered(r.player().getUUID());
+                            // Map-ingestion permission plan §3.4: an older client (no bit)
+                            // served because it is exempt is decided here — the sweep never
+                            // revokes it mid-session.
+                            this.serviceGateState.setMapPolicyExemptAdmission(r.player().getUUID(),
+                                    r.dialect() != null && mapPolicy.exempt()
+                                            && (r.capabilities() & LSSConstants.CAPABILITY_MAP_POLICY) == 0);
                             // Far players: post-flip, so the CURRENT-dialect gate is
                             // reliable (legacy layouts predate the capability bit).
                             if ((r.capabilities() & LSSConstants.CAPABILITY_FAR_PLAYERS) != 0
@@ -1704,9 +1870,13 @@ public class PaperRequestProcessingService {
             boolean mapPolicyChanged = adoptedMapPolicy != mapPolicy;
             // Map-policy plan A3.4: REVOKE FIRST — a session about to lose service must
             // not first get an enabled=true manager rebuild from the re-push below.
-            settingsMapPolicyRevoked = mapPolicyChanged ? runMapPolicySweep() : -1;
+            // A distance/generation change re-pushes every CURRENT session in full below, and
+            // that push carries (and records) each one's flags: the sweep then leaves the
+            // capable sessions to it, so an arming reload never pushes one twice.
+            boolean fullRepush = generationChanged || !advertisedLod.equals(next.lod());
+            settingsMapPolicyRevoked = mapPolicyChanged ? runMapPolicySweep(!fullRepush) : -1;
             settingsMapPolicyArmed = mapPolicy;
-            if (generationChanged || !advertisedLod.equals(next.lod()))
+            if (fullRepush)
                 settingsLegacyReconnects = repushSessionConfig()[1];
             else if (mapPolicyChanged)
                 repushSessionConfig(true); // the flags change alone; legacy sessions are not told
@@ -1715,8 +1885,12 @@ public class PaperRequestProcessingService {
             generationRefreshPending = false;
             if (mapPolicyChanged) {
                 adoptedMapPolicy = mapPolicy;
-                // Disarm: refused/revoked players heal NOW through the memo replay.
-                if (!mapPolicy) replayDeniedHandshakes();
+                // Disarm: refused/revoked players heal NOW through the memo replay; the
+                // exempt admissions end with the episode (a later arm decides afresh).
+                if (!mapPolicy) {
+                    this.serviceGateState.clearMapPolicyExemptAdmissions();
+                    replayDeniedHandshakes();
+                }
             }
             if (!adoptedServicePolicy.equals(next.service())) {
                 runServiceGateSweeps();
@@ -2027,8 +2201,9 @@ public class PaperRequestProcessingService {
                         // 0 = no LOD service in this world: the client parks until a served one.
                         // Map-policy plan A2: every Nether trip at stock settings pushes —
                         // the flags must ride it (capabilities = the session's).
-                        this.sessionConfigSender.send(changed, this.config, this.config.enabled() && newDist > 0,
-                                capabilities);
+                        boolean denyMapIngestion = denyMapIngestionFor(changed);
+                        sendSessionConfig(changed, this.config.enabled() && newDist > 0,
+                                capabilities, denyMapIngestion);
                     } catch (Exception e) {
                         LSSLogger.error("Session-config dimension-change push failed for "
                                 + changed.getName().getString(), e);

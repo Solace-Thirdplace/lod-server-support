@@ -46,6 +46,10 @@ class MapPolicySettingsTest {
             String before = template.substring(template.lastIndexOf("\nprivacy:", key), key);
             assertTrue(before.contains("Only clients on 0.19.0 or newer can honor this"), before);
             assertTrue(before.contains("a modified client can ignore"), before);
+            // Map-ingestion permission plan §2: the exemption node, and the older-client
+            // sentence qualified by it.
+            assertTrue(before.contains("lss.map_ingestion (vss.map_ingestion) permission"), before);
+            assertTrue(before.contains("until they update, unless"), before);
             assertTrue(template.contains("The map-ingestion request applies on reload."),
                     "the privacy group comment is no longer anti-xray only");
         }

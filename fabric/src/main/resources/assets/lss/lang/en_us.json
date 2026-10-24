@@ -27,7 +27,7 @@
   "lss.config.far_players_render_distance.tooltip": "How far away, in blocks, far players are still drawn. 0 follows the server's limit. Also caps this mod's name tags.",
   "lss.config.far_players_render_distance.server": "Server limit",
   "lss.config.far_players_extend_far_plane": "Extend Far Player Draw Range",
-  "lss.config.far_players_extend_far_plane.tooltip": "Draw far players past the game's normal draw limit, out to the farthest one. Only visible with an LOD mod such as Voxy. Fog can still hide very distant players; if they fade out, turn off fog in your LOD mod. Not used while a shader pack is on.",
+  "lss.config.far_players_extend_far_plane.tooltip": "Draw far players past the game's normal draw limit, out to the farthest far player. Only visible with an LOD mod such as Voxy. Fog can still hide very distant players; if they fade out, turn off fog in your LOD mod. Not used while a shader pack is on.",
   "lss.status.title": "LOD status",
   "lss.status.export": "Export",
   "lss.status.more": "More",

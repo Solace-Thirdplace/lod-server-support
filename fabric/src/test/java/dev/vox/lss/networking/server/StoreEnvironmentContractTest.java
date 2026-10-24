@@ -39,7 +39,7 @@ class StoreEnvironmentContractTest {
                         + "[^;]*RegistryFingerprint\\.of\\(\\s*"
                         + "registryIds\\.states\\(\\),\\s*registryIds\\.biomes\\(\\)\\)\\s*,\\s*"
                         + "[^;]*RegistryFingerprint\\.contentOf\\(\\s*"
-                        + "registryIds\\.states\\(\\),\\s*registryIds\\.biomes\\(\\)\\)\\s*\\)",
+                        + "registryIds\\.states\\(\\),\\s*registryIds\\.biomes\\(\\)\\)\\s*,",
                 Pattern.DOTALL);
         assertTrue(call.matcher(source).find(),
                 "the production Environment must derive the ordered fingerprint via"
@@ -52,6 +52,29 @@ class StoreEnvironmentContractTest {
         assertTrue(source.contains("var registryIds = storeRegistryIdentity(server);"),
                 "both fingerprints must come from ONE registry walk (plan §3.2 — the"
                         + " ~84k-state identity walk must not run twice at boot)");
+    }
+
+    @Test
+    void environmentConstructionPassesTheBuildMarkerThroughTheLoaderSeam() throws Exception {
+        // paper-version-guard-store-plan §3.2: the 9-arg convenience ctor defaults the
+        // build version to the RUNNING version and the legacy rule to REFRESH, so dropping
+        // these arguments compiles and silently loses the marker's purpose. The jar's build
+        // version comes from BuildInfo (never server.getServerVersion()), and the platform
+        // name and one-shot rule from the loader seam.
+        String source = Files.readString(serviceSource());
+        var call = Pattern.compile(
+                "new dev\\.vox\\.lss\\.common\\.store\\.SqliteLodStore\\.Environment\\("
+                        + "[^;]*RegistryFingerprint\\.contentOf\\([^;]*?\\)\\s*,\\s*"
+                        + "(?://[^\\n]*\\s*)*"
+                        + "dev\\.vox\\.lss\\.common\\.BuildInfo\\.minecraftVersion\\(\\)\\s*,\\s*"
+                        + "dev\\.vox\\.lss\\.platform\\.LoaderServices\\.get\\(\\)\\.storePlatform\\(\\)\\s*,\\s*"
+                        + "dev\\.vox\\.lss\\.platform\\.LoaderServices\\.get\\(\\)\\.legacyStoreMigration\\(\\)\\s*,\\s*"
+                        + "dev\\.vox\\.lss\\.common\\.BuildInfo\\.minecraftVersionRule\\(\\)\\s*\\)",
+                Pattern.DOTALL);
+        assertTrue(call.matcher(source).find(),
+                "the production Environment must pass BuildInfo.minecraftVersion() and the"
+                        + " loader seam's storePlatform()/legacyStoreMigration() and the jar's rule after the"
+                        + " fingerprints");
     }
 
     @Test
