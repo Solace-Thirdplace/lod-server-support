@@ -638,10 +638,12 @@ public class PaperRequestProcessingService {
                             registryIds.states(), registryIds.biomes()),
                     // Build marker (paper-version-guard-store-plan §3.2): before 0.20.0
                     // nothing stopped a Paper jar for another Minecraft version from
-                    // enabling, so a store without the marker is rebuilt once.
+                    // enabling, so a store without the marker is rebuilt once. The jar's
+                    // own Minecraft rule keeps a same-family marker (26.3.1 → 26.3).
                     dev.vox.lss.common.BuildInfo.minecraftVersion(),
                     FoliaSupport.IS_FOLIA ? "folia" : "paper",
-                    dev.vox.lss.common.store.LegacyStoreMigration.DROP);
+                    dev.vox.lss.common.store.LegacyStoreMigration.DROP,
+                    dev.vox.lss.common.BuildInfo.minecraftVersionRule());
             lodStore = dev.vox.lss.common.store.LodStores.createOrNull(env);
             if (lodStore == null) {
                 // LodStores.createOrNull logged the per-cause warn (codec vs SQLite init —

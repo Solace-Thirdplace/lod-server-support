@@ -46,8 +46,10 @@ dependencies {
 // detected. One templated resource from gradle.properties — identical on every line.
 tasks.named('processResources') {
     inputs.property 'minecraft_version', project.minecraft_version
+    inputs.property 'minecraft_dependency', project.minecraft_dependency
     filesMatching('dev/vox/lss/common/lss-build.properties') {
-        expand 'minecraft_version': project.minecraft_version
+        expand 'minecraft_version': project.minecraft_version,
+                'minecraft_dependency': project.minecraft_dependency
     }
 }
 

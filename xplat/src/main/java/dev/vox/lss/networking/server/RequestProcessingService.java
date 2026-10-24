@@ -482,10 +482,12 @@ public class RequestProcessingService {
                     dev.vox.lss.common.store.RegistryFingerprint.contentOf(
                             registryIds.states(), registryIds.biomes()),
                     // Build marker (paper-version-guard-store-plan §3.2): the jar's build
-                    // version, and this loader's one-shot rule for an unmarked store.
+                    // version, and this loader's one-shot rule for an unmarked store; the
+                    // jar's own Minecraft rule keeps a same-family marker (26.3.1 → 26.3).
                     dev.vox.lss.common.BuildInfo.minecraftVersion(),
                     dev.vox.lss.platform.LoaderServices.get().storePlatform(),
-                    dev.vox.lss.platform.LoaderServices.get().legacyStoreMigration());
+                    dev.vox.lss.platform.LoaderServices.get().legacyStoreMigration(),
+                    dev.vox.lss.common.BuildInfo.minecraftVersionRule());
             this.lodStore = dev.vox.lss.common.store.LodStores.createOrNull(env);
             if (this.lodStore == null) {
                 // LodStores.createOrNull logged the per-cause warn (codec vs SQLite init —

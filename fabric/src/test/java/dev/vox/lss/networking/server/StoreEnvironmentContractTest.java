@@ -68,11 +68,12 @@ class StoreEnvironmentContractTest {
                         + "(?://[^\\n]*\\s*)*"
                         + "dev\\.vox\\.lss\\.common\\.BuildInfo\\.minecraftVersion\\(\\)\\s*,\\s*"
                         + "dev\\.vox\\.lss\\.platform\\.LoaderServices\\.get\\(\\)\\.storePlatform\\(\\)\\s*,\\s*"
-                        + "dev\\.vox\\.lss\\.platform\\.LoaderServices\\.get\\(\\)\\.legacyStoreMigration\\(\\)\\s*\\)",
+                        + "dev\\.vox\\.lss\\.platform\\.LoaderServices\\.get\\(\\)\\.legacyStoreMigration\\(\\)\\s*,\\s*"
+                        + "dev\\.vox\\.lss\\.common\\.BuildInfo\\.minecraftVersionRule\\(\\)\\s*\\)",
                 Pattern.DOTALL);
         assertTrue(call.matcher(source).find(),
                 "the production Environment must pass BuildInfo.minecraftVersion() and the"
-                        + " loader seam's storePlatform()/legacyStoreMigration() after the"
+                        + " loader seam's storePlatform()/legacyStoreMigration() and the jar's rule after the"
                         + " fingerprints");
     }
 
