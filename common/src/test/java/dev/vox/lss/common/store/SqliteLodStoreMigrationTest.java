@@ -221,6 +221,35 @@ class SqliteLodStoreMigrationTest {
             assertTrue(store.migrationStatusToken().contains("migrating="),
                     "status must show the pending walk, got '"
                             + store.migrationStatusToken() + "'");
+            // Under the REFRESH rule (Fabric/NeoForge/Sponge) the unmarked v0.9.x store
+            // is stamped and kept (paper-version-guard-store-plan §3.2).
+            assertEquals("26.2-test", metaValue("build_mc"));
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
+    void unmarkedV09StoreUnderTheDropRuleDropsInsteadOfLazyUpgrading() throws Exception {
+        // Paper/Folia (plan §3.2): the build-marker decision runs BEFORE the lazy 3→4
+        // upgrade — otherwise its writeMeta stamps the marker onto an unmarked v0.9.x
+        // Paper store and the rows a mismatched jar may have written survive as trusted.
+        long p1 = PositionUtil.packPosition(1, 2);
+        buildSchema3Store(FP, List.of(new FixtureRow(p1, raw(10, 900), false)));
+        var store = openWith(new SqliteLodStore.Environment(storeDir(), "26.2-test", WIRE_20,
+                this::regionDir, d -> "", 0, Long.MAX_VALUE, FP, "",
+                "26.2-test", "paper", LegacyStoreMigration.DROP));
+        try {
+            assertEquals(SqliteLodStore.MetaVerdict.Kind.DROP,
+                    store.lastMetaVerdictForTest().kind());
+            assertEquals(SqliteLodStore.LEGACY_DROP_DETAIL,
+                    store.lastMetaVerdictForTest().detail());
+            assertNull(store.get(OW, p1), "an unmarked Paper v0.9.x store must drop, not upgrade");
+            assertEquals("", store.migrationStatusToken(), "no lazy-upgrade walk may be armed");
+            assertNull(metaValue("migrate_pending"));
+            assertEquals(String.valueOf(SqliteLodStore.SCHEMA_VERSION), metaValue("schema_version"));
+            assertEquals("26.2-test", metaValue("build_mc"));
+            assertEquals("paper", metaValue("platform"));
         } finally {
             store.shutdown();
         }

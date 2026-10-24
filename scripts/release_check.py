@@ -453,6 +453,18 @@ def check_paper_jar(jar, problems):
         if not re.search(r"^folia-supported:\s*true\s*$", ymltext, re.MULTILINE):
             problems.append(f"{base}: plugin.yml lost folia-supported: true — Folia servers "
                             "will refuse this jar")
+        # Version guard (paper-version-guard-store-plan §3.1): the plugin reads this rule from
+        # its own plugin.yml and REFUSES to enable without it, so a jar that lost or
+        # mis-expanded the line is dead on every server.
+        rule = _minecraft_dependency()
+        if rule is None:
+            problems.append(f"{base}: cannot read minecraft_dependency from gradle.properties "
+                            "to check plugin.yml's version guard")
+        elif not re.search(r"^lss-minecraft-dependency:\s*'" + re.escape(rule) + r"'\s*$",
+                           ymltext, re.MULTILINE):
+            problems.append(f"{base}: plugin.yml lss-minecraft-dependency must be '{rule}' "
+                            "(gradle.properties minecraft_dependency) — without it the version "
+                            "guard refuses to enable the plugin")
         # Service-gate nodes (plan §2.6 / §8 O1-m13): UNCONDITIONAL — the dual-jar pair
         # check below only runs when a VSS jar exists, and it pins token PRESENCE, not
         # the declared default. Both spellings must be declared AND both must carry the
@@ -472,6 +484,24 @@ def check_paper_jar(jar, problems):
                 problems.append(f"{base}: plugin.yml service-gate node {node!r} declares "
                                 f"default: {m.group(1)} — must be true (arming "
                                 "requireServicePermission alone must deny NOBODY)")
+        # Map-ingestion exemption nodes (map-ingestion permission plan §2/§6): the GRANT-model
+        # mirror — both spellings declared with `default: false`. An undeclared node falls back
+        # to Bukkit's op default and an `op` default exempts every op from
+        # privacy.request_no_map_ingestion the moment a server turns it on.
+        for node in ("lss.map_ingestion", "vss.map_ingestion"):
+            m = re.search(r"^  " + re.escape(node)
+                          + r":\s*\n(?:^    .*\n)*?^    default:\s*['\"]?(\w+)['\"]?\s*(?:#.*)?$",
+                          ymltext, re.MULTILINE)
+            if m is None:
+                problems.append(f"{base}: plugin.yml is missing the map-ingestion exemption node "
+                                f"{node!r} with an explicit default (both brand spellings "
+                                "must be declared — Bukkit resolves an undeclared node to "
+                                "the op default, exempting every op)")
+            elif m.group(1) != "false":
+                problems.append(f"{base}: plugin.yml map-ingestion exemption node {node!r} "
+                                f"declares default: {m.group(1)} — must be false (an op or "
+                                "true default exempts players from "
+                                "privacy.request_no_map_ingestion nobody granted)")
     if not any(n.startswith("dev/vox/lss/common/") and n.endswith(".class") for n in names):
         problems.append(f"{base}: shaded jar missing the shared common/ classes")
     if "paperweight-mappings-namespace: mojang" not in _manifest(jar):
@@ -1199,7 +1229,8 @@ def check_vss_pair_fabric(lss_jar, vss_jar, problems):
 # `name:` LEFT this list 2026-08-13 (XANTHA's release patch): the VSS plugin presents as
 # VoxyServerSide — check_vss_paper_identity pins the rebranded value instead, and the
 # data-folder fork it causes is documented there.
-VSS_PAPER_IDENTITY_PREFIXES = ("main:", "api-version:", "folia-supported:", "version:")
+VSS_PAPER_IDENTITY_PREFIXES = ("main:", "api-version:", "folia-supported:", "version:",
+                               "lss-minecraft-dependency:")
 
 
 def check_vss_pair_paper(lss_jar, vss_jar, problems):
@@ -1296,6 +1327,17 @@ def check_vss_pair_paper(lss_jar, vss_jar, problems):
                                 f"{tok!r} — BOTH brand spellings must be declared in BOTH jars "
                                 "(an undeclared node resolves to Bukkit's op default TRUE, so a "
                                 "dropped declaration silently hides every op as a far player)")
+    # The map-ingestion exemption nodes (map-ingestion permission plan §6): the same dual-jar
+    # belt — a widened rewrite renaming lss.map_ingestion -> vss.map_ingestion would leave the
+    # VSS jar's lss. spelling undeclared, i.e. op-default TRUE, and the OR-read would then
+    # exempt every op from privacy.request_no_map_ingestion.
+    for jar_text, jar_name in ((ltext, os.path.basename(lss_jar)), (vtext, vbase)):
+        for tok in ("lss.map_ingestion", "vss.map_ingestion"):
+            if tok not in jar_text:
+                problems.append(f"{jar_name}: plugin.yml is missing the map-ingestion exemption "
+                                f"node {tok!r} — BOTH brand spellings must be declared in BOTH "
+                                "jars (an undeclared node resolves to Bukkit's op default TRUE, "
+                                "exempting every op from privacy.request_no_map_ingestion)")
 
 
 # ---------------------------------------------------------------- brand.properties + wire
@@ -1330,6 +1372,64 @@ def check_brand_properties(jar, expected, problems):
     for key, want in expected.items():
         if props.get(key) != want:
             problems.append(f"{base}: lss-brand.properties {key}={props.get(key)!r}, expected {want!r}")
+
+
+# ---------------------------------------------------------------- lss-build.properties
+
+# The jar's own build facts (paper-version-guard-store-plan §3.2): BuildInfo reads them to
+# stamp the LOD store's build_mc and to keep a same-family marker, and throws on a missing or
+# unexpanded resource — so a packaging slip would disable the store on every server.
+BUILD_PROPERTIES = "dev/vox/lss/common/lss-build.properties"
+
+
+def _build_properties_copies(jar):
+    """[(where, text)] for every lss-build.properties the jar ships: top level (the flat
+    Paper/Sponge/NeoForge layouts) or inside a nested jar (Fabric's common-*.jar)."""
+    out = []
+    with zipfile.ZipFile(jar) as z:
+        names = z.namelist()
+        if BUILD_PROPERTIES in names:
+            out.append((None, z.read(BUILD_PROPERTIES).decode("utf-8", "replace")))
+        for entry in names:
+            if entry.startswith(("META-INF/jars/", "META-INF/jarjar/")) and entry.endswith(".jar"):
+                with zipfile.ZipFile(io.BytesIO(z.read(entry))) as nested:
+                    if BUILD_PROPERTIES in nested.namelist():
+                        out.append((entry, nested.read(BUILD_PROPERTIES).decode("utf-8", "replace")))
+    return out
+
+
+def check_build_properties(jar, problems, root=ROOT):
+    """Every shipped server jar carries lss-build.properties with an expanded
+    minecraft_version (and minecraft_dependency), equal to the line's gradle.properties
+    values when the line is known."""
+    base = os.path.basename(jar)
+    try:
+        copies = _build_properties_copies(jar)
+    except zipfile.BadZipFile as e:
+        problems.append(f"{base}: unreadable jar while looking for {BUILD_PROPERTIES} ({e})")
+        return
+    if not copies:
+        problems.append(f"{base}: no {BUILD_PROPERTIES} (top level or nested common jar) — "
+                        "BuildInfo would throw and the LOD store could not open")
+        return
+    want = {"minecraft_version": _minecraft_version(root),
+            "minecraft_dependency": _minecraft_dependency(root)}
+    for where, text in copies:
+        label = base if where is None else f"{base}!{where}"
+        props = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if line and not line.startswith(("#", "!")) and "=" in line:
+                k, v = line.split("=", 1)
+                props[k.strip()] = v.strip()
+        for key, expected in want.items():
+            value = props.get(key, "")
+            if not value or "${" in value:
+                problems.append(f"{label}: {BUILD_PROPERTIES} carries no expanded {key} "
+                                f"(got {value!r}) — :common:processResources did not expand it")
+            elif expected and value != expected:
+                problems.append(f"{label}: {BUILD_PROPERTIES} {key}={value!r}, but this line's "
+                                f"gradle.properties says {expected!r}")
 
 
 def check_wire_identity_fabric(lss_jar, vss_jar, problems):
@@ -1606,6 +1706,7 @@ def discover(problems, expected_version=None, root=ROOT):
     check_glob_hygiene(problems, soak)
     for jar in fab + pap + vfab + vpap + neo + vneo + spo + vspo:
         sqlite_capsule.check(jar, problems)
+        check_build_properties(jar, problems, root)
     for loader, jars in (("fabric", fab + vfab), ("paper", pap + vpap), ("neoforge", neo + vneo),
                          ("sponge", spo + vspo)):
         for jar in jars:
@@ -1782,6 +1883,19 @@ def _minecraft_version(root=ROOT):
     return None
 
 
+def _minecraft_dependency(root=ROOT):
+    """The line's minecraft_dependency from gradle.properties (the Paper version guard's rule,
+    paper-version-guard-store-plan §3.1), or None if unreadable."""
+    try:
+        with open(os.path.join(root, "gradle.properties"), encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip().startswith("minecraft_dependency="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return None
+
+
 def _require_version(jars, prefix, version, problems, mc=None):
     """Restrict checking to the exact release jar for `version`; a missing jar is a failure
     — otherwise a stale jar from an earlier build gets validated in its place and the
@@ -1839,6 +1953,9 @@ def _selftest():
 
 
 def _selftest_fixtures():
+    # The version-guard line every shipped plugin.yml carries (paper-version-guard-store-plan
+    # §3.1); every clean Paper fixture below carries it beside the line's folia-supported fact.
+    GUARD_YML = "lss-minecraft-dependency: '" + (_minecraft_dependency() or "") + "'\n"
     n = 0
 
     def check(cond, msg):
@@ -1864,10 +1981,15 @@ def _selftest_fixtures():
             entries[XZ_LICENSE] = xz_license_bytes
         return entries
 
-    def _nested_common(version="0.4.0"):
+    BUILD_PROPS_TXT = ("minecraft_version=" + (_minecraft_version() or "26.3") + "\n"
+                       "minecraft_dependency=" + (_minecraft_dependency() or ">=26.3 <26.4-") + "\n")
+
+    def _nested_common(version="0.4.0", build_props=None):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as z:
             z.writestr("dev/vox/lss/common/PositionUtil.class", "x")
+            if build_props is not False:
+                z.writestr(BUILD_PROPERTIES, BUILD_PROPS_TXT if build_props is None else build_props)
             for name, value in _yaml_entries().items():
                 z.writestr(name, value)
             for name, data in sqlite_capsule.fixture_entries().items():
@@ -2052,10 +2174,12 @@ def _selftest_fixtures():
 
         GATE_NODES_YML = ("permissions:\n"
                           "  lss.use:\n    description: receive LOD data\n    default: true\n"
-                          "  vss.use:\n    description: receive LOD data\n    default: true\n")
+                          "  vss.use:\n    description: receive LOD data\n    default: true\n"
+                          "  lss.map_ingestion:\n    description: exempt\n    default: false\n"
+                          "  vss.map_ingestion:\n    description: exempt\n    default: false\n")
         good_pap = os.path.join(td, "lod-server-support-paper.jar")
         _make_jar(good_pap, {
-            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n"
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n" + GUARD_YML
                           + GATE_NODES_YML,
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
             "dev/vox/lss/common/PositionUtil.class": "x",
@@ -2064,13 +2188,28 @@ def _selftest_fixtures():
         check_paper_jar(good_pap, p)
         check(p == [], f"clean paper jar flagged: {p}")
 
+        # The version guard's rule must ship expanded and equal to the line's
+        # minecraft_dependency (paper-version-guard-store-plan §3.1).
+        unguarded_pap = os.path.join(td, "lod-server-support-paper-unguarded.jar")
+        _make_jar(unguarded_pap, {
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\n"
+                          + "folia-supported: true\nlss-minecraft-dependency: '1.0'\n"
+                          + GATE_NODES_YML,
+            "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
+            "dev/vox/lss/common/PositionUtil.class": "x",
+        }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
+        p = []
+        check_paper_jar(unguarded_pap, p)
+        check(any("lss-minecraft-dependency" in m for m in p),
+              f"wrong version-guard rule not caught: {p}")
+
         # Service-gate node checks are UNCONDITIONAL (plan §2.6): a jar missing a node,
         # and a jar whose declared default flipped, must both be caught here — the pair
         # check only runs when a VSS jar exists.
         nodeless_pap = os.path.join(td, "lod-server-support-paper-nodeless.jar")
         _make_jar(nodeless_pap, {
-            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n"
-                          "permissions:\n  lss.use:\n    default: true\n",
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n" + GUARD_YML
+                          + "permissions:\n  lss.use:\n    default: true\n",
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
             "dev/vox/lss/common/PositionUtil.class": "x",
         }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
@@ -2080,7 +2219,7 @@ def _selftest_fixtures():
               f"missing vss.use node not caught: {p}")
         flipped_pap = os.path.join(td, "lod-server-support-paper-flipped.jar")
         _make_jar(flipped_pap, {
-            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n"
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n" + GUARD_YML
                           + GATE_NODES_YML.replace("  vss.use:\n    description: receive LOD data\n    default: true\n",
                                                    "  vss.use:\n    description: receive LOD data\n    default: op\n"),
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
@@ -2090,6 +2229,31 @@ def _selftest_fixtures():
         check_paper_jar(flipped_pap, p)
         check(any("declares default: op" in m and "vss.use" in m for m in p),
               f"flipped default not caught: {p}")
+        # The map-ingestion exemption pair (map-ingestion permission plan §6): a missing
+        # spelling and an `op` default must both be caught, unconditionally.
+        mapless_pap = os.path.join(td, "lod-server-support-paper-mapless.jar")
+        _make_jar(mapless_pap, {
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n" + GUARD_YML
+                          + GATE_NODES_YML.replace("  vss.map_ingestion:\n    description: exempt\n    default: false\n", ""),
+            "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
+            "dev/vox/lss/common/PositionUtil.class": "x",
+        }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
+        p = []
+        check_paper_jar(mapless_pap, p)
+        check(any("missing the map-ingestion exemption node 'vss.map_ingestion'" in m for m in p),
+              f"missing vss.map_ingestion node not caught: {p}")
+        opmap_pap = os.path.join(td, "lod-server-support-paper-opmap.jar")
+        _make_jar(opmap_pap, {
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\nfolia-supported: true\n" + GUARD_YML
+                          + GATE_NODES_YML.replace("  lss.map_ingestion:\n    description: exempt\n    default: false\n",
+                                                   "  lss.map_ingestion:\n    description: exempt\n    default: op\n"),
+            "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
+            "dev/vox/lss/common/PositionUtil.class": "x",
+        }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
+        p = []
+        check_paper_jar(opmap_pap, p)
+        check(any("declares default: op" in m and "lss.map_ingestion" in m for m in p),
+              f"op-default map-ingestion node not caught: {p}")
 
         # a paper jar LOSING folia-supported must be caught: Folia ships a 26.2 build since
         # 2026-07-28, so a jar without the flag silently stops loading on Folia servers
@@ -2244,8 +2408,8 @@ def _selftest_fixtures():
         good_vpap = os.path.join(td, "voxy-server-side-paper.jar")
         _make_jar(good_vpap, {
             "plugin.yml": ("name: VoxyServerSide\nversion: 0.7.0\n"
-                           "folia-supported: true\n"
-                           "description: Render distant Voxy LODs on servers\n"
+                           "folia-supported: true\n" + GUARD_YML
+                           + "description: Render distant Voxy LODs on servers\n"
                            + GATE_NODES_YML),
             "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
             "dev/vox/lss/common/PositionUtil.class": "x",
@@ -2411,7 +2575,14 @@ def _selftest_fixtures():
                           "    default: true\n"
                           "  vss.use:\n"
                           "    description: receive LOD data (VSS spelling)\n"
-                          "    default: true\n")
+                          "    default: true\n"
+                          # Map-ingestion exemption nodes, same dual-spelling rule (default false).
+                          "  lss.map_ingestion:\n"
+                          "    description: exempt\n"
+                          "    default: false\n"
+                          "  vss.map_ingestion:\n"
+                          "    description: exempt (VSS spelling)\n"
+                          "    default: false\n")
         # Mirror vssJar's exact rewrites (2026-08-13 shape: name/author rebrand too; the
         # farplayers + service-gate nodes are deliberately NOT renamed — both
         # spellings ship in both jars).
@@ -2488,6 +2659,16 @@ def _selftest_fixtures():
         check(any("line count differs" in m for m in p),
               f"paper line-count change not caught: {p}")
 
+        # a widened rewrite renaming lss.map_ingestion -> vss.map_ingestion (in place, so the
+        # line count holds) MUST fail: the VSS jar's lss. spelling would be op-default TRUE
+        pair_maprename_vpap = os.path.join(td, "pair-maprename-vss-paper.jar")
+        _make_jar(pair_maprename_vpap, {"plugin.yml": VSS_PLUGIN_YML.replace(
+            "  lss.map_ingestion:", "  vss.map_ingestion:", 1)})
+        p = []
+        check_vss_pair_paper(pair_lss_pap, pair_maprename_vpap, p)
+        check(any("missing the map-ingestion exemption node 'lss.map_ingestion'" in m for m in p),
+              f"renamed map-ingestion node not caught: {p}")
+
         # ---- brand.properties (both platforms) ----
         BRAND_LSS_TXT = ("shortName=LSS\ndisplayName=LOD Server Support\n"
                          "clientCommand=lss\nserverCommand=lsslod\n")
@@ -2509,6 +2690,40 @@ def _selftest_fixtures():
         p = []
         check_brand_properties(pair_lss_pap, _BRAND_LSS, p)
         check(any("no lss-brand.properties" in m for m in p), "missing brand.properties not caught")
+
+        # ---- lss-build.properties (every shipped server jar; Fabric's in the nested common) ----
+        bp_ok = os.path.join(td, "build-props-ok.jar")
+        _make_jar(bp_ok, {BUILD_PROPERTIES: BUILD_PROPS_TXT})
+        bp_nested = os.path.join(td, "build-props-nested.jar")
+        _make_jar(bp_nested, {"META-INF/jars/common-0.7.0.jar": _nested_common("0.7.0")})
+        p = []
+        check_build_properties(bp_ok, p)
+        check_build_properties(bp_nested, p)
+        check(p == [], f"present, expanded lss-build.properties flagged: {p}")
+        bp_missing = os.path.join(td, "build-props-missing.jar")
+        _make_jar(bp_missing, {"META-INF/jars/common-0.7.0.jar": _nested_common("0.7.0", build_props=False),
+                               "dev/vox/lss/LSSMod.class": "x"})
+        p = []
+        check_build_properties(bp_missing, p)
+        check(any("no dev/vox/lss/common/lss-build.properties" in m for m in p),
+              f"missing lss-build.properties not caught: {p}")
+        for bad, what in (("minecraft_version=${minecraft_version}\n"
+                           "minecraft_dependency=>=26.3 <26.4-\n", "minecraft_version"),
+                          ("minecraft_version=26.3\nminecraft_dependency=${minecraft_dependency}\n",
+                           "minecraft_dependency"),
+                          ("minecraft_dependency=>=26.3 <26.4-\n", "minecraft_version")):
+            bp_bad = os.path.join(td, "build-props-unexpanded.jar")
+            _make_jar(bp_bad, {"META-INF/jars/common-0.7.0.jar": _nested_common("0.7.0", build_props=bad)})
+            p = []
+            check_build_properties(bp_bad, p)
+            check(any("carries no expanded " + what in m for m in p),
+                  f"unexpanded/absent {what} not caught: {p}")
+        bp_other = os.path.join(td, "build-props-other-line.jar")
+        _make_jar(bp_other, {BUILD_PROPERTIES: "minecraft_version=0.0.1\nminecraft_dependency=0.0.1\n"})
+        p = []
+        check_build_properties(bp_other, p)
+        check(any("but this line's gradle.properties says" in m for m in p),
+              f"another line's lss-build.properties not caught: {p}")
 
         # ---- wire identity: nested common jar must be byte-identical across the pair ----
         nested_common = io.BytesIO()
@@ -2862,8 +3077,8 @@ def _selftest_fixtures():
         os.makedirs(dneo)
         PY_LSS = ("name: LodServerSupport\nversion: '0.7.0'\n"
                   "main: dev.vox.lss.paper.LSSPaperPlugin\napi-version: '26.2'\n"
-                  "folia-supported: true\n"
-                  "description: LSS plugin.\n"
+                  "folia-supported: true\n" + GUARD_YML
+                  + "description: LSS plugin.\n"
                   "author: VoX\n"
                   "website: https://modrinth.com/plugin/lod-server-support\n"
                   "commands:\n  lsslod:\n"
@@ -2874,7 +3089,9 @@ def _selftest_fixtures():
                   "  lss.farplayers.hidden:\n    description: hidden\n    default: false\n"
                   "  vss.farplayers.hidden:\n    description: hidden\n    default: false\n"
                   "  lss.use:\n    description: receive LOD data\n    default: true\n"
-                  "  vss.use:\n    description: receive LOD data\n    default: true\n")
+                  "  vss.use:\n    description: receive LOD data\n    default: true\n"
+                  "  lss.map_ingestion:\n    description: exempt\n    default: false\n"
+                  "  vss.map_ingestion:\n    description: exempt\n    default: false\n")
         # The 2026-08-13 rewrite shape: name/author rebrand; the dual-spelling
         # farplayers + service-gate nodes are NOT renamed.
         PY_VSS = (PY_LSS
@@ -2916,10 +3133,11 @@ def _selftest_fixtures():
                 entries.pop(d, None)
             _make_jar(os.path.join(dfab, name), entries, manifest=fab_manifest)
 
-        def _write_tree_paper(name, yml, brand):
+        def _write_tree_paper(name, yml, brand, build_props=None):
             entries = {
                 "plugin.yml": yml,
                 "lss-brand.properties": brand,
+                BUILD_PROPERTIES: BUILD_PROPS_TXT if build_props is None else build_props,
                 "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
                 "dev/vox/lss/common/PositionUtil.class": "x",
                 "THIRD-PARTY-NOTICES": notices,
@@ -2966,6 +3184,7 @@ def _selftest_fixtures():
                 "META-INF/services/dev.vox.lss.platform.LoaderServices":
                     "dev.vox.lss.platform.NeoForgeLoaderServices",
                 "lss-brand.properties": brand,
+                BUILD_PROPERTIES: BUILD_PROPS_TXT,
                 "dev/vox/lss/common/PositionUtil.class": "x",
                 "dev/vox/lss/networking/server/RequestProcessingService.class": shared_class,
                 "dev/vox/lss/neoforge/LSSNeoMod.class": "x",
@@ -3012,6 +3231,25 @@ def _selftest_fixtures():
             check(any(os.path.basename(yaml_jar) in issue and "unrelocated SnakeYAML" in issue for issue in p),
                   f"discovery missed parser leakage in {yaml_jar}: {p}")
             _make_jar(yaml_jar, original_entries)
+
+        # Prove the lss-build.properties check is wired into discovery for every family
+        # (Fabric's copy rides the nested common jar; the rest are flat).
+        for bp_jar in fab_d + pap_d + vfab_d + vpap_d + neo_d + vneo_d:
+            with zipfile.ZipFile(bp_jar) as archive:
+                original_entries = {name: archive.read(name) for name in archive.namelist()}
+            broken = dict(original_entries)
+            unexpanded = "minecraft_version=${minecraft_version}\nminecraft_dependency=${minecraft_dependency}\n"
+            if BUILD_PROPERTIES in broken:
+                broken[BUILD_PROPERTIES] = unexpanded
+            else:
+                broken["META-INF/jars/common-0.7.0.jar"] = _nested_common("0.7.0", build_props=unexpanded)
+            _make_jar(bp_jar, broken)
+            p = []
+            discover(p, root=droot)
+            check(any(os.path.basename(bp_jar) in issue and "carries no expanded minecraft_version" in issue
+                      for issue in p),
+                  f"discovery missed an unexpanded lss-build.properties in {bp_jar}: {p}")
+            _make_jar(bp_jar, original_entries)
 
         # a neoforge jar whose entrypoint/seam classes were shaded OUT must fail
         # (round-3 review NIT-3: the gametest smoke runs off classes dirs, never the
@@ -3310,6 +3548,7 @@ def _selftest_fixtures():
             entries = {
                 "META-INF/sponge_plugins.json": json.dumps(meta),
                 "lss-brand.properties": brand,
+                BUILD_PROPERTIES: BUILD_PROPS_TXT,
                 "dev/vox/lss/sponge/LSSSpongePlugin.class": "x",
                 "dev/vox/lss/common/PositionUtil.class": "x",
                 "dev/vox/lss/networking/server/RequestProcessingService.class": "x",
