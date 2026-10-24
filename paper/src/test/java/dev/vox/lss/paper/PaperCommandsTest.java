@@ -273,8 +273,9 @@ class PaperCommandsTest {
 
         messages.clear();
         MutablePaperSettings.set(config, "privacy.request_no_map_ingestion", true);
+        gate.setMapPolicyExemptCount(2); // the sweep's cache (map-ingestion permission plan §3.5)
         assertTrue(run(commands(service, config), "diag"));
-        assertTrue(messages.contains("MapPolicy: on refused=1"), messages.toString());
+        assertTrue(messages.contains("MapPolicy: on refused=1 exempt=2"), messages.toString());
         assertTrue(messages.stream().noneMatch(m -> m.startsWith("Gate:")),
                 "the policy line never needs the permission gate armed");
 
@@ -283,7 +284,7 @@ class PaperCommandsTest {
         assertTrue(run(commands(service, config), "diag"));
         assertTrue(messages.contains("Gate: requireServicePermission=on denied=1 provider=bukkit"),
                 "denied= counts only the permission entry: " + messages);
-        assertTrue(messages.contains("MapPolicy: on refused=1"));
+        assertTrue(messages.contains("MapPolicy: on refused=1 exempt=2"));
     }
 
     @Test

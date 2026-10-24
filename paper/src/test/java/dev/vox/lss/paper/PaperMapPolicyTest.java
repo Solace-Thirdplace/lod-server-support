@@ -90,8 +90,8 @@ class PaperMapPolicyTest {
                 new PaperRequestProcessingService.Wiring(
                         players, diskReader, genService, processor, tracker, broadcaster));
         service.setLoadedColumnProbe((level, cx, cz) -> null);
-        service.setSessionConfigSender((p, cfg, enabled, caps) ->
-                sent.add(new Object[]{p.getUUID(), enabled, caps, cfg.requestNoMapIngestion()}));
+        service.setSessionConfigSender((p, cfg, enabled, caps, deny) ->
+                sent.add(new Object[]{p.getUUID(), enabled, caps, deny}));
         service.setHandshakeReplayer((p, remembered) -> replays.add(remembered));
         service.setMapPolicyNoticeSender((p, text) -> notices.add(p.getUUID()));
     }
@@ -145,8 +145,13 @@ class PaperMapPolicyTest {
 
         arm(true);
         assertEquals(1, service.runMapPolicySweep());
-        assertEquals(1, sent.size());
+        // Map-ingestion permission plan §3.3: the same pass tells the capable session its
+        // decision (never told: registered directly) — after the revocation.
+        assertEquals(2, sent.size());
         assertEquals(old, sent.getFirst()[0]);
+        assertEquals(capable, sent.get(1)[0]);
+        assertEquals(true, sent.get(1)[1], "the capable session keeps serving");
+        assertEquals(true, sent.get(1)[3], "…told the request");
         assertEquals(false, sent.getFirst()[1], "the revocation push advertises disabled");
         assertEquals(VOXEL, sent.getFirst()[2], "…to a session without the bit (no flags field)");
         assertNull(players.get(old), "the unregistration composite ran");
@@ -163,7 +168,7 @@ class PaperMapPolicyTest {
         assertEquals(List.of(old), notices, "the chat line, once");
 
         assertEquals(0, service.runMapPolicySweep(), "idempotent: the revoked session is gone");
-        assertEquals(1, sent.size());
+        assertEquals(2, sent.size(), "…and the capable one is not told twice");
         assertEquals(List.of(old), notices);
     }
 
@@ -626,5 +631,165 @@ class PaperMapPolicyTest {
         assertNotNull(players.get(uuid));
         assertEquals(List.of(new Reply(HandshakeGate.WireDialect.CURRENT, true, VOXEL | BIT)), replies);
         assertTrue(service.getDialectTracker().isCurrent(uuid));
+    }
+
+
+    // ---- the map-ingestion exemption (map-ingestion permission plan §3, §6) ----
+
+    @Test
+    void theSweepTellsACapableSessionAGrantAndARevokeWithinOneSweepAndNeverRepeats() {
+        var uuid = UUID.randomUUID();
+        var p = register(uuid, HandshakeGate.WireDialect.CURRENT, VOXEL | BIT);
+        var exempt = new java.util.concurrent.atomic.AtomicBoolean(false);
+        service.setMapIngestionExemptProbeForTest(pl -> pl.getUUID().equals(uuid) && exempt.get());
+        arm(true);
+        service.runMapPolicySweep();
+        assertEquals(1, sent.size(), "never told (registered directly): told once");
+        assertEquals(true, sent.getFirst()[3]);
+        service.runMapPolicySweep();
+        assertEquals(1, sent.size(), "nothing changed: no push");
+
+        exempt.set(true);
+        service.runMapPolicySweep();
+        assertEquals(2, sent.size(), "the grant lands within one sweep");
+        assertEquals(true, sent.get(1)[1], "still serving (the flags-only shape)");
+        assertEquals(VOXEL | BIT, sent.get(1)[2]);
+        assertEquals(false, sent.get(1)[3], "flags 0: the exempt player may ingest");
+        assertEquals(1, service.getServiceGateState().mapPolicyExemptCount(), "exempt=1 cached");
+
+        // A dimension change without a distance change (overworld → End, both the default)
+        // rebuilds the request state and pushes nothing; the next sweep stays quiet.
+        var before = players.get(uuid);
+        var end = level(Level.END);
+        when(p.level()).thenReturn(end);
+        service.tick();
+        assertNotNull(players.get(uuid));
+        assertTrue(players.get(uuid) != before, "premise: the per-dimension state was rebuilt");
+        service.runMapPolicySweep();
+        assertEquals(2, sent.size(), "no redundant push after a dimension change");
+
+        exempt.set(false);
+        service.runMapPolicySweep();
+        assertEquals(3, sent.size(), "the revoke lands within one sweep");
+        assertEquals(true, sent.get(2)[3]);
+        assertNotNull(players.get(uuid), "a capable session is never revoked");
+        assertEquals(0, service.getServiceGateState().mapPolicyExemptCount());
+    }
+
+    @Test
+    void anExemptOlderSessionIsLeftAloneMidSessionAndAGrantReOffersARefusedOne() {
+        var exemptOld = UUID.randomUUID();
+        var plainOld = UUID.randomUUID();
+        register(exemptOld, HandshakeGate.WireDialect.CURRENT, VOXEL);
+        register(plainOld, HandshakeGate.WireDialect.CURRENT, VOXEL);
+        var exempt = ConcurrentHashMap.<UUID>newKeySet();
+        exempt.add(exemptOld);
+        service.setMapIngestionExemptProbeForTest(pl -> exempt.contains(pl.getUUID()));
+        arm(true);
+        assertEquals(1, service.runMapPolicySweep(), "only the non-exempt older session is revoked");
+        assertNotNull(players.get(exemptOld));
+        assertNull(players.get(plainOld));
+        assertTrue(service.getServiceGateState().isMapPolicyExemptAdmission(exemptOld),
+                "decided at the arm: recorded as an exempt admission");
+        exempt.remove(exemptOld);
+        assertEquals(0, service.runMapPolicySweep(),
+                "decided once: a withdrawn grant applies at the next join, not mid-session");
+        assertNotNull(players.get(exemptOld));
+
+        exempt.add(plainOld); // granted while refused
+        service.replayDeniedHandshakes();
+        assertEquals(1, replays.size(), "the grant sweep re-offers the refused player");
+        assertEquals(LSSConstants.PROTOCOL_VERSION, replays.getFirst().protocolVersion());
+    }
+
+    @Test
+    void aThrowingExemptionReadIsNotExemptOnTheServiceAndTheProductionGate() {
+        var uuid = UUID.randomUUID();
+        var p = register(uuid, HandshakeGate.WireDialect.CURRENT, VOXEL);
+        arm(true);
+        service.setMapIngestionExemptProbeForTest(pl -> { throw new IllegalStateException("Folia read race"); });
+        assertFalse(service.mapIngestionExempt(p), "the service's read fails closed");
+        assertTrue(service.denyMapIngestionFor(p));
+        assertEquals(1, service.runMapPolicySweep(), "…so the older session is revoked, not exempted");
+        service.setMapIngestionExemptProbeForTest(null); // the production probe
+        assertFalse(service.mapIngestionExempt(p),
+                "the production probe on a player without a Bukkit entity (a throw) is not exempt");
+
+        var bukkit = mock(org.bukkit.entity.Player.class);
+        when(bukkit.hasPermission(org.mockito.ArgumentMatchers.anyString()))
+                .thenThrow(new IllegalStateException("Folia read race"));
+        var gate = LSSPaperPlugin.serviceGateFor(bukkit, uuid, "steve", new ServiceGateState(), null, null);
+        assertFalse(gate.mapIngestionExempt(), "the production gate's read fails closed");
+        assertTrue(gate.hasPermission(dev.vox.lss.common.LSSPermissions.SERVICE_LSS),
+                "control: the service-gate read on the same throwing permissible fails OPEN");
+    }
+
+    @Test
+    void theProductionGateHonorsEitherSpellingAndReadsOncePerHandshake() {
+        var bukkit = mock(org.bukkit.entity.Player.class);
+        when(bukkit.hasPermission(dev.vox.lss.common.LSSPermissions.MAP_INGESTION_VSS)).thenReturn(true);
+        var gate = LSSPaperPlugin.serviceGateFor(bukkit, UUID.randomUUID(), "steve",
+                new ServiceGateState(), null, null);
+        assertTrue(gate.mapIngestionExempt(), "the VSS spelling exempts (grant model: either)");
+        assertTrue(gate.mapIngestionExempt());
+        org.mockito.Mockito.verify(bukkit, org.mockito.Mockito.times(1))
+                .hasPermission(dev.vox.lss.common.LSSPermissions.MAP_INGESTION_VSS);
+        var none = mock(org.bukkit.entity.Player.class);
+        assertFalse(LSSPaperPlugin.serviceGateFor(none, UUID.randomUUID(), "alex",
+                new ServiceGateState(), null, null).mapIngestionExempt(), "no grant: not exempt");
+    }
+
+    /** The static core: an exempt older client is SERVED at the handshake (its deferred reply
+     *  says enabled, no flags field), a non-exempt one refused; a capable exempt client's
+     *  reply decision is the per-player one. */
+    private final dev.vox.lss.common.PlayerServiceGate exemptGate = new dev.vox.lss.common.PlayerServiceGate() {
+        @Override public boolean hasPermission(String node) { return true; }
+        @Override public boolean claimDenialLog() { return false; }
+        @Override public void onServiceDenied(int protocolVersion, int capabilities) { }
+        @Override public boolean mapIngestionExempt() { return true; }
+    };
+
+    @Test
+    void anExemptOlderClientIsServedAtTheHandshakeAndANonExemptOneRefused() {
+        arm(true);
+        for (int version : new int[]{LSSConstants.PROTOCOL_VERSION, LSSConstants.V19_COMPAT_PROTOCOL_VERSION}) {
+            registrations.clear();
+            replies.clear();
+            deferred.clear();
+            LSSPaperPlugin.handleHandshake(handshakeFrame(version, VOXEL), "steve", config, true,
+                    dev.vox.lss.common.compat.ViaProbe.NO_SIGNAL, 0, exemptGate, sender, registrar);
+            assertEquals(List.of(VOXEL), registrations, "v" + version + ": exempt — registers");
+            deferred.forEach(Runnable::run);
+            assertEquals(List.of(new Reply(dialectOf(version), true, VOXEL)), replies,
+                    "v" + version + ": the deferred reply serves it");
+        }
+        registrations.clear();
+        replies.clear();
+        handshake(LSSConstants.PROTOCOL_VERSION, VOXEL); // the non-exempt test gate
+        assertEquals(List.of(), registrations);
+        assertEquals(List.of(new Reply(HandshakeGate.WireDialect.CURRENT, false, VOXEL)), replies,
+                "a non-exempt older client is refused as before");
+    }
+
+    /** The drain re-check (review fold A10) rides the handshake's own exemption read: an
+     *  exempt older client decided before the arm still registers after it, recorded as an
+     *  exempt admission. */
+    @Test
+    void anExemptRegisterDecidedBeforeTheArmStillRegistersAtTheDrain() {
+        var uuid = UUID.randomUUID();
+        var p = onlinePlayer(uuid);
+        // The production wiring: the drain gets the SAME gate's exemption read as the reply.
+        LSSPaperPlugin.handleHandshake(handshakeFrame(LSSConstants.PROTOCOL_VERSION, VOXEL), "steve", p, config,
+                true, dev.vox.lss.common.compat.ViaProbe.NO_SIGNAL, 0, exemptGate, sender,
+                (c, dialect, reply) -> service.enqueueRegister(p, c,
+                        () -> service.getDialectTracker().onHandshake(p.getUUID(), dialect), reply, dialect,
+                        exemptGate::mapIngestionExempt));
+        arm(true);
+        service.tick();
+        assertNotNull(players.get(uuid), "exempt: registered despite the arm");
+        assertEquals(List.of(new Reply(HandshakeGate.WireDialect.CURRENT, true, VOXEL)), replies,
+                "…and the deferred reply agrees (enabled)");
+        assertTrue(service.getServiceGateState().isMapPolicyExemptAdmission(uuid));
+        assertFalse(service.getServiceGateState().isDenied(uuid));
     }
 }

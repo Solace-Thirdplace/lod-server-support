@@ -31,7 +31,7 @@ class PaperStoreEnvironmentContractTest {
                         + "[^;]*RegistryFingerprint\\.of\\(\\s*"
                         + "registryIds\\.states\\(\\),\\s*registryIds\\.biomes\\(\\)\\)\\s*,\\s*"
                         + "[^;]*RegistryFingerprint\\.contentOf\\(\\s*"
-                        + "registryIds\\.states\\(\\),\\s*registryIds\\.biomes\\(\\)\\)\\s*\\)",
+                        + "registryIds\\.states\\(\\),\\s*registryIds\\.biomes\\(\\)\\)\\s*,",
                 Pattern.DOTALL);
         assertTrue(call.matcher(source).find(),
                 "the production Environment must derive the ordered fingerprint via"
@@ -40,5 +40,26 @@ class PaperStoreEnvironmentContractTest {
                         + " and disables the registry guard / permutation tolerance)");
         assertTrue(source.contains("var registryIds = storeRegistryIdentity(server);"),
                 "both fingerprints must come from ONE registry walk (plan §3.2)");
+    }
+
+    @Test
+    void environmentConstructionPassesTheBuildMarkerAndTheDropRule() throws Exception {
+        // paper-version-guard-store-plan §3.2: Paper/Folia drop an unmarked store once (a
+        // mismatched jar could have written it), stamp the jar's BUILD version (BuildInfo,
+        // never server.getServerVersion()) and name the platform. The 9-arg convenience
+        // ctor would default to REFRESH and the running version, so dropping these
+        // arguments compiles and silently keeps poisoned stores.
+        String source = Files.readString(serviceSource());
+        var call = Pattern.compile(
+                "new dev\\.vox\\.lss\\.common\\.store\\.SqliteLodStore\\.Environment\\("
+                        + "[^;]*RegistryFingerprint\\.contentOf\\([^;]*?\\)\\s*,\\s*"
+                        + "(?://[^\\n]*\\s*)*"
+                        + "dev\\.vox\\.lss\\.common\\.BuildInfo\\.minecraftVersion\\(\\)\\s*,\\s*"
+                        + "FoliaSupport\\.IS_FOLIA \\? \"folia\" : \"paper\"\\s*,\\s*"
+                        + "dev\\.vox\\.lss\\.common\\.store\\.LegacyStoreMigration\\.DROP\\s*\\)",
+                Pattern.DOTALL);
+        assertTrue(call.matcher(source).find(),
+                "the Paper Environment must pass BuildInfo.minecraftVersion(), the paper/folia"
+                        + " platform name and LegacyStoreMigration.DROP after the fingerprints");
     }
 }
