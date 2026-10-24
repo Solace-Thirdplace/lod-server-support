@@ -172,6 +172,10 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
     interface EnableSteps {
         void loadBranding();
 
+        /** The version guard (paper-version-guard-store-plan §3.1): false = refused, the
+         *  plugin has already disabled itself and nothing else may run. */
+        boolean checkMinecraftVersion();
+
         PaperConfig loadConfig();
 
         void registerChannels();
@@ -199,6 +203,10 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
     static void runEnablePlan(EnableSteps steps) {
         // FIRST: resolve display branding before any service/thread/log line is created.
         steps.loadBranding();
+        // SECOND: refuse a server this jar was not built for (paper-version-guard-store-plan
+        // §3.1) before any channel, config file or store exists. Paper only enforces
+        // api-version's floor, and a 26.2 jar on 26.3 read old chunks as air and stored them.
+        if (!steps.checkMinecraftVersion()) return;
         var config = steps.loadConfig();
 
         // Register incoming channels (C2S)
@@ -238,6 +246,17 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
             @Override
             public void loadBranding() {
                 Brand.load(getClassLoader());
+            }
+
+            @Override
+            public boolean checkMinecraftVersion() {
+                String refusal = minecraftVersionRefusal(readMinecraftDependency(),
+                        getServer().getMinecraftVersion(), getDescription().getName(),
+                        getDescription().getWebsite());
+                if (refusal == null) return true;
+                LSSLogger.error(refusal);
+                getServer().getPluginManager().disablePlugin(LSSPaperPlugin.this);
+                return false;
             }
 
             @Override
@@ -314,6 +333,49 @@ public class LSSPaperPlugin extends JavaPlugin implements PluginMessageListener,
                 PaperSoakBridge.init(LSSPaperPlugin.this);
             }
         });
+    }
+
+    /** The plugin.yml key carrying the line's minecraft_dependency (build-time templated). */
+    static final String MINECRAFT_DEPENDENCY_KEY = "lss-minecraft-dependency";
+
+    /** The guard's rule from this jar's own plugin.yml ({@code PluginDescriptionFile} drops
+     *  unknown keys). Null when absent or unreadable — the guard then refuses. */
+    private String readMinecraftDependency() {
+        try (var in = getResource("plugin.yml")) {
+            if (in == null) return null;
+            var yml = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(
+                    new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
+            return yml.getString(MINECRAFT_DEPENDENCY_KEY);
+        } catch (java.io.IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The version guard's decision (paper-version-guard-store-plan §3.1): null when
+     * {@code running} satisfies the jar's {@code minecraft_dependency} rule, otherwise the one
+     * ERROR line to log before disabling. A missing or malformed rule refuses too: that is a
+     * broken build, and enabling unguarded is exactly the failure this guard exists for.
+     */
+    static String minecraftVersionRefusal(String rule, String running, String pluginName,
+                                          String website) {
+        String where = website == null || website.isBlank() ? "" : " from " + website;
+        dev.vox.lss.common.MinecraftVersionRule parsed;
+        try {
+            parsed = dev.vox.lss.common.MinecraftVersionRule.parse(rule);
+        } catch (IllegalArgumentException e) {
+            return pluginName + " cannot tell which Minecraft version this jar was built for"
+                    + " (plugin.yml " + MINECRAFT_DEPENDENCY_KEY + " is "
+                    + (rule == null ? "missing" : "'" + rule + "'") + "), so it is disabling"
+                    + " itself. Download the " + pluginName + " build for Minecraft " + running
+                    + where + ".";
+        }
+        if (parsed.accepts(running)) return null;
+        return pluginName + " is built for Minecraft " + parsed.describe() + ", but this"
+                + " server runs Minecraft " + running + ", so it is disabling itself (a jar"
+                + " for another version can misread your world and fill the LOD store with"
+                + " bad data). Download the " + pluginName + " build for Minecraft " + running
+                + where + ".";
     }
 
     @Override

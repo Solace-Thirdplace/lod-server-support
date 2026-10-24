@@ -601,7 +601,13 @@ public class PaperRequestProcessingService {
                     dev.vox.lss.common.store.RegistryFingerprint.of(
                             registryIds.states(), registryIds.biomes()),
                     dev.vox.lss.common.store.RegistryFingerprint.contentOf(
-                            registryIds.states(), registryIds.biomes()));
+                            registryIds.states(), registryIds.biomes()),
+                    // Build marker (paper-version-guard-store-plan §3.2): before 0.20.0
+                    // nothing stopped a Paper jar for another Minecraft version from
+                    // enabling, so a store without the marker is rebuilt once.
+                    dev.vox.lss.common.BuildInfo.minecraftVersion(),
+                    FoliaSupport.IS_FOLIA ? "folia" : "paper",
+                    dev.vox.lss.common.store.LegacyStoreMigration.DROP);
             lodStore = dev.vox.lss.common.store.LodStores.createOrNull(env);
             if (lodStore == null) {
                 // LodStores.createOrNull logged the per-cause warn (codec vs SQLite init —

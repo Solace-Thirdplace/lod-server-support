@@ -476,6 +476,18 @@ def check_paper_jar(jar, problems):
                             "(derived from line.env LINE_PAPER_LOADERS) — the wrong "
                             "polarity either refuses Folia or auto-loads onto a "
                             "platform this line does not publish for")
+        # Version guard (paper-version-guard-store-plan §3.1): the plugin reads this rule from
+        # its own plugin.yml and REFUSES to enable without it, so a jar that lost or
+        # mis-expanded the line is dead on every server.
+        rule = _minecraft_dependency()
+        if rule is None:
+            problems.append(f"{base}: cannot read minecraft_dependency from gradle.properties "
+                            "to check plugin.yml's version guard")
+        elif not re.search(r"^lss-minecraft-dependency:\s*'" + re.escape(rule) + r"'\s*$",
+                           ymltext, re.MULTILINE):
+            problems.append(f"{base}: plugin.yml lss-minecraft-dependency must be '{rule}' "
+                            "(gradle.properties minecraft_dependency) — without it the version "
+                            "guard refuses to enable the plugin")
         # Service-gate nodes (plan §2.6 / §8 O1-m13): UNCONDITIONAL — the dual-jar pair
         # check below only runs when a VSS jar exists, and it pins token PRESENCE, not
         # the declared default. Both spellings must be declared AND both must carry the
@@ -1222,7 +1234,8 @@ def check_vss_pair_fabric(lss_jar, vss_jar, problems):
 # `name:` LEFT this list 2026-08-13 (XANTHA's release patch): the VSS plugin presents as
 # VoxyServerSide — check_vss_paper_identity pins the rebranded value instead, and the
 # data-folder fork it causes is documented there.
-VSS_PAPER_IDENTITY_PREFIXES = ("main:", "api-version:", "folia-supported:", "version:")
+VSS_PAPER_IDENTITY_PREFIXES = ("main:", "api-version:", "folia-supported:", "version:",
+                               "lss-minecraft-dependency:")
 
 
 def check_vss_pair_paper(lss_jar, vss_jar, problems):
@@ -1805,6 +1818,19 @@ def _minecraft_version(root=ROOT):
     return None
 
 
+def _minecraft_dependency(root=ROOT):
+    """The line's minecraft_dependency from gradle.properties (the Paper version guard's rule,
+    paper-version-guard-store-plan §3.1), or None if unreadable."""
+    try:
+        with open(os.path.join(root, "gradle.properties"), encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip().startswith("minecraft_dependency="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return None
+
+
 def _require_version(jars, prefix, version, problems, mc=None):
     """Restrict checking to the exact release jar for `version`; a missing jar is a failure
     — otherwise a stale jar from an earlier build gets validated in its place and the
@@ -1865,6 +1891,10 @@ def _selftest_fixtures():
     # The folia-supported value this line's plugin.yml derives (LINE_PAPER_LOADERS) — the
     # clean fixtures must carry it (26.3: true since 0.19.1, Folia 26.3 builds are ALPHA).
     FOLIA_YML = "folia-supported: " + ("true" if FOLIA_SUPPORTED else "false") + "\n"
+    # The version-guard line every shipped plugin.yml carries (paper-version-guard-store-plan
+    # §3.1); clean fixtures ride FOLIA_YML, so it carries the guard line too.
+    GUARD_YML = "lss-minecraft-dependency: '" + (_minecraft_dependency() or "") + "'\n"
+    FOLIA_YML = FOLIA_YML + GUARD_YML
     n = 0
 
     def check(cond, msg):
@@ -2089,6 +2119,21 @@ def _selftest_fixtures():
         p = []
         check_paper_jar(good_pap, p)
         check(p == [], f"clean paper jar flagged: {p}")
+
+        # The version guard's rule must ship expanded and equal to the line's
+        # minecraft_dependency (paper-version-guard-store-plan §3.1).
+        unguarded_pap = os.path.join(td, "lod-server-support-paper-unguarded.jar")
+        _make_jar(unguarded_pap, {
+            "plugin.yml": "name: LodServerSupport\nversion: 0.4.0\n"
+                          + FOLIA_YML.replace(GUARD_YML, "lss-minecraft-dependency: '1.0'\n")
+                          + GATE_NODES_YML,
+            "dev/vox/lss/paper/LSSPaperPlugin.class": "x",
+            "dev/vox/lss/common/PositionUtil.class": "x",
+        }, manifest="Manifest-Version: 1.0\npaperweight-mappings-namespace: mojang\n")
+        p = []
+        check_paper_jar(unguarded_pap, p)
+        check(any("lss-minecraft-dependency" in m for m in p),
+              f"wrong version-guard rule not caught: {p}")
 
         # Service-gate node checks are UNCONDITIONAL (plan §2.6): a jar missing a node,
         # and a jar whose declared default flipped, must both be caught here — the pair

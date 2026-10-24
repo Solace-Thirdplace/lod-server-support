@@ -128,7 +128,8 @@ final class SoakStoreDowngrade {
             try (Statement st = c.createStatement()) {
                 st.executeUpdate("UPDATE meta SET v='3' WHERE k='schema_version'");
                 st.executeUpdate("UPDATE meta SET v='19' WHERE k='wire_format_version'");
-                st.executeUpdate("DELETE FROM meta WHERE k IN ('store_layout',"
+                // build_mc/platform (0.20.0 build marker) did not exist in v0.9.x.
+                st.executeUpdate("DELETE FROM meta WHERE k IN ('store_layout', 'build_mc', 'platform',"
                         + " 'migrate_pending', 'migrate_total', 'migrate_done')"
                         + " OR k LIKE 'migrate_progress_%'");
             }

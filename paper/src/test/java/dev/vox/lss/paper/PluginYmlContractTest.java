@@ -191,6 +191,37 @@ class PluginYmlContractTest {
     }
 
     @Test
+    void versionGuardRuleIsTemplatedFromMinecraftDependency() throws Exception {
+        // paper-version-guard-store-plan §3.1: the guard reads this key from the jar's own
+        // plugin.yml. The source keeps the placeholder (a support cut never edits this
+        // resource); the expanded copy must carry gradle.properties' minecraft_dependency,
+        // the same rule fabric.mod.json declares, and that rule must accept the version the
+        // jar is built for (or the guard would refuse its own server).
+        assertTrue(rawText.contains(LSSPaperPlugin.MINECRAFT_DEPENDENCY_KEY
+                        + ": '${minecraft_dependency}'"),
+                "plugin.yml must template the guard rule from minecraft_dependency, single-quoted");
+        var props = new Properties();
+        try (var in = Files.newInputStream(locate("gradle.properties"))) {
+            props.load(in);
+        }
+        String rule = props.getProperty("minecraft_dependency");
+        assertNotNull(rule, "gradle.properties must declare minecraft_dependency");
+        var expanded = new YamlConfiguration();
+        try (var in = LSSPaperPlugin.class.getResourceAsStream("/plugin.yml")) {
+            assertNotNull(in, "expanded plugin.yml must be on the test classpath");
+            expanded.loadFromString(new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+        }
+        assertEquals(rule, expanded.getString(LSSPaperPlugin.MINECRAFT_DEPENDENCY_KEY),
+                "processResources must expand the guard rule from gradle.properties");
+        assertTrue(dev.vox.lss.common.MinecraftVersionRule.parse(rule)
+                        .accepts(props.getProperty("minecraft_version")),
+                "the guard rule must accept the jar's own minecraft_version");
+        assertTrue(LSSPaperPlugin.MINECRAFT_DEPENDENCY_KEY.startsWith("lss-")
+                        && !LSSPaperPlugin.MINECRAFT_DEPENDENCY_KEY.contains("lsslod"),
+                "the key must survive the vssJar rewrite (which renames 'lsslod' and 'lss.admin')");
+    }
+
+    @Test
     void versionIsTheProcessResourcesPlaceholder() {
         // The literal placeholder must survive in the source: processResources expands it at
         // build time, and release_check.py (HD-045) verifies the expansion in the built jar.

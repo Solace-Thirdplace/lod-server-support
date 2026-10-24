@@ -2,6 +2,11 @@ name: LodServerSupport
 version: '${version}'
 main: dev.vox.lss.paper.LSSPaperPlugin
 api-version: '${api_version}'
+# Version guard (paper-version-guard-store-plan §3.1): api-version only refuses an OLDER
+# server. This is the line's minecraft_dependency (the rule fabric.mod.json declares),
+# templated from gradle.properties; onEnable disables the plugin when the running
+# Minecraft version does not satisfy it. Not a Paper key — Bukkit ignores it.
+lss-minecraft-dependency: '${minecraft_dependency}'
 # DERIVED (R2-5): the value expands from `folia` membership in line.env's
 # LINE_PAPER_LOADERS — the one per-line judgment ("does Folia exist upstream for
 # THIS line?") lives there, beside the other line identity rows a fresh cut must
