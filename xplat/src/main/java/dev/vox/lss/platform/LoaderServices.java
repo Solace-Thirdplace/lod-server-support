@@ -86,6 +86,24 @@ public interface LoaderServices {
     }
 
     /**
+     * This loader's name for the LOD store's {@code platform} meta key
+     * (paper-version-guard-store-plan §3.2): evidence of which platform wrote a store,
+     * never compared. Paper/Folia set theirs in the Paper store environment.
+     */
+    String storePlatform();
+
+    /**
+     * The one-shot migration rule for a LOD store written before the build marker
+     * (paper-version-guard-store-plan §3.2). Fabric, NeoForge and Sponge refuse a jar built
+     * for another Minecraft version, so an unmarked store was written by a matching jar:
+     * stamp it and keep the rows. Paper/Folia (which drop once) do not route through this
+     * seam.
+     */
+    default dev.vox.lss.common.store.LegacyStoreMigration legacyStoreMigration() {
+        return dev.vox.lss.common.store.LegacyStoreMigration.REFRESH;
+    }
+
+    /**
      * The installed impl. When no entrypoint has installed one yet (Tier-1 JUnit
      * runs under fabric-loader-junit never run entrypoints), falls back to the
      * loader module's {@link java.util.ServiceLoader} registration

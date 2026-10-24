@@ -2293,18 +2293,26 @@ public class ServiceLifecycleGameTests {
             config.set("privacy.request_no_map_ingestion", true);
             service.adoptMapPolicyForTest(true); // as the arming reconcile would
             helper.assertTrue(service.runMapPolicySweep(config) == 1, "exactly the old session");
-            helper.assertTrue(pushes.size() == 1 && pushes.get(0)[0] == old
+            // Map-ingestion permission plan §3.3: the same pass tells the capable session its
+            // new decision (it was last sent flags 0 at its disarmed handshake) — AFTER the
+            // revocation, in one flags-only push.
+            helper.assertTrue(pushes.size() == 2 && pushes.get(0)[0] == old
                             && !((SessionConfigS2CPayload) pushes.get(0)[1]).enabled()
                             && ((SessionConfigS2CPayload) pushes.get(0)[1]).sessionFlags()
                                     == LSSConstants.SESSION_FLAGS_ABSENT,
-                    "a per-player enabled=false push without a flags field");
+                    "a per-player enabled=false push without a flags field, first");
+            helper.assertTrue(pushes.get(1)[0] == capable
+                            && ((SessionConfigS2CPayload) pushes.get(1)[1]).enabled()
+                            && ((SessionConfigS2CPayload) pushes.get(1)[1]).sessionFlags()
+                                    == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION,
+                    "then the capable session's flags-only push");
             helper.assertTrue(service.getPlayers().get(old.getUUID()) == null
                             && service.getPlayers().get(capable.getUUID()) != null,
                     "the old session is revoked; the capable one keeps serving");
             helper.assertTrue(notices.equals(java.util.List.of(old.getUUID()))
                             && service.getServiceGateState().mapPolicyRefusedTotal() == 1,
                     "chat once, one counted transition");
-            helper.assertTrue(service.runMapPolicySweep(config) == 0 && pushes.size() == 1,
+            helper.assertTrue(service.runMapPolicySweep(config) == 0 && pushes.size() == 2,
                     "idempotent");
 
             // The cadence: a registration that raced the arm (decided on the pre-arm config;
@@ -2341,14 +2349,20 @@ public class ServiceLifecycleGameTests {
             var before = service.getPlayers().get(capable.getUUID());
             pushes.clear();
             service.repushSessionConfig(true);
+            helper.assertTrue(pushes.isEmpty(),
+                    "a flags-only repush skips a session whose decision did not change "
+                            + "(map-ingestion permission plan §3.3)");
+            // A decision change (the player is granted the exemption) makes it push.
+            service.setMapIngestionExemptProbeForTest(p -> p == capable);
+            service.repushSessionConfig(true);
             var flagsOnly = pushes.stream().filter(e -> e[0] == capable).toList();
             helper.assertTrue(service.getPlayers().get(capable.getUUID()) == before,
                     "flags-only: the off-world session is not removed and re-registered");
             helper.assertTrue(flagsOnly.size() == 1
                             && !((SessionConfigS2CPayload) flagsOnly.get(0)[1]).enabled()
-                            && ((SessionConfigS2CPayload) flagsOnly.get(0)[1]).sessionFlags()
-                                    == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION,
-                    "…and the push still says off, with the flags");
+                            && ((SessionConfigS2CPayload) flagsOnly.get(0)[1]).sessionFlags() == 0,
+                    "…and the push still says off, with the new flags");
+            service.setMapIngestionExemptProbeForTest(null);
             service.repushSessionConfig();
             helper.assertTrue(service.getPlayers().get(capable.getUUID()) != before,
                     "the distance-change mode still re-registers an off-world session");
@@ -2557,6 +2571,227 @@ public class ServiceLifecycleGameTests {
             service.shutdown();
             var listed = playerList.getPlayer(uuid);
             if (listed != null) playerList.remove(listed);
+        }
+        helper.succeed();
+    }
+
+
+    // ---- the map-ingestion exemption (map-ingestion permission plan §3, §6) ----
+
+    /**
+     * A CAPABLE (0.19+) client is re-evaluated by the 10 s sweep: a grant and a revoke each
+     * reach it within ONE sweep as one flags-only push (version, enabled and distance as the
+     * session has them — the client's fast path), and an unchanged session is never
+     * re-pushed — including after a dimension change, which rebuilds the per-dimension
+     * request state: the last-sent flags live on the gate state (§3.3). The diag count is
+     * the sweep's cache.
+     */
+    @GameTest(template = "fabric-gametest-api-v1:empty", timeoutTicks = 400)
+    public void mapIngestionExemptionReachesACapableClientWithinOneSweep(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var endLevel = server.getLevel(Level.END);
+        helper.assertTrue(endLevel != null, "the End dimension must exist on the gametest server");
+        var capable = placeMockServerPlayer(helper);
+        var uuid = capable.getUUID();
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        var exempt = new java.util.concurrent.atomic.AtomicBoolean(false);
+        service.setMapIngestionExemptProbeForTest(p -> p.getUUID().equals(uuid) && exempt.get());
+        var gateState = service.getServiceGateState();
+        try {
+            config.set("privacy.request_no_map_ingestion", true);
+            service.adoptMapPolicyForTest(true);
+            var replies = new ArrayList<SessionConfigS2CPayload>();
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL | MAP_BIT), capable, service, replies::add);
+            helper.assertTrue(replies.size() == 1 && replies.get(0).enabled()
+                            && replies.get(0).sessionFlags() == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION,
+                    "premise: a non-exempt capable client is told the request");
+            helper.assertTrue(Boolean.TRUE.equals(gateState.lastMapFlagsSent(uuid)),
+                    "the handshake reply records the flags it sent");
+            var pushes = new ArrayList<SessionConfigS2CPayload>();
+            service.setSessionConfigPusher((to, payload) -> { if (to == capable) pushes.add(payload); });
+
+            service.runMapPolicySweep(config);
+            helper.assertTrue(pushes.isEmpty(), "nothing changed: no push");
+            helper.assertTrue(gateState.mapPolicyExemptCount() == 0, "exempt=0");
+
+            exempt.set(true); // granted
+            service.runMapPolicySweep(config);
+            helper.assertTrue(pushes.size() == 1, "the grant lands within one sweep, got " + pushes.size());
+            var grant = pushes.get(0);
+            helper.assertTrue(grant.protocolVersion() == LSSConstants.PROTOCOL_VERSION && grant.enabled()
+                            && grant.lodDistanceChunks() == replies.get(0).lodDistanceChunks()
+                            && grant.sessionFlags() == 0,
+                    "a flags-only push (same version, enabled, distance; flags 0): " + grant);
+            helper.assertTrue(gateState.mapPolicyExemptCount() == 1, "the sweep caches exempt=1");
+            service.runMapPolicySweep(config);
+            helper.assertTrue(pushes.size() == 1, "no redundant push while nothing changes");
+
+            // A dimension change WITHOUT a distance change rebuilds the request state but
+            // sends nothing — and the next sweep still knows what the session was told.
+            var before = service.getPlayers().get(uuid);
+            capable.setServerLevel(endLevel);
+            service.tick();
+            helper.assertTrue(service.getPlayers().get(uuid) != null
+                            && service.getPlayers().get(uuid) != before,
+                    "premise: the dimension change rebuilt the per-dimension request state");
+            helper.assertTrue(pushes.size() == 1, "same distance: no dimension-change push");
+            service.runMapPolicySweep(config);
+            helper.assertTrue(pushes.size() == 1,
+                    "no redundant push after a dimension change (the last-sent flags survive it)");
+
+            exempt.set(false); // revoked
+            service.runMapPolicySweep(config);
+            helper.assertTrue(pushes.size() == 2
+                            && pushes.get(1).sessionFlags() == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION
+                            && pushes.get(1).enabled(),
+                    "the revoke lands within one sweep, still serving, flags 1");
+            helper.assertTrue(gateState.mapPolicyExemptCount() == 0, "exempt=0 again");
+            helper.assertTrue(service.getPlayers().get(uuid) != null, "a capable session is never revoked");
+        } finally {
+            capable.setServerLevel(level);
+            service.shutdown();
+            server.getPlayerList().remove(capable);
+        }
+        helper.succeed();
+    }
+
+    /**
+     * OLDER clients (no {@code CAPABILITY_MAP_POLICY}, legacy dialects included) are decided
+     * at the handshake (§3.4): an exempt one is SERVED (no flags field — the 0.18.0 frame),
+     * a non-exempt one refused as before; the sweep never revokes the exempt admission
+     * mid-session, even after the grant is withdrawn — the next join applies it. A refused
+     * player granted later is re-offered by the grant sweep (its replayed handshake is the
+     * new decision — {@code mapPolicyCleared} rides the per-player helper).
+     */
+    @GameTest(template = "fabric-gametest-api-v1:empty", timeoutTicks = 400)
+    public void mapIngestionExemptOlderClientsAreDecidedAtHandshake(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var exemptOld = placeMockServerPlayer(helper);
+        var plainOld = placeMockServerPlayer(helper);
+        var exemptV19 = placeMockServerPlayer(helper);
+        var plainV19 = placeMockServerPlayer(helper);
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        var exempt = java.util.concurrent.ConcurrentHashMap.<java.util.UUID>newKeySet();
+        exempt.add(exemptOld.getUUID());
+        exempt.add(exemptV19.getUUID());
+        service.setMapIngestionExemptProbeForTest(p -> exempt.contains(p.getUUID()));
+        service.setMapPolicyNoticeSenderForTest((player, text) -> { });
+        var gateState = service.getServiceGateState();
+        var replies = new java.util.HashMap<java.util.UUID, SessionConfigS2CPayload>();
+        try {
+            config.set("privacy.request_no_map_ingestion", true);
+            service.adoptMapPolicyForTest(true);
+            for (var p : java.util.List.of(exemptOld, plainOld)) {
+                LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                        LSSConstants.PROTOCOL_VERSION, VOXEL), p, service, r -> replies.put(p.getUUID(), r));
+            }
+            for (var p : java.util.List.of(exemptV19, plainV19)) {
+                LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                        LSSConstants.V19_COMPAT_PROTOCOL_VERSION, VOXEL), p, service, r -> replies.put(p.getUUID(), r));
+            }
+            var served = replies.get(exemptOld.getUUID());
+            helper.assertTrue(service.getPlayers().get(exemptOld.getUUID()) != null && served.enabled()
+                            && served.sessionFlags() == LSSConstants.SESSION_FLAGS_ABSENT,
+                    "an exempt 0.10-0.18 client is served with the 0.18.0 frame: " + served);
+            helper.assertTrue(gateState.isMapPolicyExemptAdmission(exemptOld.getUUID()),
+                    "…and its admission is recorded as decided at handshake");
+            helper.assertTrue(service.getPlayers().get(exemptV19.getUUID()) != null
+                            && replies.get(exemptV19.getUUID()).enabled()
+                            && replies.get(exemptV19.getUUID()).protocolVersion() == LSSConstants.V19_COMPAT_PROTOCOL_VERSION,
+                    "an exempt legacy-dialect client is served in its own dialect");
+            for (var p : java.util.List.of(plainOld, plainV19)) {
+                var memo = gateState.peekDenied(p.getUUID());
+                helper.assertTrue(service.getPlayers().get(p.getUUID()) == null
+                                && !replies.get(p.getUUID()).enabled()
+                                && memo != null && memo.has(dev.vox.lss.common.ServiceGateState.REASON_MAP_POLICY),
+                        "a non-exempt older client is refused as before");
+            }
+
+            helper.assertTrue(service.runMapPolicySweep(config) == 0
+                            && service.getPlayers().get(exemptOld.getUUID()) != null,
+                    "the sweep leaves the exempt admission alone");
+            helper.assertTrue(gateState.mapPolicyExemptCount() == 1,
+                    "exempt= counts the CURRENT-dialect admission (legacy sessions are not swept)");
+            exempt.remove(exemptOld.getUUID()); // the grant is withdrawn mid-session
+            helper.assertTrue(service.runMapPolicySweep(config) == 0
+                            && service.getPlayers().get(exemptOld.getUUID()) != null,
+                    "decided at handshake only: no mid-session revocation of an older client");
+            LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                    LSSConstants.PROTOCOL_VERSION, VOXEL), exemptOld, service, r -> replies.put(exemptOld.getUUID(), r));
+            helper.assertTrue(service.getPlayers().get(exemptOld.getUUID()) == null
+                            && !replies.get(exemptOld.getUUID()).enabled(),
+                    "its next handshake applies the withdrawal");
+
+            exempt.add(plainOld.getUUID()); // granted while refused
+            service.runServiceGateSweeps(config); // the grant sweep (the 10 s cadence)
+            helper.assertTrue(service.getPlayers().get(plainOld.getUUID()) != null
+                            && !gateState.isDenied(plainOld.getUUID()),
+                    "a refused player granted the exemption is re-offered within one sweep");
+        } finally {
+            service.shutdown();
+            for (var p : java.util.List.of(exemptOld, plainOld, exemptV19, plainV19)) {
+                server.getPlayerList().remove(p);
+            }
+        }
+        helper.succeed();
+    }
+
+    /**
+     * Fail-closed (§3.1): on Fabric with NO permission provider the production read exempts
+     * NOBODY (the service gate's reads would have answered yes), and a throwing read is not
+     * exempt either — an older client is refused and a capable one is told the request.
+     */
+    @GameTest(template = "fabric-gametest-api-v1:empty", timeoutTicks = 400)
+    public void mapIngestionWithoutAProviderOrOnAThrowingReadExemptsNobody(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        var server = level.getServer();
+        var old = placeMockServerPlayer(helper);
+        var capable = placeMockServerPlayer(helper);
+        var config = new ServiceSettingsFixture();
+        var service = new RequestProcessingService(server, config);
+        service.setMapPolicyNoticeSenderForTest((player, text) -> { });
+        var replies = new java.util.HashMap<java.util.UUID, SessionConfigS2CPayload>();
+        try {
+            helper.assertTrue("none".equals(dev.vox.lss.platform.LoaderServices.get().permissionProviderToken()),
+                    "premise: no fabric-permissions-api provider in the gametest runtime");
+            config.set("privacy.request_no_map_ingestion", true);
+            service.adoptMapPolicyForTest(true);
+            helper.assertTrue(!service.mapIngestionExempt(old) && !service.mapIngestionExempt(capable),
+                    "the production read (default FALSE) exempts nobody without a provider");
+            for (boolean throwing : new boolean[]{false, true}) {
+                if (throwing) {
+                    service.setMapIngestionExemptProbeForTest(p -> {
+                        throw new IllegalStateException("backend exploded");
+                    });
+                    service.getServiceGateState().onDisconnect(old.getUUID());
+                    service.getServiceGateState().onDisconnect(capable.getUUID());
+                    helper.assertTrue(!service.mapIngestionExempt(old), "a throwing read is not exempt");
+                }
+                replies.clear();
+                LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                        LSSConstants.PROTOCOL_VERSION, VOXEL), old, service, r -> replies.put(old.getUUID(), r));
+                LSSServerNetworking.handleHandshake(new HandshakeC2SPayload(
+                        LSSConstants.PROTOCOL_VERSION, VOXEL | MAP_BIT), capable, service,
+                        r -> replies.put(capable.getUUID(), r));
+                helper.assertTrue(service.getPlayers().get(old.getUUID()) == null
+                                && !replies.get(old.getUUID()).enabled(),
+                        "throwing=" + throwing + ": the older client is refused");
+                helper.assertTrue(replies.get(capable.getUUID()).sessionFlags()
+                                == LSSConstants.SESSION_FLAG_DENY_MAP_INGESTION,
+                        "throwing=" + throwing + ": the capable client is told the request");
+                service.runMapPolicySweep(config);
+                helper.assertTrue(service.getServiceGateState().mapPolicyExemptCount() == 0,
+                        "throwing=" + throwing + ": exempt=0");
+            }
+        } finally {
+            service.shutdown();
+            server.getPlayerList().remove(old);
+            server.getPlayerList().remove(capable);
         }
         helper.succeed();
     }

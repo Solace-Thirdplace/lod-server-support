@@ -2,6 +2,11 @@ name: LodServerSupport
 version: '${version}'
 main: dev.vox.lss.paper.LSSPaperPlugin
 api-version: '${api_version}'
+# Version guard (paper-version-guard-store-plan §3.1): api-version only refuses an OLDER
+# server. This is the line's minecraft_dependency (the rule fabric.mod.json declares),
+# templated from gradle.properties; onEnable disables the plugin when the running
+# Minecraft version does not satisfy it. Not a Paper key — Bukkit ignores it.
+lss-minecraft-dependency: '${minecraft_dependency}'
 # 1.21.1 line: folia-supported is ABSENT — Folia never published a 1.21.1 build (its 1.21
 # family starts at 1.21.4; fill.papermc.io verified 2026-08-15), so declaring the flag
 # would claim support for a platform that does not exist (the pre-26.2 precedent).
@@ -64,3 +69,15 @@ permissions:
   vss.use:
     description: Receive LOD data when requireServicePermission is enabled (VSS spelling)
     default: true
+  # Map-ingestion exemption (privacy.request_no_map_ingestion, default off): while that request
+  # is on, holders may still add distant terrain to their world maps (Xaero's World Map,
+  # JourneyMap) — the server treats the request as off for them. A GRANT model like the
+  # far-player privacy nodes: holding EITHER spelling exempts, both spellings are declared for
+  # the same Bukkit undeclared-node reason, and both default to false. NOT op: an op default
+  # would silently exempt every op on a server that turned the request on.
+  lss.map_ingestion:
+    description: Exempts the player from privacy.request_no_map_ingestion (may add distant terrain to world maps)
+    default: false
+  vss.map_ingestion:
+    description: Exempts the player from privacy.request_no_map_ingestion (VSS spelling)
+    default: false

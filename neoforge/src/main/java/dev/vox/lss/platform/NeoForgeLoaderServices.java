@@ -53,6 +53,11 @@ public class NeoForgeLoaderServices implements LoaderServices {
     }
 
     @Override
+    public String storePlatform() {
+        return "neoforge";
+    }
+
+    @Override
     public String permissionProviderToken() {
         return "neoforge";
     }

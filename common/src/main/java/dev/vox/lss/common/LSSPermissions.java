@@ -21,6 +21,12 @@ package dev.vox.lss.common;
  * defaultValue=false} at the snapshot read) — holding EITHER spelling hides the player
  * from far-player rendering. Paper enforced them from the start; since 2026-09-04 Fabric
  * and NeoForge read them through {@code LoaderServices.checkPermission} too.
+ *
+ * <p>The MAP-INGESTION nodes (map-ingestion-permission plan §2) are a grant model like the
+ * hide nodes, default FALSE everywhere: while {@code privacy.request_no_map_ingestion} is
+ * on, a player holding EITHER spelling is exempt (the server treats the request as off for
+ * that player). Their reads are FAIL-CLOSED ({@code defaultValue=false}, a throwing
+ * backend answers not exempt), unlike every service-gate read.
  */
 public final class LSSPermissions {
 
@@ -35,6 +41,13 @@ public final class LSSPermissions {
 
     /** The VSS spelling of the far-player hide node — declared and honored in BOTH jars. */
     public static final String FARPLAYERS_HIDDEN_VSS = "vss.farplayers.hidden";
+
+    /** The LSS spelling of the map-ingestion exemption node (default false, grant = exempt
+     *  from {@code privacy.request_no_map_ingestion}). */
+    public static final String MAP_INGESTION_LSS = "lss.map_ingestion";
+
+    /** The VSS spelling of the map-ingestion exemption node — declared and honored in BOTH jars. */
+    public static final String MAP_INGESTION_VSS = "vss.map_ingestion";
 
     private LSSPermissions() {
     }

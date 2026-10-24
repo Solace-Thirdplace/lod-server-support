@@ -134,9 +134,46 @@ class MapPolicyGateTest {
         // The user-approved wording names the mod in full ("LOD Server Support"), not "LSS".
         assertEquals("Distant terrain on this server needs " + Brand.displayName()
                 + " 0.19.0 or newer. Update the mod to see it.", MapPolicy.refusalNotice());
-        assertNull(MapPolicy.diagLineOrNull(false, 3), "no line while the policy is off");
-        assertEquals("MapPolicy: on refused=2", MapPolicy.diagLineOrNull(true, 2));
+        assertNull(MapPolicy.diagLineOrNull(false, 3, 1, "none"), "no line while the policy is off");
+        assertEquals("MapPolicy: on refused=2 exempt=1 provider=luckperms",
+                MapPolicy.diagLineOrNull(true, 2, 1, "luckperms"),
+                "exempt= (the sweep's cached count) and the loader's provider token");
+        assertEquals("MapPolicy: on refused=2 exempt=0", MapPolicy.diagLineOrNull(true, 2, 0, null),
+                "Paper carries no provider token (always Bukkit)");
         assertTrue(MapPolicy.refusalLogLine("Steve", 19, 3).contains("protocol v19, capabilities=3"));
         assertTrue(MapPolicy.revocationLogLine("Steve", 20, 5).contains("Steve"));
+    }
+
+    // ---- the per-player exemption (map-ingestion permission plan §3.1/§3.2) ----
+
+    @Test
+    void theDecisionAppliesTheRequestUnlessThePlayerIsExemptAndReadsNothingWhileOff() {
+        int[] reads = {0};
+        var off = MapPolicy.decide(false, () -> { reads[0]++; return true; });
+        assertEquals(MapPolicy.Decision.OFF, off);
+        assertFalse(off.deny() || off.exempt(), "off: nothing denied, nobody exempt");
+        assertEquals(0, reads[0], "a disarmed policy costs no permission read");
+        var exempt = MapPolicy.decide(true, () -> { reads[0]++; return true; });
+        assertFalse(exempt.deny(), "an exempt player is treated as if the request were off");
+        assertTrue(exempt.exempt());
+        var denied = MapPolicy.decide(true, () -> false);
+        assertTrue(denied.deny() && !denied.exempt());
+        assertEquals(1, reads[0]);
+    }
+
+    @Test
+    void theExemptionHoldsOnEitherSpellingAndFailsClosed() {
+        assertEquals("lss.map_ingestion", LSSPermissions.MAP_INGESTION_LSS);
+        assertEquals("vss.map_ingestion", LSSPermissions.MAP_INGESTION_VSS);
+        assertTrue(MapPolicy.holdsExemption(LSSPermissions.MAP_INGESTION_LSS::equals), "the LSS spelling");
+        assertTrue(MapPolicy.holdsExemption(LSSPermissions.MAP_INGESTION_VSS::equals),
+                "the VSS spelling (an LSS<->VSS jar swap keeps the grant)");
+        assertFalse(MapPolicy.holdsExemption(node -> false), "neither: not exempt");
+        assertFalse(MapPolicy.holdsExemption(node -> node.startsWith("lss.use")),
+                "an unrelated grant exempts nobody");
+        assertFalse(MapPolicy.holdsExemption(node -> { throw new IllegalStateException("backend exploded"); }),
+                "FAIL-CLOSED: a throwing read is not exempt (unlike the service gate's fail-open reads)");
+        assertFalse(PlayerServiceGate.OPEN.mapIngestionExempt(),
+                "the OPEN gate (and every gate that does not override it) exempts nobody");
     }
 }

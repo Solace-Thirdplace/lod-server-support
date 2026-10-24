@@ -418,6 +418,14 @@ public final class ServerReceiverGlue {
                 service.unregisterForServiceGate(player.getUUID());
                 return transition;
             }
+
+            @Override
+            public boolean mapIngestionExempt() {
+                // Map-ingestion permission plan §3.1: FAIL-CLOSED, and the service's own
+                // read (one seam for the handshake, the replay and the sweeps).
+                return service != null ? service.mapIngestionExempt(player)
+                        : RequestProcessingService.mapIngestionExemptViaLoader(player);
+            }
         };
     }
 
@@ -456,13 +464,17 @@ public final class ServerReceiverGlue {
         // load-bearing: at the shipped default the permission probe is never consulted.
         boolean serviceDenied = config.requireServicePermission()
                 && !PlayerServiceGate.holdsService(serviceGate);
-        // Map-policy plan A3.2: read once, so the rung and the reply's flags agree.
-        boolean mapPolicyArmed = config.requestNoMapIngestion();
+        // Map-policy plan A3.2: decided once, so the rung and the reply's flags agree. Per
+        // player (map-ingestion permission plan §3.2): the request applies unless this
+        // player holds the exemption — an exempt older client is served, not refused.
+        var mapPolicy = dev.vox.lss.common.MapPolicy.decide(config.requestNoMapIngestion(),
+                serviceGate::mapIngestionExempt);
+        boolean denyMapIngestion = mapPolicy.deny();
         var decision = HandshakeGate.evaluate(payload.protocolVersion(),
                 payload.capabilities(), config.enabled() && !serviceDenied, service != null,
                 config.enableV16Compat(), config.enableV18Compat(), config.enableV19Compat(),
                 dev.vox.lss.common.compat.ViaProbe.isMismatch(viaProtocol, nativeProtocol),
-                mapPolicyArmed);
+                denyMapIngestion);
 
         if (decision.outcome() == HandshakeGate.Outcome.VIA_MISMATCH) {
             // Silent deny; "Minecraft protocol" because the handshake INFO one line up
@@ -547,7 +559,7 @@ public final class ServerReceiverGlue {
                         player.getUUID(), decision.dialect());
             }
         }
-        responder.send(v16
+        var reply = v16
                 ? SessionConfigS2CPayload.v16Legacy(
                         enabledHere,
                         lod,
@@ -571,7 +583,14 @@ public final class ServerReceiverGlue {
                                 .getDataVersion().getVersion(),
                         // Map-policy plan A2: the flags ride only a v20 frame to a session
                         // that declared the bit (the encoder's guard).
-                        payload.capabilities(), mapPolicyArmed));
+                        payload.capabilities(), denyMapIngestion);
+        responder.send(reply);
+        if (service != null) {
+            // Map-ingestion permission plan §3.3: the last flags this session was sent (a
+            // no-op unless the frame carries the field) — the sweep pushes only on a change.
+            service.getServiceGateState().noteMapFlagsSent(player.getUUID(),
+                    reply.protocolVersion(), payload.capabilities(), denyMapIngestion);
+        }
 
         if (deniedByServiceGate) {
             // AFTER the reply: the enabled=false config is the client's disarm, and the
@@ -628,6 +647,12 @@ public final class ServerReceiverGlue {
             // (memo gone, log latch re-armed). Deliberately here and not inside
             // registerPlayer — that is also the dimension-change reuse path (R3).
             service.getServiceGateState().onRegistered(player.getUUID());
+            // Map-ingestion permission plan §3.4: an older client (no capability bit)
+            // served because it is exempt is decided HERE — the sweep never revokes it
+            // mid-session; a grant or revoke applies at its next join.
+            service.getServiceGateState().setMapPolicyExemptAdmission(player.getUUID(),
+                    mapPolicy.exempt()
+                            && (payload.capabilities() & LSSConstants.CAPABILITY_MAP_POLICY) == 0);
             // Far players (E1): subscription identity lands at handshake, next to the
             // dialect mark — a CURRENT-dialect session only (legacy layouts predate the
             // bit, so a legacy handshake setting it is noise, not a subscription).
