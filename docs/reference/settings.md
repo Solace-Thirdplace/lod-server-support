@@ -24,7 +24,7 @@ copy any desired changes back into JSON before downgrading.
 Invalid authoritative YAML never falls back to JSON. Reload does not write files.
 
 Experimental client keys (`lod.source`, `lod.dh.*`, `lod.voxy_border_fill`,
-`integrations.map_ingestion.nether_store_mib`) live in a
+`integrations.map_ingestion.nether_store_mib`, `far_players.extend_far_plane`) live in a
 sidecar file beside the selected client file (`lss-client-experimental.yaml` or
 `vss-client-experimental.yaml`), so the main client file stays readable by v0.16.0.
 The sidecar holds only nondefault values; deleting it restores the defaults. Allow DH
@@ -546,6 +546,7 @@ paper:
 | far_players.name_tags | boolean | true |  | H | all |
 | far_players.full_bright | boolean | false |  | H | all |
 | far_players.render_distance_blocks | integer | 0 | 0–16384 blocks | H | all |
+| far_players.extend_far_plane | boolean | false |  | H | all |
 | far_players.animation_distance_blocks | integer | 512 | 0–16384 blocks | H | all |
 | far_players.sharing.enabled | boolean | true |  | H | all |
 | far_players.sharing.max_distance_blocks | integer | 0 | 0–16384 blocks | H | all |
@@ -643,6 +644,10 @@ far_players:
   name_tags: true # Show this mod's far-player name tags.
   full_bright: false # Draw distant players at full brightness, including at night.
   render_distance_blocks: 0 # 0 = effective server/client ring; caps models and name tags.
+  # extend_far_plane (experimental file, default false) draws far players past the game's
+  # far clipping plane, out to the farthest one; only visible with an LOD mod such as Voxy,
+  # not used while a shader pack is on. Fog can still hide very distant players: turn off
+  # your LOD mod's fog if they fade out.
   animation_distance_blocks: 512 # Animate nearby proxies; 0 = no walk animation.
   # Controls whether others may see your position through the far-player feature.
   # This does not hide you from normal Minecraft tracking or unrelated systems.

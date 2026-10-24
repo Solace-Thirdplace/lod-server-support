@@ -109,7 +109,7 @@ class LSSConfigMenuTest {
         register(builder);
         List<RecordedOption<?>> built = new ArrayList<>();
         builder.mods.get(0).pages.forEach(p -> p.groups.forEach(g -> g.options.forEach(o -> built.add((RecordedOption<?>) o))));
-        assertEquals(11, built.size(), "eleven explicit controls");
+        assertEquals(12, built.size(), "twelve explicit controls");
 
         for (RecordedOption<?> o : built) {
             OptionSpec spec = ClientOptionCatalog.find(o.id.toString()).orElseThrow();
