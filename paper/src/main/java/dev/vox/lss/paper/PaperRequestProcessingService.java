@@ -75,28 +75,37 @@ public class PaperRequestProcessingService {
     /** The map-ingestion exemption read (map-ingestion permission plan §3.1): FAIL-CLOSED —
      *  either spelling through the Bukkit permissible, a throwing read (a Folia race) is
      *  not exempt. Unlike {@link #permissionProbe} (the service gate's fail-open doctrine).
-     *  Seam-injected for tests. */
-    private java.util.function.Predicate<ServerPlayer> mapIngestionExemptProbe =
-            PaperRequestProcessingService::mapIngestionExemptViaBukkit;
+     *  Seam-injected for tests. Three states (the xplat twin): the 10 s sweep keeps a
+     *  capable session's last-sent flags on a FAILED read. */
+    private java.util.function.Function<ServerPlayer, dev.vox.lss.common.MapPolicy.Exemption>
+            mapIngestionExemptProbe = PaperRequestProcessingService::mapIngestionExemptionViaBukkit;
 
-    private static boolean mapIngestionExemptViaBukkit(ServerPlayer p) {
-        return dev.vox.lss.common.MapPolicy.holdsExemption(p.getBukkitEntity()::hasPermission);
+    private static dev.vox.lss.common.MapPolicy.Exemption mapIngestionExemptionViaBukkit(ServerPlayer p) {
+        return dev.vox.lss.common.MapPolicy.readExemption(p.getBukkitEntity()::hasPermission);
     }
 
-    /** Test seam; {@code null} restores the production read. */
+    /** Test seam; {@code null} restores the production read. A throwing probe reads FAILED. */
     void setMapIngestionExemptProbeForTest(java.util.function.Predicate<ServerPlayer> probe) {
-        this.mapIngestionExemptProbe = probe != null ? probe
-                : PaperRequestProcessingService::mapIngestionExemptViaBukkit;
+        this.mapIngestionExemptProbe = probe != null
+                ? player -> dev.vox.lss.common.MapPolicy.Exemption.of(() -> probe.test(player))
+                : PaperRequestProcessingService::mapIngestionExemptionViaBukkit;
+    }
+
+    /** The exemption in three states: any throw (a player without a Bukkit entity, a Folia
+     *  read race) or an absent read is {@code FAILED}. */
+    public dev.vox.lss.common.MapPolicy.Exemption mapIngestionExemption(ServerPlayer player) {
+        try {
+            var read = this.mapIngestionExemptProbe.apply(player);
+            return read != null ? read : dev.vox.lss.common.MapPolicy.Exemption.FAILED;
+        } catch (Throwable e) {
+            if (e instanceof VirtualMachineError vme) throw vme;
+            return dev.vox.lss.common.MapPolicy.Exemption.FAILED;
+        }
     }
 
     /** Whether {@code player} holds the exemption — fail-closed (any throw: not exempt). */
     public boolean mapIngestionExempt(ServerPlayer player) {
-        try {
-            return this.mapIngestionExemptProbe.test(player);
-        } catch (Throwable e) {
-            if (e instanceof VirtualMachineError vme) throw vme;
-            return false;
-        }
+        return mapIngestionExemption(player).exempt();
     }
 
     /** The per-player map-ingestion decision (the xplat twin, map-ingestion permission plan
@@ -104,6 +113,13 @@ public class PaperRequestProcessingService {
     public boolean denyMapIngestionFor(ServerPlayer player) {
         return dev.vox.lss.common.MapPolicy.decide(this.config.requestNoMapIngestion(),
                 () -> mapIngestionExempt(player)).deny();
+    }
+
+    /** The same decision from an exemption the caller already read (the sweep's
+     *  three-state read; a FAILED read is not exempt here). */
+    public boolean denyMapIngestionFor(dev.vox.lss.common.MapPolicy.Exemption exemption) {
+        return dev.vox.lss.common.MapPolicy.decide(this.config.requestNoMapIngestion(),
+                exemption::exempt).deny();
     }
 
     /** Test seam (production wiring: the constructor). */
@@ -638,10 +654,12 @@ public class PaperRequestProcessingService {
                             registryIds.states(), registryIds.biomes()),
                     // Build marker (paper-version-guard-store-plan §3.2): before 0.20.0
                     // nothing stopped a Paper jar for another Minecraft version from
-                    // enabling, so a store without the marker is rebuilt once.
+                    // enabling, so a store without the marker is rebuilt once. The jar's
+                    // own Minecraft rule keeps a same-family marker (26.3.1 → 26.3).
                     dev.vox.lss.common.BuildInfo.minecraftVersion(),
                     FoliaSupport.IS_FOLIA ? "folia" : "paper",
-                    dev.vox.lss.common.store.LegacyStoreMigration.DROP);
+                    dev.vox.lss.common.store.LegacyStoreMigration.DROP,
+                    dev.vox.lss.common.BuildInfo.minecraftVersionRule());
             lodStore = dev.vox.lss.common.store.LodStores.createOrNull(env);
             if (lodStore == null) {
                 // LodStores.createOrNull logged the per-cause warn (codec vs SQLite init —
@@ -1245,9 +1263,20 @@ public class PaperRequestProcessingService {
      * the one-shot sweep) and is how a grant or revoke reaches a capable session. Pump
      * thread only, AFTER the lifecycle drain. Caches the exempt count for the diag line.
      *
+     * <p>A FAILED exemption read keeps the flags a capable session was last sent (no push,
+     * no flip); the next sweep reads again. The handshake and the reload's re-push stay
+     * fail-closed.
+     *
      * @return how many sessions this pass revoked
      */
     public int runMapPolicySweep() {
+        return runMapPolicySweep(true);
+    }
+
+    /** @param pushCapable false when the caller's full re-push follows and tells every
+     *                     capable session its flags (an arming reload that also changes
+     *                     distance or generation): the capable pass then only counts */
+    public int runMapPolicySweep(boolean pushCapable) {
         var config = this.config;
         if (!config.requestNoMapIngestion()) return 0;
         var gateState = this.serviceGateState;
@@ -1294,9 +1323,18 @@ public class PaperRequestProcessingService {
         }
         for (var state : capable) {
             var player = state.getPlayer();
-            boolean denyMapIngestion = denyMapIngestionFor(player);
+            Boolean lastSent = gateState.lastMapFlagsSent(state.getPlayerUUID());
+            var exemption = mapIngestionExemption(player);
+            if (exemption == dev.vox.lss.common.MapPolicy.Exemption.FAILED && lastSent != null) {
+                // Keep what the session was last told (no push, no flip); re-read next sweep.
+                // A session never told any flags has nothing to keep: fail-closed below.
+                if (Boolean.FALSE.equals(lastSent)) exempt++;
+                continue;
+            }
+            boolean denyMapIngestion = denyMapIngestionFor(exemption);
             if (!denyMapIngestion) exempt++;
-            if (Boolean.valueOf(denyMapIngestion).equals(gateState.lastMapFlagsSent(state.getPlayerUUID()))) {
+            if (!pushCapable) continue; // the caller's full re-push tells it
+            if (Boolean.valueOf(denyMapIngestion).equals(lastSent)) {
                 continue; // nothing changed: no push
             }
             try {
@@ -1826,9 +1864,13 @@ public class PaperRequestProcessingService {
             boolean mapPolicyChanged = adoptedMapPolicy != mapPolicy;
             // Map-policy plan A3.4: REVOKE FIRST — a session about to lose service must
             // not first get an enabled=true manager rebuild from the re-push below.
-            settingsMapPolicyRevoked = mapPolicyChanged ? runMapPolicySweep() : -1;
+            // A distance/generation change re-pushes every CURRENT session in full below, and
+            // that push carries (and records) each one's flags: the sweep then leaves the
+            // capable sessions to it, so an arming reload never pushes one twice.
+            boolean fullRepush = generationChanged || !advertisedLod.equals(next.lod());
+            settingsMapPolicyRevoked = mapPolicyChanged ? runMapPolicySweep(!fullRepush) : -1;
             settingsMapPolicyArmed = mapPolicy;
-            if (generationChanged || !advertisedLod.equals(next.lod()))
+            if (fullRepush)
                 settingsLegacyReconnects = repushSessionConfig()[1];
             else if (mapPolicyChanged)
                 repushSessionConfig(true); // the flags change alone; legacy sessions are not told

@@ -41,7 +41,7 @@ class LoaderPermissionSeamContractTest {
      *  must exempt NOBODY (a default-true read would exempt everyone on a provider-less
      *  Fabric server). Method declaration → the file it lives in. */
     private static final java.util.Map<String, String> FAIL_CLOSED_READS = java.util.Map.of(
-            "static boolean mapIngestionExemptViaLoader(",
+            "static dev.vox.lss.common.MapPolicy.Exemption mapIngestionExemptionViaLoader(",
             "xplat/src/main/java/dev/vox/lss/networking/server/RequestProcessingService.java");
 
     @Test
@@ -101,8 +101,10 @@ class LoaderPermissionSeamContractTest {
                         && glue.contains("RequestProcessingService.mapIngestionExemptViaLoader(player)"),
                 "the shared glue's gate overrides the exemption with the service's read");
         String svc = source("xplat/src/main/java/dev/vox/lss/networking/server/RequestProcessingService.java");
-        assertTrue(svc.contains("RequestProcessingService::mapIngestionExemptViaLoader;"),
+        assertTrue(svc.contains("RequestProcessingService::mapIngestionExemptionViaLoader;"),
                 "production wires the loader read into the service's exemption probe");
+        assertTrue(svc.contains("return mapIngestionExemptionViaLoader(player).exempt();"),
+                "the glue's boolean fallback is the same read, FAILED folded into not exempt");
         assertTrue(java.util.regex.Pattern.compile("public boolean mapIngestionExempt\\(ServerPlayer player\\) \\{"
                         + "\\s*try \\{[\\s\\S]{0,120}?catch \\(Exception e\\) \\{\\s*return false;")
                         .matcher(svc).find(),
@@ -111,7 +113,7 @@ class LoaderPermissionSeamContractTest {
         assertTrue(paper.contains("MapPolicy.holdsExemption(bukkitPlayer::hasPermission)"),
                 "Paper's gate reads the Bukkit permissible through the fail-closed helper");
         String paperSvc = source("paper/src/main/java/dev/vox/lss/paper/PaperRequestProcessingService.java");
-        assertTrue(paperSvc.contains("MapPolicy.holdsExemption(p.getBukkitEntity()::hasPermission)"),
+        assertTrue(paperSvc.contains("MapPolicy.readExemption(p.getBukkitEntity()::hasPermission)"),
                 "…and so does the Paper service's sweep probe");
     }
 

@@ -702,6 +702,110 @@ class PaperMapPolicyTest {
         assertEquals(LSSConstants.PROTOCOL_VERSION, replays.getFirst().protocolVersion());
     }
 
+    // ---- 0.20.0 implementation-review folds ----
+
+    /** An arming reload that also changes the distance: the full re-push carries (and
+     *  records) the capable session's flags, so the sweep before it must not push them too. */
+    @Test
+    void anArmingReloadThatAlsoChangesTheDistancePushesEachCapableSessionOnce() throws Exception {
+        var old = UUID.randomUUID();
+        var capable = UUID.randomUUID();
+        register(old, HandshakeGate.WireDialect.CURRENT, VOXEL);
+        register(capable, HandshakeGate.WireDialect.CURRENT, VOXEL | BIT);
+        var original = config.snapshot();
+        arm(true);
+        MutablePaperSettings.set(config, "lod.distance.default_chunks", 256);
+        var result = service.reconcileSettings(original, config.snapshot(), 1);
+        service.tick();
+        result.get(1, java.util.concurrent.TimeUnit.SECONDS);
+
+        var toCapable = sent.stream().filter(e -> e[0].equals(capable)).toList();
+        assertEquals(1, toCapable.size(), "exactly one push to the capable session, got " + toCapable.size());
+        assertEquals(true, toCapable.getFirst()[1]);
+        assertEquals(true, toCapable.getFirst()[3], "the full re-push carries the armed flags");
+        assertEquals(Boolean.TRUE, service.getServiceGateState().lastMapFlagsSent(capable),
+                "…and records them, so the next sweep stays quiet");
+        assertEquals(1, sent.stream().filter(e -> e[0].equals(old)).count(),
+                "the older session's revocation, once");
+        assertEquals(false, sent.getFirst()[1], "REVOKE FIRST");
+        assertEquals(1, service.settingsFeedback().mapPolicyRevoked());
+        sent.clear();
+        service.runMapPolicySweep();
+        assertTrue(sent.isEmpty(), "the cadence sweep finds nothing new to tell");
+    }
+
+    /** The 10 s sweep keeps a capable session's last-sent flags on a FAILED read; the
+     *  handshake stays fail-closed. */
+    @Test
+    void aFailedSweepReadKeepsTheFlagsACapableSessionWasLastSent() {
+        var uuid = UUID.randomUUID();
+        var p = register(uuid, HandshakeGate.WireDialect.CURRENT, VOXEL | BIT);
+        var exempt = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var failing = new java.util.concurrent.atomic.AtomicBoolean(false);
+        service.setMapIngestionExemptProbeForTest(pl -> {
+            if (failing.get()) throw new IllegalStateException("Folia read race");
+            return exempt.get();
+        });
+        arm(true);
+        service.runMapPolicySweep();
+        assertEquals(1, sent.size());
+        assertEquals(false, sent.getFirst()[3], "premise: the granted session may ingest");
+
+        failing.set(true);
+        assertEquals(1, service.getServiceGateState().mapPolicyExemptCount());
+        service.runMapPolicySweep();
+        service.runMapPolicySweep();
+        assertEquals(1, sent.size(), "a failed read pushes nothing — the session is not flipped");
+        assertEquals(Boolean.FALSE, service.getServiceGateState().lastMapFlagsSent(uuid));
+        assertEquals(1, service.getServiceGateState().mapPolicyExemptCount(),
+                "it is still counted as it was last told");
+        assertTrue(service.denyMapIngestionFor(p), "elsewhere a failed read stays fail-closed");
+
+        failing.set(false);
+        exempt.set(false);
+        service.runMapPolicySweep();
+        assertEquals(2, sent.size(), "a real revoke still lands on the next good read");
+        assertEquals(true, sent.get(1)[3]);
+    }
+
+    /** A disarm ends the exempt admissions: re-armed after the grant is withdrawn, the older
+     *  client is decided afresh — refused as a non-exempt older client. Reconcile-driven. */
+    @Test
+    void aDisarmClearsExemptAdmissionsSoAReArmDecidesAfresh() throws Exception {
+        var old = UUID.randomUUID();
+        register(old, HandshakeGate.WireDialect.CURRENT, VOXEL);
+        var exempt = ConcurrentHashMap.<UUID>newKeySet();
+        exempt.add(old);
+        service.setMapIngestionExemptProbeForTest(pl -> exempt.contains(pl.getUUID()));
+        var disarmedSettings = config.snapshot();
+        arm(true);
+        var armedSettings = config.snapshot();
+        var armed = service.reconcileSettings(disarmedSettings, armedSettings, 1);
+        service.tick();
+        armed.get(1, java.util.concurrent.TimeUnit.SECONDS);
+        assertNotNull(players.get(old), "premise: the exempt older session keeps serving");
+        assertTrue(service.getServiceGateState().isMapPolicyExemptAdmission(old));
+
+        arm(false);
+        var disarm = service.reconcileSettings(armedSettings, config.snapshot(), 2);
+        service.tick();
+        disarm.get(1, java.util.concurrent.TimeUnit.SECONDS);
+        assertFalse(service.getServiceGateState().isMapPolicyExemptAdmission(old),
+                "the disarm ends the admission");
+
+        exempt.remove(old); // the grant is withdrawn while disarmed
+        sent.clear();
+        arm(true);
+        var rearm = service.reconcileSettings(disarmedSettings, config.snapshot(), 3);
+        service.tick();
+        rearm.get(1, java.util.concurrent.TimeUnit.SECONDS);
+        assertNull(players.get(old), "re-armed: revoked as a non-exempt older client");
+        assertEquals(1, service.settingsFeedback().mapPolicyRevoked());
+        assertEquals(1, sent.size());
+        assertEquals(old, sent.getFirst()[0]);
+        assertEquals(false, sent.getFirst()[1], "the revocation push");
+    }
+
     @Test
     void aThrowingExemptionReadIsNotExemptOnTheServiceAndTheProductionGate() {
         var uuid = UUID.randomUUID();
