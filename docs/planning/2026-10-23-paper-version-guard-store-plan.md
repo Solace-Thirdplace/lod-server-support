@@ -1,6 +1,6 @@
 # Paper version guard and store build marker (Discord report, 2026-10-23)
 
-Status: reviewed (2 Opus + 1 Fable, §8), awaiting the user's approval.
+Status: approved 2026-10-24; implemented on all six lines for 0.20.0.
 
 ## 1. Report
 
@@ -203,4 +203,25 @@ constructor on a fresh store, and the signature is not in the flake catalog yet)
 marker trusted everywhere; marker decided after the lazy upgrade; `build_mc` not a core key;
 the refresh not stamping; the guard step skipped; the refusal never firing; Paper passing
 `REFRESH`; the Fabric site passing the running version; `plugin.yml` losing the key; the rule's
-`-` bound and upper bound. The live rerun (§4) is still to do.
+`-` bound and upper bound. The live rerun (§4) passed on 2026-10-24 (Live checks below).
+
+## Live checks (2026-10-24)
+
+Local disposable rigs; full record in `~/.local/state/lss-release-prep-v0.20.0/live/RESULTS.md`.
+- L1: the guarded 26.2 jar on Paper 26.3 logs one ERROR, disables itself and leaves `store.db`
+  byte-identical.
+- L2: the reproduction's poisoned store with the new 26.3 jar: "store written before build
+  tracking; rebuilding once"; the new store is stamped `build_mc=26.3`, `platform=paper`.
+- L4: the 26.3 jar on Folia 26.3 (build 5) enables normally; store stamped `platform=folia`.
+
+## Implementation review (4 Opus, 2026-10-24)
+
+No MAJOR findings. Folded and ported to all six lines:
+| Finding | Severity | Disposition |
+| --- | --- | --- |
+| `build_mc` compared as an exact string: a `minecraft_version` bump inside the family (as 26.1 → 26.1.2 once did) would drop every store, the Modrinth server's included | MINOR (two reviewers) | Fixed: a stored `build_mc` this jar's rule accepts is kept and re-stamped; one the rule rejects drops |
+| The real refusal path (plugin.yml read, `disablePlugin` inside `onEnable`) untested | MINOR | Covered live (L1, L4 above) |
+| `release_check` never checked `lss-build.properties` | NIT (two reviewers) | Fixed: present and expanded in all eight jars, selftests |
+| `platform` overwritten by REFRESH/KEEP_PERMUTED | NIT | Fixed: first writer only |
+| Refusal tells 1.21.x operators to download a build that doesn't exist | MINOR | Fixed: names the supported versions, then "if one exists"; notes say other 1.21 versions have no 0.20.0 Paper build |
+| `SerializerParityGameTests` deposit wait (one red under load) | MINOR | Fixed: wall-clock wait; flake-catalog entry |

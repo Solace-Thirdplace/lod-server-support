@@ -1,6 +1,6 @@
 # Per-player map ingestion permission (Discord request, 2026-10-23)
 
-Status: reviewed (2 Opus + 1 Fable, §11), awaiting the user's approval. Builds on the 0.19.0
+Status: approved 2026-10-24; implemented on all six lines for 0.20.0. Builds on the 0.19.0
 server map policy ([plan](2026-10-13-map-policy-and-xaero-cave-layers-plan.md) Part A).
 
 ## 1. Request
@@ -157,7 +157,7 @@ doesn't).
 ## 12. As built (2026-10-23, 26.3 line, branch `impl/v0.20.0-perm`)
 
 Status: IMPLEMENTED on the 26.3 line with the approved defaults (U1 `false`, U2 0.20.0). Ports
-to the five support lines and the six-line re-pin are still to do.
+to the five support lines and the six-line re-pin followed on 2026-10-24.
 
 **Decision point.** `MapPolicy.decide(policyOn, exemptSupplier)` (common) returns
 `Decision(deny, exempt)` and reads the exemption only while the request is on.
@@ -243,3 +243,17 @@ on 26.2 and 26.1. On 1.21.11, 1.21.10 and 1.21.1, re-check the per-line seams: t
 `ServerPlayer.level()` accessor the dimension-change gametest uses, the gametest End-level
 lookup, and NeoForge's `PermissionNode` constructor (no name validation on 26.3.0.76;
 `_` is valid in node paths).
+
+## Implementation review (4 Opus, 2026-10-24)
+
+No MAJOR findings. Folded and ported to all six lines:
+| Finding | Severity | Disposition |
+| --- | --- | --- |
+| An arming reload that also changes distance/generation pushed twice (two client rebuilds) | MINOR | Fixed: the sweep skips its capable push when a full repush follows |
+| One failed permission read flipped a capable session deny/allow | MINOR (two reviewers) | Fixed: the sweep reads three-state and keeps the last flags sent on a failed read; the handshake, sessions never sent flags, and undecided older clients stay fail-closed |
+| Clearing exempt admissions on disarm was pinned only by a unit test | MINOR | Fixed: reconcile-driven gametest and Paper twin |
+| `exempt=` counts current sessions only; provider token; a double read in the grant sweep | NIT | Accepted (documented behaviour; harmless) |
+
+Live (2026-10-24, Paper 26.3 + LuckPerms 5.5.71, capable 26.3 client): granting
+`lss.map_ingestion` gave `exempt=1` and the client logged "allows map ingestion again" about 7 s
+later; unsetting it reversed both; no disconnects.
